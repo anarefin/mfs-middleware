@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input, NativeSelect } from "@/components/ui/input";
 import {
-  BILLER_OPTIONS, COUNTERPARTY_LABEL, CUSTOM, DEFAULT_AMOUNT, GOOD_PIN, OPERATORS, counterpartyOptions, defaultCounterparty, scenarios,
+  BILLER_OPTIONS, COUNTERPARTY_LABEL, CUSTOM, DEFAULT_BILLER, DEFAULT_AMOUNT, GOOD_PIN, OPERATORS, counterpartyOptions, defaultCounterparty, scenarios,
 } from "@/lib/app-flow-options";
 import { APP_ROLES, ROLE_LABEL, msisdnOf, userLabel, usersOf, type AppUser } from "@/lib/app-users";
 import { FILL_EVENT, type FillDetail } from "@/lib/how-to";
@@ -18,6 +18,7 @@ import { FLOWS_BY_ROLE, FLOW_HELP, type AppRole, type TxnType } from "@/lib/pers
 import { cn } from "@/lib/utils";
 import { appRead, bindDevice, checkBalance, resendLast, submitTxn } from "../actions/app";
 import { Result } from "../components/result";
+import { BillerPicker } from "./biller-picker";
 import { HistoryPanel } from "./history-panel";
 import { SignedInCard } from "./signed-in-card";
 
@@ -25,8 +26,8 @@ const OTHER = "__other";
 const CHIP_TONE = { good: "border-good/40 text-good", bad: "border-bad/40 text-bad", warn: "border-warn/40 text-warn" } as const;
 
 /** The flow form, re-mounted (key) per flow and user so its counterparty and amount start at that flow's defaults. */
-function FlowForm({ type, user, me, users, busy, submitting, submit }: {
-  type: TxnType; user: string; me?: string; users: readonly AppUser[]; busy: boolean; submitting: boolean; submit: (f: FormData) => void;
+function FlowForm({ type, user, me, users, busy, submitting, submit, refreshKey }: {
+  type: TxnType; user: string; me?: string; users: readonly AppUser[]; busy: boolean; submitting: boolean; submit: (f: FormData) => void; refreshKey: number;
 }) {
   const options = counterpartyOptions(type, me, users);
   const [cp, setCp] = useState(() => defaultCounterparty(type, me, users));
@@ -56,9 +57,7 @@ function FlowForm({ type, user, me, users, busy, submitting, submit }: {
           <Field label="Product"><NativeSelect name="product" defaultValue="PREPAID"><option>PREPAID</option><option>POSTPAID</option></NativeSelect></Field>
         </Row>
       ) : null}
-      {type === "BILL_PAY" ? (
-        <Field label="Biller"><NativeSelect name="biller" defaultValue="DESCO">{BILLER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</NativeSelect></Field>
-      ) : null}
+      {type === "BILL_PAY" ? <BillerPicker user={user} refreshKey={refreshKey} /> : null}
       {type === "ADD_MONEY_BANK" ? <input type="hidden" name="bank" value="c2wbank" /> : null}
       <Field label={COUNTERPARTY_LABEL[type]}>
         <NativeSelect value={pick} onChange={(e) => setCp(e.target.value === CUSTOM ? "" : e.target.value)} data-testid="counterparty-pick">
@@ -161,7 +160,7 @@ export function AppTester({ users }: { users: AppUser[] }) {
                 {flow ? (
                   <>
                     <p className="m-0 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{FLOW_HELP[flow].hint}</p>
-                    <FlowForm key={`${flow}|${user}`} type={flow} user={user} me={me} users={users} busy={busy} submitting={submitting} submit={submit} />
+                    <FlowForm key={`${flow}|${user}`} type={flow} user={user} me={me} users={users} busy={busy} submitting={submitting} submit={submit} refreshKey={refreshKey} />
                   </>
                 ) : null}
                 <form action={resend}>
@@ -191,7 +190,7 @@ export function AppTester({ users }: { users: AppUser[] }) {
                 <Button type="submit" variant={role === "merchant" ? "default" : "outline"} name="what" value="collections" disabled={busy} data-testid="collections">Merchant collections</Button>
               </Row>
               <Row>
-                <Field label="Biller"><NativeSelect name="biller" defaultValue="DESCO">{BILLER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}</NativeSelect></Field>
+                <Field label="Biller"><NativeSelect name="biller" defaultValue={DEFAULT_BILLER}>{BILLER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.value}</option>)}</NativeSelect></Field>
                 <Field label="Bill number"><Input name="counterparty" defaultValue="1234567" className="font-mono" /></Field>
                 <Button type="submit" variant="outline" name="what" value="fetchBill" disabled={busy}>Fetch bill</Button>
               </Row>

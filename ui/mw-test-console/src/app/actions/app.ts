@@ -5,6 +5,7 @@
 
 import { historyQuery, parseHistory } from "@/lib/app-history";
 import { formatMinor, takaToMinor, normaliseMsisdn } from "@/lib/format";
+import { parseBillerList, type BillerItem } from "@/lib/seed-catalogue";
 import { TXN_TYPES, type TxnType } from "@/lib/personas";
 import { FINAL, type BalanceRow, type Outcome, type SmsRow } from "@/lib/types";
 import { deviceHeaders, deviceState, ready, signedHeaders, type DeviceState } from "@/lib/server/device";
@@ -249,6 +250,29 @@ export async function appRead(_prev: AppState, form: FormData): Promise<AppState
     const last = t.steps[t.steps.length - 1];
     return { ok: !t.failed, headline: `${last?.call} -> HTTP ${last?.status}`, steps: t.steps };
   });
+}
+
+export type BillerList = { live: true; billers: BillerItem[] } | { live: false; reason: string };
+
+/**
+ * The bill pay screen's biller list: GET /app/v1/billers as the signed-in user. It never binds or logs
+ * in (that would race the submit's own binding): without a live session it says so, and the screen
+ * falls back to the seed catalogue until the next bind or submit reloads it.
+ */
+export async function listBillers(user: string): Promise<BillerList> {
+  if (!USER.test(user)) return { live: false, reason: "no user signed in" };
+  if (!deviceState(user).session) return { live: false, reason: "the device is not signed in yet (bind it or submit once)" };
+  try {
+    const r = await edge("GET", "/app/v1/billers", { headers: await deviceHeaders(user) });
+    if (r.status !== 200) {
+      const code = (r.body as { code?: string } | null)?.code;
+      return { live: false, reason: `GET /app/v1/billers answered HTTP ${r.status}${code ? ` ${code}` : ""}` };
+    }
+    const billers = parseBillerList(r.body);
+    return billers?.length ? { live: true, billers } : { live: false, reason: "GET /app/v1/billers gave no biller list" };
+  } catch (e) {
+    return { live: false, reason: (e as Error).message };
+  }
 }
 
 export type WalletCard = {

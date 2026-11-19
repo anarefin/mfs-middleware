@@ -86,7 +86,7 @@
             "bn": "বিল পে",
             "en": "Pay Bill"
           },
-          "next": "bp.biller"
+          "next": "bp.category"
         },
         {
           "key": "5",
@@ -443,6 +443,16 @@
         "bn": "রিচার্জ ব্যর্থ: {error}",
         "en": "Recharge failed: {error}"
       }
+    },
+    "bp.category": {
+      "type": "DYNAMIC",
+      "text": {
+        "bn": "সেবার ধরন বাছাই করুন",
+        "en": "Select category"
+      },
+      "source": "biller-categories",
+      "store": "category",
+      "next": "bp.biller"
     },
     "bp.biller": {
       "type": "DYNAMIC",

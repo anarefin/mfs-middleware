@@ -1,13 +1,14 @@
 "use client";
 // A table with a filter box: the server renders the cells, the client hides the rows whose
-// search text does not contain the filter (case-insensitive).
+// search text does not contain the filter (case-insensitive). Rows with a group get a group header
+// row before the first shown row of each group (rows come in group order).
 
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-export type FilterRow = { key: string; search: string; cells: ReactNode[] };
+export type FilterRow = { key: string; search: string; cells: ReactNode[]; group?: string };
 
 export function FilterTable({ id, head, rows, empty = "Nothing seeded." }: { id: string; head: string[]; rows: FilterRow[]; empty?: string }) {
   const [q, setQ] = useState("");
@@ -22,8 +23,15 @@ export function FilterTable({ id, head, rows, empty = "Nothing seeded." }: { id:
         <Table data-testid={`table-${id}`}>
           <TableHeader className="bg-muted/50"><TableRow>{head.map((h) => <TableHead key={h}>{h}</TableHead>)}</TableRow></TableHeader>
           <TableBody>
-            {shown.length ? shown.map((r) => (
-              <TableRow key={r.key} data-testid={`row-${r.key}`}>{r.cells.map((c, i) => <TableCell key={i}>{c}</TableCell>)}</TableRow>
+            {shown.length ? shown.map((r, n) => (
+              <Fragment key={r.key}>
+                {r.group !== undefined && r.group !== shown[n - 1]?.group ? (
+                  <TableRow className="bg-muted/30 hover:bg-muted/30" data-testid={`group-${id}-${r.group}`}>
+                    <TableCell colSpan={head.length} className="text-sm font-semibold text-foreground">{r.group}</TableCell>
+                  </TableRow>
+                ) : null}
+                <TableRow data-testid={`row-${r.key}`}>{r.cells.map((c, i) => <TableCell key={i}>{c}</TableCell>)}</TableRow>
+              </Fragment>
             )) : <TableRow><TableCell colSpan={head.length} className="text-muted-foreground">{f ? "No row matches the filter." : empty}</TableCell></TableRow>}
           </TableBody>
         </Table>

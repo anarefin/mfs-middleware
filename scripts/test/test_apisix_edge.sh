@@ -425,7 +425,7 @@ test_ussd_secrets_are_defined_and_passed_to_apisix_and_the_simulator() {
     v="USSD_${mno}_GATEWAY_SECRET"
     grep -q "^$v=" "$REPO_DIR/deploy/dev.env.defaults" || fail "$v not in deploy/dev.env.defaults"
     grep -A40 -E '^  apisix-init:' "$REPO_DIR/deploy/docker-compose.yml" | grep -q "$v: " || fail "$v not passed to apisix-init"
-    grep -A40 -E "^  provision:" "$REPO_DIR/deploy/docker-compose.yml" | grep -q "$v: " || fail "$v not passed to provision (mw-simulators' secret)"
+    grep -A60 -E "^  provision:" "$REPO_DIR/deploy/docker-compose.yml" | grep -q "$v: " || fail "$v not passed to provision (mw-simulators' secret)"
   done
 }
 

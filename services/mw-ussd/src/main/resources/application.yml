@@ -274,6 +274,14 @@ mw:
         - { value: robi, label: { bn: রবি, en: Robi } }
         - { value: banglalink, label: { bn: বাংলালিংক, en: Banglalink } }
         - { value: teletalk, label: { bn: টেলিটক, en: Teletalk } }
+    # Labels of the DYNAMIC source biller-categories (service/DynamicLists), by the category code of
+    # mw-adapter-billpay's catalogue; the order on the handset is fixed in DynamicLists.CATEGORY_ORDER.
+    biller-categories:
+      ELECTRICITY: { bn: বিদ্যুৎ, en: Electricity }
+      WATER: { bn: পানি, en: Water }
+      GAS: { bn: গ্যাস, en: Gas }
+      TELECOM: { bn: টেলিফোন, en: Telecom }
+      INTERNET: { bn: ইন্টারনেট, en: Internet }
     # mw-auth (ticket 72; client/AuthClient, config/AuthClientProperties; spec 18.7, D22, D24): the
     # transaction authorisation on the internal port over mTLS (mw.tls) with a Keycloak realm services
     # client-credentials JWT of client mw-ussd (audience mw-auth), also for the PIN transport key

@@ -14,10 +14,14 @@ import java.util.Map;
 import java.util.Set;
 import mfs.mw.simulators.service.RequestRecorder;
 import mfs.mw.simulators.service.ScenarioStore;
+import mfs.mw.simulators.util.SoapXml;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.util.ContentCachingRequestWrapper;
 
-/** Records every request to a simulator's own endpoints ({@code /<partner>/...}), whatever the reply. */
+/**
+ * Records every request to a simulator's own endpoints ({@code /<partner>/...}), whatever the reply. The
+ * text of a WS-Security {@code Password} element (the billagg SOAP front end) is recorded as {@code ***}.
+ */
 public class RecordingFilter extends OncePerRequestFilter {
 
   private static final Set<String> SKIPPED_HEADERS = Set.of("authorization", "cookie");
@@ -63,7 +67,7 @@ public class RecordingFilter extends OncePerRequestFilter {
           request.getRequestURI(),
           request.getQueryString(),
           headers,
-          new String(wrapper.getContentAsByteArray(), StandardCharsets.UTF_8),
+          SoapXml.redactPasswords(new String(wrapper.getContentAsByteArray(), StandardCharsets.UTF_8)),
           clock.instant());
     }
   }

@@ -64,7 +64,7 @@ class KafkaTransactionFlowTest {
   static UssdProperties props() {
     return new UssdProperties(
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofMillis(10), Duration.ofSeconds(30),
-        "bn", 3, Map.of(), Map.of());
+        "bn", 3, Map.of(), Map.of(), Map.of());
   }
 
   static FlowRequest p2p() {

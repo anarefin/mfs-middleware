@@ -62,8 +62,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   and activates it for every configured MNO without a menu or still on an older version of the
   seed (v1/v2 -> v3; another menu is never replaced; `main-v2.json` stays as shipped). Seed (ticket 28): 1 Send Money (P2P), 2 Cash Out (customer to agent), 3 Mobile
   Recharge (1 own number: option `set` stores `{msisdn}` / `{mno}` as target and operator; 2 other
-  number + DYNAMIC `operators`; product `=PREPAID`), 4 Pay Bill (DYNAMIC `billers`, bill number
-  INPUT with `lookup: bill`, CONFIRM with the fetched amount), 5 Balance (v3, ADR D26: `bal.pin` ->
+  number + DYNAMIC `operators`; product `=PREPAID`), 4 Pay Bill (DYNAMIC `bp.category` source
+  `biller-categories` store `category` "Select category" -> DYNAMIC `bp.biller` source `billers` (that
+  category's billers), bill number INPUT with `lookup: bill`, CONFIRM with the fetched amount; en screens
+  "Select category\n1 Electricity\n2 Water\n3 Gas\n4 Telecom\n5 Internet", after 3 "Select biller\n1 JGTDSL\n2
+  KGDCL\n3 TITAS"; the same nodes in `main-v2.json` and mw-seeder's `seed-content/menus/main.json`), 5 Balance (v3, ADR D26: `bal.pin` ->
   ACTION `bal.check` flow BALANCE, empty mapping -> `bal.done` "Tk {balance}" / `bal.failed`), 9 language
   (v3 labels option 3 "রিচার্জ" / "Recharge" so the main screen stays within 70 UCS-2 characters). Every Bangla screen of
   the seed fits 70 UCS-2 characters (`UssdMenuWalkTest`).
@@ -89,9 +92,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   the validator's `error` (or the menu's `invalid`) above the screen; `max-invalid-attempts` (3)
   in a row end the session. Placeholders `{input}` / `{txnId}` / `{error}` / `{balance}` in texts. A screen over
   the MNO limit is cut (TRUNCATE) or paged with the menu's `more` option ("0 More", PAGE).
-  DYNAMIC sources (`service/DynamicLists`): `billers` = mw-adapter-billpay's live catalogue
-  (`service/BillPayDirectory`, sorted by code, label = code, cached `catalogue-ttl` 60 s and kept
-  through an outage); others static from `mw.ussd.lists.<source>` (`operators`). INPUT `lookup`
+  DYNAMIC sources (`service/DynamicLists.items(source, inputs)`): `billers` = mw-adapter-billpay's live
+  catalogue (`service/BillPayDirectory`, sorted by code, label = code, cached `catalogue-ttl` 60 s and kept
+  through an outage), only the billers of the session input `category` when it is set;
+  `biller-categories` = the categories of that catalogue with at least one biller, in the fixed order
+  `DynamicLists.CATEGORY_ORDER` (ELECTRICITY, WATER, GAS, TELECOM, INTERNET; another category after them by
+  code, labelled with its code), value = the category code, bn/en label from `mw.ussd.biller-categories.<CODE>`
+  (`config/UssdProperties.billerCategories`); others static from `mw.ussd.lists.<source>` (`operators`).
+  `DynamicListsTest` and `UssdMenuWalkTest` (the 10-biller catalogue: Category -> Gas -> KGDCL, every Bangla
+  screen within 70 UCS-2 characters) cover them. INPUT `lookup`
   (`service/Lookups`, arguments from the node's `mapping`): `bill` fetches the bill and adds
   `amount` (taka) and `partnerId` (the biller's aggregator) to the inputs; a refusal asks again
   with the adapter's message (messageBn in bn), an outage ends with `unavailable`. Bill fetch and

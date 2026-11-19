@@ -50,6 +50,8 @@ provision_mw_auth() {
 provision_mw_simulators() {
   gen_once spring.datasource.password 40
   sync_env sim.callback-secrets.billagg BILLAGG_HMAC_SECRET
+  # the WS-Security UsernameToken password of the billagg SOAP front end (SOAP billers)
+  sync_env sim.billagg.ws-password BILLAGG_WS_PASSWORD
   sync_env sim.callback-secrets.c2wbank C2WBANK_HMAC_SECRET
   sync_env sim.ussd-gateway.credentials.gp USSD_GP_GATEWAY_SECRET
   sync_env sim.ussd-gateway.credentials.robi USSD_ROBI_GATEWAY_SECRET
@@ -143,13 +145,15 @@ provision_mw_adapter_telco() {
   db_role adapter_telco_rw partner_ref
 }
 
-# The dev aggregator's hmac-sha256 secret (ticket 22), shared with mw-simulators. Partner secrets
+# The dev aggregator's hmac-sha256 secret (ticket 22) and the WS-Security password of its SOAP
+# front end (field ws-password, the SOAP billers), shared with mw-simulators. Partner secrets
 # live one secret per partner, secret/mw-adapter-billpay/<partner> (ADR D28: read by the partner
 # route through Camel's vault function when it loads).
 provision_mw_adapter_billpay() {
   gen_once spring.datasource.password 40
   KV="secret/$SVC/billagg"
   sync_env hmac-secret BILLAGG_HMAC_SECRET
+  sync_env ws-password BILLAGG_WS_PASSWORD
   KV="secret/$SVC"
   db_role adapter_billpay_rw billpay_ref
 }

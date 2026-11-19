@@ -3,7 +3,7 @@
 // one outcome. The magic values are the simulators' (same as lib/how-to.ts PARTNER_MAGIC).
 
 import { usersOf, userLabel, type AppUser } from "./app-users";
-import { BILLERS } from "./seed-catalogue";
+import { BILLERS, protocolOf, type BillerItem } from "./seed-catalogue";
 import { FLOW_HELP, type TxnType } from "./personas";
 
 export type Option = { value: string; label: string };
@@ -12,7 +12,17 @@ export type Chip = { label: string; tone: "good" | "bad" | "warn"; values: { cou
 export const GOOD_PIN = "13579";
 export const WRONG_PIN = "97531";
 export const OPERATORS = ["gp", "robi", "banglalink", "teletalk"] as const;
-export const BILLER_OPTIONS: readonly Option[] = BILLERS.map((b) => ({ value: b.code, label: `${b.code}, ${b.name}` }));
+/** A biller option's text: code, name and the catalogue's protocol (none for a code the catalogue does not know). */
+export function billerLabel(b: BillerItem): string {
+  const p = protocolOf(b.code);
+  return `${b.code}, ${b.name}${p ? ` · ${p}` : ""}`;
+}
+export const BILLER_OPTIONS: readonly Option[] = BILLERS.map((b) => ({ value: b.code, label: billerLabel(b) }));
+/** The biller a bill payment starts at. */
+export const DEFAULT_BILLER = "DESCO";
+/** DESCO when the list has it, else the list's first biller. */
+export const defaultBiller = (list: readonly BillerItem[]): string =>
+  list.some((b) => b.code === DEFAULT_BILLER) ? DEFAULT_BILLER : list[0]?.code ?? DEFAULT_BILLER;
 /** The "Custom…" entry of a counterparty select: the text box beside it holds the value. */
 export const CUSTOM = "__custom";
 

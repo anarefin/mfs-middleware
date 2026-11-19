@@ -98,6 +98,11 @@ public class BillAggregatorMapper {
     return new BillPaymentResponse(r.transactionId(), r.status(), r.code(), r.message(), r.paymentRef());
   }
 
+  /** A payment refused because the biller is not served on this front end (3004, not applied). */
+  public BillPaymentResponse unknownBiller(String transactionId) {
+    return new BillPaymentResponse(transactionId, "FAILED", UNKNOWN_BILLER, "Unknown biller", null);
+  }
+
   public BillPaymentResponse notFound(String transactionId) {
     return new BillPaymentResponse(transactionId, "NOT_FOUND", "4040", "Unknown transaction", null);
   }

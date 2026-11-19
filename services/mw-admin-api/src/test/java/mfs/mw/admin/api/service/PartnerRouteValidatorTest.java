@@ -43,6 +43,20 @@ class PartnerRouteValidatorTest {
     return validator.problems("acme", yaml, MAPPINGS, List.of("api.acme.example"));
   }
 
+  /** The dev seeds (billagg with its SOAP branches for the SOAP billers, ocs, c2wbank) pass as they are. */
+  @ParameterizedTest
+  @ValueSource(strings = {"billagg", "ocs", "c2wbank"})
+  void theDevSeedsHaveNoProblems(String id) throws Exception {
+    try (java.io.InputStream in = getClass().getResourceAsStream("/partner-seeds/dev/" + id + ".json")) {
+      tools.jackson.databind.JsonNode config = JsonMapper.builder().build().readTree(in).get("config");
+      Map<String, String> mappings = new java.util.LinkedHashMap<>();
+      config.get("mappings").properties().forEach(e -> mappings.put(e.getKey(), e.getValue().asString()));
+      List<String> hosts = new java.util.ArrayList<>();
+      config.get("allowedHosts").forEach(h -> hosts.add(h.asString()));
+      assertThat(validator.problems(id, config.get("route").asString(), mappings, hosts)).isEmpty();
+    }
+  }
+
   @Test
   void aGoodRouteHasNoProblems() {
     assertThat(check(route(GOOD))).isEmpty();

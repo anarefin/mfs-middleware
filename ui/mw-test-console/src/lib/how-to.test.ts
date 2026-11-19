@@ -9,7 +9,7 @@ import { APP_PERSONAS, FLOWS_BY_ROLE, TXN_TYPES } from "./personas";
 /** The client components that hold each page's form fields (credentials / seed data have no fills). */
 const SOURCES: Record<PageKey, string[]> = {
   home: [],
-  app: ["app/app-tester.tsx"],
+  app: ["app/app-tester.tsx", "app/biller-picker.tsx"],
   auth: ["auth/auth-tester.tsx"],
   ussd: ["ussd/phone.tsx"],
   simulators: ["simulators/forms.tsx"],

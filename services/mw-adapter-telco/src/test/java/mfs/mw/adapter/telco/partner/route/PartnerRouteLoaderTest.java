@@ -83,7 +83,8 @@ class PartnerRouteLoaderTest {
     assertThat(loaded.route().getRouteConfigurationId()).isEqualTo(PartnerRouteConfiguration.ID);
     assertThat(loaded.runtime().kamelets()).contains("mw-map", "mw-http-call", "mw-classify", "mw-audit");
     assertThat(loaded.runtime().secrets().keySet())
-        .allSatisfy(field -> assertThat(seed.getValue().route()).contains("secretField=" + field));
+        .allSatisfy(field -> assertThat(seed.getValue().route())
+            .containsAnyOf("secretField=" + field, "wsPasswordSecret=" + field));
   }
 
   @Test

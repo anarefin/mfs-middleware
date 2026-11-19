@@ -45,14 +45,25 @@ class UssdMenuWalkTest {
 
   /** The biller catalogue and bill fetch of mw-adapter-billpay, scripted. */
   static final class FakeBills implements BillDirectory {
+    /** mw-adapter-billpay's 10 billers, sorted by code as {@link BillDirectory#billers()} returns them. */
+    static final List<Biller> TEN = List.of(
+        new Biller("BREB", "Bangladesh Rural Electrification Board (Palli Bidyut)", "ELECTRICITY", "billagg"),
+        new Biller("BTCL", "Bangladesh Telecommunications Company", "TELECOM", "billagg"),
+        new Biller("CWASA", "Chattogram WASA", "WATER", "billagg"),
+        new Biller("DESCO", "Dhaka Electric Supply Company", "ELECTRICITY", "billagg"),
+        new Biller("DPDC", "Dhaka Power Distribution Company", "ELECTRICITY", "billagg"),
+        new Biller("JGTDSL", "Jalalabad Gas Transmission and Distribution System", "GAS", "billagg"),
+        new Biller("KGDCL", "Karnaphuli Gas Distribution Company", "GAS", "billagg"),
+        new Biller("LINK3", "Link3 Technologies", "INTERNET", "billagg"),
+        new Biller("TITAS", "Titas Gas", "GAS", "billagg"),
+        new Biller("WASA", "Dhaka WASA", "WATER", "billagg"));
+
     final List<String> fetched = new ArrayList<>();
     RuntimeException failure;
 
     @Override
     public List<Biller> billers() {
-      return List.of(
-          new Biller("DESCO", "Dhaka Electric Supply Company", "ELECTRICITY", "billagg"),
-          new Biller("WASA", "Dhaka WASA", "WATER", "billagg"));
+      return TEN;
     }
 
     @Override
@@ -77,8 +88,20 @@ class UssdMenuWalkTest {
             new UssdProperties.ListItem("gp", new Text("গ্রামীণফোন", "Grameenphone")),
             new UssdProperties.ListItem("robi", new Text("রবি", "Robi")),
             new UssdProperties.ListItem("banglalink", new Text("বাংলালিংক", "Banglalink")),
-            new UssdProperties.ListItem("teletalk", new Text("টেলিটক", "Teletalk")))));
+            new UssdProperties.ListItem("teletalk", new Text("টেলিটক", "Teletalk")))),
+        CATEGORIES);
   }
+
+  /** {@code mw.ussd.biller-categories} as in application.yml. */
+  static final Map<String, Text> CATEGORIES = Map.of(
+      "ELECTRICITY", new Text("বিদ্যুৎ", "Electricity"),
+      "WATER", new Text("পানি", "Water"),
+      "GAS", new Text("গ্যাস", "Gas"),
+      "TELECOM", new Text("টেলিফোন", "Telecom"),
+      "INTERNET", new Text("ইন্টারনেট", "Internet"));
+
+  static final String CATEGORY_SCREEN_BN = "সেবার ধরন বাছাই করুন\n1 বিদ্যুৎ\n2 পানি\n3 গ্যাস\n4 টেলিফোন\n5 ইন্টারনেট";
+  static final String CATEGORY_SCREEN_EN = "Select category\n1 Electricity\n2 Water\n3 Gas\n4 Telecom\n5 Internet";
 
   final UssdEngineTest.InMemorySessions sessions = new UssdEngineTest.InMemorySessions();
   final UssdEngineTest.ScriptedFlow flow = new UssdEngineTest.ScriptedFlow();
@@ -257,8 +280,9 @@ class UssdMenuWalkTest {
   @Test
   void billPayWithTheBillerListAndTheFetchedAmountInBangla() {
     dial("b1");
-    assertThat(send("b1", "4").text()).isEqualTo("বিলার বাছাই করুন\n1 DESCO\n2 WASA");
-    assertThat(send("b1", "1").text()).isEqualTo("DESCO বিল নম্বর দিন");
+    assertThat(send("b1", "4").text()).isEqualTo(CATEGORY_SCREEN_BN);
+    assertThat(send("b1", "1").text()).isEqualTo("বিলার বাছাই করুন\n1 BREB\n2 DESCO\n3 DPDC");
+    assertThat(send("b1", "2").text()).isEqualTo("DESCO বিল নম্বর দিন");
     assertThat(send("b1", "1234567").text())
         .isEqualTo("DESCO বিল 1234567: 667.00 টাকা দিবেন?\n1 নিশ্চিত করুন\n2 বাতিল");
     assertThat(bills.fetched).containsExactly("DESCO/1234567");
@@ -275,20 +299,47 @@ class UssdMenuWalkTest {
         .containsEntry("amount", "667.00")
         .containsEntry("partnerId", "billagg")
         .containsEntry("billerCode", "DESCO");
-    assertThat(req.menuPath()).isEqualTo("main:4>bp.biller:1>bp.number>bp.confirm:1>bp.pin");
+    assertThat(req.menuPath()).isEqualTo("main:4>bp.category:1>bp.biller:2>bp.number>bp.confirm:1>bp.pin");
   }
 
   @Test
-  void billPayInEnglish() {
+  void billPayInEnglishGoesThroughTheCategoryGasToKgdcl() {
     dial("b2");
     send("b2", "9");
-    assertThat(send("b2", "4").text()).isEqualTo("Select biller\n1 DESCO\n2 WASA");
-    assertThat(send("b2", "2").text()).isEqualTo("Enter WASA bill number");
-    assertThat(send("b2", "12").text()).isEqualTo("Enter a valid bill number.\nEnter WASA bill number");
-    assertThat(send("b2", "1234567").text()).isEqualTo("Pay Tk 667.00 for WASA bill 1234567?\n1 Confirm\n2 Cancel");
+    assertThat(send("b2", "4").text()).isEqualTo(CATEGORY_SCREEN_EN);
+    assertThat(send("b2", "6").text()).isEqualTo("Invalid input.\n" + CATEGORY_SCREEN_EN);
+    assertThat(send("b2", "3").text()).isEqualTo("Select biller\n1 JGTDSL\n2 KGDCL\n3 TITAS");
+    assertThat(send("b2", "4").text()).isEqualTo("Invalid input.\nSelect biller\n1 JGTDSL\n2 KGDCL\n3 TITAS");
+    assertThat(send("b2", "2").text()).isEqualTo("Enter KGDCL bill number");
+    assertThat(send("b2", "12").text()).isEqualTo("Enter a valid bill number.\nEnter KGDCL bill number");
+    assertThat(send("b2", "1234567").text()).isEqualTo("Pay Tk 667.00 for KGDCL bill 1234567?\n1 Confirm\n2 Cancel");
+    assertThat(bills.fetched).containsExactly("KGDCL/1234567");
     send("b2", "1");
-    assertThat(send("b2", "48261").text()).isEqualTo("Tk 667.00 paid for WASA bill 1234567. TxnID " + TXN);
-    assertThat(flow.requests.getFirst().fields()).containsEntry("billerCode", "WASA");
+    assertThat(send("b2", "48261").text()).isEqualTo("Tk 667.00 paid for KGDCL bill 1234567. TxnID " + TXN);
+    FlowRequest req = flow.requests.getFirst();
+    assertThat(req.fields()).containsEntry("billerCode", "KGDCL").containsEntry("partnerId", "billagg");
+    assertThat(req.menuPath()).isEqualTo("main:9>main:4>bp.category:3>bp.biller:2>bp.number>bp.confirm:1>bp.pin");
+  }
+
+  @Test
+  void theElectricityAndWaterListsInEnglish() {
+    dial("b6");
+    send("b6", "9");
+    send("b6", "4");
+    assertThat(send("b6", "1").text()).isEqualTo("Select biller\n1 BREB\n2 DESCO\n3 DPDC");
+    dial("b7");
+    send("b7", "9");
+    send("b7", "4");
+    assertThat(send("b7", "2").text()).isEqualTo("Select biller\n1 CWASA\n2 WASA");
+  }
+
+  @Test
+  void theGasListInBanglaFitsOneUcs2Screen() {
+    dial("b8");
+    String categories = send("b8", "4").text();
+    String gas = send("b8", "3").text();
+    assertThat(categories).isEqualTo(CATEGORY_SCREEN_BN).hasSizeLessThanOrEqualTo(70);
+    assertThat(gas).isEqualTo("বিলার বাছাই করুন\n1 JGTDSL\n2 KGDCL\n3 TITAS").hasSizeLessThanOrEqualTo(70);
   }
 
   @Test
@@ -298,6 +349,7 @@ class UssdMenuWalkTest {
     dial("b3");
     send("b3", "4");
     send("b3", "1");
+    send("b3", "2");
     assertThat(send("b3", "1234404").text()).isEqualTo("বিল পাওয়া যায়নি\nDESCO বিল নম্বর দিন");
     assertThat(sessions.values.get("ussd:robi:b3")).contains("\"nodeId\":\"bp.number\"");
     bills.failure = null;
@@ -313,6 +365,7 @@ class UssdMenuWalkTest {
     send("b4", "9");
     send("b4", "4");
     send("b4", "1");
+    send("b4", "2");
     assertThat(send("b4", "1234404").text()).isEqualTo("Bill not found\nEnter DESCO bill number");
   }
 
@@ -323,6 +376,7 @@ class UssdMenuWalkTest {
     send("b5", "9");
     send("b5", "4");
     send("b5", "1");
+    send("b5", "2");
     UssdResponse r = send("b5", "1234567");
     assertThat(r.end()).isTrue();
     assertThat(r.text()).isEqualTo("Service temporarily unavailable. Please try later.");
@@ -342,8 +396,13 @@ class UssdMenuWalkTest {
       screens.add(send("w2", in).text());
     }
     dial("w3");
-    for (String in : List.of("4", "1", "12345678901234", "1", "48261")) {
+    for (String in : List.of("4", "1", "2", "12345678901234", "1", "48261")) {
       screens.add(send("w3", in).text());
+    }
+    for (String category : List.of("2", "3", "4", "5")) {
+      dial("w3" + category);
+      send("w3" + category, "4");
+      screens.add(send("w3" + category, category).text());
     }
     dial("w4");
     for (String in : List.of("1", AGENT, "25000", "1", "48261")) {

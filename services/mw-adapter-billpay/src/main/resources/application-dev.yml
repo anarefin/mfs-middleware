@@ -45,7 +45,14 @@ mw:
           "[3002]": { suffix: BILL_ALREADY_PAID, retryable: false }
           "[3003]": { suffix: PAYMENT_REFUSED, retryable: false }
           "[3004]": { suffix: UNKNOWN_BILLER, retryable: false }
-        # The route: one branch per operation, then mw-audit. PAY: POST /billagg/v1/payments
+        # The route: one branch per operation, then mw-audit. The SOAP billers (KGDCL, JGTDSL, BTCL,
+        # LINK3; header mwPartnerCode = the call's billerCode) go to the aggregator's SOAP 1.1 front end
+        # POST /billagg/v1/soap (namespace urn:billagg:v1, FetchBill / PayBill with billerCode, WS-Security
+        # UsernameToken user bits, password field ws-password of the same OpenBao secret, dev value
+        # BILLAGG_WS_PASSWORD), mapped by the soap.*.xsl stylesheets; their faults carry the same codes
+        # 3001-3004 as REST (a soap:Server fault or anything unexpected is UNKNOWN). Every other biller,
+        # every STATUS_QUERY (only our reference: the aggregator's REST status finds SOAP payments too) and
+        # every callback go over REST. PAY: POST /billagg/v1/payments
         # {transactionId, billerCode, billNumber, amount:"667.00"} (only 422 with a code and 400 are
         # rejections; any other non-2xx is UNKNOWN). STATUS_QUERY (spec 7.4): GET
         # /billagg/v1/payments/{reference}. INQUIRY (bill fetch, ticket 21): POST
@@ -57,6 +64,16 @@ mw:
                 steps:
                   - choice:
                       when:
+                        - simple: "${header.mwOperation} == 'PAY' && ${header.mwPartnerCode} in 'KGDCL,JGTDSL,BTCL,LINK3'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.soap.request"
+                            - to: "kamelet:mw-soap-call?address=${mw.partners.instances.billagg.base-url}/billagg/v1/soap&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:billagg:v1:PayBill&wsUsername=bits&wsPasswordSecret=ws-password"
+                            - to: "kamelet:mw-classify?mapping=PAY.soap.response&definiteStatuses=200&pending=true"
+                        - simple: "${header.mwOperation} == 'INQUIRY' && ${header.mwPartnerCode} in 'KGDCL,JGTDSL,BTCL,LINK3'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=INQUIRY.soap.request"
+                            - to: "kamelet:mw-soap-call?address=${mw.partners.instances.billagg.base-url}/billagg/v1/soap&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:billagg:v1:FetchBill&wsUsername=bits&wsPasswordSecret=ws-password"
+                            - to: "kamelet:mw-classify?mapping=INQUIRY.soap.response&definiteStatuses=200"
                         - simple: "${header.mwOperation} == 'PAY'"
                           steps:
                             - to: "kamelet:mw-map?mapping=PAY.request"
@@ -122,6 +139,68 @@ mw:
             : status = 400
               ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
             : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # SOAP billers: mw-map's JSON -> the SOAP body element (soap.request.xsl), the SOAP body or
+          # fault -> JSON (soap.response.xsl) for the *.soap.response mappings (both answers are status
+          # 200 there). A soap:Client fault with a code is a refusal mapped by error-map; a soap:Server
+          # fault, a missing code or an unknown reply is UNKNOWN.
+          "[PAY.soap.request]": |
+            {"op": "PAY", "billerCode": partner.billerCode, "billNumber": creditParty.id,
+             "amount": amount.major, "reference": reference}
+          "[INQUIRY.soap.request]": |
+            {"op": "INQUIRY", "billerCode": partner.billerCode, "billNumber": creditParty.id}
+          "[soap.request.xsl]": |
+            <xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+                xmlns:fn="http://www.w3.org/2005/xpath-functions" xmlns:b="urn:billagg:v1" exclude-result-prefixes="fn">
+              <xsl:template match="/fn:map[fn:string[@key='op'] = 'PAY']">
+                <b:PayBill>
+                  <b:billerCode><xsl:value-of select="fn:*[@key='billerCode']"/></b:billerCode>
+                  <b:billNumber><xsl:value-of select="fn:*[@key='billNumber']"/></b:billNumber>
+                  <b:amount><xsl:value-of select="fn:*[@key='amount']"/></b:amount>
+                  <b:reference><xsl:value-of select="fn:*[@key='reference']"/></b:reference>
+                </b:PayBill>
+              </xsl:template>
+              <xsl:template match="/fn:map" priority="-1">
+                <b:FetchBill>
+                  <b:billerCode><xsl:value-of select="fn:*[@key='billerCode']"/></b:billerCode>
+                  <b:billNumber><xsl:value-of select="fn:*[@key='billNumber']"/></b:billNumber>
+                </b:FetchBill>
+              </xsl:template>
+            </xsl:stylesheet>
+          "[soap.response.xsl]": |
+            <xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+                xmlns:b="urn:billagg:v1" xmlns:f="urn:bits:mw:soap-fault">
+              <xsl:output method="json"/>
+              <xsl:template match="/b:PayBillResponse">
+                <xsl:sequence select="map{'reply': 'PAY', 'status': string(b:status), 'paymentRef': string(b:paymentRef),
+                    'code': string(b:code)}"/>
+              </xsl:template>
+              <xsl:template match="/b:FetchBillResponse">
+                <xsl:sequence select="map{'reply': 'FETCH', 'billNumber': string(b:billNumber), 'amount': string(b:amountDue),
+                    'dueDate': string(b:dueDate), 'billPeriod': string(b:billPeriod)}"/>
+              </xsl:template>
+              <xsl:template match="/f:fault">
+                <xsl:sequence select="map{'fault': string(@code), 'code': string(f:detail/b:error/b:code),
+                    'message': string(f:detail/b:error/b:message)}"/>
+              </xsl:template>
+              <xsl:template match="/*" priority="-1">
+                <xsl:sequence select="map{'reply': 'OTHER'}"/>
+              </xsl:template>
+            </xsl:stylesheet>
+          "[PAY.soap.response]": |
+            body.reply = "PAY" and body.status = "SUCCESS" and body.paymentRef != ""
+              ? {"outcome": "SUCCESS", "partnerRef": body.paymentRef, "code": body.code != "" ? body.code}
+            : body.reply = "PAY" and body.status = "PENDING"
+              ? {"outcome": "PENDING", "partnerRef": body.paymentRef != "" ? body.paymentRef, "code": body.code != "" ? body.code}
+            : body.fault = "Client" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}
+          "[INQUIRY.soap.response]": |
+            body.reply = "FETCH" and body.amount != "" and body.billNumber != ""
+              ? {"outcome": "SUCCESS", "partnerRef": body.billNumber,
+                 "attributes": {"amount": body.amount, "dueDate": body.dueDate, "billPeriod": body.billPeriod}}
+            : body.fault = "Client" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}
           # Callback (ticket 22): the payment body {transactionId (our reference), status
           # SUCCESS|FAILED|PENDING, code, message, paymentRef}, input {headers, body}; anything
           # without a known status is refused.

@@ -50,7 +50,7 @@ D9 amendment), can unlock and reset accounts, and has no sign-in.
   (`app/app/signed-in-card.tsx`, action `walletCard`: core-mock balance / held, `deviceState` bound and
   login time) reloads after every call; flows per role `FLOWS_BY_ROLE` in `lib/personas.ts` (merchant:
   none); counterparty lists, magic numbers and the scenario chips in `lib/app-flow-options.ts` (pure;
-  chips fill through `FILL_EVENT`); block 4 History (`app/app/history-panel.tsx`, `appRead` case
+  chips fill through `FILL_EVENT`); the bill pay biller picker (`app/app/biller-picker.tsx`, action `listBillers`: the live `GET /app/v1/billers` only while the device has a session, never binding, else the seed catalogue with a note; category chips, search, REST / SOAP badge from `lib/seed-catalogue.ts` `protocolOf`, DESCO the default); block 4 History (`app/app/history-panel.tsx`, `appRead` case
   `history`: `GET /app/v1/transactions` as the signed-in user with the session headers, `lib/app-history.ts`
   builds the query and reads the page defensively; loaded on demand, then again after each submit;
   type / direction filters, More by offset; an error envelope such as 503 `MW-SYS-013` shows as a result)), `/ussd` (handset on the four MNOs of `lib/ussd-mnos.ts` (pure), each with its own code

@@ -77,6 +77,17 @@ test.describe("@app app flows", () => {
     await expect(r.getByTestId("txn-status")).toHaveText("COMPLETED");
   });
 
+  test("bill payment over SOAP completes", async ({ page }) => {
+    await page.goto("app");
+    await page.getByTestId("txn-type").selectOption("BILL_PAY");
+    await page.getByTestId("biller-category-GAS").click();
+    await page.getByTestId("biller").selectOption("KGDCL");
+    await expect(page.getByTestId("biller-protocol")).toHaveText("SOAP");
+    const r = await submit(page, "BILL_PAY", "1234567", "100");
+    await expect(r.getByTestId("txn-status")).toHaveText("COMPLETED");
+    await expect(r.getByTestId("delta-01711000001")).toHaveText("-Tk 103.00");
+  });
+
   test("add money from the bank credits the wallet", async ({ page }) => {
     await page.goto("app");
     const r = await submit(page, "ADD_MONEY_BANK", "1234567890123", "500");

@@ -30,7 +30,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     `BILLAGG_HMAC_SECRET`, written to OpenBao `secret/mw-simulators` by `deploy/provision/services.sh`; the e2e
     suite points `callbackUrl` at `http://apisix:9080/partner/billagg/callback/payments`.
   - `filter/RecordingFilter` records every request to `/{partner}/**` (raw bodies, test data;
-    Authorization and Cookie headers dropped), last `sim.record-limit` per partner.
+    Authorization and Cookie headers dropped; the text of a WS-Security `Password` element is recorded
+    as `***`, `util/SoapXml.redactPasswords`), last `sim.record-limit` per partner.
 - OCS wire format: `POST /ocs/v1/topup {transactionId, msisdn, amount:"100.00"}`; `GET
   /ocs/v1/topup/{transactionId}` returns the real outcome (200, or 404 NOT_FOUND). Replies:
   `{transactionId, status SUCCESS|FAILED|NOT_FOUND|UNAVAILABLE|ERROR, code, message, ocsRef}`;
@@ -38,7 +39,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   (not applied). A repeated `transactionId` returns the original outcome.
 - Bill aggregator wire format (`billagg`, `controller/BillAggregatorController`,
   `service/BillAggregatorService`, `BillPaymentLedger`): `GET /billagg/v1/billers` -> `[{code,
-  name, category}]` (DESCO, DPDC, WASA, TITAS); `POST /billagg/v1/bills/fetch {billerCode,
+  name, category, protocol: REST|SOAP}]`, 10 billers (`BillAggregatorService.BILLERS`): REST BREB, CWASA,
+  DESCO, DPDC, TITAS, WASA; SOAP BTCL, JGTDSL, KGDCL, LINK3 (categories ELECTRICITY, WATER, GAS, TELECOM,
+  INTERNET); `POST /billagg/v1/bills/fetch {billerCode,
   billNumber}` -> 200 `{billerCode, billNumber, status: DUE, code: "000", amount: "667.00",
   dueDate, billPeriod}` with amount due = 100 taka + the bill number's last three digits, or 422
   `{status: FAILED, code}`: bill number ending `404` -> `3001` not found, ending `000` -> `3002`
@@ -52,8 +55,30 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   scenario `callbackOnly`): a payment is applied as usual but answered 202 `{status: PENDING,
   code: "001", paymentRef}` (every repeat too), the outcome goes by callback (`callbackMode`) as
   `{transactionId, status SUCCESS|FAILED, code, message, paymentRef}`, the status inquiry reports
-  the real outcome; the TIMEOUT hold is skipped in this mode.
-- SOAP stub biller (`soapbill`, ticket 85, `controller/SoapBillerController`, `service/SoapBillerService`):
+  the real outcome; the TIMEOUT hold is skipped in this mode. Protocol guard (proves the adapter's
+  route picked the right protocol): a SOAP biller on the REST fetch or payment endpoint is refused
+  422 `3004` unknown biller (a payment is not applied); a code not in the list at all is still paid
+  over REST, as before.
+- billagg SOAP front end (`controller/BillAggregatorSoapController`, `service/BillAggregatorSoapService`):
+  `POST /billagg/v1/soap` (SOAP 1.1, `text/xml` or `application/soap+xml`, namespace `urn:billagg:v1`,
+  SOAPAction `urn:billagg:v1:FetchBill|PayBill`, the body element decides) for the SOAP billers only.
+  Every request carries a WS-Security 1.0 `wsse:Security` header with a UsernameToken (`PasswordText`,
+  as the adapters' `mw-soap-call` builds it), user `bits`, password the property `sim.billagg.ws-password`
+  (read from the `Environment` like `sim.callback-secrets.*`; stack: `BILLAGG_WS_PASSWORD` in OpenBao
+  `secret/mw-simulators`; no value in the main config; unset = every call refused); missing or wrong ->
+  fault `1002`. `FetchBill {billerCode, billNumber}` -> `FetchBillResponse {billerCode, billNumber,
+  amountDue, dueDate, billPeriod}`; `PayBill {billerCode, billNumber, amount, reference}` ->
+  `PayBillResponse {status SUCCESS|PENDING, paymentRef, code (000, or 001 when PENDING)}`. Both delegate to
+  `BillAggregatorService` (protocol SOAP): the same amounts, magic bill numbers and amounts, scenarios
+  (partner `billagg`), timeout hold, callback-only PENDING and callbacks, and the same payment store
+  (`reference` = `transactionId`: one payment per reference, a repeat returns the same reply, `GET
+  /billagg/v1/payments/{reference}` finds it). Faults (HTTP 500, `<detail><b:error><b:code/><b:message/>`):
+  `soap:Client` `3001` / `3002` / `3003` / `9876` as the REST codes, `3004` for a REST or unknown biller,
+  `1000` unreadable request, DOCTYPE, unknown operation or invalid field, `1002` authentication; `soap:Server`
+  `5030` outage / error rate, `5000` the 500-after-send mode; the malformed mode answers a cut-short
+  envelope (200). Recorded under `billagg` like the REST calls. Tests: `BillAggregatorSoapIT`.
+- SOAP stub biller (`soapbill`, ticket 85, `controller/SoapBillerController`, `service/SoapBillerService`;
+  parser, envelope and fault helpers shared with the billagg SOAP front end in `util/SoapXml`):
   the SOAP case of the adapters' `mw-soap-call` (`deploy/partner-routes/examples/soap-biller.yaml`). `POST
   /soapbill/v1` (SOAP 1.1, `text/xml` or `application/soap+xml`, namespace `urn:soapbill:v1`): `FetchBill
   {billNumber}` -> `FetchBillResponse {billNumber, amountDue (100 taka + last three digits), dueDate}`;

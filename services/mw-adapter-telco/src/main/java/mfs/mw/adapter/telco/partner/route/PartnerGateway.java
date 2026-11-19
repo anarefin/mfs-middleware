@@ -130,6 +130,10 @@ public class PartnerGateway {
               if (call.txnId() != null) {
                 m.setHeader(PartnerExchange.TXN_ID, call.txnId());
               }
+              String code = partnerCode(call);
+              if (code != null) {
+                m.setHeader(PartnerExchange.PARTNER_CODE, code);
+              }
               m.setBody(body);
             });
     if (done.getException() != null) {
@@ -144,6 +148,19 @@ public class PartnerGateway {
           : new PartnerResponse.NotSent(NotSentReason.DISABLED);
     }
     return results.response(done, done.getMessage().getBody(String.class));
+  }
+
+  /** {@code input.partner.billerCode}, else {@code productCode}; null when neither is a non-blank string. */
+  static String partnerCode(PartnerCall call) {
+    if (!(call.input().get("partner") instanceof Map<?, ?> partner)) {
+      return null;
+    }
+    for (String key : new String[] {"billerCode", "productCode"}) {
+      if (partner.get(key) instanceof String value && !value.isBlank()) {
+        return value;
+      }
+    }
+    return null;
   }
 
   /**

@@ -681,7 +681,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
   <div class="case" id="c3-7">
     <h3><span class="id">3.7</span>Billers, fetch bill, bill payment</h3>
     <ol>
-      <li>Block 3: press <span class="ui">Billers</span>: DESCO, DPDC, WASA, TITAS are listed.</li>
+      <li>Block 3: press <span class="ui">Billers</span>: the 10 billers of the table below are listed.</li>
       <li>Biller <code>DESCO</code>, <span class="ui">Bill number</span> <code>1234567</code>, <span class="ui">Fetch bill</span>: amount due Tk 667.00 (Tk 100 plus the bill number's last 3 digits).</li>
       <li>Type <span class="ui">Bill payment (aggregator)</span>, biller <code>DESCO</code>, bill <code>1234567</code>, amount <code>100</code>, <span class="ui">Submit</span>.</li>
       <li>Expect <code>COMPLETED</code>, payer <code>-Tk 103.00</code> (Tk 3 fee), an SMS, and an email receipt (6.1).</li>
@@ -692,8 +692,33 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td>bill <code>1234999</code></td><td>red ✖ <code>REJECTED MW-PTR-BILLAGG-PAYMENT_REFUSED</code>, nothing moved</td></tr>
       <tr><td>Fetch bill <code>1234404</code> / <code>1234000</code></td><td>red ✖ HTTP 502 <code>MW-PTR-BILLAGG-BILL_NOT_FOUND</code> / <code>MW-PTR-BILLAGG-BILL_ALREADY_PAID</code></td></tr>
       <tr><td>amount <code>100.13</code></td><td>timeout → status inquiry → <code>COMPLETED</code></td></tr>
-      <tr><td>billers DPDC / WASA / TITAS</td><td>same as DESCO</td></tr>
+      <tr><td>any other biller, e.g. <code>KGDCL</code> (SOAP)</td><td>same as DESCO</td></tr>
     </table></div>
+    <h4 id="c3-7-billers">Billers</h4>
+    <p>Ten billers in five categories, all behind one bill aggregator, partner <code>billagg</code> (the simulator's
+    aggregator). Six are called over REST; four (KGDCL, JGTDSL, BTCL, LINK3) over SOAP 1.1 with a WS-Security
+    UsernameToken (<code>POST /billagg/v1/soap</code>). The partner route picks the protocol by biller code; the bill rules
+    (Tk 100 plus the last 3 digits, the magic endings) are the same for both.</p>
+    <div class="table-wrap"><table>
+      <tr><th>Category</th><th>REST</th><th>SOAP</th></tr>
+      <tr><td>Electricity</td><td><code>BREB</code>, <code>DESCO</code>, <code>DPDC</code></td><td></td></tr>
+      <tr><td>Water</td><td><code>CWASA</code>, <code>WASA</code></td><td></td></tr>
+      <tr><td>Gas</td><td><code>TITAS</code></td><td><code>JGTDSL</code>, <code>KGDCL</code></td></tr>
+      <tr><td>Telecom</td><td></td><td><code>BTCL</code></td></tr>
+      <tr><td>Internet</td><td></td><td><code>LINK3</code></td></tr>
+    </table></div>
+    <ul>
+      <li><b>Test console</b>: the app bill pay screen shows each biller with a <span class="ui">REST</span> or
+        <span class="ui">SOAP</span> badge; the Billers table of <a href="https://localhost/tester/seed-data">/tester/seed-data</a>
+        is grouped by category with a protocol column.</li>
+      <li><b>On the wire</b>: after a KGDCL fetch or payment, <span class="ui">Simulators &amp; faults</span> → billagg →
+        <span class="ui">Show scenario and last 10 requests</span>: the request is a SOAP envelope
+        (<code>b:FetchBill</code> / <code>b:PayBill</code>); a DESCO one is REST JSON.</li>
+      <li><b>Ops console</b> (<a href="#c9-3">9.3</a>): open the KGDCL payment; its audit trail has a
+        <code>partner.call.completed</code> row of <code>mw-adapter-billpay</code> (resource <code>partner/billagg/…</code>) whose
+        recorded request body is the SOAP envelope.</li>
+      <li><b>USSD</b> (<a href="#c4-3">4.3</a>): bill pay asks the category first: <code>4, 3, 2</code> is Gas → KGDCL, then the bill number.</li>
+    </ul>
   </div>
 
   <div class="case" id="c3-8">
@@ -857,8 +882,9 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td><code>2, 01811000001, 50, 1, 13579</code></td><td>cash out to the agent</td><td>ends with the TxnID</td></tr>
       <tr><td><code>3, 1, 20, 1, 13579</code></td><td>recharge own number</td><td>success or processing</td></tr>
       <tr><td><code>3, 2, 01711000999, 1, 20, 1, 13579</code></td><td>recharge another number (the <code>1</code> after the number picks the operator gp)</td><td>"Recharge failed: Subscriber not eligible for recharge"</td></tr>
-      <tr><td><code>4, 1, 1234567, 1, 13579</code></td><td>pay bill (first biller, DESCO)</td><td>"Tk 667.00 paid for DESCO bill 1234567. TxnID …"</td></tr>
-      <tr><td><code>4, 1, 1234404</code></td><td>unknown bill</td><td>bill not found</td></tr>
+      <tr><td><code>4, 1, 2, 1234567, 1, 13579</code></td><td>pay bill: category Electricity (<code>1</code>), then DESCO (<code>2</code>; the list is BREB, DESCO, DPDC)</td><td>"Tk 667.00 paid for DESCO bill 1234567. TxnID …"</td></tr>
+      <tr><td><code>4, 3, 2, 1234567, 1, 13579</code></td><td>pay bill: category Gas (<code>3</code>), then KGDCL (<code>2</code>; JGTDSL, KGDCL, TITAS), a SOAP biller</td><td>"Tk 667.00 paid for KGDCL bill 1234567. TxnID …"</td></tr>
+      <tr><td><code>4, 1, 2, 1234404</code></td><td>unknown bill</td><td>bill not found</td></tr>
       <tr><td><code>5, 13579</code></td><td>balance (<a href="#c4-5">4.5</a>)</td><td>"Your balance is Tk …"</td></tr>
     </table></div>
     <p>Without <code>9</code> the same flows run in Bangla: check the Bangla texts and that the SMS are in
@@ -973,7 +999,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
 
   <div class="case" id="c5-7">
     <h3><span class="id">5.7</span>Custom faults</h3>
-    <p>Three partner cards: <i>OCS (prepaid top-up, every MNO)</i>, <i>Bill aggregator (DESCO, DPDC, WASA, TITAS)</i>,
+    <p>Three partner cards: <i>OCS (prepaid top-up, every MNO)</i>, <i>Bill aggregator (10 billers, REST + SOAP)</i>,
     <i>C2W bank (add money from bank)</i>. On a card set the fields, press <span class="ui">Set ocs</span> (or
     <span class="ui">Set billagg</span> / <span class="ui">Set c2wbank</span>): two steps (<i>set the … scenario</i>, <i>read back the …
     scenario</i>) and "&lt;partner&gt; scenario set". Run the flow, then <span class="ui">Reset ocs</span> (…): "&lt;partner&gt; reset".</p>

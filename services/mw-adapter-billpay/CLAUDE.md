@@ -27,8 +27,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   Kafka consumer thread; the offset is committed at hand-over (crash -> orchestrator deadline ->
   UNKNOWN -> TSQ, as telco).
 - Biller catalogue (`config/BillerProperties`, `mw.billers.<code>: {name, category, partner-id}`):
-  which partner instance (aggregator) serves which biller. Static seed (DESCO, DPDC, WASA, TITAS ->
-  `billagg`) until mw-admin-api publishes the catalogue (spec 11.2, ticket 38). Routing and failover
+  which partner instance (aggregator) serves which biller. Static seed of 10 Bangladesh billers, all ->
+  `billagg` (REST: BREB, CWASA, DESCO, DPDC, TITAS, WASA; SOAP: BTCL, JGTDSL, KGDCL, LINK3, see the
+  aggregator paragraph at the end of "Partner engine") until mw-admin-api publishes the catalogue (spec 11.2, ticket 38). Routing and failover
   between aggregators (FR-09) are not built: one aggregator per biller.
 - Internal API (ticket 21; contract `api/mw-adapter-billpay/billpay.v1.openapi.yaml`, owned here),
   `controller/BillerController` + `service/BillFetchService`: `GET /billpay/v1/billers` (catalogue
@@ -77,7 +78,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Dev provisioning (`provision_mw_adapter_billpay` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `adapter_billpay_rw` and schema `billpay_ref`, `secret/mw-adapter-billpay` (DB password, never
-  overwritten), `secret/mw-adapter-billpay/billagg` (field `hmac-secret`, from `BILLAGG_HMAC_SECRET`) and
+  overwritten), `secret/mw-adapter-billpay/billagg` (fields `hmac-secret` from `BILLAGG_HMAC_SECRET` and
+  `ws-password` from `BILLAGG_WS_PASSWORD`; the route reads both when it loads, so a missing field leaves
+  billagg without a route) and
   the AppRole `mw-adapter-billpay` (policy: `secret/mw-adapter-billpay` and `secret/mw-adapter-billpay/*`;
   configtree volume at `/run/mw/approle`).
 
@@ -142,7 +145,10 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   The old shape (`template` + `baseUrl` + `operations`) is gone since ticket 84: a record without a
   `route` is refused (`a route is required`). `mw.partners.family` is required (no default).
 - **Route contract** (`partner/route/PartnerExchange`): in `from: direct:partner-<id>`, body the
-  `PartnerCall` JSON, headers `mwOperation`, `mwReference`, `mwCorrelationId`, `mwPartnerId`, `mwTxnId`;
+  `PartnerCall` JSON, headers `mwOperation`, `mwReference`, `mwCorrelationId`, `mwPartnerId`, `mwTxnId`,
+  `mwPartnerCode` (`PartnerExchange.PARTNER_CODE`: `input.partner.billerCode`, else `productCode`, when a
+  non-blank string; absent otherwise; set by `PartnerGateway.send`, so a route can branch per biller or
+  product; `PartnerGatewayPartnerCodeTest`, identical in the three adapters);
   the runtime of the version (`PartnerRuntime`) and the operation ride as exchange properties (a route
   cannot change them). Out: `{outcome, partnerRef, code, message, reason, errorSuffix, retryable,
   attributes}` (`PartnerResult`), checked by `json-validator` against
@@ -396,7 +402,20 @@ The aggregator is the seed `billagg` in `application-dev.yml` (profile `dev`; th
 ways (field `hmac-secret` of `secret/mw-adapter-billpay/billagg`), base URL `BILLAGG_BASE_URL`, hosts
 `MW_BILLAGG_ALLOWED_HOSTS`, timeout 25 s (below the orchestrator's 30 s deadline), resilience4j instance
 `billagg` (bulkhead 100, 20 s slow-call threshold). Error map `3001` BILL_NOT_FOUND, `3002`
-BILL_ALREADY_PAID, `3003` PAYMENT_REFUSED, `3004` UNKNOWN_BILLER; `9876` ambiguous. An example record:
+BILL_ALREADY_PAID, `3003` PAYMENT_REFUSED, `3004` UNKNOWN_BILLER; `9876` ambiguous. One aggregator, two
+protocols: PAY and INQUIRY of the SOAP billers (`${header.mwPartnerCode} in 'KGDCL,JGTDSL,BTCL,LINK3'`, the
+first two `when`s) go `mw-map` (`PAY.soap.request` / `INQUIRY.soap.request`) -> `mw-soap-call` (address
+`${mw.partners.instances.billagg.base-url}/billagg/v1/soap`, Spring-resolved before the loader sees it, as
+the REST `url`s; SOAP 1.1, namespace `urn:billagg:v1`, `FetchBill` / `PayBill` with `billerCode`,
+stylesheets `soap.request.xsl` / `soap.response.xsl`, UsernameToken user `bits`, password field
+`ws-password` of the same secret, dev value `BILLAGG_WS_PASSWORD`) -> `mw-classify` (`PAY.soap.response`,
+`INQUIRY.soap.response`, `definiteStatuses=200`, PAY `pending=true`); a `soap:Client` fault with a code is
+FAILED with that code (3001-3004 through the same error map, 1002 auth failure and others `UNMAPPED`), a
+`soap:Server` fault or any other reply UNKNOWN; INQUIRY SUCCESS has the REST attributes (`amount`,
+`dueDate`, `billPeriod`). STATUS_QUERY (only our reference) and callbacks stay REST: the aggregator keeps
+one payment store for both front ends. `BillaggSoapRouteIT`. mw-admin-api's
+`partner-seeds/dev/billagg.json` holds the same record (base URL written out as `http://mw-simulators:8080`);
+keep the two equal. An example record:
 `deploy/partner-routes/examples/rest-apikey-biller.yaml`; the concept page: `docs/concepts/camel-partner-routes.md`.
 
 Ticket 23 (bank C2W) copied this chain with the framework into mw-adapter-bank (see its

@@ -74,6 +74,22 @@ class BillPayDirectoryTest {
   }
 
   @Test
+  void eachCachedBillerKeepsItsCategoryForTheCategoryStep() {
+    client.next = UssdMenuWalkTest.FakeBills.TEN.reversed();
+    assertThat(directory.billers()).extracting(Biller::code, Biller::category).containsExactly(
+        org.assertj.core.groups.Tuple.tuple("BREB", "ELECTRICITY"),
+        org.assertj.core.groups.Tuple.tuple("BTCL", "TELECOM"),
+        org.assertj.core.groups.Tuple.tuple("CWASA", "WATER"),
+        org.assertj.core.groups.Tuple.tuple("DESCO", "ELECTRICITY"),
+        org.assertj.core.groups.Tuple.tuple("DPDC", "ELECTRICITY"),
+        org.assertj.core.groups.Tuple.tuple("JGTDSL", "GAS"),
+        org.assertj.core.groups.Tuple.tuple("KGDCL", "GAS"),
+        org.assertj.core.groups.Tuple.tuple("LINK3", "INTERNET"),
+        org.assertj.core.groups.Tuple.tuple("TITAS", "GAS"),
+        org.assertj.core.groups.Tuple.tuple("WASA", "WATER"));
+  }
+
+  @Test
   void theCatalogueIsReusedWithinItsTtlAndKeptThroughAnOutage() {
     client.next = List.of(new Biller("DESCO", "Dhaka Electric", "ELECTRICITY", "billagg"));
     directory.billers();

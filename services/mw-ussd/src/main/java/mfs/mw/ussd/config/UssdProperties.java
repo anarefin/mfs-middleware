@@ -24,6 +24,8 @@ import org.springframework.validation.annotation.Validated;
  * @param maxInvalidAttempts invalid inputs in a row on one screen before the session ends
  * @param mno per MNO ({@code gp}, {@code robi}, {@code bl}, {@code teletalk})
  * @param lists static lists for DYNAMIC nodes, by source name
+ * @param billerCategories bn/en label of each biller category of the DYNAMIC source {@code
+ *     biller-categories}, by category code ({@code ELECTRICITY}, ...)
  */
 @Validated
 @ConfigurationProperties("mw.ussd")
@@ -36,12 +38,14 @@ public record UssdProperties(
     @NotBlank String defaultLanguage,
     @Positive int maxInvalidAttempts,
     Map<String, @Valid Mno> mno,
-    Map<String, List<ListItem>> lists) {
+    Map<String, List<ListItem>> lists,
+    Map<String, Text> billerCategories) {
 
   public UssdProperties {
     instanceId = instanceId == null || instanceId.isBlank() ? UUID.randomUUID().toString() : instanceId;
     mno = Map.copyOf(mno == null ? Map.of() : mno);
     lists = Map.copyOf(lists == null ? Map.of() : lists);
+    billerCategories = Map.copyOf(billerCategories == null ? Map.of() : billerCategories);
   }
 
   /** Transport of one MNO (spec 9.2 transport SPI). */

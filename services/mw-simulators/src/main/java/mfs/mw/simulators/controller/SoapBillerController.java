@@ -1,6 +1,7 @@
 package mfs.mw.simulators.controller;
 
 import mfs.mw.simulators.service.SoapBillerService;
+import mfs.mw.simulators.util.SoapXml;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -28,7 +29,7 @@ public class SoapBillerController {
 
   @PostMapping(value = "/soapbill/v1", consumes = {MediaType.TEXT_XML_VALUE, "application/soap+xml"})
   ResponseEntity<String> soap(@RequestBody(required = false) String envelope) {
-    SoapBillerService.SoapReply reply = service.handle(envelope);
+    SoapXml.SoapReply reply = service.handle(envelope);
     return ResponseEntity.status(reply.status()).contentType(TEXT_XML_UTF8).body(reply.envelope());
   }
 

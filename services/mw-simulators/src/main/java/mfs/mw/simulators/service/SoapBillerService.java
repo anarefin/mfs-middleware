@@ -1,21 +1,16 @@
 package mfs.mw.simulators.service;
 
-import java.io.IOException;
-import java.io.StringReader;
+import static mfs.mw.simulators.util.SoapXml.escape;
+import static mfs.mw.simulators.util.SoapXml.ok;
+
 import java.time.LocalDate;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
+import mfs.mw.simulators.util.SoapXml;
+import mfs.mw.simulators.util.SoapXml.SoapReply;
 import org.springframework.stereotype.Service;
-import org.w3c.dom.Document;
 import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
 
 /**
  * The SOAP stub biller {@code soapbill} (ticket 85): the SOAP case of the partner engine, for the
@@ -40,11 +35,6 @@ import org.xml.sax.SAXException;
 public class SoapBillerService {
 
   public static final String NS = "urn:soapbill:v1";
-  static final String ENVELOPE = "http://schemas.xmlsoap.org/soap/envelope/";
-
-  /** One SOAP answer: HTTP status (200, or 500 for a fault) and the envelope. */
-  public record SoapReply(int status, String envelope) {}
-
   /** A fault forced on every call. */
   public record Fault(String faultCode, String code, String reason) {}
 
@@ -66,7 +56,7 @@ public class SoapBillerService {
   public SoapReply handle(String request) {
     Element operation;
     try {
-      operation = bodyElement(request);
+      operation = SoapXml.bodyElement(SoapXml.parse(request));
     } catch (IllegalArgumentException e) {
       return fault("Client", "1000", "unreadable request");
     }
@@ -112,61 +102,12 @@ public class SoapBillerService {
     return (100 + last) + ".00";
   }
 
-  private static SoapReply ok(String body) {
-    return new SoapReply(200, envelope(body));
-  }
-
   private static SoapReply fault(String faultCode, String code, String reason) {
-    return new SoapReply(500, envelope("<soap:Fault><faultcode>soap:" + faultCode + "</faultcode><faultstring>"
-        + escape(reason) + "</faultstring><detail><s:error xmlns:s=\"" + NS + "\"><s:code>" + escape(code)
-        + "</s:code></s:error></detail></soap:Fault>"));
-  }
-
-  private static String envelope(String body) {
-    return "<soap:Envelope xmlns:soap=\"" + ENVELOPE + "\"><soap:Body>" + body + "</soap:Body></soap:Envelope>";
-  }
-
-  private static Element bodyElement(String xml) {
-    Document doc;
-    try {
-      DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();
-      f.setNamespaceAware(true);
-      f.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-      f.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-      f.setFeature("http://xml.org/sax/features/external-general-entities", false);
-      f.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-      f.setXIncludeAware(false);
-      f.setExpandEntityReferences(false);
-      DocumentBuilder builder = f.newDocumentBuilder();
-      builder.setErrorHandler(new org.xml.sax.helpers.DefaultHandler() {
-        @Override
-        public void fatalError(org.xml.sax.SAXParseException e) throws SAXException {
-          throw e;
-        }
-      });
-      doc = builder.parse(new InputSource(new StringReader(xml == null ? "" : xml)));
-    } catch (ParserConfigurationException | SAXException | IOException e) {
-      throw new IllegalArgumentException("unreadable SOAP request", e);
-    }
-    Element envelope = doc.getDocumentElement();
-    for (Node n = envelope.getFirstChild(); n != null; n = n.getNextSibling()) {
-      if (n instanceof Element e && "Body".equals(e.getLocalName())) {
-        for (Node c = e.getFirstChild(); c != null; c = c.getNextSibling()) {
-          if (c instanceof Element op) {
-            return op;
-          }
-        }
-      }
-    }
-    return null;
+    return SoapXml.fault(faultCode, reason,
+        "<s:error xmlns:s=\"" + NS + "\"><s:code>" + escape(code) + "</s:code></s:error>");
   }
 
   private static String text(Element parent, String name) {
-    var nodes = parent.getElementsByTagNameNS(NS, name);
-    return nodes.getLength() == 0 ? "" : nodes.item(0).getTextContent().trim();
-  }
-
-  private static String escape(String s) {
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+    return SoapXml.text(parent, NS, name);
   }
 }

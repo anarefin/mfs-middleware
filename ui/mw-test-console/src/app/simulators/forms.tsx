@@ -26,7 +26,7 @@ export function ActForm({ action, children, testid }: { action: Act; children: R
 
 const PARTNER_INFO: Record<string, string> = {
   ocs: "OCS (prepaid top-up, every MNO)",
-  billagg: "Bill aggregator (DESCO, DPDC, WASA, TITAS)",
+  billagg: "Bill aggregator (10 billers, REST + SOAP)",
   c2wbank: "C2W bank (add money from bank)",
 };
 

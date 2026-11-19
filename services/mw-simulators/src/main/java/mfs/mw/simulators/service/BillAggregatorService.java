@@ -6,6 +6,7 @@ import mfs.mw.simulators.config.SimulatorProperties;
 import mfs.mw.simulators.dto.BillFetchRequest;
 import mfs.mw.simulators.dto.BillPaymentRequest;
 import mfs.mw.simulators.dto.Biller;
+import mfs.mw.simulators.dto.Biller.Protocol;
 import mfs.mw.simulators.dto.SimReply;
 import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.dto.SimMode;
@@ -22,6 +23,13 @@ import org.springframework.stereotype.Service;
  * (3003); unknown biller code (3004). Payment amounts follow {@link MagicAmounts}. A forced mode
  * applies to payments only.
  *
+ * <p>Protocol guard: each biller is served on one front end ({@link Biller#protocol()}); a biller
+ * called on the other one's endpoint is an unknown biller (3004), on fetch and payment alike (a
+ * payment for a code that is not in the list at all is still taken, as before). The SOAP front end
+ * ({@link BillAggregatorSoapService}) calls {@link #fetch(BillFetchRequest, Protocol)} and {@link
+ * #pay(BillPaymentRequest, Protocol)}, so both share the bills, magic values, scenarios, callbacks and
+ * the payment store.
+ *
  * <p>Callback-only mode (scenario {@code callbackOnly}, ticket 22): a payment is applied as usual
  * but answered 202 PENDING (so is every repeat); the outcome goes by callback ({@link
  * CallbackService}, scenario {@code callbackMode}), and the status inquiry reports the real one.
@@ -33,10 +41,16 @@ public class BillAggregatorService {
 
   public static final List<Biller> BILLERS =
       List.of(
-          new Biller("DESCO", "Dhaka Electric Supply Company", "ELECTRICITY"),
-          new Biller("DPDC", "Dhaka Power Distribution Company", "ELECTRICITY"),
-          new Biller("WASA", "Dhaka WASA", "WATER"),
-          new Biller("TITAS", "Titas Gas", "GAS"));
+          new Biller("BREB", "Bangladesh Rural Electrification Board (Palli Bidyut)", "ELECTRICITY", Protocol.REST),
+          new Biller("BTCL", "Bangladesh Telecommunications Company", "TELECOM", Protocol.SOAP),
+          new Biller("CWASA", "Chattogram WASA", "WATER", Protocol.REST),
+          new Biller("DESCO", "Dhaka Electric Supply Company", "ELECTRICITY", Protocol.REST),
+          new Biller("DPDC", "Dhaka Power Distribution Company", "ELECTRICITY", Protocol.REST),
+          new Biller("JGTDSL", "Jalalabad Gas Transmission and Distribution System", "GAS", Protocol.SOAP),
+          new Biller("KGDCL", "Karnaphuli Gas Distribution Company", "GAS", Protocol.SOAP),
+          new Biller("LINK3", "Link3 Technologies", "INTERNET", Protocol.SOAP),
+          new Biller("TITAS", "Titas Gas", "GAS", Protocol.REST),
+          new Biller("WASA", "Dhaka WASA", "WATER", Protocol.REST));
 
   private static final Logger log = LoggerFactory.getLogger(BillAggregatorService.class);
 
@@ -67,13 +81,19 @@ public class BillAggregatorService {
     return BILLERS;
   }
 
+  /** The REST bill fetch. */
   public SimReply fetch(BillFetchRequest req) {
+    return fetch(req, Protocol.REST);
+  }
+
+  /** A bill fetch over {@code protocol}'s front end: a biller of the other protocol is unknown (3004). */
+  public SimReply fetch(BillFetchRequest req, Protocol protocol) {
     Scenario scenario = scenarios.get(PARTNER);
     sleep(scenario.latencyMs());
     if (unavailable(scenario)) {
       return new SimReply(503, mapper.unavailable(req));
     }
-    if (BILLERS.stream().noneMatch(b -> b.code().equals(req.billerCode()))) {
+    if (BILLERS.stream().noneMatch(b -> b.code().equals(req.billerCode()) && b.protocol() == protocol)) {
       return new SimReply(
           422, mapper.refused(req, BillAggregatorMapper.UNKNOWN_BILLER, "Unknown biller"));
     }
@@ -88,11 +108,23 @@ public class BillAggregatorService {
     return new SimReply(200, mapper.due(req));
   }
 
+  /** The REST payment. */
   public SimReply pay(BillPaymentRequest req) {
+    return pay(req, Protocol.REST);
+  }
+
+  /**
+   * A payment over {@code protocol}'s front end, one per {@code transactionId} in the shared store: a
+   * biller of the other protocol is refused 3004 (not applied).
+   */
+  public SimReply pay(BillPaymentRequest req, Protocol protocol) {
     Scenario scenario = scenarios.get(PARTNER);
     sleep(scenario.latencyMs());
     if (unavailable(scenario)) {
       return new SimReply(503, mapper.unavailable(req.transactionId()));
+    }
+    if (BILLERS.stream().anyMatch(b -> b.code().equals(req.billerCode()) && b.protocol() != protocol)) {
+      return new SimReply(422, mapper.unknownBiller(req.transactionId()));
     }
     var existing = ledger.find(req.transactionId());
     if (existing.isPresent()) {

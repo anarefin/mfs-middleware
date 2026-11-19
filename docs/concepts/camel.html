@@ -75,8 +75,11 @@
   <ul>
     <li><strong>In:</strong> <code>from: direct:partner-&lt;id&gt;</code>; the body is the canonical call (<code>partnerId</code>, <code>operation</code>,
       <code>txnId</code>, <code>reference</code>, <code>input</code>), the headers <code>mwOperation</code> (<code>PAY</code>, <code>INQUIRY</code>,
-      <code>STATUS_QUERY</code>), <code>mwReference</code>, <code>mwCorrelationId</code>, <code>mwPartnerId</code>, <code>mwTxnId</code>. No <code>mw*</code>
+      <code>STATUS_QUERY</code>), <code>mwReference</code>, <code>mwCorrelationId</code>, <code>mwPartnerId</code>, <code>mwTxnId</code>, <code>mwPartnerCode</code>. No <code>mw*</code>
       header ever leaves the service.</li>
+    <li><strong>Branch per biller:</strong> <code>mwPartnerCode</code> is the call's <code>billerCode</code> (else its <code>productCode</code>), so one partner can serve
+      some billers over another protocol: the dev <code>billagg</code> route sends KGDCL, JGTDSL, BTCL and LINK3 over SOAP with
+      <code>simple: "${header.mwOperation} == 'PAY' &amp;&amp; ${header.mwPartnerCode} in 'KGDCL,JGTDSL,BTCL,LINK3'"</code> before its REST <code>when</code>s.</li>
     <li><strong>Out:</strong> <code>{outcome, partnerRef, code, message, reason}</code> (plus <code>errorSuffix</code>, <code>retryable</code>, <code>attributes</code>),
       produced and checked by <code>mw-classify</code>. A missing or invalid output is UNKNOWN: fail closed.</li>
     <li>The route ends with <code>mw-classify</code> (directly, or at the end of every branch of a final <code>choice</code>) and then <code>mw-audit</code>.</li>

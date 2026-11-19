@@ -3,7 +3,7 @@ import { CUSTOM, GOOD_PIN, WRONG_PIN, counterpartyOptions, defaultCounterparty, 
 import { appUsers } from "./app-users";
 import { TXN_TYPES } from "./personas";
 import { BILLERS } from "./seed-catalogue";
-import { BILLER_OPTIONS } from "./app-flow-options";
+import { BILLER_OPTIONS, DEFAULT_BILLER, billerLabel, defaultBiller } from "./app-flow-options";
 
 const users = appUsers(null);
 
@@ -29,8 +29,23 @@ describe("counterpartyOptions", () => {
     expect(defaultCounterparty("BILL_PAY", "01711000001", users)).toBe("1234567");
   });
 
-  it("lists the billers of the catalogue", () => {
+  it("lists the billers of the catalogue, each with its protocol", () => {
     expect(BILLER_OPTIONS.map((o) => o.value)).toEqual(BILLERS.map((b) => b.code));
+    expect(BILLER_OPTIONS).toHaveLength(10);
+    expect(BILLER_OPTIONS.find((o) => o.value === "DESCO")?.label).toBe("DESCO, Dhaka Electric Supply Company · REST");
+    expect(BILLER_OPTIONS.find((o) => o.value === "KGDCL")?.label).toBe("KGDCL, Karnaphuli Gas Distribution Company · SOAP");
+  });
+
+  it("labels a biller of the live list, with a protocol only for a catalogue code", () => {
+    expect(billerLabel({ code: "LINK3", name: "Link3 Technologies" })).toBe("LINK3, Link3 Technologies · SOAP");
+    expect(billerLabel({ code: "XNEW", name: "A new biller" })).toBe("XNEW, A new biller");
+  });
+
+  it("defaults to DESCO, else the first biller", () => {
+    expect(DEFAULT_BILLER).toBe("DESCO");
+    expect(defaultBiller(BILLERS)).toBe("DESCO");
+    expect(defaultBiller([{ code: "WASA", name: "w" }, { code: "BREB", name: "b" }])).toBe("WASA");
+    expect(defaultBiller([])).toBe("DESCO");
   });
 });
 

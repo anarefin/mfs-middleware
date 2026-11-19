@@ -199,7 +199,7 @@ public class UssdEngine {
   }
 
   private UssdResponse pick(Menu menu, UssdSession s, MenuNode node, String input) {
-    List<UssdProperties.ListItem> items = lists.items(node.source());
+    List<UssdProperties.ListItem> items = lists.items(node.source(), s.inputs());
     int index;
     try {
       index = Integer.parseInt(input) - 1;
@@ -381,7 +381,7 @@ public class UssdEngine {
         t.append('\n').append(o.key()).append(' ').append(o.label() == null ? "" : o.label().in(lang));
       }
     } else if (node.type() == NodeType.DYNAMIC) {
-      List<UssdProperties.ListItem> items = lists.items(node.source());
+      List<UssdProperties.ListItem> items = lists.items(node.source(), s.inputs());
       for (int i = 0; i < items.size(); i++) {
         t.append('\n').append(i + 1).append(' ').append(items.get(i).label().in(lang));
       }

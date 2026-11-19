@@ -13,8 +13,10 @@ First implemented in mw-adapter-billpay (ticket 82); its `CLAUDE.md` holds the d
 
 - In: `from: direct:partner-<id>`. The body is the canonical partner call (JSON: `partnerId`,
   `operation`, `txnId`, `reference`, `input`); the headers `mwOperation` (`PAY`, `INQUIRY`,
-  `STATUS_QUERY`), `mwReference`, `mwCorrelationId`, `mwPartnerId`, `mwTxnId`. No `mw*` header ever
-  leaves the service.
+  `STATUS_QUERY`), `mwReference`, `mwCorrelationId`, `mwPartnerId`, `mwTxnId`, `mwPartnerCode` (the call's `billerCode`,
+  else its `productCode`). No `mw*` header ever leaves the service.
+- Branch per biller: a `when` on `${header.mwPartnerCode} in 'KGDCL,JGTDSL,BTCL,LINK3'` before the REST
+  ones sends those billers of the dev `billagg` over SOAP; the others stay on REST.
 - Out: `{outcome, partnerRef, code, message, reason}` (plus `errorSuffix`, `retryable`,
   `attributes`), produced and checked by `mw-classify`. A missing or invalid output is UNKNOWN
   (fail closed).

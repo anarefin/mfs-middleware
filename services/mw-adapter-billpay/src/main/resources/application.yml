@@ -219,10 +219,18 @@ mw:
   # the internal API (GET /billpay/v1/billers, bill fetch) that mw-app-gateway calls. Static seed
   # until mw-admin-api publishes the catalogue (spec 11.2 "Biller catalogue", ticket 38).
   billers:
+    # All on the aggregator billagg: KGDCL, JGTDSL, BTCL and LINK3 go over its SOAP front end (the
+    # billagg route branches on the header mwPartnerCode), the others over REST.
+    BREB: { name: Bangladesh Rural Electrification Board (Palli Bidyut), category: ELECTRICITY, partner-id: billagg }
+    BTCL: { name: Bangladesh Telecommunications Company, category: TELECOM, partner-id: billagg }
+    CWASA: { name: Chattogram WASA, category: WATER, partner-id: billagg }
     DESCO: { name: Dhaka Electric Supply Company, category: ELECTRICITY, partner-id: billagg }
     DPDC: { name: Dhaka Power Distribution Company, category: ELECTRICITY, partner-id: billagg }
-    WASA: { name: Dhaka WASA, category: WATER, partner-id: billagg }
+    JGTDSL: { name: Jalalabad Gas Transmission and Distribution System, category: GAS, partner-id: billagg }
+    KGDCL: { name: Karnaphuli Gas Distribution Company, category: GAS, partner-id: billagg }
+    LINK3: { name: Link3 Technologies, category: INTERNET, partner-id: billagg }
     TITAS: { name: Titas Gas, category: GAS, partner-id: billagg }
+    WASA: { name: Dhaka WASA, category: WATER, partner-id: billagg }
   # Partner engine (ADR D28, package partner): a partner is a record holding its Camel YAML DSL
   # route (built from the mw-* Kamelets in classpath:kamelets), its JSONata mappings, the hosts it may
   # call and its error-code map. These are seeds (version 0); a mw.config.changed.v1 PARTNER record

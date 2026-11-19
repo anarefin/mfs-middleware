@@ -1,5 +1,6 @@
 // Port of billpay.feature. Aggregator simulator (billagg): amount due = 100 taka + the bill number's
 // last three digits; bills ending 404 unknown, ending 999 refused on payment; fraction .13 times out.
+// The same rules hold for the SOAP billers (KGDCL, JGTDSL, BTCL, LINK3) on billagg's SOAP front end.
 export default [
   {
     name: '[billpay] the customer sees the billers and fetches the amount due on a bill',
@@ -7,11 +8,31 @@ export default [
       await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
       const b = S.record(await MW.app.billers('customer01'));
       S.status(200);
-      S.check('the billers include DESCO', ((b.body || {}).billers || []).some(x => x.code === 'DESCO'), String(b));
+      const billers = (b.body || {}).billers || [];
+      S.eq('the catalogue has 10 billers', billers.length, 10, String(b));
+      S.check('the billers include DESCO', billers.some(x => x.code === 'DESCO'), String(b));
+      S.check('KGDCL is a GAS biller', billers.some(x => x.code === 'KGDCL' && x.category === 'GAS'), String(b));
       const f = S.record(await MW.app.fetchBill('customer01', 'DESCO', '1234567'));
       S.status(200);
       S.eq('the amount due is 66700 poisha', f.body.amount && f.body.amount.valueMinor, 66700, String(f));
       await S.noChange();
+    },
+  },
+  {
+    name: '[billpay] a bill of a SOAP biller (KGDCL) is fetched and paid through the aggregator to COMPLETED',
+    run: async (MW, S) => {
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE-POOL']);
+      // KGDCL is one of billagg's SOAP billers (KGDCL, JGTDSL, BTCL, LINK3): fetch and pay go over
+      // POST /billagg/v1/soap; the simulator refuses a SOAP biller on the REST paths (3004).
+      const f = S.record(await MW.app.fetchBill('customer01', 'KGDCL', '7654321'));
+      S.status(200);
+      S.eq('the amount due is 42100 poisha', f.body.amount && f.body.amount.valueMinor, 42100, String(f));
+      await S.billPay('customer01', 'KGDCL', '7654321', 42100, MW.pin);
+      S.status(200);
+      S.txnStatus('COMPLETED');
+      await S.changedBy({ '01711000001': -42400, 'SETTLEMENT': 42100, 'FEE-POOL': 300 });
+      await S.noHold('01711000001');
+      await S.appShows('COMPLETED');
     },
   },
   {

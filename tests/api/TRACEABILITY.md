@@ -70,6 +70,7 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 07 | [billpay callback] a late callback contradicting the resolution is recorded as a conflict and changes nothing | 1 |  |
 | 07 | [billpay callback] a callback with a bad signature is rejected and changes nothing | 1 |  |
 | 06 | [billpay] the customer sees the billers and fetches the amount due on a bill | 1 |  |
+| 06 | [billpay] a bill of a SOAP biller (KGDCL) is fetched and paid through the aggregator to COMPLETED | 1 |  |
 | 06 | [billpay] an unknown bill number is a mapped aggregator error | 1 | BILL_PAY app failure |
 | 06 | [billpay] an unknown biller is not found | 1 |  |
 | 06 | [billpay] a paid bill debits the payer once and leaves nothing held | 1 | BILL_PAY app success |

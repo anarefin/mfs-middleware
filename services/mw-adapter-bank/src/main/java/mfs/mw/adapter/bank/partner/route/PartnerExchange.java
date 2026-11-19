@@ -7,7 +7,7 @@ import org.apache.camel.Exchange;
  *
  * <p>In: the body is the {@code PartnerCall} JSON; the headers {@link #OPERATION} ({@code PAY},
  * {@code INQUIRY}, {@code STATUS_QUERY}), {@link #REFERENCE}, {@link #CORRELATION_ID}, {@link
- * #PARTNER_ID} (as the caller named it), {@link #TXN_ID}. The {@code mw*} headers never leave
+ * #PARTNER_ID} (as the caller named it), {@link #TXN_ID}, {@link #PARTNER_CODE}. The {@code mw*} headers never leave
  * the service ({@code mwPartnerHeaderFilter} drops them from the HTTP request and keeps a partner's
  * response from setting them). The Kamelets read what they rely on from exchange properties set by
  * {@link PartnerGateway}: {@link #RUNTIME} (the loaded record version the call runs on, so a call in
@@ -23,6 +23,11 @@ public final class PartnerExchange {
   public static final String CORRELATION_ID = "mwCorrelationId";
   public static final String PARTNER_ID = "mwPartnerId";
   public static final String TXN_ID = "mwTxnId";
+  /**
+   * The partner-side code of the call: {@code input.partner.billerCode}, else {@code productCode}
+   * (absent: neither), so a route can branch per biller or product.
+   */
+  public static final String PARTNER_CODE = "mwPartnerCode";
 
   /** The {@link PartnerRuntime} of the call. */
   public static final String RUNTIME = "mwPartner";

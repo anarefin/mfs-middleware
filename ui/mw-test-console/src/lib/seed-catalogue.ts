@@ -7,13 +7,99 @@ export const ORGS: readonly { orgId: string; walletId: string; name: string }[] 
   { orgId: "ORG002", walletId: "01311000002", name: "Padma Foods Ltd" },
 ];
 
-/** mw-adapter-billpay application.yml mw.billers (all served by the billagg simulator). */
-export const BILLERS: readonly { code: string; name: string; category: string; partnerId: string }[] = [
-  { code: "DESCO", name: "Dhaka Electric Supply Company", category: "ELECTRICITY", partnerId: "billagg" },
-  { code: "DPDC", name: "Dhaka Power Distribution Company", category: "ELECTRICITY", partnerId: "billagg" },
-  { code: "WASA", name: "Dhaka WASA", category: "WATER", partnerId: "billagg" },
-  { code: "TITAS", name: "Titas Gas", category: "GAS", partnerId: "billagg" },
+export type BillerProtocol = "REST" | "SOAP";
+export type Biller = { code: string; name: string; category: string; partnerId: string; protocol: BillerProtocol };
+
+/**
+ * mw-adapter-billpay application.yml mw.billers (all served by the billagg simulator), sorted by code; the protocol is the
+ * one the billagg route speaks for the biller (SOAP for KGDCL, JGTDSL, BTCL, LINK3, REST for the rest).
+ */
+export const BILLERS: readonly Biller[] = [
+  { code: "BREB", name: "Bangladesh Rural Electrification Board (Palli Bidyut)", category: "ELECTRICITY", partnerId: "billagg", protocol: "REST" },
+  { code: "BTCL", name: "Bangladesh Telecommunications Company", category: "TELECOM", partnerId: "billagg", protocol: "SOAP" },
+  { code: "CWASA", name: "Chattogram WASA", category: "WATER", partnerId: "billagg", protocol: "REST" },
+  { code: "DESCO", name: "Dhaka Electric Supply Company", category: "ELECTRICITY", partnerId: "billagg", protocol: "REST" },
+  { code: "DPDC", name: "Dhaka Power Distribution Company", category: "ELECTRICITY", partnerId: "billagg", protocol: "REST" },
+  { code: "JGTDSL", name: "Jalalabad Gas Transmission and Distribution System", category: "GAS", partnerId: "billagg", protocol: "SOAP" },
+  { code: "KGDCL", name: "Karnaphuli Gas Distribution Company", category: "GAS", partnerId: "billagg", protocol: "SOAP" },
+  { code: "LINK3", name: "Link3 Technologies", category: "INTERNET", partnerId: "billagg", protocol: "SOAP" },
+  { code: "TITAS", name: "Titas Gas", category: "GAS", partnerId: "billagg", protocol: "REST" },
+  { code: "WASA", name: "Dhaka WASA", category: "WATER", partnerId: "billagg", protocol: "REST" },
 ];
+
+/** A biller as the app API lists it (GET /app/v1/billers: code, name, category?). */
+export type BillerItem = { code: string; name: string; category?: string };
+
+/** The fixed order of the biller categories, everywhere a list of them is shown (USSD menu, app, seed data). */
+export const BILLER_CATEGORIES = ["ELECTRICITY", "WATER", "GAS", "TELECOM", "INTERNET"] as const;
+/** The category of a biller that names none. */
+export const OTHER_CATEGORY = "OTHER";
+/** The category filter value that shows every biller. */
+export const ALL_CATEGORIES = "ALL";
+
+const CATEGORY_LABELS: Record<string, { en: string; bn: string }> = {
+  ELECTRICITY: { en: "Electricity", bn: "বিদ্যুৎ" },
+  WATER: { en: "Water", bn: "পানি" },
+  GAS: { en: "Gas", bn: "গ্যাস" },
+  TELECOM: { en: "Telecom", bn: "টেলিফোন" },
+  INTERNET: { en: "Internet", bn: "ইন্টারনেট" },
+  [OTHER_CATEGORY]: { en: "Other", bn: "অন্যান্য" },
+};
+
+const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
+/** A category's label (en or bn); an unknown category shows as its code. */
+export function categoryLabel(category: string | undefined, locale: "en" | "bn" = "en"): string {
+  const c = category || OTHER_CATEGORY;
+  return (own(CATEGORY_LABELS, c) ? CATEGORY_LABELS[c]?.[locale] : undefined) ?? c;
+}
+
+const categoryOf = (b: BillerItem): string => b.category || OTHER_CATEGORY;
+
+/** The protocol the catalogue names for a biller code; none for a code it does not know. */
+export function protocolOf(code: string): BillerProtocol | undefined {
+  return BILLERS.find((b) => b.code === code)?.protocol;
+}
+
+const rank = (c: string): number => {
+  const i = (BILLER_CATEGORIES as readonly string[]).indexOf(c);
+  return i >= 0 ? i : c === OTHER_CATEGORY ? BILLER_CATEGORIES.length + 1 : BILLER_CATEGORIES.length;
+};
+const byCategory = (a: string, b: string): number => rank(a) - rank(b) || a.localeCompare(b);
+const byCode = (a: BillerItem, b: BillerItem): number => a.code.localeCompare(b.code);
+
+/** The categories that have at least one biller: the fixed order first, unknown ones after (by code), "no category" last. */
+export function categoriesOf(list: readonly BillerItem[]): string[] {
+  return [...new Set(list.map(categoryOf))].sort(byCategory);
+}
+
+/** The billers of a category (ALL = every one) whose code or name contains the search text (case-insensitive), sorted by code. */
+export function filterBillers<T extends BillerItem>(list: readonly T[], category: string, search: string): T[] {
+  const q = search.trim().toLowerCase();
+  return list
+    .filter((b) => category === ALL_CATEGORIES || categoryOf(b) === category)
+    .filter((b) => !q || b.code.toLowerCase().includes(q) || b.name.toLowerCase().includes(q))
+    .sort(byCode);
+}
+
+/** The billers grouped by category, in the category order, each group sorted by code. */
+export function groupBillers<T extends BillerItem>(list: readonly T[]): { category: string; label: string; billers: T[] }[] {
+  return categoriesOf(list).map((category) => ({ category, label: categoryLabel(category), billers: filterBillers(list, category, "") }));
+}
+
+/** The billers of a GET /app/v1/billers answer; null when it is not a biller list. Items without a code are skipped. */
+export function parseBillerList(body: unknown): BillerItem[] | null {
+  const items = (body as { billers?: unknown } | null)?.billers;
+  if (!Array.isArray(items)) return null;
+  const out: BillerItem[] = [];
+  for (const x of items) {
+    if (!x || typeof x !== "object") continue;
+    const { code, name, category } = x as Record<string, unknown>;
+    if (typeof code !== "string" || !code) continue;
+    out.push({ code, name: typeof name === "string" && name ? name : code, ...(typeof category === "string" && category ? { category } : {}) });
+  }
+  return out;
+}
 
 export type CheckoutMerchant = { id: string; keyId: string; name: string; walletId: string; secretEnv: string };
 

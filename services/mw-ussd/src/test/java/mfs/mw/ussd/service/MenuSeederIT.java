@@ -40,7 +40,7 @@ class MenuSeederIT {
         new UssdProperties(
             props.instanceId(), props.requestTopic(), props.statusTopic(), props.syncBudget(), props.sessionGrace(),
             props.defaultLanguage(), props.maxInvalidAttempts(), Map.of(mno, props.mno().get("robi")),
-            props.lists());
+            props.lists(), props.billerCategories());
     return new MenuSeeder(menus, one, json, Clock.systemUTC(), "menus/main-v3.json");
   }
 

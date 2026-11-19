@@ -12,7 +12,7 @@ import { SecretValue } from "@/components/secret-value";
 import { TotpCode } from "@/components/totp-code";
 import { Badge } from "@/components/ui/badge";
 import { formatMinor } from "@/lib/format";
-import { BILLERS, CHECKOUT_MERCHANTS, GENERATED_RANGES, ORGS, rangeLabel } from "@/lib/seed-catalogue";
+import { BILLERS, CHECKOUT_MERCHANTS, GENERATED_RANGES, ORGS, groupBillers, rangeLabel } from "@/lib/seed-catalogue";
 import { PORTALS_IMPORT, appWalletRows, personasOf, runCustomers, type Persona } from "@/lib/seed-manifest";
 import { envValue, loadManifest } from "@/lib/server/seed";
 import { core } from "@/lib/server/test-apis";
@@ -155,9 +155,10 @@ export default async function SeedDataPage() {
             </Hint>
           </Panel>
           <Panel title="Billers" icon={Receipt}>
-            <FilterTable id="billers" head={["Code", "Name", "Category", "Partner"]} rows={BILLERS.map((b) => ({
-              key: b.code, search: `${b.code} ${b.name} ${b.category}`, cells: [mono(b.code), b.name, b.category, mono(b.partnerId)],
-            }))} />
+            <FilterTable id="billers" head={["Code", "Name", "Category", "Protocol", "Partner"]} rows={groupBillers(BILLERS).flatMap((g) => g.billers.map((b) => ({
+              key: b.code, group: g.label, search: `${b.code} ${b.name} ${b.category} ${g.label} ${b.protocol}`,
+              cells: [mono(b.code), b.name, b.category, <Badge key="p" tone={b.protocol === "SOAP" ? "info" : "outline"}>{b.protocol}</Badge>, mono(b.partnerId)],
+            })))} />
           </Panel>
           <Panel title="USSD menus" icon={Menu}>
             <FilterTable id="menus" head={["Menu", "Version", "Live for"]} rows={(manifest?.ussdMenus ?? []).map((m) => ({

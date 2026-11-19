@@ -67,7 +67,27 @@ class BillAggregatorSimulatorIT {
     HttpResponse<String> res = send("GET", "/billagg/v1/billers", null);
     assertThat(res.statusCode()).isEqualTo(200);
     JsonNode billers = json.readTree(res.body());
-    assertThat(billers.findValuesAsString("code")).contains("DESCO", "DPDC", "WASA", "TITAS");
+    assertThat(billers.findValuesAsString("code")).containsExactlyInAnyOrder(
+        "BREB", "BTCL", "CWASA", "DESCO", "DPDC", "JGTDSL", "KGDCL", "LINK3", "TITAS", "WASA");
+    for (JsonNode b : billers) {
+      String expected = java.util.Set.of("KGDCL", "JGTDSL", "BTCL", "LINK3").contains(b.get("code").asString())
+          ? "SOAP" : "REST";
+      assertThat(b.get("protocol").asString()).as(b.toString()).isEqualTo(expected);
+      assertThat(b.get("name").asString()).isNotBlank();
+    }
+    assertThat(billers.findValuesAsString("category")).contains("ELECTRICITY", "WATER", "GAS", "TELECOM", "INTERNET");
+  }
+
+  @Test
+  void aNewRestBillerFetchesAndPaysOverRest() throws Exception {
+    HttpResponse<String> res = fetch("BREB", BILL);
+    assertThat(res.statusCode()).isEqualTo(200);
+    assertThat(json.readTree(res.body()).get("amount").asString()).isEqualTo("667.00");
+    HttpResponse<String> paid = send("POST", "/billagg/v1/payments",
+        "{\"transactionId\":\"BP-cwasa\",\"billerCode\":\"CWASA\",\"billNumber\":\"%s\",\"amount\":\"667.00\"}"
+            .formatted(BILL));
+    assertThat(paid.statusCode()).isEqualTo(200);
+    assertThat(status("BP-cwasa").get("status").asString()).isEqualTo("SUCCESS");
   }
 
   @Test

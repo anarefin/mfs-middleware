@@ -65,6 +65,7 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       "Check the result: final status, balances before / after (fee into FEE-POOL), the SMS and every step.",
       "Press Resend the last submit: same txnId, every balance change Tk 0.00.",
       "Click the txnId to open the transaction in the explorer (timeline, partner calls, audit trail).",
+      "Bill pay: the biller list is the live GET /app/v1/billers once the device is signed in (else the seed catalogue, a note says so); narrow it with a category chip or the search box. KGDCL, JGTDSL, BTCL and LINK3 are paid over SOAP (badge), the rest over REST.",
       "Load the History (4): the wallet's transactions sent (OUT) and received (IN) on every channel; it reloads after each submit. Switch to the payee to see the same txnId as IN.",
     ],
     magic: [
@@ -75,6 +76,7 @@ export const HOW_TO: Record<PageKey, HowTo> = {
     expect: [
       "P2P Tk 10: COMPLETED, payer -Tk 15.00, payee Tk 10.00, FEE-POOL Tk 5.00, two SMS with masked numbers.",
       "Cash out Tk 20: customer -Tk 30.00 (Tk 10 fee); top-up Tk 20: -Tk 22.00; bill pay Tk 100: -Tk 103.00.",
+      "Bill pay KGDCL (SOAP) Tk 100: COMPLETED like DESCO; its partner calls in the explorer go to the billagg SOAP endpoint.",
       "Add money Tk 500: the bank's signed callback completes it, wallet +Tk 500.00.",
       "Cash in to a merchant (01911000001): REJECTED MW-CORE-INVALID_COUNTERPARTY; to your own wallet: MW-VAL-012.",
       "History: after the P2P, customer01 shows it as OUT with the Tk 5 fee, customer02 as IN; a failed transfer never shows as IN; history down: 503 MW-SYS-013.",
@@ -88,6 +90,7 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       { label: "Top-up refused (…999)", values: { category: "customer", user: "customer01", txnType: "TOPUP", counterparty: "01711000999", amount: "20", operator: "gp" } },
       { label: "Top-up times out (20.13)", values: { category: "customer", user: "customer01", txnType: "TOPUP", counterparty: "01711000002", amount: "20.13", operator: "gp" } },
       { label: "Bill pay DESCO", values: { category: "customer", user: "customer01", txnType: "BILL_PAY", biller: "DESCO", counterparty: "1234567", amount: "100" } },
+      { label: "Bill pay KGDCL (SOAP)", values: { category: "customer", user: "customer01", txnType: "BILL_PAY", biller: "KGDCL", counterparty: "1234567", amount: "100" } },
       { label: "Add money from the bank", values: { category: "customer", user: "customer01", txnType: "ADD_MONEY_BANK", counterparty: "1234567890123", amount: "500" } },
     ],
   },
@@ -128,7 +131,8 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       { value: "PIN 97531", meaning: "\"Wrong PIN. 2 tries left.\"; three wrong ones lock the PIN on every channel" },
       { value: "number 12345", meaning: "\"Enter a valid mobile number\", the session stays open" },
       { value: "3, 2, 01711000999, 1, 20, 1, 13579", meaning: "\"Recharge failed: Subscriber not eligible for recharge\"" },
-      { value: "4, 1, 1234567, 1, 13579", meaning: "\"Tk 667.00 paid for DESCO bill 1234567\"" },
+      { value: "4, 1, 2, 1234567, 1, 13579", meaning: "bill pay, Electricity, DESCO: \"Tk 667.00 paid for DESCO bill 1234567\"" },
+      { value: "4, 3, 2, 1234567, 1, 13579", meaning: "bill pay, Gas, KGDCL (SOAP): \"Tk 667.00 paid for KGDCL bill 1234567\"" },
     ],
     expect: [
       "The session ends ([END] in the Transcript) with a confirmation carrying the TxnID; the PIN shows as ****.",

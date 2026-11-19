@@ -77,7 +77,7 @@ class UssdEngineTest {
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
         "bn", 3, Map.of("robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*247#"), gsm, 70,
             Duration.ofSeconds(120), overflow, "CON", "END", null)),
-        Map.of());
+        Map.of(), Map.of());
   }
 
   final InMemorySessions sessions = new InMemorySessions();
@@ -149,7 +149,7 @@ class UssdEngineTest {
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
         "bn", 3, Map.of("robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of(), 182, 70,
             Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END", null)),
-        Map.of()));
+        Map.of(), Map.of()));
 
     assertThat(dialCode("c6", "*999#").end()).isFalse();
   }
