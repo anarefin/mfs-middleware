@@ -81,7 +81,7 @@
 100c-inbound-mtls-edge-tests                100a              open   (run by M13)
 101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
 102-mock-control-engine                     89                102a done 25m  73 files +2656 −660  b8f2d843; 102b (SMPP parties, test console + tests/api to /test/mock-control, folder 39) open
-103-mock-control-core-and-reset             102,94            open
+103-mock-control-core-and-reset             102,94            done     120m     90 files +3425 −249    8c4ed022
 104-frs-e2e-harness                         96,98,103         open
 # --- M7 gate: P2P T1-T12 via the app API; clean build; fresh-stack API suite
 105-app-preview-confirm                     95                open
