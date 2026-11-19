@@ -63,18 +63,18 @@
 # --- M7 Foundation (FRS phase 1)
 89-frs-decisions-adr-spec                   —                 done     11m      16 files +812 −26      48641b1c
 90-redis-swap                               89                open
-91-vault-swap                               89                open
+91-vault-swap                               89                done     80m      350 files +1206 −3347  8e5cfb4f
 92-contracts-canonical-additions            89                done     50m      103 files +1336 −133   a27c953a
 93-core-mock-rest-api                       92                done     31m      43 files +2354 −36     cbfb273a
-94-core-mock-model                          93                open
+94-core-mock-model                          93                done     120m     115 files +2556 −614   7fb7429f
 95-orchestrator-core-rest-client            93                open
 97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
 96-orchestrator-saga-frs                    95,97             open
 98-routing-module                           96,97             open
-99-idempotency-duplicates-replay            89                open
+99-idempotency-duplicates-replay            89                done     110m     95 files +2601 −110    e3d9c7c6,45ffe6a3
 100-edge-client-registry                    90,91,99          open
-101-openapi-swagger-wsdl                    89                open
-102-mock-control-engine                     89                open
+101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
+102-mock-control-engine                     89                102a done 25m  73 files +2656 −660  b8f2d843; 102b (SMPP parties, test console + tests/api to /test/mock-control, folder 39) open
 103-mock-control-core-and-reset             102,94            open
 104-frs-e2e-harness                         96,98,103         open
 # --- M7 gate: P2P T1-T12 via the app API; clean build; fresh-stack API suite
