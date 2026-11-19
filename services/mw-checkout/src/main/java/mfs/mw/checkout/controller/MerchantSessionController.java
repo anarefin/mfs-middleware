@@ -1,5 +1,7 @@
 package mfs.mw.checkout.controller;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 import jakarta.validation.Valid;
 import mfs.mw.checkout.dto.CreateSessionRequest;
 import mfs.mw.checkout.dto.MerchantSessionView;
@@ -33,6 +35,9 @@ public class MerchantSessionController {
   }
 
   @PostMapping
+  // checked by security/MerchantReplayInterceptor (ticket 99); declared here for the generated document
+  @Parameter(in = ParameterIn.HEADER, name = "Date", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Nonce", required = true)
   public ResponseEntity<SessionCreated> create(
       @RequestHeader(name = MERCHANT_HEADER, required = false) String merchantId,
       @Valid @RequestBody CreateSessionRequest body) {
