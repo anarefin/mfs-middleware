@@ -65,7 +65,7 @@
 90-redis-swap                               89                open
 91-vault-swap                               89                open
 92-contracts-canonical-additions            89                done     50m      103 files +1336 −133   a27c953a
-93-core-mock-rest-api                       92                open
+93-core-mock-rest-api                       92                done     31m      43 files +2354 −36     cbfb273a
 94-core-mock-model                          93                open
 95-orchestrator-core-rest-client            93                open
 97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
