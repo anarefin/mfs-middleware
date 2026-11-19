@@ -115,7 +115,7 @@ A callback signed with `hmac-sha256` must carry `X-Nonce` (16-128 of `A-Z a-z 0-
 line between the timestamp and the body hash (`partner/auth/HmacSha256AuthScheme.sign(..., nonce, body)`;
 an outbound request carries none and keeps the four-line string), and a timestamp within `max-skew-seconds`.
 After the signature verifies, `PartnerGateway.inbound` lets the nonce through once per partner for twice
-the skew plus 30 s (`partner/auth/CallbackNonces`, table `callback_nonce`, Flyway V6; PostgreSQL, the
+the skew plus 30 s (`partner/auth/CallbackNonces`, table `callback_nonce`, Flyway V7; PostgreSQL, the
 adapters have no Valkey/Redis); a reused nonce is 401 `MW-AUTH-001` like a bad signature. A partner's resend
 takes a fresh nonce and is then deduplicated by reference as before (mw-simulators' `CallbackSigner` signs a
 fresh UUID per send). Identical in the three adapters (telco has no callback endpoint yet). Tests

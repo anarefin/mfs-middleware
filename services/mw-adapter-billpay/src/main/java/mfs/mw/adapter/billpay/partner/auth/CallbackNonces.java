@@ -10,7 +10,7 @@ import org.springframework.stereotype.Component;
 /**
  * Callback replay nonces (ticket 99, FRS PLT-008/PLT-014): a signed callback's nonce is let through
  * once per partner while its timestamp can still be accepted. Table {@code callback_nonce} (own
- * schema, V6): rows older than the window are deleted first, then the nonce is inserted {@code on
+ * schema, V7): rows older than the window are deleted first, then the nonce is inserted {@code on
  * conflict do nothing}; inserted = first use. In PostgreSQL rather than Valkey/Redis: the adapters
  * use no Valkey/Redis, and a nonce row holds no personal data.
  */
