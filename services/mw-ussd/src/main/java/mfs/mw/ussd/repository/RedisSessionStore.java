@@ -7,32 +7,32 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Sessions as JSON strings in Valkey with the session TTL (spec 9.2). */
+/** Sessions as JSON strings in Redis with the session TTL (spec 9.2). */
 @Repository
-public class ValkeySessionStore implements UssdSessionStore {
+public class RedisSessionStore implements UssdSessionStore {
 
-  private final StringRedisTemplate valkey;
+  private final StringRedisTemplate redis;
   private final JsonMapper json;
 
-  public ValkeySessionStore(StringRedisTemplate valkey, JsonMapper json) {
-    this.valkey = valkey;
+  public RedisSessionStore(StringRedisTemplate redis, JsonMapper json) {
+    this.redis = redis;
     this.json = json;
   }
 
   @Override
   public Optional<UssdSession> find(String mno, String sessionId) {
-    String v = valkey.opsForValue().get(UssdSessionStore.key(mno, sessionId));
+    String v = redis.opsForValue().get(UssdSessionStore.key(mno, sessionId));
     return v == null ? Optional.empty() : Optional.of(json.readValue(v, UssdSession.class));
   }
 
   @Override
   public void save(UssdSession session, Duration ttl) {
-    valkey.opsForValue()
+    redis.opsForValue()
         .set(UssdSessionStore.key(session.mno(), session.sessionId()), json.writeValueAsString(session), ttl);
   }
 
   @Override
   public void delete(String mno, String sessionId) {
-    valkey.delete(UssdSessionStore.key(mno, sessionId));
+    redis.delete(UssdSessionStore.key(mno, sessionId));
   }
 }

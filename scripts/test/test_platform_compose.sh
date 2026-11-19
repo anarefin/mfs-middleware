@@ -6,10 +6,10 @@
 STACK_FILE="$REPO_DIR/deploy/docker-compose.yml"
 # the P2P and cash path of the API suite folders 01 / 03 (profile minimal)
 MINIMAL_SERVICES="mw-admin-api mw-app-gateway mw-audit-dw mw-auth mw-core-mock mw-crypto mw-notify mw-orchestrator mw-simulators mw-ussd"
-PLATFORM_SERVICES="kafka kafka-init postgres valkey keycloak vault etcd etcd-init apisix apisix-init greenmail"
+PLATFORM_SERVICES="kafka kafka-init postgres redis keycloak vault etcd etcd-init apisix apisix-init greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
-  POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD
+  POSTGRES_PASSWORD REDIS_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD
   KC_OPS_TEST_PASSWORD KC_OPS_TEST_TOTP_SECRET KC_PORTALS_TEST_PASSWORD KC_PORTALS_TEST_TOTP_SECRET KC_DB_PASSWORD
   MW_E2E_API_KEY BILLAGG_HMAC_SECRET BILLAGG_WS_PASSWORD C2WBANK_HMAC_SECRET SFTP_DEV_PASSWORD CHECKOUT_DEMO_MERCHANT_SECRET CHECKOUT_PHARMACY_MERCHANT_SECRET CHECKOUT_FASHION_MERCHANT_SECRET
   KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET KC_MW_AUDIT_DW_SECRET KC_MW_AUTH_SECRET KC_MW_APP_GATEWAY_SECRET KC_MW_USSD_SECRET KC_MW_CHECKOUT_SECRET MW_ADMIN_UI_AUTH_SECRET
@@ -206,7 +206,7 @@ vault:127.0.0.1:8200->8200
 postgres:127.0.0.1:5432->5432
 softhsm:127.0.0.1:5657->5657
 softhsm:127.0.0.1:5658->5658
-valkey:127.0.0.1:6379->6379"
+redis:127.0.0.1:6379->6379"
 
 test_the_edge_is_the_only_public_port_and_every_other_published_port_is_loopback() {
   local published
@@ -385,7 +385,7 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
   [ -z "$bad" ] || fail "long-running memory limit is not a \${KNOB:-default}: $bad"
   # the defaults are today's laptop values (MiB)
   j="$(compose_json)"
-  expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 vault=128 etcd=64 valkey=64 softhsm=48
+  expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 vault=128 etcd=64 redis=64 softhsm=48
     mw-admin-ui=64 mw-crypto=320 mw-auth=320 mw-simulators=384 mw-orchestrator=448 mw-audit-dw=448 mw-core-mock=384
     mw-notify=384 mw-app-gateway=384 mw-ussd=384 mw-admin-api=384 mw-adapter-telco=384 mw-adapter-billpay=384
     mw-adapter-bank=384 mw-portal-api=384 mw-checkout=384"
@@ -500,7 +500,7 @@ test_keycloak_gets_every_realm_placeholder_from_the_generated_env() {
     printf '%s' "$j" | jq -e --arg v "$v" '.services.keycloak.environment[$v] == "t"' >/dev/null || fail "keycloak lacks $v"
   done
   printf '%s' "$j" | jq -e '.services.postgres.environment.POSTGRES_PASSWORD == "t"' >/dev/null || fail "postgres password not from .env"
-  printf '%s' "$j" | jq -e '.services.valkey.environment.REDISCLI_AUTH == "t"' >/dev/null || fail "valkey password not from .env"
+  printf '%s' "$j" | jq -e '.services.redis.environment.REDISCLI_AUTH == "t"' >/dev/null || fail "redis password not from .env"
   printf '%s' "$j" | jq -e '.services.keycloak.environment.KC_BOOTSTRAP_ADMIN_PASSWORD == "t"' >/dev/null || fail "keycloak admin password not from .env"
 }
 

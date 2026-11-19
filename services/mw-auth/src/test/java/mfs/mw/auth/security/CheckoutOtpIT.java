@@ -11,7 +11,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.UUID;
 import mfs.mw.auth.TestInfrastructure;
-import mfs.mw.auth.ValkeyInfrastructure;
+import mfs.mw.auth.RedisInfrastructure;
 import mfs.mw.auth.client.CryptoClient;
 import mfs.mw.auth.dto.NotificationRequest;
 import mfs.mw.auth.messaging.EventPublisher;
@@ -38,7 +38,7 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  */
 @SpringBootTest(properties = {"mw.outbox.relay.enabled=false", "spring.data.redis.timeout=3s"})
 @AutoConfigureMockMvc
-@Import({TestInfrastructure.class, ValkeyInfrastructure.class})
+@Import({TestInfrastructure.class, RedisInfrastructure.class})
 class CheckoutOtpIT {
 
   static final String SEND = "/internal/v1/otp";

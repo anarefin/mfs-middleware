@@ -59,7 +59,7 @@ paths:
       summary: Unbinds every device of the wallet
       description: >-
         Every bound device unbound and every refresh token of the wallet revoked (one transaction),
-        then the devices' sessions closed (Valkey down: 503 MW-SYS-012, retryable; the unbinding
+        then the devices' sessions closed (Redis down: 503 MW-SYS-012, retryable; the unbinding
         stays). The app must bind a device again before it can log in. No body.
       parameters:
         - $ref: "#/components/parameters/WalletId"

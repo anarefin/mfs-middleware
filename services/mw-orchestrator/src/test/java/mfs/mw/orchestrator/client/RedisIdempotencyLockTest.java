@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.time.Duration;
-import mfs.mw.orchestrator.config.ValkeyConfig;
+import mfs.mw.orchestrator.config.RedisConfig;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
@@ -13,8 +13,8 @@ import org.springframework.data.redis.connection.lettuce.LettuceClientConfigurat
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
-/** An unreachable Valkey never blocks or fails intake (ticket 50): the lock is just unavailable. */
-class ValkeyIdempotencyLockTest {
+/** An unreachable Redis never blocks or fails intake (ticket 50): the lock is just unavailable. */
+class RedisIdempotencyLockTest {
 
   private LettuceConnectionFactory factory;
 
@@ -36,12 +36,12 @@ class ValkeyIdempotencyLockTest {
     var clientConfig =
         LettuceClientConfiguration.builder()
             .commandTimeout(Duration.ofMillis(200))
-            .clientOptions(ValkeyConfig.failFast(Duration.ofMillis(200)).build())
+            .clientOptions(RedisConfig.failFast(Duration.ofMillis(200)).build())
             .build();
     factory = new LettuceConnectionFactory(new RedisStandaloneConfiguration("127.0.0.1", closedPort()), clientConfig);
     factory.afterPropertiesSet();
     factory.start();
-    ValkeyIdempotencyLock lock = new ValkeyIdempotencyLock(new StringRedisTemplate(factory));
+    RedisIdempotencyLock lock = new RedisIdempotencyLock(new StringRedisTemplate(factory));
 
     long start = System.nanoTime();
     IdempotencyLock.Result first = lock.tryAcquire("mw:orchestrator:idem:k", "v", Duration.ofSeconds(60));

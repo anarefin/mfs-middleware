@@ -70,7 +70,7 @@
   <p>The middleware applies this at every hop:</p>
   <div class="table-wrap"><table>
     <tr><th>Hop</th><th>How a repeat is recognised</th></tr>
-    <tr><td>App → middleware</td><td>The app sends an <code>Idempotency-Key</code> header. Same key and same body: you get the existing transaction's status. Same key, different body: error <code>MW-IDEM-001</code>. A 60-second lock in Valkey also stops a double tap from racing.</td></tr>
+    <tr><td>App → middleware</td><td>The app sends an <code>Idempotency-Key</code> header. Same key and same body: you get the existing transaction's status. Same key, different body: error <code>MW-IDEM-001</code>. A 60-second lock in Redis also stops a double tap from racing.</td></tr>
     <tr><td>USSD → middleware</td><td>A basic phone cannot send a key, so <code>mw-ussd</code> derives one from the session, the menu path, the amount and the target.</td></tr>
     <tr><td>Middleware → core</td><td>Every command has a <code>commandId</code> built from the txnId and the step, for example <code>&lt;txnId&gt;:post</code>. The core answers a repeat from its log instead of moving money again.</td></tr>
     <tr><td>Middleware → partner</td><td>A stable partner reference (for top-up, <code>BITS</code> followed by the txnId in hex), so a partner can spot a repeat too.</td></tr>

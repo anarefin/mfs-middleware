@@ -33,7 +33,7 @@ import org.springframework.stereotype.Component;
  * 18 (USSR confirm) continues it, the end-of-session bit of {@code its_session_info} aborts it
  * (subscriber released); screens go out as 2 (USSR request) or, when the menu ends, 17 (PSSR
  * response) with end-of-session set. The session id is the {@code its_session_info} session
- * number plus the source address (hashed: no MSISDN in Valkey keys), and a session's responses go
+ * number plus the source address (hashed: no MSISDN in Redis keys), and a session's responses go
  * out on the bind that received it. Each step runs on its own virtual thread, never on jSMPP's
  * PDU threads (an ACTION waits up to the sync budget).
  */

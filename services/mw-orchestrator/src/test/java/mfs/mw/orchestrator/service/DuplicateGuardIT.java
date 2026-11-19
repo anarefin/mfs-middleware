@@ -23,7 +23,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Business-duplicate window at intake (FRS PLT-013, ticket 99) against real PostgreSQL; Valkey/Redis
+ * Business-duplicate window at intake (FRS PLT-013, ticket 99) against real PostgreSQL; Redis
  * is an in-memory SET NX stand-in.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

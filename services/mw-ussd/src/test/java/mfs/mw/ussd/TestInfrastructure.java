@@ -15,14 +15,14 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Real infrastructure for tests that start the application context (spec 22.1): PostgreSQL 18, a
- * single-node KRaft Kafka and Valkey (USSD sessions), the platform stack's versions (Kafka as its
+ * single-node KRaft Kafka and Redis (USSD sessions), the platform stack's versions (Kafka as its
  * GraalVM native build, apache/kafka-native: same broker, starts in about a second on little memory
  * and CPU), and mw-auth as a WireMock stub ({@link AuthStub}: service token, PIN transport key generated per
  * run, assertions). This module owns its fixtures (no shared
  * test kit). Import it with {@code @Import(TestInfrastructure.class)}; such a test class is a
  * {@code *IT}, which {@link DockerAvailableCondition} skips when Docker is not available.
  *
- * <p>One PostgreSQL, one Kafka and one Valkey per test JVM: JVM-wide singletons, started together
+ * <p>One PostgreSQL, one Kafka and one Redis per test JVM: JVM-wide singletons, started together
  * the first time a Spring context asks for them, never reused across JVMs (no {@code withReuse},
  * no labels) and removed by Testcontainers' Ryuk when the JVM exits. Nothing cleans up between
  * runs because every run starts on new containers.
@@ -30,10 +30,10 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * <p>Per Spring context a fresh database: {@link #testInfrastructureProperties()} runs {@code
  * CREATE DATABASE ctx_<n>} for every context Spring builds (other {@code @MockitoBean}s, other
  * properties, {@code @DirtiesContext}) and points {@code spring.datasource.*} at it, so Flyway
- * migrates an empty database and no context sees another's rows. Kafka and Valkey are shared by all
+ * migrates an empty database and no context sees another's rows. Kafka and Redis are shared by all
  * contexts; tests keep apart by their own topic names, keys, consumer groups and session ids.
  *
- * <p>PostgreSQL and Valkey are deliberately not beans: Spring Boot stops a container bean when its
+ * <p>PostgreSQL and Redis are deliberately not beans: Spring Boot stops a container bean when its
  * context closes, which would stop the shared container under every other cached context. Kafka
  * stays a bean because tests inject {@link KafkaContainer} for its bootstrap servers; its {@code
  * stop()} is a no-op for the same reason.
@@ -66,13 +66,13 @@ public class TestInfrastructure {
   public static final KafkaContainer KAFKA = new JvmScopedKafka("apache/kafka-native:4.3.2");
 
   @SuppressWarnings("resource") // JVM-scoped; Ryuk removes it at JVM exit
-  public static final GenericContainer<?> VALKEY =
-      new GenericContainer<>("valkey/valkey:8.1.11-alpine").withExposedPorts(6379);
+  public static final GenericContainer<?> REDIS =
+      new GenericContainer<>("redis:8.10.3-alpine").withExposedPorts(6379);
 
   /** Starts the containers once (in parallel); later calls are no-ops. */
   static synchronized void start() {
-    if (!POSTGRES.isRunning() || !KAFKA.isRunning() || !VALKEY.isRunning()) {
-      Startables.deepStart(POSTGRES, KAFKA, VALKEY).join();
+    if (!POSTGRES.isRunning() || !KAFKA.isRunning() || !REDIS.isRunning()) {
+      Startables.deepStart(POSTGRES, KAFKA, REDIS).join();
     }
   }
 
@@ -91,7 +91,7 @@ public class TestInfrastructure {
   }
 
   /**
-   * Wires this context to its own database, the shared Kafka and Valkey, and the mw-auth stub
+   * Wires this context to its own database, the shared Kafka and Redis, and the mw-auth stub
    * (no key is checked in).
    */
   @Bean
@@ -103,8 +103,8 @@ public class TestInfrastructure {
       registry.add("spring.datasource.password", POSTGRES::getPassword);
       // No @ServiceConnection on the Kafka bean: wire Spring Kafka by hand.
       registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
-      registry.add("spring.data.redis.host", VALKEY::getHost);
-      registry.add("spring.data.redis.port", () -> VALKEY.getMappedPort(6379));
+      registry.add("spring.data.redis.host", REDIS::getHost);
+      registry.add("spring.data.redis.port", () -> REDIS.getMappedPort(6379));
       // mw-auth: the WireMock stub (plain HTTP, mTLS off in tests; ticket 72)
       String auth = AuthStub.baseUrl();
       registry.add("mw.ussd.auth.base-url", () -> auth);

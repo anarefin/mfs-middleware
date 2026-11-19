@@ -96,7 +96,7 @@
     <dt>txnId</dt><dd>The id of one transaction, created by the channel service and carried everywhere.</dd>
     <dt>UNKNOWN</dt><dd>The saga state for "money may or may not have moved; we are finding out".</dd>
     <dt>USSD</dt><dd>Unstructured supplementary service data: the text menus on any phone after dialling a code like <code>*268#</code>. Each operator has its own code here (gp <code>*268#</code>, robi <code>*269#</code>, bl <code>*270#</code>, teletalk <code>*271#</code>).</dd>
-    <dt>Valkey</dt><dd>An in-memory key-value store (open-source Redis): sessions, locks, counters.</dd>
+    <dt>Redis</dt><dd>An in-memory key-value store (Redis 8, ADR D29): sessions, locks, counters.</dd>
     <dt>Wallet</dt><dd>An account in the core tied to a phone number, of a type such as CUSTOMER, AGENT or MERCHANT.</dd>
   </dl>
 

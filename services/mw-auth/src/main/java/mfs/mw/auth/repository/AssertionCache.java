@@ -12,10 +12,10 @@ import org.springframework.stereotype.Repository;
 
 /**
  * The assertions issued within their life, per wallet and idempotency key (spec 18.7, D22; ticket
- * 71): Valkey key {@code assert:{walletId}:{idempotencyKey}}, TTL = the life, value {@code
+ * 71): Redis key {@code assert:{walletId}:{idempotencyKey}}, TTL = the life, value {@code
  * <expiresAt epoch ms>|<txnHash>|<newDevice>|<assertion>}. A channel's retry gets the same assertion
  * without a second PIN check. Set once ({@code SET NX}): of two concurrent first calls the later
- * one gets the winner's entry. Valkey down is 503 MW-SYS-012 (fail closed).
+ * one gets the winner's entry. Redis down is 503 MW-SYS-012 (fail closed).
  */
 @Repository
 public class AssertionCache {
@@ -37,10 +37,10 @@ public class AssertionCache {
     }
   }
 
-  private final StringRedisTemplate valkey;
+  private final StringRedisTemplate redis;
 
-  public AssertionCache(StringRedisTemplate valkey) {
-    this.valkey = valkey;
+  public AssertionCache(StringRedisTemplate redis) {
+    this.redis = redis;
   }
 
   static String key(String walletId, String idempotencyKey) {
@@ -48,7 +48,7 @@ public class AssertionCache {
   }
 
   public Optional<Entry> find(String walletId, String idempotencyKey) {
-    String v = call(() -> valkey.opsForValue().get(key(walletId, idempotencyKey)));
+    String v = call(() -> redis.opsForValue().get(key(walletId, idempotencyKey)));
     return v == null ? Optional.empty() : Optional.of(Entry.decode(v));
   }
 
@@ -59,18 +59,18 @@ public class AssertionCache {
   public Entry putIfAbsent(String walletId, String idempotencyKey, Entry entry, Duration ttl) {
     String k = key(walletId, idempotencyKey);
     return call(() -> {
-      if (Boolean.TRUE.equals(valkey.opsForValue().setIfAbsent(k, entry.encode(), ttl))) {
+      if (Boolean.TRUE.equals(redis.opsForValue().setIfAbsent(k, entry.encode(), ttl))) {
         return entry;
       }
-      String v = valkey.opsForValue().get(k);
+      String v = redis.opsForValue().get(k);
       return v == null ? entry : Entry.decode(v);
     });
   }
 
-  /** Replaces an entry whose life ended by the service clock (Valkey's TTL may lag behind it). */
+  /** Replaces an entry whose life ended by the service clock (Redis's TTL may lag behind it). */
   public void replace(String walletId, String idempotencyKey, Entry entry, Duration ttl) {
     call(() -> {
-      valkey.opsForValue().set(key(walletId, idempotencyKey), entry.encode(), ttl);
+      redis.opsForValue().set(key(walletId, idempotencyKey), entry.encode(), ttl);
       return null;
     });
   }

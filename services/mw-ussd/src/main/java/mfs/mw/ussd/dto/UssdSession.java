@@ -8,7 +8,7 @@ import mfs.mw.ussd.util.Sensitive;
 import mfs.mw.ussd.util.SensitiveType;
 
 /**
- * Session state kept in Valkey under {@code ussd:{mno}:{sessionId}} (spec 9.2): the node reached,
+ * Session state kept in Redis under {@code ussd:{mno}:{sessionId}} (spec 9.2): the node reached,
  * the path taken, the collected inputs, language and menu version. The PIN is never part of it:
  * it is encrypted on receipt and handed straight to the ACTION.
  *

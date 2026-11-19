@@ -6,15 +6,15 @@ import org.springframework.context.annotation.Bean;
 import org.testcontainers.containers.GenericContainer;
 
 /**
- * Valkey for tests of sessions and the nonce cache (ticket 68), the platform's image. JVM-scoped
+ * Redis for tests of sessions and the nonce cache (ticket 68), the platform's image. JVM-scoped
  * like {@link TestInfrastructure}: {@code stop()} is a no-op, Ryuk removes it at JVM exit. Import
- * it next to {@link TestInfrastructure} only where Valkey is needed.
+ * it next to {@link TestInfrastructure} only where Redis is needed.
  */
 @TestConfiguration(proxyBeanMethods = false)
-public class ValkeyInfrastructure {
+public class RedisInfrastructure {
 
-  static final class JvmScopedValkey extends GenericContainer<JvmScopedValkey> {
-    JvmScopedValkey(String image) {
+  static final class JvmScopedRedis extends GenericContainer<JvmScopedRedis> {
+    JvmScopedRedis(String image) {
       super(image);
       withExposedPorts(6379);
     }
@@ -25,11 +25,11 @@ public class ValkeyInfrastructure {
     }
   }
 
-  static final JvmScopedValkey VALKEY = new JvmScopedValkey("valkey/valkey:8.1.11-alpine");
+  static final JvmScopedRedis REDIS = new JvmScopedRedis("redis:8.10.3-alpine");
 
   @Bean(destroyMethod = "")
   @ServiceConnection(name = "redis")
-  GenericContainer<?> valkey() {
-    return VALKEY;
+  GenericContainer<?> redis() {
+    return REDIS;
   }
 }

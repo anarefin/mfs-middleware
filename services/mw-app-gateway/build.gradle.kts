@@ -49,7 +49,7 @@ dependencies {
     // mw-auth access JWT on /app/v1/** (spec 9.1, 18.7).
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
 
-    // Valkey (Lettuce): device sessions and the signed-request nonce cache (spec 9.1, 18.6).
+    // Redis (Lettuce): device sessions and the signed-request nonce cache (spec 9.1, 18.6).
     implementation("org.springframework.boot:spring-boot-starter-data-redis")
 
     // Request body schema checks (service/BodySchema, ticket 29, A6). The validator is built on a

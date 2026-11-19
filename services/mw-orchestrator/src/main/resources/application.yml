@@ -41,13 +41,13 @@ spring:
       maximum-pool-size: 10
   flyway:
     schemas: txn
-  # Valkey (Lettuce) for the 60 s idempotency lock (spec 7.3 rule 4, ticket 50). The password comes
+  # Redis (Lettuce) for the 60 s idempotency lock (spec 7.3 rule 4, ticket 50). The password comes
   # from Vault (secret/mw-orchestrator, spring.data.redis.password), never written here. Short
-  # timeouts: a slow or absent Valkey only costs the lock, never the request (config/ValkeyConfig).
+  # timeouts: a slow or absent Redis only costs the lock, never the request (config/RedisConfig).
   data:
     redis:
-      host: ${VALKEY_HOST:valkey}
-      port: ${VALKEY_PORT:6379}
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
       timeout: 200ms
       connect-timeout: 200ms
       repositories:
@@ -170,7 +170,7 @@ management:
       enabled: true
     readinessstate:
       enabled: true
-    # A Valkey outage must not take the service out of readiness: the lock falls back (ticket 50).
+    # A Redis outage must not take the service out of readiness: the lock falls back (ticket 50).
     redis:
       enabled: false
   tracing:
@@ -207,13 +207,13 @@ mw:
     retry-timeout: 5s
     command-ttl: 60s
     idempotency-ttl: 72h
-    # Valkey double-tap lock per idempotency key before the PostgreSQL claim (7.3 rule 4).
+    # Redis double-tap lock per idempotency key before the PostgreSQL claim (7.3 rule 4).
     idempotency-lock:
       enabled: ${MW_IDEMPOTENCY_LOCK_ENABLED:true}
       ttl: 60s
     # Business-duplicate window (FRS PLT-013, ticket 99; service/DuplicateGuard): the same initiator,
     # txnType, parties and amount under another key within the window; app/USSD channels get the
-    # confirmable MW-VAL-024, API clients MW-VAL-025. Same Valkey/Redis as the lock (off with it).
+    # confirmable MW-VAL-024, API clients MW-VAL-025. Same Redis as the lock (off with it).
     duplicate-guard:
       enabled: ${MW_DUPLICATE_GUARD_ENABLED:true}
       window: ${MW_DUPLICATE_WINDOW:60s}

@@ -110,9 +110,9 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
    plugin on this route may rewrite the body (`test_apisix_edge.sh`).
 4. `serverless-pre-function` (access, `lua/consumer-from-jwt.lua`): `ctx.var.mw_consumer` =
    `sub:<token sub>`, the per-consumer key.
-5. `limit-count` 120 requests / 60 s per consumer, counters in Valkey (`policy: redis`,
-   password `$env://VALKEY_PASSWORD`, so it is never stored in etcd; `config.yaml` exposes the
-   variable to nginx), `allow_degradation: true` (Valkey down: requests pass, APISIX logs it,
+5. `limit-count` 120 requests / 60 s per consumer, counters in Redis (`policy: redis`,
+   password `$env://REDIS_PASSWORD`, so it is never stored in etcd; `config.yaml` exposes the
+   variable to nginx), `allow_degradation: true` (Redis down: requests pass, APISIX logs it,
    see "Rate-limiter degradation alert" below). A perf run with one test user needs more users
    or a higher count.
 
@@ -131,7 +131,7 @@ the first PIN (`POST /auth/v1/pin`), the PIN change (`PUT /auth/v1/pin`), the PI
 4. `serverless-pre-function` (access, `lua/auth-rate-key.lua`): `ctx.var.mw_auth_key` =
    `msisdn:<sha256 hex of the canonical MSISDN of the body>` (never the MSISDN itself), else
    `sub:<bearer sub>` (logout, first PIN; not verified here, mw-auth does), else unset (per address).
-5. `limit-count` 20 requests / 60 s per that key, group `auth-v1`, Valkey as on `app-v1`.
+5. `limit-count` 20 requests / 60 s per that key, group `auth-v1`, Redis as on `app-v1`.
 6. `limit-req` 5 requests/s, burst 20, per `remote_addr` (local to the node, 429): the per-address
    limit next to the per-wallet one (one `limit-count` per route).
 
@@ -153,7 +153,7 @@ Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, tick
    network, the host API suite through Docker's NAT); production lists the partner's egress
    addresses.
 2. `client-control` `max_body_size` 16 KiB (413).
-3. `limit-count` 600 / 60 s per `remote_addr`, Valkey as on `app-v1`.
+3. `limit-count` 600 / 60 s per `remote_addr`, Redis as on `app-v1`.
 4. No `hmac-auth`: the adapter verifies the partner's `hmac-sha256` signature with the secret in
    Vault and answers 401 `MW-AUTH-001` itself (decision in `services/mw-adapter-billpay/CLAUDE.md`).
    No `request-validation`: the aggregator's wire format is partner-specific, not a contract.
@@ -186,8 +186,8 @@ contract `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`). One route and one c
    segment, so a GP credential on `/ussd/robi` is refused `MW-AUTH-002`.
 5. `serverless-pre-function` (access, `lua/ussd-msisdn-key.lua`): `ctx.var.mw_ussd_msisdn` =
    `<mno>:<sha256 hex of the canonical 01X... MSISDN>` read from the step body (the body is read,
-   not changed; no MSISDN in Valkey keys).
-6. `limit-count` 120 steps / 60 s per MSISDN (group `ussd-http-<mno>`, Valkey, fail-open as every
+   not changed; no MSISDN in Redis keys).
+6. `limit-count` 120 steps / 60 s per MSISDN (group `ussd-http-<mno>`, Redis, fail-open as every
    limited route; a step without a readable msisdn is counted per source address). A subscriber
    types far slower; 120 leaves room for the API suite's test MSISDNs. MNO contract value, TBC.
 
@@ -239,14 +239,14 @@ A new partner gets its own `partner-<id>-callback.json` (upstream: the owning ad
 
 ## Rate-limiter degradation alert (ticket 50)
 
-`limit-count` stays fail-open (`allow_degradation: true`, M2 gate decision): a Valkey outage must
+`limit-count` stays fail-open (`allow_degradation: true`, M2 gate decision): a Redis outage must
 not take the edge down. So that an outage is never silent, the global rule's header_filter also
 runs `lua/edge-limit-degraded.lua`: a request that reached the upstream on a route with
 `limit-count` (`show_limit_quota_header: true`, required on every limited route) but carries no
 `X-RateLimit-Limit` header was let through uncounted, and APISIX writes one **error** log line
 
 ```
-mw.edge.rate_limit_degraded route=<route id> status=<HTTP status> (limit-count failed open: Valkey unreachable or slow)
+mw.edge.rate_limit_degraded route=<route id> status=<HTTP status> (limit-count failed open: Redis unreachable or slow)
 ```
 
 next to limit-count's own `failed to limit count: ...` line. The `mw.edge.rate_limit_degraded`
@@ -256,7 +256,7 @@ own 429 never match. Where to see it:
 
 - `make smoke` fails "apisix rate limiter not degraded" while the APISIX log of the last 5 minutes
   (`SMOKE_LIMITER_WINDOW`) holds such a line (so the outage `make edge-test` causes ages out);
-- `make edge-test` stops Valkey briefly and checks that a request passes unlimited and the line
+- `make edge-test` stops Redis briefly and checks that a request passes unlimited and the line
   is logged for `app-v1`;
 - `scripts/test/test_apisix_edge.sh` checks every limited route is fail-open with quota headers
   and the function is in the global rule.

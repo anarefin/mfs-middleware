@@ -1,5 +1,5 @@
 -- Rate-limiter degradation alert (ticket 50), global rule edge, header_filter phase.
--- limit-count stays fail-open (allow_degradation: true): when Valkey is down or too slow it lets
+-- limit-count stays fail-open (allow_degradation: true): when Redis is down or too slow it lets
 -- the request through unlimited and sets none of its quota headers. A request that reached the
 -- upstream on a route with limit-count (and show_limit_quota_header) but carries no
 -- X-RateLimit-Limit was therefore not counted: log the stable error line
@@ -22,5 +22,5 @@ return function(conf, ctx)
     return
   end
   core.log.error("mw.edge.rate_limit_degraded route=", route.id or "?",
-                 " status=", ngx.status, " (limit-count failed open: Valkey unreachable or slow)")
+                 " status=", ngx.status, " (limit-count failed open: Redis unreachable or slow)")
 end

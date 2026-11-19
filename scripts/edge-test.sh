@@ -2,7 +2,7 @@
 # Gateway tests for the APISIX edge policies (spec 8.3, WP09, ticket 13), against the running
 # MVP stack (honours COMPOSE_PROJECT_NAME). Usage: scripts/edge-test.sh
 #
-# Requests go to the published HTTPS port like any client. Tokens, the Admin API, Valkey and
+# Requests go to the published HTTPS port like any client. Tokens, the Admin API, Redis and
 # the mw-app-gateway log are reached from inside the project (throwaway curl containers on the
 # ops network, docker compose exec/logs), as scripts/smoke.sh does.
 #
@@ -18,11 +18,11 @@
 #     Token expiry: covered by the static iat_slack check and mw-app-gateway's tests (mw-auth's
 #     tokens live 5 min, too long to wait for here)
 #   - mw-auth's /auth/v1/* (ticket 69): reachable without a token (mw-auth answers its own codes),
-#     its JWK Set public, a quota per hashed MSISDN (429, counter in Valkey without the MSISDN)
+#     its JWK Set public, a quota per hashed MSISDN (429, counter in Redis without the MSISDN)
 #   - a submit body that breaks the schema -> 400 MW-VAL-001 (checked by mw-app-gateway on the
 #     bytes the device signed: the edge must not re-encode it, ticket 29); a valid body reaches it
 #     byte for byte; an oversized body -> 413 at the edge
-#   - more requests than the per-consumer quota -> 429 MW-SYS-RATE_LIMITED, counter in Valkey,
+#   - more requests than the per-consumer quota -> 429 MW-SYS-RATE_LIMITED, counter in Redis,
 #     another consumer unaffected
 #   - client X-Mw-* headers never reach the upstream; X-Correlation-Id generated when absent
 #     (or unsafe, or holding a run of 6+ digits), kept when valid, returned to the client and
@@ -36,7 +36,7 @@
 #     mw-checkout (no body schema at the edge; needs the test-only merchant, else skipped)
 #   - USSD (M3 gate): no / wrong credential -> 401, another MNO's credential -> 403, the MNO's own
 #     reaches mw-ussd with a quota per hashed MSISDN, unrouted MNO 404
-#   - Valkey down (ticket 50): limit-count fails open and APISIX logs mw.edge.rate_limit_degraded
+#   - Redis down (ticket 50): limit-count fails open and APISIX logs mw.edge.rate_limit_degraded
 #   - ops login route (security review): a foreign Host -> 404, client X-Forwarded-*/Forwarded
 #     ignored (issuer stays the public host), password grant / introspection refused at the edge,
 #     authorization_code passes; client mw-admin-ui has no direct grant in Keycloak
@@ -125,7 +125,7 @@ gateway_logged() {
 uniq_id() { printf 'edge-test-%s-%s' "$1" "$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n' | tr '0-9' 'g-p')"; }
 
 cleanup() {
-  dc start valkey >/dev/null 2>&1
+  dc start redis >/dev/null 2>&1
   admin DELETE "routes/$echo_route" -o /dev/null
   rm -rf "$tmp"
 }
@@ -204,11 +204,11 @@ auth_quota_per_msisdn() { # an MSISDN mw-auth does not know: nothing is sent, th
   codes="$(curl "${urls[@]:1}")"
   printf '%s\n' "$codes" | grep -qx 429 || { echo "no 429 in 26 OTP requests: $(printf '%s\n' "$codes" | sort | uniq -c | tr '\n' ' ')"; return 1; }
   hash="$(printf '%s' "$m" | shasum -a 256 | cut -d' ' -f1)"
-  keys="$(dc exec -T valkey valkey-cli --scan --pattern "*msisdn:$hash*")"
-  [ -n "$keys" ] || { echo "no Valkey counter for the hashed MSISDN"; return 1; }
-  if dc exec -T valkey valkey-cli --scan --pattern "*$m*" | grep -q .; then echo "a Valkey key holds the MSISDN"; return 1; fi
+  keys="$(dc exec -T redis redis-cli --scan --pattern "*msisdn:$hash*")"
+  [ -n "$keys" ] || { echo "no Redis counter for the hashed MSISDN"; return 1; }
+  if dc exec -T redis redis-cli --scan --pattern "*$m*" | grep -q .; then echo "a Redis key holds the MSISDN"; return 1; fi
 }
-check "auth: over the per-MSISDN quota -> 429; Valkey counter keyed by the hashed MSISDN only" auth_quota_per_msisdn
+check "auth: over the per-MSISDN quota -> 429; Redis counter keyed by the hashed MSISDN only" auth_quota_per_msisdn
 
 # ---- correlation ID, upstream reached ----
 # mw-app-gateway answers an app request without X-Device-Id with its own 401 MW-AUTH-003 (device
@@ -333,7 +333,7 @@ check "body over 64 KiB -> 413 MW-VAL-BODY_TOO_LARGE" too_large
 not_found() { call GET /no/such/route && envelope 404 MW-VAL-003; }
 check "unknown path -> 404 MW-VAL-003 envelope" not_found
 
-# ---- 429 per consumer, counters in Valkey ----
+# ---- 429 per consumer, counters in Redis ----
 quota() {
   local limit codes sub keys urls=()
   call GET /app/v1/transactions/x -H "Authorization: Bearer $merchant"
@@ -351,10 +351,10 @@ quota() {
   call GET "/app/v1/transactions/$(uniq_id txn)" -H "Authorization: Bearer $customer"
   gateway_gate || { echo "customer01 got HTTP $status after merchant01 hit the quota"; return 1; }
   sub="$(claims "$merchant" | jq -r .sub)"
-  keys="$(dc exec -T valkey valkey-cli --scan --pattern "*sub:$sub*")"
-  [ -n "$keys" ] || { echo "no Valkey counter for sub:$sub"; return 1; }
+  keys="$(dc exec -T redis redis-cli --scan --pattern "*sub:$sub*")"
+  [ -n "$keys" ] || { echo "no Redis counter for sub:$sub"; return 1; }
 }
-check "over the per-consumer quota -> 429 MW-SYS-RATE_LIMITED with Retry-After; counter in Valkey; others unaffected" quota
+check "over the per-consumer quota -> 429 MW-SYS-RATE_LIMITED with Retry-After; counter in Redis; others unaffected" quota
 
 # ---- partner callback route (ticket 22): edge policies, signature checked by the adapter ----
 cb_path=/partner/billagg/callback/payments
@@ -379,11 +379,11 @@ cb_policies() {
   local r; r="$(admin GET routes/partner-billagg-callback | jq -c '.value')"
   printf '%s' "$r" | jq -e '.plugins["ip-restriction"].whitelist | length > 0 and (index("0.0.0.0/0") | not)' >/dev/null \
     || { echo "ip-restriction: $(printf '%s' "$r" | jq -c '.plugins["ip-restriction"]')"; return 1; }
-  printf '%s' "$r" | jq -e '.plugins["limit-count"] | .key == "remote_addr" and .policy == "redis" and .redis_password == "$env://VALKEY_PASSWORD"' >/dev/null \
+  printf '%s' "$r" | jq -e '.plugins["limit-count"] | .key == "remote_addr" and .policy == "redis" and .redis_password == "$env://REDIS_PASSWORD"' >/dev/null \
     || { echo "limit-count: $(printf '%s' "$r" | jq -c '.plugins["limit-count"]')"; return 1; }
   printf '%s' "$r" | jq -e '.upstream.nodes | has("mw-adapter-billpay:8080")' >/dev/null || { echo "upstream: $(printf '%s' "$r" | jq -c .upstream)"; return 1; }
 }
-check "partner callback route: ip allow-list, quota per source address in Valkey, upstream mw-adapter-billpay" cb_policies
+check "partner callback route: ip allow-list, quota per source address in Redis, upstream mw-adapter-billpay" cb_policies
 
 # ---- C2W bank callback route (ticket 23): same edge policies, upstream mw-adapter-bank ----
 bank_path=/partner/c2wbank/callback/debits
@@ -406,11 +406,11 @@ bank_policies() {
   local r; r="$(admin GET routes/partner-c2wbank-callback | jq -c '.value')"
   printf '%s' "$r" | jq -e '.plugins["ip-restriction"].whitelist | length > 0 and (index("0.0.0.0/0") | not)' >/dev/null \
     || { echo "ip-restriction: $(printf '%s' "$r" | jq -c '.plugins["ip-restriction"]')"; return 1; }
-  printf '%s' "$r" | jq -e '.plugins["limit-count"] | .key == "remote_addr" and .policy == "redis" and .redis_password == "$env://VALKEY_PASSWORD" and .group == "partner-c2wbank-callback"' >/dev/null \
+  printf '%s' "$r" | jq -e '.plugins["limit-count"] | .key == "remote_addr" and .policy == "redis" and .redis_password == "$env://REDIS_PASSWORD" and .group == "partner-c2wbank-callback"' >/dev/null \
     || { echo "limit-count: $(printf '%s' "$r" | jq -c '.plugins["limit-count"]')"; return 1; }
   printf '%s' "$r" | jq -e '.upstream.nodes | has("mw-adapter-bank:8080")' >/dev/null || { echo "upstream: $(printf '%s' "$r" | jq -c .upstream)"; return 1; }
 }
-check "bank callback route: ip allow-list, quota per source address in Valkey, upstream mw-adapter-bank" bank_policies
+check "bank callback route: ip allow-list, quota per source address in Redis, upstream mw-adapter-bank" bank_policies
 
 # ---- checkout merchant API (ticket 31): hmac-auth at the edge; hosted page API without login ----
 co_body='{"orderId":"EDGE-1","amount":{"valueMinor":1000,"currency":"BDT"},"successUrl":"https://shop.example.test/ok","failUrl":"https://shop.example.test/fail","cancelUrl":"https://shop.example.test/cancel","ipnUrl":"https://shop.example.test/ipn"}'
@@ -484,37 +484,37 @@ ussd_passes() { # robi is HTTP in dev: mw-ussd answers the dial-in screen
   ussd_step robi robi 01711000001 BEGIN
   [ "$status" = 200 ] && jq -e '.flag | length > 0' "$tmp/b" >/dev/null || { echo "HTTP $status: $(head -c 300 "$tmp/b")"; return 1; }
   [ -n "$(resp_header X-RateLimit-Limit)" ] || { echo "no quota header"; return 1; }
-  keys="$(dc exec -T valkey valkey-cli --scan --pattern '*robi:*')"
-  [ -n "$keys" ] || { echo "no per-MSISDN counter in Valkey"; return 1; }
-  if printf '%s' "$keys" | grep -q 1711000001; then echo "MSISDN in a Valkey key: $keys"; return 1; fi
+  keys="$(dc exec -T redis redis-cli --scan --pattern '*robi:*')"
+  [ -n "$keys" ] || { echo "no per-MSISDN counter in Redis"; return 1; }
+  if printf '%s' "$keys" | grep -q 1711000001; then echo "MSISDN in a Redis key: $keys"; return 1; fi
 }
 check "USSD step with the MNO's own credential -> mw-ussd answers; quota per hashed MSISDN" ussd_passes
 ussd_unknown_mno() { ussd_step nope robi 01711000001 BEGIN && envelope 404 MW-VAL-003; }
 check "USSD step for an MNO without a route -> 404 at the edge" ussd_unknown_mno
 
-# ---- rate limiter fails open with an alert line when Valkey is down (ticket 50) ----
-# Stops Valkey for a few seconds (the services fall back: the orchestrator's idempotency lock to
+# ---- rate limiter fails open with an alert line when Redis is down (ticket 50) ----
+# Stops Redis for a few seconds (the services fall back: the orchestrator's idempotency lock to
 # the PostgreSQL primary key); cleanup starts it again if this check dies half-way.
 limiter_degraded() {
   local cid i
-  dc stop valkey >/dev/null 2>&1 || { echo "could not stop valkey"; return 1; }
+  dc stop redis >/dev/null 2>&1 || { echo "could not stop redis"; return 1; }
   cid="$(uniq_id degraded)"
   call GET "/app/v1/transactions/$(uniq_id txn)" -H "Authorization: Bearer $customer" -H "X-Correlation-Id: $cid"
-  dc start valkey >/dev/null 2>&1
-  gateway_gate || { echo "with Valkey down got HTTP $status, want the gateway's 401 MW-AUTH-003 (fail-open)"; return 1; }
-  [ -z "$(resp_header X-RateLimit-Limit)" ] || { echo "quota header present although Valkey was down"; return 1; }
+  dc start redis >/dev/null 2>&1
+  gateway_gate || { echo "with Redis down got HTTP $status, want the gateway's 401 MW-AUTH-003 (fail-open)"; return 1; }
+  [ -z "$(resp_header X-RateLimit-Limit)" ] || { echo "quota header present although Redis was down"; return 1; }
   for i in $(seq 0 10); do
     dc logs --no-log-prefix --since 2m apisix 2>&1 | grep 'mw.edge.rate_limit_degraded' | grep -q 'route=app-v1' && break
     [ "$i" = 10 ] && { echo "no mw.edge.rate_limit_degraded route=app-v1 line in the APISIX log"; return 1; }
     sleep 1
   done
   for i in $(seq 0 30); do
-    dc exec -T valkey valkey-cli ping 2>/dev/null | grep -qx PONG && return 0
+    dc exec -T redis redis-cli ping 2>/dev/null | grep -qx PONG && return 0
     sleep 1
   done
-  echo "valkey did not come back"; return 1
+  echo "redis did not come back"; return 1
 }
-check "Valkey down -> request passes unlimited and APISIX logs mw.edge.rate_limit_degraded" limiter_degraded
+check "Redis down -> request passes unlimited and APISIX logs mw.edge.rate_limit_degraded" limiter_degraded
 
 # ---- ops login route (security review sec-ops): public host pinned, browser grants only ----
 pub_host="${MW_PUBLIC_HOST:-localhost}"

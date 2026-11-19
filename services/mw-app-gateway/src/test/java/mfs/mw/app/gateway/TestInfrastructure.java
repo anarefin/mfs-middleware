@@ -19,7 +19,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
  * module test JVMs fit side by side on an 8-core host). This module owns its fixtures
  * (no shared test kit). Import it with {@code @Import(TestInfrastructure.class)}; such a test class
  * is a {@code *IT}, which {@link DockerAvailableCondition} skips when Docker is not available.
- * Valkey comes from {@link ValkeyInfrastructure}, imported beside this only where it is needed;
+ * Redis comes from {@link RedisInfrastructure}, imported beside this only where it is needed;
  * {@link PostgresOnlyInfrastructure} gives a context its database without Kafka.
  *
  * <p>One PostgreSQL and one Kafka per test JVM: JVM-wide singletons, started together the first

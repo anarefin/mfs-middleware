@@ -35,13 +35,13 @@ provision_mw_crypto() {
   db_role crypto_rw crypto
 }
 
-# Wallet authentication (ticket 67, spec 18.7): its own schema auth; Valkey (device sessions, nonces:
+# Wallet authentication (ticket 67, spec 18.7): its own schema auth; Redis (device sessions, nonces:
 # ticket 68); its Keycloak realm services client
 # for mw-crypto (tokenise, envelope; later PIN and JWS); its certificate comes from PKI_SERVICES.
 provision_mw_auth() {
   gen_once spring.datasource.password 40
   sync_env mw.auth.crypto.client-secret KC_MW_AUTH_SECRET
-  sync_env spring.data.redis.password VALKEY_PASSWORD
+  sync_env spring.data.redis.password REDIS_PASSWORD
   db_role auth_rw auth
 }
 
@@ -64,11 +64,11 @@ provision_mw_simulators() {
   db_role simulators_rw simulators
 }
 
-# Valkey: idempotency lock (ticket 50). The search hash key (ticket 35) is never rotated here: a new
+# Redis: idempotency lock (ticket 50). The search hash key (ticket 35) is never rotated here: a new
 # key would orphan every stored initiator_hash.
 provision_mw_orchestrator() {
   gen_once spring.datasource.password 40
-  sync_env spring.data.redis.password VALKEY_PASSWORD
+  sync_env spring.data.redis.password REDIS_PASSWORD
   gen_once mw.orchestrator.search.hash-key 48
   db_role orchestrator_rw txn
 }
@@ -106,11 +106,11 @@ SQL
   log "$SVC: roles audit_dw_rw, audit_writer, audit_reader and schema audit ready"
 }
 
-# Valkey: the device gate's key and session caches and nonces (tickets 29, 68). Its realm services
+# Redis: the device gate's key and session caches and nonces (tickets 29, 68). Its realm services
 # client secret for mw-auth's internal API (ticket 68); its certificate comes from PKI_SERVICES.
 provision_mw_app_gateway() {
   gen_once spring.datasource.password 40
-  sync_env spring.data.redis.password VALKEY_PASSWORD
+  sync_env spring.data.redis.password REDIS_PASSWORD
   sync_env mw.app-gateway.auth.client-secret KC_MW_APP_GATEWAY_SECRET
   db_role app_gateway_rw app_gateway
 }
@@ -122,12 +122,12 @@ provision_mw_notify() {
   db_role notify_rw notify
 }
 
-# Valkey: USSD sessions. Its realm services client secret for mw-auth's internal API (txn
+# Redis: USSD sessions. Its realm services client secret for mw-auth's internal API (txn
 # authorisation, ticket 72); its certificate comes from PKI_SERVICES; the PIN transport key it
 # fetches from mw-auth's public port (no secret).
 provision_mw_ussd() {
   gen_once spring.datasource.password 40
-  sync_env spring.data.redis.password VALKEY_PASSWORD
+  sync_env spring.data.redis.password REDIS_PASSWORD
   sync_env mw.ussd.auth.client-secret KC_MW_USSD_SECRET
   db_role ussd_rw ussd
 }

@@ -30,7 +30,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | Resilience4j | Resilience4j | as FRS |
 | Apache Kafka | Apache Kafka (KRaft), outbox relay | as FRS (D2) |
 | PostgreSQL with Flyway | PostgreSQL 18, Flyway 12 | as FRS (D4) |
-| Redis | Valkey until ticket 90, then Redis (D29) | ticket 90 |
+| Redis | Redis 8.10.3 (D29), pinned by digest in `deploy/docker-compose.yml`, the same release in every Testcontainers IT (`scripts/test/test_redis.sh`) | done (ticket 90); OWN-03 written approval of AGPLv3 open (D29) |
 | Keycloak; JWT for apps | Keycloak for console, portals, partners and services; app JWTs issued by mw-auth (D21) | FRS only asks for "JWT for apps" |
 | HashiCorp Vault dev mode | HashiCorp Vault 2.2.2 (D30), file-backed and unsealed by `deploy/vault/dev-unseal.sh` instead of `-dev` in-memory mode | done (ticket 91) |
 | Prowide Core, Prowide ISO 20022 | Prowide (tickets 121, 126) | as FRS |
@@ -163,7 +163,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-001 | done | APISIX is the only port beyond loopback (D3 amendment); production is edge-only |
 | PLT-002 | ticket 100 | app JWTs (mw-auth) and merchant API key + HMAC built; partner client credentials and inbound mTLS in 100 |
 | PLT-003 | tickets 100, 132 | client registry (APISIX consumers) API in 100, console in 132 |
-| PLT-004 | tickets 90, 100 | 429 with `Retry-After` on every route, one bucket per route group keyed per client (ticket 99, `lua/edge-error-headers.lua`, `test_apisix_edge.sh`, `scripts/edge-test.sh`); Redis 90, token-bucket quotas per registered client 100 |
+| PLT-004 | ticket 100 | 429 with `Retry-After` on every route, one bucket per route group keyed per client (ticket 99, `lua/edge-error-headers.lua`, `test_apisix_edge.sh`, `scripts/edge-test.sh`); counters in Redis (ticket 90, D29); token-bucket quotas per registered client 100 |
 | PLT-005 | done | `CorrelationIdFilter` in every service, `MwHeaders` on Kafka, propagated on outbound calls (root `CLAUDE.md`) |
 | PLT-006 | ticket 108 | Bean Validation and body JSON Schema (`MW-VAL-001`) built; XSD with the SOAP facade |
 | PLT-007 | done | `MaskingPolicy` and `@Sensitive` in every service, `scripts/log-scan.sh`; mask shape `0171****789` (repo rule) |
@@ -211,7 +211,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-USSD-02 | done | mw-ussd SMPP binds: enquire_link 30 s, reconnect with backoff, window (`UssdSmppProperties`) |
 | CH-USSD-03 | ticket 109 | per-MNO TLV adapters |
 | CH-USSD-04 | ticket 133 | menu JSON in the database with maker-checker built (M6); visual tree editor in 133 |
-| CH-USSD-05 | tickets 90, 109 | sessions in Valkey built; Redis 90, 30 s per-screen timeout 109 |
+| CH-USSD-05 | ticket 109 | sessions in Redis built (ticket 90); 30 s per-screen timeout 109 |
 | CH-USSD-06 | tickets 109, 133 | GSM-7 182-character screen limit built (`UssdProperties`); "0. Next" / "00. Back" pagination 109, preview 133 |
 | CH-USSD-07 | done | PIN encrypted on receipt, never logged or kept in the session (spec 18.3, `scripts/log-scan.sh`) |
 | CH-USSD-08 | ticket 109 | short code to root menu and allowed types |

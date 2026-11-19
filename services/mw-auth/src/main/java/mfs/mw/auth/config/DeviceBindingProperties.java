@@ -50,7 +50,7 @@ public record DeviceBindingProperties(
     return idleTimeoutByChannel.getOrDefault(channel, idleTimeout);
   }
 
-  /** Kept on top of the 2x skew window: clock steps between instances and Valkey expiry jitter. */
+  /** Kept on top of the 2x skew window: clock steps between instances and Redis expiry jitter. */
   public static final Duration NONCE_TTL_MARGIN = Duration.ofSeconds(30);
 
   /**

@@ -12,15 +12,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
-/** The device API fails closed: Valkey not answering is 503 MW-SYS-012, never a pass. */
+/** The device API fails closed: Redis not answering is 503 MW-SYS-012, never a pass. */
 class DeviceSessionStoreTest {
 
   @Test
-  void valkeyDownIs503AndRetryable() {
-    StringRedisTemplate valkey = mock(StringRedisTemplate.class);
-    when(valkey.opsForValue()).thenThrow(new RedisConnectionFailureException("down"));
-    when(valkey.expire(any(String.class), any(Duration.class))).thenThrow(new RedisConnectionFailureException("down"));
-    DeviceSessionStore store = new DeviceSessionStore(valkey);
+  void redisDownIs503AndRetryable() {
+    StringRedisTemplate redis = mock(StringRedisTemplate.class);
+    when(redis.opsForValue()).thenThrow(new RedisConnectionFailureException("down"));
+    when(redis.expire(any(String.class), any(Duration.class))).thenThrow(new RedisConnectionFailureException("down"));
+    DeviceSessionStore store = new DeviceSessionStore(redis);
 
     for (Runnable call :
         new Runnable[] {

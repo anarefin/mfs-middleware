@@ -30,12 +30,12 @@
 # identities and settings. The Keycloak realm files reference their credentials as ${VAR}
 # placeholders, which Keycloak resolves from its environment on import.
 #
-# Zones (18.1): dmz = internet-facing edge, app = services + Kafka + Valkey, data = PostgreSQL,
+# Zones (18.1): dmz = internet-facing edge, app = services + Kafka + Redis, data = PostgreSQL,
 # ops = Keycloak, Vault, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
 # amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8095), the
-# two consoles (3000, 3001) and the platform (postgres 5432, valkey 6379, kafka 9094, keycloak 8180,
+# two consoles (3000, 3001) and the platform (postgres 5432, redis 6379, kafka 9094, keycloak 8180,
 # vault 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
 # (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
 # service; the console login still needs https://localhost on 443. etcd and the APISIX Admin API
@@ -72,7 +72,7 @@
 #   CRYPTO_XMX (112m)           heap (-Xms = -Xmx) of mw-crypto: no Kafka consumers, a pool of 3
 #   AUTH_MEM_LIMIT (320M)       mw-auth              not measured yet (ticket 67: sized like mw-crypto, which
 #                                                    peaks at 275 with the same heap; ticket 68 adds a Lettuce
-#                                                    client for Valkey; re-measure at the gate)
+#                                                    client for Redis; re-measure at the gate)
 #   AUTH_XMX (112m)             heap (-Xms = -Xmx) of mw-auth: one Kafka consumer group, a pool of 3
 #   APP_XMX (160m)              heap (-Xms = -Xmx) of every mw-* service (x-jvm-env)
 #   KAFKA_MEM (576M)            kafka                469  (KAFKA_HEAP (256m) fixed heap; 1 partition per topic, MW_KAFKA_PARTITIONS)
@@ -83,7 +83,7 @@
 #   VAULT_MEM (128M)            vault                 95
 #   SOFTHSM_MEM (48M)           softhsm               new (ticket 61): socat + one p11-kit remote per client
 #   ETCD_MEM (64M)              etcd                  34
-#   VALKEY_MEM (64M)            valkey                 8
+#   REDIS_MEM_LIMIT (64M)       redis                 8  (measured before the ticket 90 image swap)
 #   ADMIN_UI_MEM (64M)          mw-admin-ui           46  (Node.js standalone server; 160 -> 64 in ticket 62
 #                                                    to free memory for mw-crypto: peak x 1.3, rounded up)
 #   long-running total with the defaults: 8176 of the 8192 guard (ticket 67: -320 APP_MEM_LIMIT, +320
@@ -184,7 +184,7 @@ networks:
 volumes:
   kafka-data:
   postgres-data:
-  valkey-data:
+  redis-data:
   vault-data:
   etcd-data:
   apisix-tls:
@@ -344,22 +344,22 @@ services:
         limits: { cpus: "1", memory: "${POSTGRES_MEM:-320M}" }
     logging: *logging
 
-  valkey:
-    image: valkey/valkey:8.1.11-alpine@sha256:2602ace2be6569bc2bbb06f873776516ab9089821525be34f4305c67eb9db02a
+  redis:
+    image: redis:8.10.3-alpine@sha256:7958cfbb9d152f87dadfbc89f1b0b15938f0b81ff8982feb327476f4911935c3
     restart: unless-stopped
     networks: [app]
     ports:
-      - "127.0.0.1:${MW_PORT_VALKEY:-6379}:6379"
+      - "127.0.0.1:${MW_PORT_REDIS:-6379}:6379"
     environment:
-      # --requirepass and valkey-cli (REDISCLI_AUTH) share the generated password
-      REDISCLI_AUTH: ${VALKEY_PASSWORD:?cp dev.env.defaults .env}
-    command: ["sh", "-c", "exec valkey-server --appendonly yes --requirepass \"$$REDISCLI_AUTH\""]
+      # --requirepass and redis-cli (REDISCLI_AUTH) share the generated password
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?cp dev.env.defaults .env}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDISCLI_AUTH\""]
     volumes:
-      - valkey-data:/data
+      - redis-data:/data
     read_only: true
     tmpfs: [/tmp]
     healthcheck:
-      test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -367,7 +367,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "0.5", memory: "${VALKEY_MEM:-64M}" }
+        limits: { cpus: "0.5", memory: "${REDIS_MEM_LIMIT:-64M}" }
     logging: *logging
 
   keycloak:
@@ -518,8 +518,8 @@ services:
     environment:
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?cp dev.env.defaults .env}
       ETCD_APISIX_PASSWORD: ${ETCD_APISIX_PASSWORD:?cp dev.env.defaults .env}
-      # limit-count counters in Valkey (8.3); routes reference it as $env://VALKEY_PASSWORD
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?cp dev.env.defaults .env}
+      # limit-count counters in Redis (8.3); routes reference it as $env://REDIS_PASSWORD
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?cp dev.env.defaults .env}
       MW_OPS_SUBNET: ${MW_OPS_SUBNET:-172.31.250.0/24}
     ports:
       - target: 9443
@@ -697,7 +697,7 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?cp dev.env.defaults .env}
       OUT_ROOT: /out
       # deploy/.env values synced into the services' secrets on every run (services.sh sync_env)
-      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?cp dev.env.defaults .env}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?cp dev.env.defaults .env}
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?cp dev.env.defaults .env}
       BILLAGG_WS_PASSWORD: ${BILLAGG_WS_PASSWORD:?cp dev.env.defaults .env}
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
@@ -827,7 +827,7 @@ services:
   # projection of the core's WalletStateChanged events (core.wallet.event.v1), with the MSISDN hashed
   # and encrypted through mw-crypto (mTLS + realm services client mw-auth). Ports: 8080 public
   # /auth/v1/** (published as 8095; behind APISIX route auth-v1 since ticket 68: device binding, OTP,
-  # sessions, with Valkey sessions and nonces), 8443 internal /internal/v1/** with
+  # sessions, with Redis sessions and nonces), 8443 internal /internal/v1/** with
   # mTLS (D24: client certificate of pki_int + service JWT; not published), 8081 actuator (plain, not
   # published).
   mw-auth:
@@ -849,8 +849,8 @@ services:
         -Xms${AUTH_XMX:-112m} -Xmx${AUTH_XMX:-112m} -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -Xss512k
         -XX:MaxDirectMemorySize=64m
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
-      # Valkey for device sessions and the nonce cache (ticket 68, 18.7); its password comes from Vault.
-      VALKEY_HOST: ${VALKEY_HOST:-valkey}
+      # Redis for device sessions and the nonce cache (ticket 68, 18.7); its password comes from Vault.
+      REDIS_HOST: ${REDIS_HOST:-redis}
       # DEV ONLY: POST /internal/v1/seed/pins, the seeder's first app PINs (ticket 69); dev.env.defaults
       # switches it on, the default is off.
       MW_AUTH_SEED_API_ENABLED: ${MW_AUTH_SEED_API_ENABLED:-false}
@@ -926,8 +926,8 @@ services:
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
-      # Valkey for the idempotency lock (7.3 rule 4); its password comes from Vault.
-      VALKEY_HOST: ${VALKEY_HOST:-valkey}
+      # Redis for the idempotency lock (7.3 rule 4); its password comes from Vault.
+      REDIS_HOST: ${REDIS_HOST:-redis}
       # Dev only (A3): org ORG002 of realm portals collects for biller DESCO and merchant
       # 01911000001 (the core mock's merchant01), so the SP query shows those payments as PAYEE.
       # The main config has no org payees (JSON, as env var names would lower-case the org ids).
@@ -999,8 +999,8 @@ services:
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
-      # Valkey for device sessions and the nonce cache (9.1, 18.6); its password comes from Vault.
-      VALKEY_HOST: ${VALKEY_HOST:-valkey}
+      # Redis for device sessions and the nonce cache (9.1, 18.6); its password comes from Vault.
+      REDIS_HOST: ${REDIS_HOST:-redis}
       # The app tokens' signing keys: mw-auth's JWK Set on its public port (ticket 69, D21; RS256).
       MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://mw-auth:8080/auth/v1/.well-known/jwks.json}
       # Synchronous wait for a terminal status before 202 PROCESSING (7.5).
@@ -1059,8 +1059,8 @@ services:
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
-      # Valkey holds the USSD sessions (spec 9.2); its password comes from Vault.
-      VALKEY_HOST: ${VALKEY_HOST:-valkey}
+      # Redis holds the USSD sessions (spec 9.2); its password comes from Vault.
+      REDIS_HOST: ${REDIS_HOST:-redis}
       # Final status awaited this long before the menu ends with "being processed" (9.2).
       MW_USSD_SYNC_BUDGET: ${MW_USSD_SYNC_BUDGET:-8s}
       # GP USSD over SMPP (WP19): binds to the USSD gateway simulator's SMPP port in dev.

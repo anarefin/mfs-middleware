@@ -32,7 +32,7 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  * is checked on the cached bytes (the ones a device signature covers; APISIX validates no body, M3
  * gate decision A6) before the service runs; failures are 400 MW-VAL-001. No bearer token is needed
  * (ticket 69: the wallet is named by its MSISDN, a stale bearer is ignored). The services are mocks
- * here; {@code DeviceBindingIT} and {@code LoginIT} run them against PostgreSQL and Valkey.
+ * here; {@code DeviceBindingIT} and {@code LoginIT} run them against PostgreSQL and Redis.
  */
 @WebMvcTest({DeviceController.class, LoginController.class})
 @Import({SecurityConfig.class, PublicConnectorConfig.class, DeviceBindingConfig.class})

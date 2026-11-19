@@ -22,7 +22,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   `its_session_info` (0x1383: session number; sequence bits 7..1; end-of-session bit 0) with the
   end bit = ABORT (subscriber release). Screens go out as op 2 USSR request, the last as 17 PSSR
   response with the end bit, on the bind that received the session (`SmppUssdTransport` keeps the
-  route in memory). Session id `smpp-<number>-<sha256(msisdn) 16 hex>` (no MSISDN in Valkey keys).
+  route in memory). Session id `smpp-<number>-<sha256(msisdn) 16 hex>` (no MSISDN in Redis keys).
   Each step runs on a virtual thread, never on jSMPP's PDU threads. Text GSM-7 unpacked or UCS-2
   (`util/UssdText`). Dev: gp binds 2 to `mw-simulators:2776`; robi, bl, teletalk
   endpoints config-ready. `mw.ussd.smpp.enabled=false` binds nothing (tests). SMPP password key
@@ -109,7 +109,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   read-only exception; read timeout 5 s, Resilience4j circuit breaker `billpay`, no retry).
   ACTION `mapping` values are input names or literals `=VALUE`; `MenuValidator` checks each flow's
   required fields (`TxnRequestMapper.REQUIRED_FIELDS`) and each lookup's arguments.
-- Sessions: Valkey `ussd:{mno}:{sessionId}` (`repository/ValkeySessionStore`, JSON
+- Sessions: Redis `ussd:{mno}:{sessionId}` (`repository/RedisSessionStore`, JSON
   `dto/UssdSession`: node, path, inputs, language, menu version, pending pages), TTL = MNO session
   timeout + `session-grace` (30 s); a CONTINUE from another MSISDN is treated as expired. The PIN
   never reaches the session: it is encrypted on receipt (`util/PinCipher`, RSA-OAEP SHA-256 /
@@ -177,7 +177,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   `UssdEngine.BALANCE_UNAVAILABLE_TEXT`), never `processing` (no SMS follows a balance check); WRONG_PIN, LOCKED
   and FAILED as for the other flows.
 - Dev provisioning (`provision_mw_ussd` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role `ussd_rw`,
-  schema `ussd`, `secret/mw-ussd` (DB password; Valkey password from `VALKEY_PASSWORD`;
+  schema `ussd`, `secret/mw-ussd` (DB password; Redis password from `REDIS_PASSWORD`;
   `mw.ussd.auth.client-secret` from `KC_MW_USSD_SECRET`), AppRole `mw-ussd`, PKI role `mw-ussd`. Keycloak
   realm `services` client `mw-ussd` (audience `mw-auth`): a running stack needs `deploy/reset.sh` to import it.
   Compose waits for a healthy mw-auth.
@@ -259,7 +259,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 
 | Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew :mw-ussd:test` | every test in one JVM: unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`), the Testcontainers `*IT` classes (PostgreSQL, Kafka, Valkey) and the `@Conformance` suite (outbox, inbox, HTTP, purge); one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-ussd:test` | every test in one JVM: unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`), the Testcontainers `*IT` classes (PostgreSQL, Kafka, Redis) and the `@Conformance` suite (outbox, inbox, HTTP, purge); one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
 | `./gradlew :mw-ussd:build` | `test`, then the boot jar `build/libs/mw-ussd.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-ussd:bootJar && docker build -t mw-ussd:dev services/mw-ussd` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |

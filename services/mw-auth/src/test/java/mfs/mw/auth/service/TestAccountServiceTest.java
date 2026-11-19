@@ -44,7 +44,7 @@ import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
-/** The dev-only account test API's logic (repositories, mw-crypto and Valkey are mocks). */
+/** The dev-only account test API's logic (repositories, mw-crypto and Redis are mocks). */
 class TestAccountServiceTest {
 
   static final String WALLET = "01711000001";

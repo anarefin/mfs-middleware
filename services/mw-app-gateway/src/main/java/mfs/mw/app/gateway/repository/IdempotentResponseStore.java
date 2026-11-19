@@ -6,7 +6,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * The first 200 response per idempotency scope in Valkey/Redis (FRS PLT-011, ticket 99): key
+ * The first 200 response per idempotency scope in Redis (FRS PLT-011, ticket 99): key
  * {@code idemresp:<sha256(channel, wallet, key)>}, value {@code <request hash hex>\n<response
  * JSON>}, set once ({@code SET NX EX}, so the first final response wins). Callers treat any
  * failure as "nothing stored": the orchestrator then answers the repeat as before.

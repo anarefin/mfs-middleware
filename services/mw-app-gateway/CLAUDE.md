@@ -37,10 +37,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   + `@DeviceGate`, `service/DeviceVerifier`, `service/RequestSignatures`, `repository/DeviceGateStore`,
   `client/AuthClient`): after the JWT, every `/app/**` handler needs `X-Device-Id` of a device bound to the token's
   wallet (`401 MW-AUTH-003`): its wallet and public key come from mw-auth `GET /internal/v1/devices/{deviceId}`
-  and are cached in Valkey `devkey:{deviceId}` for `device-key-ttl` (5 min). `POST /app/v1/transactions`
+  and are cached in Redis `devkey:{deviceId}` for `device-key-ttl` (5 min). `POST /app/v1/transactions`
   and `POST /app/v1/balance` (`@DeviceGate(SIGNED)`) also needs `X-Timestamp` (epoch ms, strictly less than `clock-skew` 5 min either way,
   `MW-AUTH-005`), `X-Signature` (ECDSA P-256 SHA-256, DER or P1363, over `METHOD\nPATH\nhex(sha256(body))\n
-  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`) and `X-Nonce` (once per device: Valkey `nonce:{deviceId}:{nonce}` SET
+  TIMESTAMP\nNONCE\nDEVICE-ID`; `MW-AUTH-004`) and `X-Nonce` (once per device: Redis `nonce:{deviceId}:{nonce}` SET
   NX, TTL 2x skew + 30 s; the same key mw-auth uses, so a nonce is used once across both; `MW-AUTH-006`). The body
   hashed is the received body (`filter/CachedBodyFilter`, at most 64 KiB read with `readNBytes(limit+1)`, a larger
   one `413 MW-VAL-BODY_TOO_LARGE` as at the edge): exactly the bytes the schema check and the controller parse; no
@@ -49,7 +49,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - **Session check decision (ticket 68, kept in ticket 69):** every app request asks mw-auth `GET
   /internal/v1/sessions/{walletId}/{deviceId}` (which extends the sliding idle timeout; 404 -> `401 MW-AUTH-007`),
   not the token's `sid` claim: a logout, a lock or a new binding at mw-auth must end app access at once, which a 5
-  min token cannot. A confirmation is cached in Valkey `sesschk:{walletId}:{deviceId}` for `session-cache-ttl`
+  min token cannot. A confirmation is cached in Redis `sesschk:{walletId}:{deviceId}` for `session-cache-ttl`
   (10 s; 0 = ask every time), so a burst asks once and an ended session passes here for at most 10 s.
 - Stale device keys (security review of ticket 68, fixed in ticket 69; `service/DeviceVerifier`): the session
   answer carries the fingerprint (hex SHA-256 of the SPKI DER) of the device's current key; the confirmation
@@ -64,11 +64,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `mw-app-gateway`) and a Keycloak realm `services` client-credentials JWT of client `mw-app-gateway` (audience
   mapper `aud-mw-auth`; secret `mw.app-gateway.auth.client-secret` in `secret/mw-app-gateway`, synced from
   `KC_MW_APP_GATEWAY_SECRET`; on mw-auth's `mw.internal-auth.allowed-clients`). Timeout 2 s, Resilience4j breaker
-  `mw-auth` (count based, 4xx ignored). A 404 is an answer; mw-auth or Valkey unreachable, a 5xx, a timeout, an
-  open breaker or any other refusal is `503 MW-SYS-012` (fail closed; Valkey and mw-auth are not in the health
-  groups). Valkey password `spring.data.redis.password` synced into `secret/mw-app-gateway`. Tests not about it
+  `mw-auth` (count based, 4xx ignored). A 404 is an answer; mw-auth or Redis unreachable, a 5xx, a timeout, an
+  open breaker or any other refusal is `503 MW-SYS-012` (fail closed; Redis and mw-auth are not in the health
+  groups). Redis password `spring.data.redis.password` synced into `secret/mw-app-gateway`. Tests not about it
   run with `device-binding.enabled=false` (test `config/application.yml`); `security/DeviceBindingIT` runs the gate
-  on real Valkey with `AuthClient` stubbed, `client/AuthClientIT` the client against a WireMock mTLS server (ticket 72
+  on real Redis with `AuthClient` stubbed, `client/AuthClientIT` the client against a WireMock mTLS server (ticket 72
   adds the authorisation: body, refusals passed through and never retried, the token refresh on MW-AUTH-001, fail
   closed; and the transport key on the public port). `SyncReplyIT` and `KafkaUnavailableIT` stub `AuthClient`
   (`@MockitoBean`) with a fixed assertion.
@@ -182,13 +182,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   STORED txnId.
 - Stored response (ticket 99, FRS PLT-011; `service/IdempotentReplay`, `repository/IdempotentResponseStore`,
   `config/IdempotentReplayProperties` `mw.app-gateway.idempotent-replay.{enabled, ttl 72h}`): the first 200
-  answer under a key is kept in Valkey `idemresp:<sha256(channel, wallet, key)>` (`SET NX EX`, value request
+  answer under a key is kept in Redis `idemresp:<sha256(channel, wallet, key)>` (`SET NX EX`, value request
   hash + the view's JSON); a repeat with the same content (type, parties, amount, partner, attributes; not
   the PIN ciphertext, locale or `confirmDuplicate`) gets that body again byte for byte before mw-auth or
   the orchestrator is asked, even after a reversal; other content `409 MW-IDEM-001`. 202 / FAILED /
-  REJECTED answers are not stored (the orchestrator answers them). Valkey trouble: logged
+  REJECTED answers are not stored (the orchestrator answers them). Redis trouble: logged
   `txn.idempotent.store_unavailable`, the orchestrator answers. Off in the test config;
-  `service/IdempotentReplayIT` (Kafka + Valkey). The body field `confirmDuplicate` (app.v1 1.7.0) is the user's
+  `service/IdempotentReplayIT` (Kafka + Redis). The body field `confirmDuplicate` (app.v1 1.7.0) is the user's
   yes to `400 MW-VAL-024` (orchestrator business duplicate) and is forwarded on `mw.txn.request.v1`.
 - Status view (`GET`): table `app_transaction` (own schema `app_gateway`), the latest status of
   every app-channel transaction, kept by `messaging/StatusProjectionListener` (shared group
@@ -229,7 +229,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `client/OrchestratorQueryClientIT` (WireMock, no Docker), `ApiContractsTest`.
 - Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password; `spring.data.redis.password`
-  synced from `VALKEY_PASSWORD`; `mw.app-gateway.auth.client-secret` from `KC_MW_APP_GATEWAY_SECRET`), AppRole, PKI
+  synced from `REDIS_PASSWORD`; `mw.app-gateway.auth.client-secret` from `KC_MW_APP_GATEWAY_SECRET`), AppRole, PKI
   role `mw-app-gateway`. Keycloak realm `services` client `mw-app-gateway` (audiences `mw-auth` and, ADR D25,
   `mw-orchestrator`): a running stack
   needs `deploy/reset.sh` to import it. Compose waits for a healthy mw-auth.
@@ -301,7 +301,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 | Command (from the repo root) | What it does |
 | --- | --- |
-| `./gradlew :mw-app-gateway:test` | every test in one JVM: unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`), the Testcontainers `*IT` classes (PostgreSQL, Kafka, Valkey) and the `@Conformance` suite (outbox, inbox, HTTP, purge); one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
+| `./gradlew :mw-app-gateway:test` | every test in one JVM: unit, slice and contract tests (`contracts/ProducedContractsTest`, `ConsumedContractsTest`, `ApiContractsTest`), the Testcontainers `*IT` classes (PostgreSQL, Kafka, Redis) and the `@Conformance` suite (outbox, inbox, HTTP, purge); one PostgreSQL and one Kafka per test JVM, a fresh database per Spring context; the `*IT` and conformance classes are skipped without Docker. One class: `--tests '<class>'` |
 | `./gradlew :mw-app-gateway:build` | `test`, then the boot jar `build/libs/mw-app-gateway.jar` (fixed name, the one the Dockerfile copies) |
 | `./gradlew :mw-app-gateway:bootJar && docker build -t mw-app-gateway:dev services/mw-app-gateway` | image, as spec 4.3 rule 1 |
 | `./gradlew clean build` | the full gate: every module, plus the repo checks (`:checkIsolation`, `:checkFieldInjection`, `:contractsLint`, `:composeCheck`, `:scriptTests`); unchanged modules come from the build cache |

@@ -234,21 +234,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   a status record for the STORED txnId with the current status and `attributes.requestTxnId` =
   txnId of the repeated request (so a channel waiting on its own txnId can match it); same key
   + other hash: REJECTED status under the new request's txnId with `MW-IDEM-001`, no transaction
-  row. Valkey 60 s double-tap lock (7.3 rule 4, ticket 50, `service/IdempotencyGate` +
-  `client/ValkeyIdempotencyLock`, `config/ValkeyConfig`): before the claim, `SET NX PX 60000` on
-  `mw:orchestrator:idem:<sha256(channel, initiator id, key)>` (no MSISDN in Valkey) with value
+  row. Redis 60 s double-tap lock (7.3 rule 4, ticket 50, `service/IdempotencyGate` +
+  `client/RedisIdempotencyLock`, `config/RedisConfig`): before the claim, `SET NX PX 60000` on
+  `mw:orchestrator:idem:<sha256(channel, initiator id, key)>` (no MSISDN in Redis) with value
   `<txnId> <request hash hex>`. Held by another txnId: same hash -> duplicate answer of the holder
   without a claim attempt (its current status, or RECEIVED + `attributes.duplicate` while the
   holder's row is not committed yet, `StatusMapper.toInFlightDuplicateStatus`), other hash ->
-  `MW-IDEM-001`. Held by the same txnId (a redelivered record), an unreadable value, or Valkey
+  `MW-IDEM-001`. Held by the same txnId (a redelivered record), an unreadable value, or Redis
   unreachable/slow (200 ms timeouts, commands rejected while disconnected) -> on to the claim;
-  the primary key stays the final guarantee. Valkey trouble never blocks or fails a request:
+  the primary key stays the final guarantee. Redis trouble never blocks or fails a request:
   WARN `txn.idempotency.lock_unavailable` + counter `mw.txn.idempotency.lock.unavailable`;
-  Valkey is not in the health groups. The lock is never released early. REVERSAL requests take
+  Redis is not in the health groups. The lock is never released early. REVERSAL requests take
   no lock (the original's row lock serialises them). Settings `mw.orchestrator.idempotency-lock.{enabled,ttl}`
   (`MW_IDEMPOTENCY_LOCK_ENABLED`; off in the test config, `IdempotencyLockIntakeIT` plugs in an
-  in-memory lock), `spring.data.redis.*` (`VALKEY_HOST`; password `spring.data.redis.password` in
-  `secret/mw-orchestrator`, synced by the init from `VALKEY_PASSWORD`).
+  in-memory lock), `spring.data.redis.*` (`REDIS_HOST`; password `spring.data.redis.password` in
+  `secret/mw-orchestrator`, synced by the init from `REDIS_PASSWORD`).
   Deviations from 7.3 rule 2 (S7, recorded, not restructured): the final response is not stored,
   a repeat is answered from the live transaction row (current status of the stored txnId), so the
   never-written `idempotency.response` column was dropped (V7); `txn.idempotency` is not
@@ -259,12 +259,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `mw.orchestrator.duplicate-guard.{enabled, window (60 s, MW_DUPLICATE_WINDOW; 0 = off), prompt-channels,
   exempt-channels (SYSTEM)}`): before the idempotency lock and the claim, `SET NX EX window` on
   `mw:orchestrator:dup:<sha256(initiator id, txnType, debit party, credit party, amount, currency)>` with
-  value `sha256(channel, initiator id, key)` in the same Valkey/Redis as the lock (through `IdempotencyLock`,
+  value `sha256(channel, initiator id, key)` in the same Redis as the lock (through `IdempotencyLock`,
   so it is off with it). Held by another key: an app/USSD channel (`prompt-channels`) gets REJECTED
   `MW-VAL-024` (Bangla text, not retryable), an API client (checkout, portal, partner) `MW-VAL-025`; nothing
   recorded, the key not consumed, no core call. Held by the same key: idempotency answers (7.3). A request
   with `confirmDuplicate: true` (contract field, not in the request hash) from a prompt channel passes; an
-  API client cannot confirm. BALANCE, REVERSAL and exempt channels are never checked; Valkey trouble lets the
+  API client cannot confirm. BALANCE, REVERSAL and exempt channels are never checked; Redis trouble lets the
   request through (WARN `txn.duplicate.guard_unavailable`, counter `mw.txn.duplicate.guard.unavailable`).
   The dev stack runs with the window at 0 (`deploy/dev.env.defaults`): the test API `POST
   /test/v1/duplicate-guard {windowSeconds}` sets it in memory for API folder 36. Tests `DuplicateGuardTest`,

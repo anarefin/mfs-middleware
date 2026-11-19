@@ -36,7 +36,7 @@ import mfs.mw.auth.exception.MwException;
  *
  * with ECDSA SHA-256; the signature is base64, ASN.1 DER or the 64-byte P1363 {@code r||s}. The
  * timestamp must be strictly less than {@code clockSkew} away from the verifier's clock; the nonce is checked for reuse
- * by the caller (the cache in Valkey), after the signature verified.
+ * by the caller (the cache in Redis), after the signature verified.
  */
 public class RequestSignatures {
 

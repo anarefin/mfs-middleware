@@ -9,8 +9,8 @@ import org.springframework.stereotype.Repository;
 /**
  * Merchant request nonces (ticket 99, FRS PLT-008), table {@code checkout.merchant_nonce} (V8): rows
  * older than the window are deleted first, then the nonce is inserted {@code on conflict do
- * nothing}; inserted = first use. PostgreSQL rather than Valkey/Redis: this service uses no
- * Valkey/Redis, and a nonce is no personal data.
+ * nothing}; inserted = first use. PostgreSQL rather than Redis: this service uses no
+ * Redis, and a nonce is no personal data.
  */
 @Repository
 public class MerchantNonceRepository {

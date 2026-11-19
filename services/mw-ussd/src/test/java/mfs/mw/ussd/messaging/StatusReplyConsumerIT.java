@@ -120,7 +120,7 @@ class StatusReplyConsumerIT {
   }
 
   /**
-   * A second instance of this service, on the same database, Kafka and Valkey; before its Kafka
+   * A second instance of this service, on the same database, Kafka and Redis; before its Kafka
    * containers start (lifecycle phase 0), it registers a waiter for {@code earlyTxn} into {@code
    * early}.
    */

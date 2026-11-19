@@ -32,8 +32,8 @@ import org.springframework.stereotype.Service;
  *       transaction (security review of ticket 70: a reject that wins the race opens nothing).
  * </ul>
  *
- * Each is audited. A wallet this service does not know is skipped (logged). The Valkey session is
- * closed on every delivery (idempotent), so a retry after a Valkey failure still closes it. A
+ * Each is audited. A wallet this service does not know is skipped (logged). The Redis session is
+ * closed on every delivery (idempotent), so a retry after a Redis failure still closes it. A
  * malformed record is MW-VAL-002 (retry topics, then the DLQ).
  */
 @Service

@@ -83,7 +83,7 @@
     <ul>
       <li><strong>Docker Desktop</strong> (or Docker Engine with Compose v2.20+). Give it <strong>8 GB of RAM</strong>:
         the memory limits of the full profile add up to 8,176 of the 8,192 MiB budget (15 JVMs, Kafka, PostgreSQL 18, Keycloak,
-        Vault, Valkey, APISIX, etcd, GreenMail, softhsm). Measured use is about 6 GB. 4 CPU cores or more.</li>
+        Vault, Redis, APISIX, etcd, GreenMail, softhsm). Measured use is about 6 GB. 4 CPU cores or more.</li>
       <li><strong>JDK 25</strong> on the host, to build the jars. You don't need to install Gradle: the repo ships <code>./gradlew</code>.</li>
       <li>For the test suites in step 11: <strong>Node.js 22+</strong> with <code>npx</code>, and <code>bash</code>, <code>curl</code>, <code>jq</code>.</li>
       <li>These host ports must be free: <code>443</code> (the edge), <code>8081</code>–<code>8095</code>,
@@ -129,7 +129,7 @@ node --version  <span class="c"># 22 or newer</span></pre></div>
 
   <section id="s3">
     <h2><span class="num">3</span>Create the environment file</h2>
-    <p>The <code>.env</code> file holds the dev credentials (database, Valkey, Keycloak admin and test users, client secrets,
+    <p>The <code>.env</code> file holds the dev credentials (database, Redis, Keycloak admin and test users, client secrets,
       simulator HMAC secrets, the console session key, the softhsm token PINs, the dev partner SFTP login <code>bits</code> /
       <code>SFTP_DEV_PASSWORD</code>), the short test timers (including short PIN
       lockout levels) and the dev-only switches (mw-auth's seed API for the first app PINs, mw-crypto's payShield test API).
@@ -152,13 +152,13 @@ cp dev.env.defaults .env</pre></div>
   <section id="s4">
     <h2><span class="num">4</span>Start the full platform</h2>
     <div class="cmd"><pre>docker compose --profile core --profile seed --profile tester up -d --build --wait</pre></div>
-    <p>One command for everything: the platform (PostgreSQL, Kafka, Valkey, Keycloak, Vault, APISIX, SoftHSM, GreenMail),
+    <p>One command for everything: the platform (PostgreSQL, Kafka, Redis, Keycloak, Vault, APISIX, SoftHSM, GreenMail),
       every <code>mw-*</code> service, the admin console, the test console, the seed and the test-only gateway routes.
       Compose builds the images (<code>mfs-mw/&lt;service&gt;:local</code>, both consoles included), then starts everything in
       dependency order, and <code>--wait</code> returns only once every container is healthy and the seeder has exited 0
       (a non-zero exit: step 12). Each service waits until what it needs is healthy or has finished:</p>
     <div class="flow">
-      <span>postgres · valkey · vault · keycloak · softhsm</span><b>·</b><span>kafka</span><b>→</b><span>kafka-init (topics)</span><b>·</b>
+      <span>postgres · redis · vault · keycloak · softhsm</span><b>·</b><span>kafka</span><b>→</b><span>kafka-init (topics)</span><b>·</b>
       <span>etcd</span><b>→</b><span>etcd-init</span><b>→</b><span>apisix</span><b>→</b><span>apisix-init (routes)</span><b>·</b>
       <span>provision (schemas, Vault secrets, AppRoles, service certificate CA)</span><b>→</b><span>mw-crypto</span><b>→</b>
       <span>mw-auth</span><b>·</b><span>the other 13 services + admin console</span><b>→</b><span>mw-seeder (one-shot)</span><b>·</b>
@@ -272,7 +272,7 @@ docker compose logs -f mw-orchestrator</pre></div>
       <tr><td>443</td><td>apisix</td><td>the edge: TLS, JWT / HMAC / basic auth, quotas, error envelope, <code>/healthz</code>; the only port open beyond the laptop</td></tr>
       <tr><td>5432</td><td>postgres (18)</td><td>every service's schema; user <code>mw_admin</code>, password <code>POSTGRES_PASSWORD</code> from <code>.env</code></td></tr>
       <tr><td>9094</td><td>kafka (KRaft)</td><td>host listener <code>localhost:9094</code> (containers use <code>kafka:9092</code>); 1 partition per topic</td></tr>
-      <tr><td>6379</td><td>valkey</td><td>sessions and rate limits; password <code>VALKEY_PASSWORD</code></td></tr>
+      <tr><td>6379</td><td>redis</td><td>sessions and rate limits; password <code>REDIS_PASSWORD</code></td></tr>
       <tr><td>8180</td><td>keycloak</td><td>realms ops, portals (TOTP required), services, partners (<code>private_key_jwt</code>); the console login goes through 443</td></tr>
       <tr><td>8200</td><td>vault</td><td>service secrets and the dev CA (<code>pki_int</code>) that issues every service's mTLS certificate</td></tr>
       <tr><td>8025 / 3025</td><td>greenmail</td><td>test mailbox: API / SMTP</td></tr>
@@ -325,14 +325,14 @@ docker compose --profile core --profile seed --profile tester down
 <span class="c"># wipe ALL state together (every volume of every profile), then start again and re-seed</span>
 ./reset.sh
 docker compose --profile core --profile seed --profile tester up -d --build --wait</pre></div>
-    <div class="warn">Never reset a single store. PostgreSQL, Kafka, Valkey, Vault, Keycloak and the core-mock ledger describe
+    <div class="warn">Never reset a single store. PostgreSQL, Kafka, Redis, Vault, Keycloak and the core-mock ledger describe
       the same state, so they are always reset together with <code>./reset.sh</code>.</div>
   </section>
 
   <section id="s11">
     <h2><span class="num">11</span>Test the running platform</h2>
     <p>Run these from the repository root (<code>cd ..</code>) against the seeded stack from step 4.</p>
-    <div class="cmd"><pre>scripts/smoke.sh                  <span class="c"># containers, published ports, topics, Kafka, PostgreSQL, Valkey, Keycloak tokens, Vault, APISIX</span>
+    <div class="cmd"><pre>scripts/smoke.sh                  <span class="c"># containers, published ports, topics, Kafka, PostgreSQL, Redis, Keycloak tokens, Vault, APISIX</span>
 scripts/edge-test.sh              <span class="c"># APISIX policies: 401/400/413/429 envelopes, header stripping, correlation ID</span>
 scripts/api-test.sh "00, 01"      <span class="c"># Newman API suite: health and seed baseline, P2P</span>
 scripts/api-test.sh               <span class="c"># every folder but 90 Slow (about 10 minutes)</span>

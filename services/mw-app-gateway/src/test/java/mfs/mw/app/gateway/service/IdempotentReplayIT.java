@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.UUID;
 import mfs.mw.app.gateway.TestInfrastructure;
 import mfs.mw.app.gateway.TestTopics;
-import mfs.mw.app.gateway.ValkeyInfrastructure;
+import mfs.mw.app.gateway.RedisInfrastructure;
 import mfs.mw.app.gateway.client.AuthClient;
 import mfs.mw.app.gateway.dto.TxnAuthorisation;
 import mfs.mw.app.gateway.messaging.OrchestratorStub;
@@ -34,7 +34,7 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Stored original response (FRS PLT-011, ticket 99) over real Kafka and Valkey: once a key was
+ * Stored original response (FRS PLT-011, ticket 99) over real Kafka and Redis: once a key was
  * answered 200, a repeat with the same content gets that body again byte for byte (without asking
  * mw-auth or the orchestrator, whose answer could have changed since), and other content is 409.
  */
@@ -47,7 +47,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.kafka.retry.delays=1s,1s,1s"
     })
 @AutoConfigureMockMvc
-@Import({TestInfrastructure.class, ValkeyInfrastructure.class})
+@Import({TestInfrastructure.class, RedisInfrastructure.class})
 @DirtiesContext
 class IdempotentReplayIT {
 

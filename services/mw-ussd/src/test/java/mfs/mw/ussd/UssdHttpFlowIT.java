@@ -31,7 +31,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * P2P over the HTTP transport end to end inside the module (spec 9.2, ticket 26): real
- * PostgreSQL (menus), Valkey (sessions) and Kafka, with a stub playing mw-orchestrator. The menu
+ * PostgreSQL (menus), Redis (sessions) and Kafka, with a stub playing mw-orchestrator. The menu
  * comes from the seeder; every step is a POST to {@code /ussd/robi} as an MNO sends it.
  */
 @SpringBootTest(properties = {"mw.ussd.sync-budget=5s", "mw.ussd.instance-id=it-ussd-1", "mw.ussd.consumers.enabled=true"})
@@ -47,21 +47,21 @@ class UssdHttpFlowIT {
   static final JsonMapper JSON = JsonMapper.builder().build();
 
   private final MockMvcTester http;
-  private final StringRedisTemplate valkey;
+  private final StringRedisTemplate redis;
   /** Every session value seen while a step was in flight or after it. */
   private final List<String> seenSessions = new CopyOnWriteArrayList<>();
   private OrchestratorStub orchestrator;
 
   @Autowired
-  UssdHttpFlowIT(MockMvcTester http, StringRedisTemplate valkey) {
+  UssdHttpFlowIT(MockMvcTester http, StringRedisTemplate redis) {
     this.http = http;
-    this.valkey = valkey;
+    this.redis = redis;
   }
 
   @BeforeAll
   void startStub() {
     TestTopics.ensure("mw.txn.request.v1", "mw.txn.status.v1");
-    // the stub looks inside Valkey at the moment the request (with the PIN ciphertext) arrives
+    // the stub looks inside Redis at the moment the request (with the PIN ciphertext) arrives
     orchestrator = new OrchestratorStub(TestTopics.bootstrap(), r -> snapshotSessions());
   }
 
@@ -76,9 +76,9 @@ class UssdHttpFlowIT {
   }
 
   private void snapshotSessions() {
-    Set<String> keys = valkey.keys("ussd:*");
+    Set<String> keys = redis.keys("ussd:*");
     for (String k : keys) {
-      String v = valkey.opsForValue().get(k);
+      String v = redis.opsForValue().get(k);
       if (v != null) {
         seenSessions.add(v);
       }
@@ -161,7 +161,7 @@ class UssdHttpFlowIT {
     assertThat(asked.path("txn").path("payer").path("id").asString()).isEqualTo(req.path("debitParty").path("id").asString());
     assertThat(asked.path("txn").path("payee").path("id").asString()).isEqualTo(req.path("creditParty").path("id").asString());
     assertThat(done.path("message").asString()).endsWith(req.path("txnId").asString());
-    assertThat(valkey.hasKey("ussd:robi:" + session)).isFalse();
+    assertThat(redis.hasKey("ussd:robi:" + session)).isFalse();
   }
 
   @Test
@@ -177,12 +177,12 @@ class UssdHttpFlowIT {
   }
 
   @Test
-  void theValkeySessionNeverHoldsThePin() {
+  void theRedisSessionNeverHoldsThePin() {
     String session = "it-" + UUID.randomUUID();
     walkToPin(session, true, "10");
-    String atPinPrompt = valkey.opsForValue().get("ussd:robi:" + session);
+    String atPinPrompt = redis.opsForValue().get("ussd:robi:" + session);
     assertThat(atPinPrompt).contains("\"nodeId\":\"p2p.pin\"");
-    assertThat(valkey.getExpire("ussd:robi:" + session)).isBetween(140L, 150L);
+    assertThat(redis.getExpire("ussd:robi:" + session)).isBetween(140L, 150L);
 
     step(session, "CONTINUE", PIN);
 
@@ -210,7 +210,7 @@ class UssdHttpFlowIT {
       AuthStub.defaults();
     }
     assertThat(orchestrator.requests()).hasSize(published);
-    assertThat(valkey.hasKey("ussd:robi:" + session)).isFalse();
+    assertThat(redis.hasKey("ussd:robi:" + session)).isFalse();
   }
 
   @Test
@@ -281,7 +281,7 @@ class UssdHttpFlowIT {
       assertThat(asked.path("txn").path("payee")).isEqualTo(asked.path("txn").path("payer"));
       assertThat(asked.path("txn").path("idempotencyKey").asString()).isEqualTo(req.path("idempotencyKey").asString());
       keys.add(req.path("idempotencyKey").asString());
-      assertThat(valkey.hasKey("ussd:robi:" + session)).isFalse();
+      assertThat(redis.hasKey("ussd:robi:" + session)).isFalse();
     }
     assertThat(keys).doesNotHaveDuplicates();
   }

@@ -24,7 +24,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import mfs.mw.auth.TestInfrastructure;
-import mfs.mw.auth.ValkeyInfrastructure;
+import mfs.mw.auth.RedisInfrastructure;
 import mfs.mw.auth.client.CryptoClient;
 import mfs.mw.auth.dto.CryptoJwsSigned;
 import mfs.mw.auth.dto.NotificationRequest;
@@ -47,7 +47,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 /**
  * Device binding, the binding OTP, signed requests, the nonce cache and sessions against real
- * PostgreSQL ({@code auth.device}, {@code auth.device_otp}) and Valkey (spec 9.1, 18.6, 18.7; the
+ * PostgreSQL ({@code auth.device}, {@code auth.device_otp}) and Redis (spec 9.1, 18.6, 18.7; the
  * cases of mw-app-gateway's ticket 29 / review A5 suite, moved with the code in ticket 68), plus the
  * internal lookups the gateway's verifier asks for ({@code /internal/v1/devices/{id}}, {@code
  * /internal/v1/sessions/{walletId}/{deviceId}}, with a services token of mw-app-gateway). The Kafka
@@ -59,16 +59,16 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 @SpringBootTest(
     properties = {
       "mw.outbox.relay.enabled=false",
-      // the parallel tests load the shared Testcontainers Valkey; the shipped 500 ms is for production
+      // the parallel tests load the shared Testcontainers Redis; the shipped 500 ms is for production
       "spring.data.redis.timeout=3s"
     })
 @AutoConfigureMockMvc
-@Import({TestInfrastructure.class, ValkeyInfrastructure.class})
+@Import({TestInfrastructure.class, RedisInfrastructure.class})
 class DeviceBindingIT {
 
   private final MockMvcTester mvc;
   private final JdbcTemplate jdbc;
-  private final StringRedisTemplate valkey;
+  private final StringRedisTemplate redis;
 
   @MockitoBean EventPublisher publisher;
   @MockitoBean CryptoClient crypto;
@@ -76,10 +76,10 @@ class DeviceBindingIT {
   private String msisdn;
 
   @Autowired
-  DeviceBindingIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate valkey) {
+  DeviceBindingIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate redis) {
     this.mvc = mvc;
     this.jdbc = jdbc;
-    this.valkey = valkey;
+    this.redis = redis;
   }
 
   /** A wallet of its own per test (in the projection), so tests never see each other's devices. */
@@ -245,7 +245,7 @@ class DeviceBindingIT {
     assertThat(live).bodyJson().extractingPath("$.deviceKeyFingerprint").isEqualTo(
         mfs.mw.auth.service.DeviceBindingService.fingerprint(d.publicKey()));
     assertThat(live).bodyJson().extractingPath("$.boundAt").isNotNull();
-    assertThat(valkey.getExpire("sess:" + msisdn + ":" + d.id())).isPositive();
+    assertThat(redis.getExpire("sess:" + msisdn + ":" + d.id())).isPositive();
   }
 
   @Test
@@ -364,7 +364,7 @@ class DeviceBindingIT {
     MvcTestResult key = device(d);
     assertThat(key).bodyJson().extractingPath("$.walletId").isEqualTo(msisdn);
     assertCode(internal("/internal/v1/sessions/" + mine + "/" + d.id()), 404, "MW-AUTH-003");
-    assertThat(valkey.hasKey("sess:" + mine + ":" + d.id())).isFalse();
+    assertThat(redis.hasKey("sess:" + mine + ":" + d.id())).isFalse();
   }
 
   @Test
@@ -372,7 +372,7 @@ class DeviceBindingIT {
     Device d = Device.create();
     bind(d);
     openSession(d);
-    valkey.delete("sess:" + msisdn + ":" + d.id()); // what the idle timeout does
+    redis.delete("sess:" + msisdn + ":" + d.id()); // what the idle timeout does
     assertCode(session(d), 404, "MW-AUTH-007");
 
     MvcTestResult opened = openSession(d);

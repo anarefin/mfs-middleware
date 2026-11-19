@@ -25,7 +25,7 @@ import org.springframework.validation.annotation.Validated;
  * @param reversingTimeout how long REVERSING resends ReverseTransaction before MANUAL_REVIEW
  * @param reversalChannels the channels that may send a REVERSAL request (operations: SYSTEM)
  * @param bulkChannels the channels that may send a BULK_DISBURSE child (the org portal, ticket 34)
- * @param idempotencyLock the Valkey double-tap lock in front of the idempotency claim (7.3 rule 4)
+ * @param idempotencyLock the Redis double-tap lock in front of the idempotency claim (7.3 rule 4)
  * @param duplicateGuard the business-duplicate window (FRS PLT-013, ticket 99)
  */
 @Validated
@@ -49,7 +49,7 @@ public record OrchestratorProperties(
    * The business-duplicate window (FRS PLT-013): the same initiator, txnType, parties and amount
    * under another idempotency key within {@code window}.
    *
-   * @param enabled asks Valkey/Redis (off together with the lock when there is none: the lock
+   * @param enabled asks Redis (off together with the lock when there is none: the lock
    *     client answers {@code Off})
    * @param window how long a tuple counts as a possible duplicate
    * @param promptChannels channels that get the confirmable prompt {@code MW-VAL-024} and may resend
@@ -64,7 +64,7 @@ public record OrchestratorProperties(
       @NotNull @DefaultValue("SYSTEM") Set<String> exemptChannels) {}
 
   /**
-   * @param enabled asks Valkey (tests without Valkey switch it off; the primary key alone then)
+   * @param enabled asks Redis (tests without Redis switch it off; the primary key alone then)
    * @param ttl how long the lock absorbs double-taps
    */
   public record IdempotencyLock(

@@ -48,7 +48,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
   `service/PartnerCallbackService`, `mapper/PartnerInboundMapper`, own type `dto/PartnerInbound`):
   `POST /partner/{partnerId}/callback/**`, reached from outside only through the APISIX route of
   that partner (`deploy/apisix/routes/partner-billagg-callback.json`: ip allow-list, 16 KiB body
-  cap, 600/min per source address in Valkey; path and body forwarded unchanged). Steps: (0) the path's partner id must
+  cap, 600/min per source address in Redis; path and body forwarded unchanged). Steps: (0) the path's partner id must
   match `^[a-z0-9][a-z0-9-]{0,63}$` (`@Pattern` on the path variable; else 400 `MW-VAL-001`, detail
   `partnerId`), and `mapper/InboundCallMapper` builds the framework's `InboundCall` (T7); (1) the
   partner in the URL must have config of its own (no default-partner fallback) else 404; (2) the
@@ -463,7 +463,7 @@ line between the timestamp and the body hash (`partner/auth/HmacSha256AuthScheme
 an outbound request carries none and keeps the four-line string), and a timestamp within `max-skew-seconds`.
 After the signature verifies, `PartnerGateway.inbound` lets the nonce through once per partner for twice
 the skew plus 30 s (`partner/auth/CallbackNonces`, table `callback_nonce`, Flyway V7; PostgreSQL, the
-adapters have no Valkey/Redis); a reused nonce is 401 `MW-AUTH-001` like a bad signature. A partner's resend
+adapters have no Redis); a reused nonce is 401 `MW-AUTH-001` like a bad signature. A partner's resend
 takes a fresh nonce and is then deduplicated by reference as before (mw-simulators' `CallbackSigner` signs a
 fresh UUID per send). Identical in the three adapters (telco has no callback endpoint yet). Tests
 `AuthSchemesTest`, `controller/CallbackReplayIT`.

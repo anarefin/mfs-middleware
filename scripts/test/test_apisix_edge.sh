@@ -406,7 +406,7 @@ test_each_ussd_route_limits_each_msisdn_without_storing_it() {
     || fail "limit-count: $(jq -c '.plugins["limit-count"]' "$r")"
   fn="$(jq -r '.plugins["serverless-pre-function"] | select(.phase == "access") | .functions[0]' "$r")"
   printf '%s' "$fn" | grep -q 'ctx.var.mw_ussd_msisdn' || fail "no per-MSISDN key set"
-  printf '%s' "$fn" | grep -q 'resty.sha256' || fail "the MSISDN is not hashed before it becomes a Valkey key"
+  printf '%s' "$fn" | grep -q 'resty.sha256' || fail "the MSISDN is not hashed before it becomes a Redis key"
 }
 
 test_a_missing_ussd_allow_list_fails_the_apply() {
@@ -503,10 +503,10 @@ test_every_rate_limit_is_per_route_and_keyed_per_client() {
   done
 }
 
-test_app_route_limits_each_consumer_with_counters_in_valkey() {
+test_app_route_limits_each_consumer_with_counters_in_redis() {
   render || fail "dry run failed"
-  obj routes app-v1 | jq -e '.plugins["limit-count"] | .policy == "redis" and .redis_host == "valkey"
-    and .redis_password == "$env://VALKEY_PASSWORD" and .rejected_code == 429
+  obj routes app-v1 | jq -e '.plugins["limit-count"] | .policy == "redis" and .redis_host == "redis"
+    and .redis_password == "$env://REDIS_PASSWORD" and .rejected_code == 429
     and .key_type == "var" and .key == "mw_consumer" and .count > 0 and .time_window > 0' >/dev/null \
     || fail "limit-count: $(obj routes app-v1 | jq -c '.plugins["limit-count"]')"
   # the per-consumer key is the verified token's subject, set before limit-count (access, 1002)
@@ -515,7 +515,7 @@ test_app_route_limits_each_consumer_with_counters_in_valkey() {
     || fail "consumer key not set from the token"
 }
 
-# Ticket 50: limit-count stays fail-open (allow_degradation) when Valkey is down, and every
+# Ticket 50: limit-count stays fail-open (allow_degradation) when Redis is down, and every
 # request it let through unlimited is logged with one stable error line that smoke and alerts grep.
 test_rate_limited_routes_fail_open_and_log_a_stable_degradation_line() {
   render || fail "dry run failed"
@@ -673,10 +673,10 @@ test_the_error_log_skips_plugin_rejections_that_print_the_raw_request_line() {
     || fail "nginx_config.error_log_level must be error or stricter (warn logs plugin rejections with the raw URI)"
 }
 
-test_apisix_reads_the_valkey_password_from_its_environment() {
-  grep -A3 -E '^ *envs:' "$REPO_DIR/deploy/apisix/config.yaml" | grep -q 'VALKEY_PASSWORD' || fail "config.yaml does not pass VALKEY_PASSWORD to nginx"
-  grep -A12 -E '^  apisix:' "$REPO_DIR/deploy/docker-compose.yml" | grep -qE 'VALKEY_PASSWORD: [$][{]VALKEY_PASSWORD:[?]' \
-    || fail "apisix service does not get VALKEY_PASSWORD from the generated env"
+test_apisix_reads_the_redis_password_from_its_environment() {
+  grep -A3 -E '^ *envs:' "$REPO_DIR/deploy/apisix/config.yaml" | grep -q 'REDIS_PASSWORD' || fail "config.yaml does not pass REDIS_PASSWORD to nginx"
+  grep -A12 -E '^  apisix:' "$REPO_DIR/deploy/docker-compose.yml" | grep -qE 'REDIS_PASSWORD: [$][{]REDIS_PASSWORD:[?]' \
+    || fail "apisix service does not get REDIS_PASSWORD from the generated env"
   if grep -rn 'redis_password' "$REPO_DIR/deploy/apisix" | grep -v '\$env://'; then fail "literal redis password"; fi
   return 0
 }

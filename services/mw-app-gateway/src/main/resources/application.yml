@@ -41,13 +41,13 @@ spring:
       maximum-pool-size: 10
   flyway:
     schemas: app_gateway
-  # Valkey (Lettuce) for the device gate: the device key and session caches and the signed-request nonces (spec 9.1, 18.6,
+  # Redis (Lettuce) for the device gate: the device key and session caches and the signed-request nonces (spec 9.1, 18.6,
   # tickets 29, 68). The password comes from Vault (secret/mw-app-gateway, spring.data.redis.password),
   # never written here. Short timeouts; the device gate fails closed (503 MW-SYS-012).
   data:
     redis:
-      host: ${VALKEY_HOST:valkey}
-      port: ${VALKEY_PORT:6379}
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
       timeout: 500ms
       connect-timeout: 500ms
       repositories:
@@ -211,7 +211,7 @@ management:
       enabled: true
     readinessstate:
       enabled: true
-    # Valkey only serves the device gate, which answers 503 MW-SYS-012 itself while it is down.
+    # Redis only serves the device gate, which answers 503 MW-SYS-012 itself while it is down.
     redis:
       enabled: false
   tracing:
@@ -309,7 +309,7 @@ mw:
     # a live mw-auth session; a submit is signed (ECDSA P-256) and its nonce used once. Binding, the
     # OTP and sessions are mw-auth's (/auth/v1/*). See config/DeviceBindingProperties.
     # Stored first 200 response per idempotency key (FRS PLT-011, ticket 99; service/IdempotentReplay):
-    # Valkey/Redis idemresp:<sha256(channel, wallet, key)>, kept as long as the orchestrator's key.
+    # Redis idemresp:<sha256(channel, wallet, key)>, kept as long as the orchestrator's key.
     idempotent-replay:
       enabled: true
       ttl: 72h

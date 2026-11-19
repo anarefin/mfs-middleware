@@ -33,7 +33,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * The USSD menu engine (spec 9.2): walks a menu tree (MENU, INPUT, CONFIRM, ACTION, DYNAMIC, END)
- * one step per request, whatever the transport. Session state lives in Valkey with TTL = MNO
+ * one step per request, whatever the transport. Session state lives in Redis with TTL = MNO
  * timeout + grace; a PIN input is encrypted under the mw-crypto transport key on receipt ({@link
  * PinTransport}) and handed straight to the following ACTION, so it never reaches the session.
  * mw-auth checks it before anything is published (ticket 72): a wrong PIN asks for the PIN again

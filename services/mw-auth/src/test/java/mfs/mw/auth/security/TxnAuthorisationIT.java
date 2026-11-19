@@ -33,7 +33,7 @@ import java.util.Map;
 import java.util.UUID;
 import mfs.mw.auth.MutableClock;
 import mfs.mw.auth.TestInfrastructure;
-import mfs.mw.auth.ValkeyInfrastructure;
+import mfs.mw.auth.RedisInfrastructure;
 import mfs.mw.auth.client.CryptoClient;
 import mfs.mw.auth.dto.CryptoJwsSigned;
 import mfs.mw.auth.dto.CryptoPinVerified;
@@ -59,7 +59,7 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 /**
  * The transaction authorisation assertion (spec 18.7, D22; ticket 71) against real PostgreSQL and
- * Valkey: {@code POST /internal/v1/txn-authorisations} with a services token of a channel. mw-crypto
+ * Redis: {@code POST /internal/v1/txn-authorisations} with a services token of a channel. mw-crypto
  * is a mock that behaves like it: a PIN "ciphertext" is the base64 of the PIN, its HMAC {@code
  * hmac(<walletId>:<pin>)}, and ASSERTION_SIGN signs ES256 with an in-test P-256 key whose public JWK
  * is the set mw-auth serves at {@code /auth/v1/.well-known/assertion-jwks.json}, so each assertion is
@@ -67,7 +67,7 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
  */
 @SpringBootTest(properties = {"mw.outbox.relay.enabled=false", "spring.data.redis.timeout=3s"})
 @AutoConfigureMockMvc
-@Import({TestInfrastructure.class, ValkeyInfrastructure.class})
+@Import({TestInfrastructure.class, RedisInfrastructure.class})
 class TxnAuthorisationIT {
 
   static final String PIN = "13579";
