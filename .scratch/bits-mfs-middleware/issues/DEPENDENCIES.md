@@ -62,7 +62,7 @@
 # --- Run 89-138 (planned 2026-11-19): FRS gap closure, spec/FRS-Upay-Middleware.md (plan we-have-to-implement-harmonic-puzzle). Mocks only. Decisions: Redis, HashiCorp Vault, mw-auth keeps app tokens, repo names + FRS map, core wallet over REST (+assertion, events on Kafka), one service per party (12 GB budget), unified /mock-control. Row order = run order. Tickets written only; no implementation started (user).
 # --- M7 Foundation (FRS phase 1)
 89-frs-decisions-adr-spec                   —                 done     11m      16 files +812 −26      48641b1c
-90-redis-swap                               89                open
+90-redis-swap                               89                done     40m      132 files +575 −531    3fb5ffca
 91-vault-swap                               89                done     80m      350 files +1206 −3347  8e5cfb4f
 92-contracts-canonical-additions            89                done     50m      103 files +1336 −133   a27c953a
 93-core-mock-rest-api                       92                done     31m      43 files +2354 −36     cbfb273a
