@@ -6,15 +6,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Collection;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import tools.jackson.databind.JsonNode;
@@ -56,8 +61,35 @@ public final class CoreStub implements AutoCloseable {
     p.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
     p.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
     producer = new KafkaProducer<>(p);
-    consumer.subscribe(List.of("core.wallet.command.v1", "core.payment.command.v1"));
+    CountDownLatch assigned = new CountDownLatch(1);
+    consumer.subscribe(
+        List.of("core.wallet.command.v1", "core.payment.command.v1"),
+        new ConsumerRebalanceListener() {
+          @Override
+          public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+            if (!partitions.isEmpty()) {
+              assigned.countDown();
+            }
+          }
+
+          @Override
+          public void onPartitionsRevoked(Collection<TopicPartition> partitions) {}
+        });
     thread = Thread.ofPlatform().daemon().name("core-stub").start(this::loop);
+    // The group join takes a few seconds on a busy host: answer from the first test on, so a
+    // short deadline under test never runs out while the stub is still joining.
+    awaitAssignment(assigned);
+  }
+
+  private static void awaitAssignment(CountDownLatch assigned) {
+    try {
+      if (!assigned.await(30, TimeUnit.SECONDS)) {
+        throw new IllegalStateException("stub consumer got no partitions within 30 s");
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    }
   }
 
   /** Every command seen so far. */

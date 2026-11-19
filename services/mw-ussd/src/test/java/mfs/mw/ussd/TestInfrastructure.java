@@ -45,6 +45,8 @@ public class TestInfrastructure {
   static final class JvmScopedKafka extends KafkaContainer {
     JvmScopedKafka(String image) {
       super(image);
+      // the native broker can segfault at boot (GraalVM, getpwuid on arm64): retry on a fresh container
+      withStartupAttempts(3);
     }
 
     @Override

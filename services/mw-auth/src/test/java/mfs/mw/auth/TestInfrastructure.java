@@ -47,7 +47,9 @@ public class TestInfrastructure {
       new PostgreSQLContainer("postgres:18.6-alpine3.24")
           .withCommand("postgres", "-c", "fsync=off", "-c", "max_connections=600");
 
-  static final KafkaContainer KAFKA = new KafkaContainer("apache/kafka-native:4.3.2");
+  /** The native broker can segfault at boot (GraalVM, getpwuid on arm64): retried on a fresh container. */
+  static final KafkaContainer KAFKA =
+      new KafkaContainer("apache/kafka-native:4.3.2").withStartupAttempts(3);
 
   /** Starts both containers once (in parallel); later calls are no-ops. */
   static synchronized void start() {
