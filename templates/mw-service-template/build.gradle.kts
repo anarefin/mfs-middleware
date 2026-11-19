@@ -43,6 +43,10 @@ dependencies {
     implementation("io.micrometer:micrometer-tracing-bridge-brave")
     implementation("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.cloud:spring-cloud-starter-vault-config")
+    // Generated OpenAPI 3.1 document and Swagger UI (ticket 101, PLT-050..052): on only in the dev and
+    // test profiles (application.yml); contracts/ stays the source of truth, contracts/ContractDriftTest
+    // compares the two. Same version in every module.
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
 
     // Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27): KafkaTemplate (idempotent producer),
     // @KafkaListener with per-record manual ack, non-blocking retry topics, DLQ. In Boot 4 the

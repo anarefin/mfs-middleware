@@ -76,6 +76,33 @@ network: the lint registers every file first, and the service template's test lo
 Within a version only additive changes are allowed; consumers ignore unknown fields, so schemas
 leave `additionalProperties` open.
 
+## APIs: generated documents and versioning (ticket 101, FRS PLT-050..052)
+
+`api/<owner>/<name>.v<N>.openapi.yaml` (OpenAPI 3.1) is the source of truth for every REST API
+(contract first). The code does not replace it: each REST module also generates its document with
+springdoc (`/v3/api-docs`, OpenAPI 3.1, and Swagger UI at `/swagger-ui/index.html`), and its
+`contracts/ContractDriftTest` (copied from the service template) compares that document with the
+module's `produces.apis` files: an operation on one side only, a different set of required query or
+header parameters, or a response code the contract does not declare fails the module's `test`. The
+generated document and the UI exist only in Spring profiles `dev` and `test`
+(`springdoc.api-docs.enabled` / `springdoc.swagger-ui.enabled` are false otherwise, so a production
+build exposes neither; `ApiDocsProductionTest`). The dev stack runs every service in profile `dev`
+and, with the test-only routes (`MW_E2E_ROUTES=1`), APISIX lists them all at `https://localhost/docs/`
+(`deploy/apisix/routes-test/test-docs*.json`); SOAP services list their `?wsdl` there (none yet: the
+app SOAP facade of ticket 108 is the first).
+
+Versioning policy (PLT-051):
+
+- Every REST path carries its major version in the URI (`/app/v1/...`, `/internal/v1/...`); the
+  contract file carries the same number (`app.v1.openapi.yaml`).
+- Within a version only additive, backwards-compatible changes: a new optional field, parameter or
+  operation, a new response code the client may already treat generically. Clients ignore unknown fields.
+- A breaking change (a removed or renamed field, path or operation, a field made required, a changed
+  type, meaning or error code) is a new version: a new file `<name>.v<N+1>.openapi.yaml` and new
+  `/v<N+1>/` paths, owned and listed in `OWNERS.yml` and `contracts.yml` like the old one.
+- The old version stays served, unchanged, for at least one release after the new one ships, and is
+  marked `deprecated: true` on its operations; it is removed in a later release with its file.
+
 ## Adding a message type to a multi-type topic
 
 A contract change is its own WP, made by the topic's owner (ground rule "Contract first").

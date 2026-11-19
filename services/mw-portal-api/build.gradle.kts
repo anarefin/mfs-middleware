@@ -36,6 +36,10 @@ dependencies {
     testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
 
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    // Generated OpenAPI 3.1 document and Swagger UI (ticket 101, PLT-050..052): on only in the dev and
+    // test profiles (application.yml); contracts/ stays the source of truth, contracts/ContractDriftTest
+    // compares the two. Same version in every module.
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-micrometer-tracing-brave")

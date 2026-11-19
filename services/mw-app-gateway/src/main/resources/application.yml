@@ -333,3 +333,30 @@ mw:
       jwk-set-uri: ${MW_APP_JWK_SET_URI:http://mw-auth:8080/auth/v1/.well-known/jwks.json}
       issuer: ${MW_AUTH_TOKEN_ISSUER:mw-auth}
       audience: mw-app
+
+# Generated API document and Swagger UI (ticket 101, PLT-050..052): off by default, so a production
+# build exposes neither /v3/api-docs nor /swagger-ui; on in the dev and test profiles below (the dev
+# stack sets SPRING_PROFILES_ACTIVE=dev). contracts/ stays the source of truth (contracts/README.md);
+# contracts/ContractDriftTest proves the code still matches it.
+springdoc:
+  api-docs:
+    enabled: false
+    version: openapi_3_1
+  swagger-ui:
+    enabled: false
+  # Only what the handler methods declare; the global error advice is documented by the contract.
+  override-with-generic-response: false
+---
+spring:
+  config:
+    activate:
+      on-profile: "dev | test"
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    # Relative, so the UI works on the service port and behind the dev-only APISIX /docs/<service>/
+    # prefix alike (deploy/apisix/routes-test/test-docs-*.json) without forwarded-prefix headers.
+    config-url: ../v3/api-docs/swagger-config
+    url: ../v3/api-docs

@@ -1,0 +1,4 @@
+{
+  "name": "38 API docs (generated OpenAPI and Swagger UI, dev stack only)",
+  "description": "Ticket 101, PLT-050..052: the test-only APISIX page /docs/ lists every service's Swagger UI and OpenAPI document; each one is the springdoc document of profile dev (OpenAPI 3.1), reached under /docs/<service>/. contracts/ stays the source of truth (ContractDriftTest per module)."
+}

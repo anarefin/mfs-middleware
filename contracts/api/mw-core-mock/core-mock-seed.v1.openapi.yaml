@@ -92,8 +92,87 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "405":
           description: Seed API switched off (the GET on the same path stays; MW-VAL-004)
+  /core-mock/v1/faults:
+    description: >-
+      Fault injection of the test double (ticket 14; documented here by ticket 101, whose drift test
+      found it in code only): a fault applies to the core commands whose type and txnId match (absent
+      = any), at most `times` times when set. Ticket 103 moves it onto the unified mock-control API.
+    parameters:
+      - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+    post:
+      operationId: addFault
+      summary: Inject a fault
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mode]
+              properties:
+                mode: { $ref: "#/components/schemas/FaultMode" }
+                commandType: { type: string, description: Core command type it applies to; absent = all }
+                txnId: { type: string, description: Transaction it applies to; absent = all }
+                delayMs: { type: integer, minimum: 1, description: "DELAY: how long the reply is held back" }
+                reasonCode: { type: string, description: "REJECT: the core reason of the failure event" }
+                times: { type: integer, minimum: 1, description: How many commands it applies to; absent = until reset }
+      responses:
+        "201":
+          description: The fault, with its id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Fault" }
+        "400":
+          description: Bad body (MW-VAL-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    get:
+      operationId: listFaults
+      summary: The faults in force
+      responses:
+        "200":
+          description: The faults
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Fault" } }
+    delete:
+      operationId: resetFaults
+      summary: Remove every fault (the reset call)
+      responses:
+        "204":
+          description: No fault left
+  /core-mock/v1/faults/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+    delete:
+      operationId: removeFault
+      summary: Remove one fault
+      responses:
+        "204":
+          description: Removed
+        "400":
+          description: Unknown fault (MW-VAL-003)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
 components:
   schemas:
+    FaultMode:
+      type: string
+      enum: [DELAY, DROP_REPLY, DUPLICATE_REPLY, REJECT]
+    Fault:
+      type: object
+      required: [id, mode]
+      properties:
+        id: { type: string }
+        mode: { $ref: "#/components/schemas/FaultMode" }
+        commandType: { type: string }
+        txnId: { type: string }
+        delayMs: { type: integer }
+        reasonCode: { type: string }
+        remaining: { type: integer, description: How many more commands it applies to; absent = until reset }
     Wallet:
       type: object
       required: [walletId, type, status, balanceMinor, heldMinor, availableMinor]

@@ -1,0 +1,41 @@
+{
+  "name": "test-docs-mw-admin-api",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): mw-admin-api OpenAPI document and Swagger UI (profile dev, ticket 101) under /docs/mw-admin-api/, GET only, nothing else of the service; private networks, no sign-in",
+  "uris": [
+    "/docs/mw-admin-api/v3/api-docs",
+    "/docs/mw-admin-api/v3/api-docs/*",
+    "/docs/mw-admin-api/swagger-ui/*"
+  ],
+  "methods": [
+    "GET"
+  ],
+  "plugins": {
+    "ip-restriction": {
+      "whitelist": [
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "::1/128"
+      ]
+    },
+    "proxy-rewrite": {
+      "regex_uri": [
+        "^/docs/mw-admin-api(/.*)$",
+        "$1"
+      ]
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": {
+      "connect": 5,
+      "send": 10,
+      "read": 30
+    },
+    "nodes": {
+      "mw-admin-api:8080": 1
+    }
+  }
+}

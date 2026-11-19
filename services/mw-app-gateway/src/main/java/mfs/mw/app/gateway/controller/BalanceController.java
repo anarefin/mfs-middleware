@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 
 /**
  * {@code POST /app/v1/balance} (ADR D26; contract {@code api/mw-app-gateway/app.v1.openapi.yaml}):
@@ -32,6 +34,10 @@ public class BalanceController {
 
   @PostMapping("/app/v1/balance")
   @DeviceGate(DeviceGate.Level.SIGNED)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Timestamp", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Nonce", required = true)
+  @Parameter(in = ParameterIn.HEADER, name = "X-Signature", required = true)
   public BalanceView check(
       @AuthenticationPrincipal Jwt jwt,
       @RequestHeader(TransactionController.IDEMPOTENCY_KEY)

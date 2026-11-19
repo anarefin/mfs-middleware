@@ -1,0 +1,28 @@
+{
+  "name": "test-docs",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): /docs/ lists every service's Swagger UI and OpenAPI document (test-docs-<service> routes) and the WSDLs (none yet; ticket 108); a fixed page (docs/index.html), from private networks only (ticket 101, PLT-052)",
+  "uris": [
+    "/docs",
+    "/docs/"
+  ],
+  "methods": [
+    "GET"
+  ],
+  "plugins": {
+    "ip-restriction": {
+      "whitelist": [
+        "127.0.0.0/8",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "::1/128"
+      ]
+    },
+    "mocking": {
+      "content_type": "text/html; charset=utf-8",
+      "response_status": 200,
+      "response_example": "@lua:docs/index.html",
+      "with_mock_header": false
+    }
+  }
+}

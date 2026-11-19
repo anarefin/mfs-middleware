@@ -146,6 +146,9 @@ x-infra-deps: &infra-deps
 # schema in the shared PostgreSQL (16.2).
 x-jvm-env: &jvm-env
   MW_ENV: ${MW_ENV:-local}
+  # The dev stack runs every service in profile dev: among others it turns on the generated
+  # /v3/api-docs and Swagger UI (ticket 101), which are off without it (production).
+  SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
   VAULT_ENABLED: ${VAULT_ENABLED:-true}
   VAULT_ADDR: ${VAULT_ADDR:-http://openbao:8200}
   DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/mw}

@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 
 /**
  * Org portal bulk disbursement API v1 (spec 9.4; contract {@code
@@ -40,6 +41,7 @@ public class BulkBatchController {
 
   /** 201 with the stored batch (PENDING_APPROVAL); 400 MW-VAL-030/031 when the file is refused. */
   @PostMapping(consumes = CSV)
+  @ApiResponse(responseCode = "201", description = "Batch uploaded")
   public ResponseEntity<BatchView> upload(@AuthenticationPrincipal Jwt jwt, @RequestBody byte[] file) {
     BatchView view = service.upload(users.resolve(jwt), file);
     return ResponseEntity.created(URI.create("/portal/org/v1/bulk/batches/" + view.batchId())).body(view);

@@ -12,6 +12,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 
 /**
  * The checkout OTP (ticket 72; contract {@code auth-internal.v1.openapi.yaml}) on the internal mTLS
@@ -27,11 +28,13 @@ public class InternalOtpController {
   }
 
   @PostMapping("/internal/v1/otp")
+  @ApiResponse(responseCode = "202", description = "OTP accepted for delivery")
   public ResponseEntity<DeviceOtpSent> send(@AuthenticationPrincipal Jwt caller, @Valid @RequestBody InternalOtpRequest body) {
     return ResponseEntity.status(HttpStatus.ACCEPTED).body(otps.send(azp(caller), body));
   }
 
   @PostMapping("/internal/v1/otp/verifications")
+  @ApiResponse(responseCode = "204", description = "OTP verified")
   public ResponseEntity<Void> verify(
       @AuthenticationPrincipal Jwt caller, @Valid @RequestBody InternalOtpVerification body) {
     otps.verify(azp(caller), body);

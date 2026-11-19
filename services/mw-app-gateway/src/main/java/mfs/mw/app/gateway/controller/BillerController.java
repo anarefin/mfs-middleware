@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
 
 /** Billers and bill fetch (spec 9.1; contract {@code api/mw-app-gateway/app.v1.openapi.yaml}). */
 @RestController
@@ -31,12 +33,14 @@ public class BillerController {
   }
 
   @GetMapping
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
   public BillerList billers(@AuthenticationPrincipal Jwt jwt) {
     users.resolve(jwt);
     return new BillerList(service.billers());
   }
 
   @PostMapping("/{code}/fetch-bill")
+  @Parameter(in = ParameterIn.HEADER, name = "X-Device-Id", required = true)
   public Bill fetch(
       @AuthenticationPrincipal Jwt jwt,
       @PathVariable @Pattern(regexp = TransactionRequest.BILLER_CODE) String code,

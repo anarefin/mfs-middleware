@@ -320,6 +320,11 @@ over.
 mw-crypto's dev-only payShield test API `/test/v1/payshield/*` on its plain port 8082, never the mTLS
 internal API: a PIN key's LMK blob for the simulator's PIN block helper, PVV generate and verify as the
 test-only client `mw-e2e-crypto`, ticket 76; mw-crypto serves it only with `MW_CRYPTO_TEST_API_ENABLED=true`)
+and `test-docs` (`GET /docs/`: a fixed page, `docs/index.html` inlined by the `@lua:` include into the
+`mocking` plugin, listing every service's Swagger UI and OpenAPI document and the WSDLs, none until ticket 108)
+with one `test-docs-<service>` route per service (`GET /docs/<service>/v3/api-docs[/*]` and
+`/docs/<service>/swagger-ui/*` -> the service's `/v3/api-docs`, `/swagger-ui/*`, nothing else of it; served
+only in Spring profile `dev`, which the dev stack sets; no key-auth, private networks only: ticket 101)
 and, for the test console (`ui/mw-test-console`, ADR D17), `test-auth` (`GET`/`POST /test/auth/v1/accounts/*` ->
 mw-auth's dev-only account test API `/test/v1/accounts/*` on its plain public port 8080, contract
 `contracts/api/mw-auth/auth-test.v1.openapi.yaml`: a wallet's PIN, lockout, OTP and device state, `unlock`,
