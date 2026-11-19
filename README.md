@@ -13,6 +13,12 @@ one Gradle build, the admin console, and one hand-written compose file.
 - Design: [spec/bits-mfs-middleware-spec.md](spec/bits-mfs-middleware-spec.md) (the "MVP scope"
   section wins over sections 1–25 for the MVP).
 - Why it is built this way: [docs/adr/README.md](docs/adr/README.md), one record per decision.
+- The Upay FRS build (tickets 89–138, ADRs D29–D33): [docs/frs-traceability.md](docs/frs-traceability.md)
+  maps every FRS requirement id and name to the repo name, its status and the ticket. Decided there and
+  not built yet: Redis replaces Valkey (D29, ticket 90), HashiCorp Vault replaces OpenBao (D30, ticket 91),
+  the core over REST (D31), new services `mw-adapter-card`, `-remit`, `-atm`, `-interop`, `-merchant`,
+  `mw-compliance`, `mw-recon`, `mw-data-export` (D32) and one mock control API (D33). Until each ticket
+  lands, this README describes the stack as it runs (Valkey, OpenBao).
 - Running the MVP host: [docs/runbook.md](docs/runbook.md).
 - Milestone demos M0–M6: [docs/demo.md](docs/demo.md).
 - Testing every feature by hand from a browser (app flows, USSD, bank, failures, checkout, bulk,
@@ -223,7 +229,7 @@ Gradle multi-module build; every `services/*` folder with a `build.gradle.kts` i
 | `./gradlew :checkIsolation` | module independence (`scripts/check-isolation.sh`): no cross-module dependency, settings file, `includeBuild`, `allprojects`/`subprojects`, convention plugin, version catalog or path outside the module except `contracts/`; one plugin version across all modules |
 | `./gradlew :checkFieldInjection` | no `@Autowired` field anywhere, tests included (`scripts/check-field-injection.sh`) |
 | `./gradlew :contractsLint` | lint `contracts/` and every module's `contracts.yml`, the derived body schemas, and the API suite's acceptance traceability (`scripts/contracts-lint.sh`) |
-| `./gradlew :composeCheck` | fail when a long-running service of `deploy/docker-compose.yml` has no memory limit or the limits pass 8 GB (`scripts/compose-check.sh`) |
+| `./gradlew :composeCheck` | fail when a long-running service of `deploy/docker-compose.yml` has no memory limit or the limits pass 12 GB (`scripts/compose-check.sh`; ADR D32) |
 | `./gradlew :scriptTests` | the shell tests of `scripts/` and of the repo layout and docs, this README's commands included (`scripts/test/run.sh`; files run side by side, `SCRIPT_TESTS_JOBS=3` by default) |
 
 Each module has one `test` task: unit, slice, contract, Camel route, Testcontainers `*IT` and
@@ -319,7 +325,8 @@ Every script prints its usage in its header comment. They read the running stack
 Every long-running memory limit in `deploy/docker-compose.yml` is an optional knob: set it in the
 shell or in `deploy/.env`, e.g. `APP_MEM_LIMIT=512M APP_XMX=192m docker compose --profile core up -d`.
 `./gradlew :composeCheck` sums the values it sees (shell, then `deploy/.env`, then the defaults)
-against the 8 GB laptop budget (`MW_RAM_BUDGET_MIB`, default 8192). The full table, with measured
+against the stack budget (`MW_RAM_BUDGET_MIB`, default 12288: 12 GB for the full FRS stack, ADR D32;
+the stack as built today stays within the old 8 GB laptop budget, and `--profile minimal` stays the laptop demo). The full table, with measured
 peaks, is the header of `deploy/docker-compose.yml`.
 
 | Knob (default) | Containers |
@@ -339,7 +346,7 @@ peaks, is the header of `deploy/docker-compose.yml`.
 | `SOFTHSM_MEM` (48M) | `softhsm` (profiles `minimal` and `core`) |
 | `ADMIN_UI_MEM` (64M) | `mw-admin-ui` (was 160M; trimmed in ticket 62 to free memory for `mw-crypto`: measured peak 46 MiB x 1.3, rounded up to 32 MiB) |
 
-With the defaults the long-running limits add up to 8176 of the 8192 MiB guard (ticket 62 added
+With the defaults the long-running limits add up to 8176 MiB, inside the old 8192 MiB laptop guard (ticket 62 added
 `mw-crypto` at 320M and trimmed `ADMIN_UI_MEM` 160M -> 64M; ticket 67 added `mw-auth` at 320M and
 trimmed `APP_MEM_LIMIT` 416M -> 384M on its ten services). Ticket 72 (channels on mw-auth's
 assertion, the core PIN scheme removed) adds no container and no limit: mw-ussd and mw-checkout gain

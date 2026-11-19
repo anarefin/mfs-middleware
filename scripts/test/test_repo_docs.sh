@@ -118,7 +118,7 @@ op_docs() { # the operator docs, repo-relative
   # globs expand under REPO_DIR: the runner calls the tests from a scratch directory
   for f in "$REPO_DIR"/README.md "$REPO_DIR"/deploy/RUNNING.html "$REPO_DIR"/docs/runbook.md "$REPO_DIR"/docs/demo.md \
            "$REPO_DIR"/docs/testing-guide.html "$REPO_DIR"/docs/tutorial/*.html "$REPO_DIR"/docs/concepts/*.html \
-           "$REPO_DIR"/docs/adr/*.md; do
+           "$REPO_DIR"/docs/adr/*.md "$REPO_DIR"/docs/frs-traceability.md; do
     [ -f "$f" ] && printf '%s\n' "${f#"$REPO_DIR"/}"
   done
   return 0
@@ -315,6 +315,22 @@ test_demo_script_has_a_section_per_milestone() {
   for m in $(grep -oE '^\| WP[0-9]+ \| M[0-9]' "$REPO_DIR/spec/bits-mfs-middleware-spec.md" | grep -oE 'M[0-9]$' | sort -u); do
     grep -qE "^## $m " "$d" || fail "docs/demo.md has no section for milestone $m"
   done
+}
+
+test_spec_records_the_frs_decisions() {
+  # Ticket 89 (FRS planning decisions, 2026-11-19): D29 Redis, D30 Vault, D31 core over REST,
+  # D32 one service per party, D33 unified mock control; each a spec row with its ADR.
+  local id
+  for id in D29 D30 D31 D32 D33; do
+    spec_has "^\| $id \| "
+    ls "$REPO_DIR/docs/adr/$id-"*.md >/dev/null 2>&1 || fail "no ADR for $id"
+  done
+  spec_has '^\| Cache / locks \| Redis '
+  spec_has '^\| Secrets / PKI \| HashiCorp Vault '
+  spec_has 'FRS scope'
+  [ -f "$REPO_DIR/docs/frs-traceability.md" ] || fail "no docs/frs-traceability.md"
+  grep -qF 'MW_RAM_BUDGET_MIB:-12288' "$REPO_DIR/scripts/compose-check.sh" \
+    || fail "scripts/compose-check.sh budget default is not 12288 MiB (D32)"
 }
 
 test_spec_names_the_next_version_the_admin_ui_runs() {

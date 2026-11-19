@@ -1,6 +1,7 @@
 # D9: Keycloak, OpenBao and Resilience4j
 
 Status: Accepted, 2026-11-03 (spec revision 1). OpenBao chosen over HashiCorp Vault for the MVP.
+Amended 2026-11-19 by D30: HashiCorp Vault replaces OpenBao (ticket 91).
 
 ## Context
 

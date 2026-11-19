@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Memory budget of the stack (scripts/compose-check.sh; ./gradlew :composeCheck, part of ./gradlew build): with
 # every service (--profile core) of deploy/docker-compose.yml, the memory limits of all
-# long-running services (no mw.oneshot=true label) add up to <= MW_RAM_BUDGET_MIB (default 8192: the laptop demo footprint),
+# long-running services (no mw.oneshot=true label) add up to <= MW_RAM_BUDGET_MIB (default 12288: the FRS stack, ADR D32),
 # and each of them has a limit. A limit may be a knob, `${APP_MEM_LIMIT:-416M}`: its value from the
 # shell, else from deploy/.env, else its default (as Compose resolves it), so overriding a knob is
 # checked too. Needs the docker compose CLI (no daemon) and node (>= 22).
 set -eu
 . "$(dirname "$0")/lib/common.sh"
 
-budget="${MW_RAM_BUDGET_MIB:-8192}"
+budget="${MW_RAM_BUDGET_MIB:-12288}"
 [ -f "$STACK_FILE" ] || { info "compose-check: no deploy/docker-compose.yml, nothing to check"; exit 0; }
 docker compose version >/dev/null 2>&1 || die "compose-check: the docker compose CLI is required"
 command -v node >/dev/null 2>&1 || die "compose-check: node (>= 22) is required"

@@ -8,6 +8,8 @@ This spec turns the Bits *Mobile Money Middleware RFP v0.1* into a build-ready d
 
 **Conventions.** MUST / SHOULD / MAY follow RFC 2119. Values marked **TBC** are assumptions to confirm (section 25). `mw-*` names modules and services.
 
+**Revision 7 (Nov 19, 2026).** FRS planning (`spec/FRS-Upay-Middleware.md`, the Upay mock-build FRS; ticket 89): decisions D29–D33 (Redis instead of Valkey, HashiCorp Vault instead of OpenBao, the core wallet over REST, one service per party family with a 12 GB stack budget, one mock control API). Sections changed: 0, the new "FRS scope" note, 3, 4.1, 6.3, 22.2. Each change is marked **Decision 2026-11-19**. Built by tickets 90–138; until then the code follows revision 6. Every FRS requirement id is traced in `docs/frs-traceability.md`.
+
 **Revision 6 (Nov 14, 2026).** Security group of the RFP service catalogue (`spec/new-middleware-services.md`): two new services, `mw-auth` (wallet login, devices, OTP, sessions, PIN custody, transaction authorisation assertion) and `mw-crypto` (the only HSM client). Adds decisions D20–D24 (PIN custody in the middleware, which supersedes M11; `mw-auth` as the wallet token issuer; the transaction authorisation assertion; the HSM gateway with PKCS#11 and payShield providers; mTLS phase 1). Sections changed: 0, 2, 4.1, 8.2, 9.1–9.3, 14.3, 16.2, 18.2–18.4, new 18.7 and 18.8, 22.2, 24, 25. Each change is marked **Decision 2026-11-14**. Built by tickets 60–76; until then the code still follows M11.
 
 **Revision 5 (Nov 6, 2026).** D6 and sections 3, 4 and 15.1 name Next.js 16.4.1, the version the admin console runs since the ticket 46 security pass. The decisions in both tables have one architecture decision record each in `docs/adr/` (WP30).
@@ -49,10 +51,19 @@ This spec turns the Bits *Mobile Money Middleware RFP v0.1* into a build-ready d
 | D26 | Balance inquiry | `BALANCE` is a transaction type that moves no money (amount 0, payer = payee = the customer's wallet), PIN-authorised like every transaction (D22); `mw-orchestrator` sends the core `BalanceInquiry` and passes the answer (`BalanceReported`: available balance, asOf) to the channel on `mw.txn.status.v1` `balance`, never storing it (rule 3.1); USSD main menu option 5, app `POST /app/v1/balance`; no SMS (2026-11-16, 5.2, 6.3, 9.1, 9.2) |
 | D27 | Kafka client | Spring Kafka (`spring-kafka`, Boot-managed) in every module: `@KafkaListener` consumers with record-level manual ack, `KafkaTemplate` producers (idempotent, `acks=all`), non-blocking retry topics per D2 (10 s / 1 min / 10 min, then DLQ) with the topic names unchanged (`<topic>.<group>.retry.<n>` / `<topic>.<group>.dlq`); outbox and inbox unchanged, the outbox relay a `@Scheduled` job; consumers put the trace and correlation id into the MDC (2026-11-18) |
 | D28 | Partner routes as config | One Camel YAML DSL route per partner (`from: direct:partner-<id>`, `PartnerCall` JSON in, `{outcome, partnerRef, code, message, reason}` out) built from a reviewed Kamelet library (`mw-auth-*`, `mw-http-call`, `mw-soap-call`, `mw-sftp-*`, `mw-classify`, `mw-audit`; raw `http`/`cxf`/`sftp` only inside them); guardrails: maker-checker, a component allowlist on the parsed model, a dry-run against mw-simulators with rollback, the host allowlist in the approved record; biller catalogue and secrets static; no automatic redelivery of PAY; explicit per-adapter `partner-aliases` instead of a silent default partner (unknown id → `MW-PTR-UNKNOWN`); adapters own SFTP settlement-file ingest and publish `mw.partner.recon.v1`, mw-recon only matches (12, 13; 2026-11-18) |
+| D29 | Cache / sessions / locks | Redis replaces Valkey (FRS 1.4, PLT-004): image `redis:8.10.3-alpine` (latest stable, AGPLv3, run unmodified as its own container; OWN-03 written approval requested), fallback `redis:7.2.17-alpine` (BSD-3) with no Redis 8-only commands used; one instance (D11); built by ticket 90 (2026-11-19) |
+| D30 | Secrets / PKI | HashiCorp Vault replaces OpenBao (FRS 1.4; amends D9): image `hashicorp/vault:2.2.2` (latest stable), BSL 1.1 accepted for internal use, OpenBao the drop-in fallback; same KV v2, PKI and key mount paths, so no client code changes; built by ticket 91 (2026-11-19) |
+| D31 | Core wallet over REST | Amends D5: `mw-orchestrator` calls the core over REST (FRS WAL-01, WAL-03..13) through a Resilience4j `client/`, idempotent by `txnId`; a timeout → `UNKNOWN` → WAL-13 inquiry; never on a Kafka listener thread; WAL-02 replaced by the `mw-auth` assertion in a header (D20, D22 kept); the core keeps publishing wallet-state, hold-expired and ledger events on Kafka; routing (FRS M07) is a module of `mw-orchestrator`; no schema registry (JSON Schema in Git, DAT-01 deviation); coverage reported, not gated (D19); tickets 93–95, 98 (2026-11-19) |
+| D32 | Service per party | New services `mw-adapter-card`, `mw-adapter-remit`, `mw-adapter-atm`, `mw-adapter-interop`, `mw-adapter-merchant` (Camel and the copied `partner/` engine, D28) and `mw-compliance`, `mw-recon`, `mw-data-export` (no Camel; sshj, `RestClient` in `client/`); `MW_RAM_BUDGET_MIB` default 12288 (`--profile minimal` stays the laptop demo); new error namespace `MW-CMP-*`; AML real-time pre-check fails open with an alert; ticket 88 superseded by 126/127 (2026-11-19) |
+| D33 | Mock control | One API on every mock (FRS 10.1): `POST /mock-control/{party}/scenarios`, `GET`/`DELETE /mock-control/{party}/journal`, `POST /mock-control/reset`; scoping, DOWN/MAINTENANCE/SLOW, SMPP and file faults; magic values stay the default triggers; `/sim/*` and `/core-mock/v1/faults` aliases for one release; engine copied into `mw-simulators` and `mw-core-mock`; absent from production profiles; tickets 102, 103 (2026-11-19) |
 
 ### Assumed sizing (TBC)
 
 The RFP leaves volumes blank, so the design sizes for: **1,500 TPS peak, 300 TPS average, 3x headroom (4,500 TPS tested)**, middleware overhead **p95 < 150 ms**. With no HA (D11) the deployment is one site with one instance of every component, so the targets become **99.5% availability** (planned maintenance excluded), **RPO ≤ 5 min** (continuous WAL archive) and **RTO ≤ 4 h** (rebuild and restore), all TBC. Section 19 holds the full NFR table.
+
+### FRS scope (Decision 2026-11-19)
+
+The Upay FRS (`spec/FRS-Upay-Middleware.md`) extends the build beyond the MVP below to every use case UC-01..UC-22, all 18 external parties as mocks, the mock core wallet over REST and a unified mock control plane (D29–D33, tickets 89–138, milestones M7–M13 following FRS 10.5). The repo keeps its own names (transaction types, states, channels, `MW-*` codes, UUIDv7 ids, amounts in poisha); `docs/frs-traceability.md` maps every FRS id and name to the repo name, the code or the ticket, and records each deviation with its reason. Where the FRS and this spec differ, this spec as amended by D29–D33 wins; the MVP section stays the description of what is built until the FRS tickets land.
 
 ## MVP scope (current build target)
 
@@ -350,7 +361,7 @@ Every runtime component is open source under a permissive licence, which satisfi
 | Gateway | Apache APISIX + etcd | 3.x | Apache 2.0 | North-south gateway, auth, rate limit |
 | Database | PostgreSQL | 18 | PostgreSQL | Middleware state, audit, config, recon |
 | Migrations | Flyway | 12 (Boot-managed) | Apache 2.0 | Versioned schema changes |
-| Cache / locks | Redis-compatible (Valkey) | 8.x | BSD-3 | USSD session, rate counters, short-lived idempotency cache |
+| Cache / locks | Redis (Valkey 8.x until ticket 90) | 8.10.3 (fallback 7.2.17) | AGPLv3 (7.2: BSD-3) | USSD session, rate counters, sessions, nonces, short-lived idempotency cache (**Decision 2026-11-19**, D29) |
 | Resilience | Resilience4j | 2.x | Apache 2.0 | Circuit breaker, bulkhead, retry, time limiter |
 | Scheduling | ShedLock + Spring scheduler | 7 | Apache 2.0 | Cluster-safe jobs (TSQ sweeps, file pulls) |
 | SOAP | Apache CXF (`camel-cxf-soap`) | 4.x | Apache 2.0 | SOAP partner calls in the adapters (`mw-soap-call` Kamelet), WS-Security |
@@ -360,11 +371,11 @@ Every runtime component is open source under a permissive licence, which satisfi
 | SWIFT MT | Prowide Core (WIFE) | latest | Apache 2.0 | MT940 / MT942 parsing |
 | IAM | Keycloak | 26.x | Apache 2.0 | OAuth2/OIDC for admin users and partners |
 | Config / secrets binding | Spring Cloud (Spring Cloud Vault) | 2025.1.4 | Apache 2.0 | Loads Vault/OpenBao secrets at start, renews leases |
-| Secrets / PKI | HashiCorp Vault or OpenBao | current | BUSL / MPL 2.0 | Secrets, dynamic DB creds, certificate issue (prefer OpenBao for OWN-03) |
+| Secrets / PKI | HashiCorp Vault (OpenBao until ticket 91) | 2.2.2 | BUSL 1.1 | Secrets, dynamic DB creds, certificate issue (**Decision 2026-11-19**, D30; OpenBao the drop-in fallback) |
 | Admin UI | Next.js + React + TypeScript | 16.4.1 | MIT | Admin console |
 | Testing | JUnit 6, Testcontainers, WireMock, Pact, Gatling | current | EPL/Apache/MIT | Unit, integration, contract, load |
 
-**Rules.** No GPL/AGPL component without written approval (OWN-03). The JDK's GPLv2 + Classpath Exception is standard and should be noted in the SBOM. Vault's BUSL licence is a commercial-risk flag; OpenBao is the drop-in fallback.
+**Rules.** No GPL/AGPL component without written approval (OWN-03). The JDK's GPLv2 + Classpath Exception is standard and should be noted in the SBOM. Vault's BUSL licence is a commercial-risk flag; OpenBao is the drop-in fallback. **Decision 2026-11-19**: Vault's BUSL 1.1 is accepted for internal use (D30); Redis 8 is AGPLv3 and needs the OWN-03 written approval, else the BSD-3 Redis 7.2.17 is used (D29).
 
 ## 4. Service decomposition and repository layout
 
@@ -382,17 +393,24 @@ The middleware is 16 runtime services (14, plus `mw-auth` and `mw-crypto` from r
 | `mw-portal-api` | App | Org and SP portal back end: bulk disbursement upload, SP operations | APISIX | Kafka, SFTP | PG `bulk` |
 | `mw-orchestrator` | App | Saga engine: transaction state machine, core commands, partner calls, reversal, TSQ | Kafka | Kafka | PG `txn` |
 | `mw-adapter-telco` | App | GP/Robi/Teletalk/Banglalink OCS top-up | Kafka | REST | PG `partner_ref` |
-| `mw-adapter-billpay` | App | Utility aggregator, SSLCommerz, eKpay, aggregators 3 and 4, merchant system (SOAP) | Kafka, inbound callbacks | REST, SOAP | PG |
-| `mw-adapter-bank` | App | 20 partner banks (C2W, AVL, card), UCB ATM (SOAP), UCB IMT, CyberSource | Kafka, callbacks | SOAP, REST, HTTPS | PG |
+| `mw-adapter-billpay` | App | Utility aggregator, SSLCommerz, eKpay, aggregators 3 and 4 (the merchant system moves to `mw-adapter-merchant`, D32) | Kafka, inbound callbacks | REST, SOAP | PG |
+| `mw-adapter-bank` | App | 20 partner banks (AVL, C2W, W2B); card, ATM and IMT move to their own adapters (D32) | Kafka, callbacks | SOAP, REST, HTTPS | PG |
+| `mw-adapter-card` | App | CyberSource: token / hosted page, authorise and capture, 3DS callback, refund (**Decision 2026-11-19**, D32) | Kafka, callbacks | HTTPS | PG |
+| `mw-adapter-remit` | App | UCB IMT: beneficiary lookup, inbound credit, status (D32) | IMT inbound, Kafka | HTTPS | PG |
+| `mw-adapter-atm` | App | UCB ATM gateway (SOAP, inbound): token verify and cash-out, cash-in, reversal (D32) | ATM gateway, Kafka | SOAP | PG |
+| `mw-adapter-merchant` | App | Merchant system (SOAP): payment notify, refund, merchant validation (D32) | Kafka | SOAP | PG |
 | `mw-adapter-interop` | App | NPSB and BanglaQR, ISO 20022 | Kafka, NPSB inbound | ISO 20022 over HTTPS/MQ (TBC) | PG |
 | `mw-compliance` | App | EC eKYC, AML file export and block/hold instruction intake | Kafka, SFTP | SOAP/REST, SFTP | PG `kyc_consent` |
 | `mw-notify` | App | SMS, email, push; templates, scheduling, DLRs | Kafka `mw.notify.*` | SMPP, SMTP, push server | PG `notify` |
 | `mw-recon` | App | MT940/942 and partner settlement ingest, matching, exception reports | SFTP, Kafka | PG, SFTP, Kafka | PG `recon` |
-| `mw-audit-dw` | Data | Audit writer (append-only), DW stream and SFTP batch export, retention | Kafka `mw.audit.*` | PG, Kafka, SFTP | PG `audit` |
+| `mw-audit-dw` | Data | Audit writer (append-only) and audit query (the DW export moves to `mw-data-export`, D32) | Kafka `mw.audit.*` | PG | PG `audit` |
+| `mw-data-export` | Data | DW event topics, daily SFTP batch with a control file, PII tokenisation policy, retention and archival (FRS DAT-01..04; **Decision 2026-11-19**, D32) | Kafka | Kafka, SFTP | PG `export` |
 | `mw-admin-api` | Ops | Admin REST API: partners, routes, rules, templates, credentials, maker-checker, transaction search | APISIX (Keycloak OIDC) | PG, Vault, Kafka `mw.config.changed` | PG `admin` |
 | `mw-admin-ui` | Ops | Next.js 16.4.1 console | Browser | `mw-admin-api` | none |
 | `mw-core-mock` | Test only | Core wallet/payment test double (MVP M4) | Kafka `core.*.command.v1` | Kafka `core.*.event.v1` | PG `coremock` |
 | `mw-simulators` | Test only | Simulators for every external party (ENV-10) | Adapters | n/a | in-memory / PG |
+
+**Decision 2026-11-19** (D32): the FRS adds `mw-adapter-card`, `-remit`, `-atm`, `-merchant` and `mw-data-export` to the services above (`mw-adapter-interop`, `mw-compliance` and `mw-recon` were planned already); `mw-compliance`, `mw-recon` and `mw-data-export` use no Camel and reach SFTP and HTTP through `client/` (sshj, `RestClient`). Routing (FRS M07) is a module of `mw-orchestrator`, not a service. The `core` profile budget is 12 GB; `--profile minimal` stays the laptop demo.
 
 Adapters are split by partner family so each family gets its own bulkhead, thread pools and scaling. Any adapter MAY later be split per partner by moving its route bundle; the adapter framework (section 12) is copied with it, so that is a packaging change.
 
@@ -594,6 +612,8 @@ Kafka carries every financial step between services and to the core, with effect
 The three partner topics share one record shape per topic (`contracts/events/mw-orchestrator/mw.partner.{request,reply,inbound}.v1`): an envelope with a `family` field (`telco`, `billpay`, `bank`, `interop`, `compliance`) and a `payload`. On `mw.partner.reply.v1` and `mw.partner.inbound.v1`, where all adapters share one topic, `family` tells the orchestrator which adapter family sent the record.
 
 ### 6.3 Core command / event contract (proposal to the core team)
+
+**Decision 2026-11-19** (D31, tickets 93–95): the request/reply pairs below move to REST. `mw-orchestrator` calls mw-core-mock's REST API (FRS WAL-01 account, WAL-03 balance, WAL-04 charges, WAL-05 limits, WAL-06..08 holds, WAL-09 transfers, WAL-10 credits, WAL-11 reversals, WAL-12 statements, WAL-13 transaction status), idempotent by `txnId`, with Resilience4j and never from a Kafka listener thread; a timeout or ambiguous answer moves the transaction to `UNKNOWN` and the inquiry asks WAL-13. FRS WAL-02 (PIN verify) is not built: the `mw-auth` assertion (D22) travels in a header on hold, transfer and credit calls. The core keeps publishing wallet-state, hold-expired and ledger events on Kafka. Until ticket 95 lands, the Kafka contract below is the one built.
 
 The middleware proposes this contract; the core team must confirm field names and semantics (open point 1). All commands are idempotent on `commandId`; the core MUST return the same result event for a repeated `commandId`.
 
@@ -1379,6 +1399,7 @@ No integration is "done" until it passes against its simulator in the pipeline a
 - One Spring Boot app hosting a simulator per external party: 4 OCS, utility aggregator, 4 bill aggregators, merchant SOAP, generic bank (SOAP + REST, configurable per bank), UCB ATM, CyberSource, UCB IMT (outbound caller too), NPSB/BanglaQR (ISO 20022), EC, SMSC + 4 USSD gateways (SMPP and HTTP), SMTP (GreenMail), push, SFTP servers (AML, trust bank, DW, partners) generating MT940/MT942 and settlement files.
 - **Scenario control:** behaviour chosen by magic values (e.g. amount ending `.13` → timeout, MSISDN suffix `999` → business failure) and by a control API (`POST /sim/{partner}/scenario`) for latency, error rate, outage, duplicate callback, late callback, out-of-order callback.
 - Simulators record every request for assertions and can replay a callback on demand.
+- **Decision 2026-11-19** (D33, tickets 102, 103): one mock control API on every mock and on mw-core-mock, the FRS 10.1 paths: `POST /mock-control/{party}/scenarios` (SUCCESS, BUSINESS_ERROR, TIMEOUT, DELAY, HTTP_5XX, MALFORMED_RESPONSE, CONNECTION_RESET, DUPLICATE_CALLBACK, LATE_CALLBACK, PARTIAL_SUCCESS; scoped globally, per MSISDN / account / biller, or for the next N calls; party switches DOWN, MAINTENANCE, SLOW; SMPP and file faults), `GET`/`DELETE /mock-control/{party}/journal` and `POST /mock-control/reset` (every seed reloaded, the core mock included). Magic values stay the default triggers; the `/sim/*` control paths and `/core-mock/v1/faults` stay as aliases for one release; the engine is copied into both services (D14); the API is absent from production profiles.
 - **Decision 2026-11-14** (D23, tickets 61, 64): a payShield 10K simulator (TCP host commands of 18.8, LMK-encrypted keys kept in SoftHSMv2) runs inside `mw-simulators`; a `softhsm` container (SoftHSMv2 with a PKCS#11 socket, tokens initialised by a script with fake, documented PINs) serves `mw-crypto` and the simulator in dev and test. Neither is used outside dev and test.
 - Simulators double as the core stub: they consume `core.*.command` and emit `core.*.event` with configurable outcomes, so the middleware is testable before the core is ready.
 

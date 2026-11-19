@@ -1,6 +1,7 @@
 # D5: Asynchronous Kafka commands and events to the core
 
 Status: Accepted, 2026-11-03 (spec revision 1). Topic routing revised at the M2 gate: HoldFunds, CommitHold and ReleaseHold on `core.payment.*`, everything else on `core.wallet.*`.
+Amended 2026-11-19 by D31: the orchestrator calls the core over REST; the core events stay on Kafka.
 
 ## Context
 

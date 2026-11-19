@@ -10,7 +10,8 @@ per milestone M0–M6), `docs/testing-guide.html` (QA walkthrough: credentials (
 `scripts/totp.sh`), every feature by hand with the test console and the ops console),
 `docs/tutorial/` (onboarding tour for a new developer: architecture, core ideas, every feature's flow, a first day),
 `docs/concepts/` (one page per component (APISIX, Keycloak, OpenBao, the HSM, the test doubles, the libraries): how this project uses it, with a worked example),
-`docs/adr/` (one record per spec decision D1–D15, M1–M13, plus later ones). `scripts/test/test_repo_docs.sh`
+`docs/adr/` (one record per spec decision D1–D15, M1–M13, plus later ones), `docs/frs-traceability.md` (every
+Upay FRS requirement id and name mapped to the repo name, its status and the ticket; FRS run 89–138, ADRs D29–D33). `scripts/test/test_repo_docs.sh`
 (in `./gradlew :scriptTests`) fails when they name a script, repo path, `./gradlew` task, API suite
 folder or `VAR=` knob that does not exist, when the README misses an operator script in `scripts/`, or
 when a spec decision row has no ADR: a new script, knob or decision updates these docs in the same change.
@@ -41,7 +42,12 @@ when a spec decision row has no ADR: a new script, knob or decision updates thes
   and resets, the ES256 transaction assertion; public `/auth/v1`, mTLS `/internal/v1`) and `mw-crypto`
   (the HSM gateway, the only process that talks to an HSM: SoftHSM over PKCS#11 (`deploy/softhsm`) and
   the payShield simulator; mTLS API only, caller policy per key purpose); test doubles `mw-core-mock`,
-  `mw-simulators`, one-shot `mw-seeder`.
+  `mw-simulators`, one-shot `mw-seeder`. Planned by the FRS run (ADR D32, tickets 115-128; not built yet): adapters
+  `mw-adapter-card`, `mw-adapter-remit`, `mw-adapter-atm`, `mw-adapter-interop`, `mw-adapter-merchant` (Camel and the
+  copied `partner/` framework) and `mw-compliance`, `mw-recon`, `mw-data-export` (no Camel: sshj and `RestClient` in
+  `client/`); routing is a module of mw-orchestrator. Also decided (not built): Redis replaces Valkey (D29, ticket 90),
+  HashiCorp Vault replaces OpenBao (D30, ticket 91), the core wallet over REST (D31), one `/mock-control` API (D33);
+  until then the rules below name the stack as it runs.
 - `ui/mw-admin-ui/`: the Next.js admin console (spec 4.2), own `package.json` (pnpm), `Dockerfile`,
   `CLAUDE.md`; tests `pnpm test` (Vitest, no stack) and `scripts/ui-e2e.sh` (Playwright against the
   running, seeded stack). Not a Gradle module.
@@ -199,7 +205,7 @@ consumers until a module moves to Spring Kafka, ADR D27), and
 | `./gradlew :checkIsolation` | module independence (`scripts/check-isolation.sh [M]`): no cross-module dependency, settings file, `includeBuild`, `allprojects`/`subprojects`, convention plugin, version catalog, path outside the module except `contracts/`; one plugin with two versions across modules |
 | `./gradlew :checkFieldInjection` | no `@Autowired` field anywhere, tests included (`scripts/check-field-injection.sh [M]`) |
 | `./gradlew :contractsLint` | lint `contracts/` and every module's `contracts.yml` (entries exist, `#<Msg>` is a message type, every event schema has a producer and a consumer manifest or a side in `contracts/EXTERNAL.yml`), the derived body schemas, then `scripts/check-api-traceability.sh` (every API suite request mapped in `tests/api/TRACEABILITY.md`, requirement tags in its name, every acceptance coverage item claimed, collection not stale) |
-| `./gradlew :composeCheck` | fail when a long-running service of `deploy/docker-compose.yml` (`--profile core`) has no memory limit or the limits (knob values from the shell or `deploy/.env`, else their defaults) add up to more than 8 GB |
+| `./gradlew :composeCheck` | fail when a long-running service of `deploy/docker-compose.yml` (`--profile core`) has no memory limit or the limits (knob values from the shell or `deploy/.env`, else their defaults) add up to more than 12 GB (`MW_RAM_BUDGET_MIB`, default 12288, ADR D32; the stack as built stays within 8 GB) |
 | `./gradlew :scriptTests` | the shell tests of `scripts/` and the repo layout and docs (`scripts/test/run.sh [test_file.sh ...]`) |
 | `scripts/versions-check.sh [M]` | report version drift between the modules' build files (report only, not in the build) |
 | `cd deploy && cp dev.env.defaults .env` | the dev settings in the gitignored `deploy/.env`: fixed, obviously fake credentials (ADR D9 amendment) and the short test timers; run once before the first `up` (`scripts/smoke.sh`, `scripts/tester.sh`, `scripts/suite.sh` and `deploy/reset.sh` copy it when it is missing) |

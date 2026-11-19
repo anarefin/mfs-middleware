@@ -302,7 +302,7 @@ test_compose_check_counts_every_profile_and_skips_one_shots() {
   have_compose || return 0
   budget_stack
   assert_ok mw_run "$PWD" compose-check.sh
-  assert_out_contains "896 MiB of 8192 MiB"
+  assert_out_contains "896 MiB of 12288 MiB"
 }
 
 test_compose_check_fails_over_the_budget_or_without_a_limit() {
@@ -343,27 +343,27 @@ test_compose_check_sums_the_knob_defaults_and_skips_other_profiles() {
   have_compose || return 0
   knob_stack
   assert_ok compose_check
-  assert_out_contains "896 MiB of 8192 MiB"
+  assert_out_contains "896 MiB of 12288 MiB"
 }
 
 test_compose_check_respects_a_knob_from_the_shell_or_deploy_env() {
   have_compose || return 0
   knob_stack
   assert_ok compose_check APP_MEM_LIMIT=1G
-  assert_out_contains "1408 MiB of 8192 MiB"
+  assert_out_contains "1408 MiB of 12288 MiB"
   printf 'POSTGRES_MEM=128M\n' >deploy/.env
   assert_ok compose_check
-  assert_out_contains "640 MiB of 8192 MiB"
+  assert_out_contains "640 MiB of 12288 MiB"
   # the shell wins over deploy/.env, as in Compose
   assert_ok compose_check POSTGRES_MEM=256M
-  assert_out_contains "768 MiB of 8192 MiB"
-  assert_fails compose_check APP_MEM_LIMIT=8G
-  assert_out_contains "over the 8192 MiB budget"
+  assert_out_contains "768 MiB of 12288 MiB"
+  assert_fails compose_check APP_MEM_LIMIT=12G
+  assert_out_contains "over the 12288 MiB budget"
 }
 
 test_compose_check_passes_on_the_repo_stack_file() {
   have_compose || return 0
   mkdir -p deploy && cp "$REPO_DIR/deploy/docker-compose.yml" deploy/
   assert_ok mw_run "$PWD" compose-check.sh
-  assert_out_contains "of 8192 MiB"
+  assert_out_contains "of 12288 MiB"
 }
