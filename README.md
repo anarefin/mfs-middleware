@@ -189,8 +189,9 @@ fake values too:
 
 The payShield 10K simulator (ticket 64) listens for host commands on `mw-simulators:1500` (internal
 network only, not published) and keeps its LMK in the `paysim` token; `mw-crypto`'s payShield provider
-uses it in the dev stack. Its control API is `/sim/payshield/scenario` and the test helper
-`/sim/payshield/pinblock` (`services/mw-simulators/CLAUDE.md`).
+uses it in the dev stack. It is the mock party `payshield` of the mock-control API
+`/mock-control/payshield/*` (ADR D33; the old `/sim/payshield/scenario` is a deprecated alias); the test
+helper is `/sim/payshield/pinblock` (`services/mw-simulators/CLAUDE.md`).
 
 ## Rebuild one service after a code change
 

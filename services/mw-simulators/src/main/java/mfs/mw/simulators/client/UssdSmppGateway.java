@@ -3,6 +3,7 @@ package mfs.mw.simulators.client;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,7 +20,12 @@ import mfs.mw.simulators.dto.UssdDialRequest;
 import mfs.mw.simulators.dto.UssdDialResult;
 import mfs.mw.simulators.dto.UssdScreen;
 import mfs.mw.simulators.dto.UssdSmppBinds;
-import mfs.mw.simulators.dto.UssdSmppScenario;
+import mfs.mw.simulators.dto.SimMode;
+import mfs.mw.simulators.service.mockcontrol.Decision;
+import mfs.mw.simulators.service.mockcontrol.Journal;
+import mfs.mw.simulators.service.mockcontrol.MockCalls;
+import mfs.mw.simulators.service.mockcontrol.MockControl;
+import mfs.mw.simulators.service.mockcontrol.MockParties;
 import org.jsmpp.DefaultPDUReader;
 import org.jsmpp.DefaultPDUSender;
 import org.jsmpp.SMPPConstant;
@@ -56,6 +62,7 @@ import org.jsmpp.session.connection.socket.ServerSocketConnectionFactory;
 import org.jsmpp.util.MessageId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Component;
 
@@ -66,8 +73,13 @@ import org.springframework.stereotype.Component;
  * indication) and the service code, then one with 18 (USSR confirm) per input, each with {@code
  * its_session_info} (session number; sequence in bits 7..1), waiting for mw-ussd's {@code
  * submit_sm} of that session (ussd_service_op 17 or the end-of-session bit = END, else CON).
- * Misbehaviour on demand ({@link #scenario}): refuse the next submits with 0x58 / 0x14 / {@code
- * generic_nack}, stop answering {@code enquire_link}; {@link #drop} closes every bind.
+ * Misbehaviour comes from the mock party {@code ussdgw} (ticket 102b, ADR D33, FRS MCT-04): operation
+ * {@code bind} (BUSINESS_ERROR refuses it, default ESME_RBINDFAIL 0x0D; DOWN or CONNECTION_RESET closes the
+ * connection unanswered), {@code submit} (key {@code msisdn}: BUSINESS_ERROR refuses the screen, default
+ * ESME_RTHROTTLED 0x58; MALFORMED_RESPONSE answers {@code generic_nack}; MAINTENANCE 0x08; TIMEOUT holds the
+ * submit_sm_resp; CONNECTION_RESET closes the bind after taking the screen; DOWN closes it first) and
+ * {@code enquire_link} (anything but SUCCESS leaves it unanswered). A play waits for a screen the party's
+ * {@code timeoutDelayMs} setting, else {@code screen-timeout}. {@link #drop} closes every bind.
  */
 @Component
 public class UssdSmppGateway implements SmartLifecycle {
@@ -86,25 +98,29 @@ public class UssdSmppGateway implements SmartLifecycle {
   /** One screen mw-ussd sent. */
   private record Screen(String text, boolean end) {}
 
+  /** The mock party. */
+  public static final String PARTY = "ussdgw";
+
   private final UssdSmppGatewayProperties props;
+  private final MockControl control;
+  private final ObjectProvider<Journal> journal;
+  private final Clock clock;
   private final List<SMPPServerSession> sessions = new CopyOnWriteArrayList<>();
   private final Map<Integer, BlockingQueue<Screen>> waiting = new ConcurrentHashMap<>();
   private final AtomicInteger binds = new AtomicInteger();
   private final AtomicInteger enquireLinks = new AtomicInteger();
   private final AtomicInteger refused = new AtomicInteger();
-  private final AtomicInteger throttle = new AtomicInteger();
-  private final AtomicInteger queueFull = new AtomicInteger();
-  private final AtomicInteger genericNack = new AtomicInteger();
   private final AtomicInteger sessionNumbers = new AtomicInteger();
   private final AtomicInteger cursor = new AtomicInteger();
-  private volatile boolean silent;
-  private volatile Duration screenTimeout;
   private volatile boolean running;
   private ServerConnection server;
 
-  public UssdSmppGateway(UssdSmppGatewayProperties props) {
+  public UssdSmppGateway(
+      UssdSmppGatewayProperties props, MockControl control, ObjectProvider<Journal> journal, Clock clock) {
     this.props = props;
-    this.screenTimeout = props.screenTimeout();
+    this.control = control;
+    this.journal = journal;
+    this.clock = clock;
   }
 
   /** Whether {@code mno} is played over SMPP. */
@@ -146,13 +162,14 @@ public class UssdSmppGateway implements SmartLifecycle {
     return running;
   }
 
-  /** Replaces the misbehaviour scenario. */
-  public void scenario(UssdSmppScenario s) {
-    throttle.set(s.throttleNext() == null ? 0 : s.throttleNext());
-    queueFull.set(s.queueFullNext() == null ? 0 : s.queueFullNext());
-    genericNack.set(s.genericNackNext() == null ? 0 : s.genericNackNext());
-    silent = Boolean.TRUE.equals(s.silentEnquireLink());
-    screenTimeout = s.screenTimeoutMs() == null ? props.screenTimeout() : Duration.ofMillis(s.screenTimeoutMs());
+  /** How long a played step waits for its screen: the party's {@code timeoutDelayMs}, else the config. */
+  private Duration screenTimeout() {
+    Long ms = control.settings(PARTY).timeoutDelayMs();
+    return ms == null ? props.screenTimeout() : Duration.ofMillis(ms);
+  }
+
+  private void record(String what, Map<String, String> headers) {
+    journal.ifAvailable(j -> j.record(PARTY, "SMPP", what, null, headers, null, clock.instant()));
   }
 
   /** Closes every bind, as a gateway restart would; mw-ussd reconnects. */
@@ -219,7 +236,7 @@ public class UssdSmppGateway implements SmartLifecycle {
           new OptionalParameter.OctetString(OptionalParameter.Tag.USSD_SERVICE_OP.code(), new byte[] {(byte) op}),
           new OptionalParameter.OctetString(OptionalParameter.Tag.ITS_SESSION_INFO.code(),
               new byte[] {(byte) number, (byte) (seq << 1)}));
-      return queue.poll(screenTimeout.toMillis(), TimeUnit.MILLISECONDS);
+      return queue.poll(screenTimeout().toMillis(), TimeUnit.MILLISECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
       return null;
@@ -249,6 +266,21 @@ public class UssdSmppGateway implements SmartLifecycle {
   private void bind(SMPPServerSession session) {
     try {
       BindRequest bind = session.waitForBind(5000);
+      String systemId = bind.getSystemId() == null ? "" : bind.getSystemId();
+      Decision d = control.decide(PARTY, "bind", Map.of("systemId", systemId), SimMode.SUCCESS);
+      record("bind", Map.of("systemId", systemId));
+      MockCalls.pause(d.delayMs());
+      if (d.gate() == Decision.Gate.DOWN || d.mode() == SimMode.CONNECTION_RESET) {
+        session.close();
+        return;
+      }
+      if (d.gate() == Decision.Gate.MAINTENANCE || d.mode() == SimMode.BUSINESS_FAILURE) {
+        int status = d.code() == null ? SMPPConstant.STAT_ESME_RBINDFAIL : MockParties.smppStatus(d.code());
+        bind.reject(status);
+        log.atInfo().addKeyValue("event", "sim.ussd.smpp.bind_refused").addKeyValue("commandStatus", status)
+            .log("USSD SMPP bind refused (mock control)");
+        return;
+      }
       bind.accept("bits-ussdgw");
       binds.incrementAndGet();
       sessions.add(session);
@@ -300,7 +332,10 @@ public class UssdSmppGateway implements SmartLifecycle {
     @Override
     public byte[] sendEnquireLinkResp(OutputStream os, int sequenceNumber) throws IOException {
       enquireLinks.incrementAndGet();
-      return silent ? new byte[0] : super.sendEnquireLinkResp(os, sequenceNumber);
+      Decision d = control.decide(PARTY, "enquire_link", Map.of(), SimMode.SUCCESS);
+      MockCalls.pause(d.delayMs());
+      boolean answer = d.gate() == Decision.Gate.OPEN && d.mode() == SimMode.SUCCESS;
+      return answer ? super.sendEnquireLinkResp(os, sequenceNumber) : new byte[0];
     }
   }
 
@@ -308,14 +343,22 @@ public class UssdSmppGateway implements SmartLifecycle {
 
     @Override
     public SubmitSmResult onAcceptSubmitSm(SubmitSm sm, SMPPServerSession session) throws ProcessRequestException {
-      if (take(genericNack)) {
-        throw new ProcessRequestException("generic_nack", NACK_MARKER);
+      String subscriber = sm.getDestAddress() == null ? "" : sm.getDestAddress();
+      Decision d = control.decide(PARTY, "submit", Map.of("msisdn", subscriber), SimMode.SUCCESS);
+      record("submit_sm", Map.of("destination", subscriber));
+      MockCalls.pause(d.delayMs());
+      if (d.gate() == Decision.Gate.DOWN) {
+        session.close();
+        throw new ProcessRequestException("connection closed (mock control)", SMPPConstant.STAT_ESME_RSYSERR);
       }
-      if (take(throttle)) {
-        throw new ProcessRequestException("throttled", SMPPConstant.STAT_ESME_RTHROTTLED);
+      if (d.gate() == Decision.Gate.MAINTENANCE) {
+        throw refuse("maintenance", SMPPConstant.STAT_ESME_RSYSERR);
       }
-      if (take(queueFull)) {
-        throw new ProcessRequestException("queue full", SMPPConstant.STAT_ESME_RMSGQFUL);
+      if (d.mode() == SimMode.BUSINESS_FAILURE) {
+        throw refuse("refused", d.code() == null ? SMPPConstant.STAT_ESME_RTHROTTLED : MockParties.smppStatus(d.code()));
+      }
+      if (d.mode() == SimMode.MALFORMED) {
+        throw refuse("generic_nack", NACK_MARKER);
       }
       byte[] op = tlv(sm.getOptionalParameters(), OptionalParameter.Tag.USSD_SERVICE_OP);
       byte[] info = tlv(sm.getOptionalParameters(), OptionalParameter.Tag.ITS_SESSION_INFO);
@@ -326,6 +369,13 @@ public class UssdSmppGateway implements SmartLifecycle {
           q.add(new Screen(decode(sm.getDataCoding(), sm.getShortMessage()), end));
         }
       }
+      if (d.mode() == SimMode.CONNECTION_RESET) {
+        session.close();
+        throw new ProcessRequestException("connection closed (mock control)", SMPPConstant.STAT_ESME_RSYSERR);
+      }
+      if (d.mode() == SimMode.TIMEOUT) {
+        MockCalls.pause(d.holdMs());
+      }
       try {
         return new SubmitSmResult(new MessageId("USSD-" + Integer.toHexString(sessionNumbers.get())), null);
       } catch (Exception e) {
@@ -333,12 +383,9 @@ public class UssdSmppGateway implements SmartLifecycle {
       }
     }
 
-    private boolean take(AtomicInteger counter) {
-      if (counter.getAndUpdate(n -> n > 0 ? n - 1 : 0) > 0) {
-        refused.incrementAndGet();
-        return true;
-      }
-      return false;
+    private ProcessRequestException refuse(String why, int status) {
+      refused.incrementAndGet();
+      return new ProcessRequestException(why + " (mock control)", status);
     }
 
     @Override

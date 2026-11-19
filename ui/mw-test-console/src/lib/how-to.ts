@@ -23,7 +23,8 @@ export const FILL_FIELDS: Record<PageKey, readonly string[]> = {
   ussd: ["mno", "msisdn", "serviceCode", "input"],
   simulators: [
     "core-fault:mode", "core-fault:commandType", "core-fault:times", "core-fault:reasonCode", "core-fault:delayMs",
-    "scenario-ocs:forceMode", "scenario-ocs:latencyMs", "scenario-billagg:forceMode", "scenario-c2wbank:forceMode", "msisdn",
+    "mock-scenario:party", "mock-scenario:operation", "mock-scenario:behaviour", "mock-scenario:code", "mock-scenario:key",
+    "mock-scenario:nextN", "mock-switch:party", "mock-switch:state", "mock-switch:latencyMinMs", "msisdn",
   ],
   inbox: ["msisdn", "email"],
   checkout: ["merchant", "amount", "locale", "wallet", "pin"],
@@ -150,7 +151,7 @@ export const HOW_TO: Record<PageKey, HowTo> = {
   simulators: {
     goal: "Make the partners and the core fail on purpose, then prove the middleware recovers.",
     steps: [
-      "Apply a preset (or set a partner scenario / inject a core fault below).",
+      "Apply a preset (or add a mock-control scenario, set a party's switch / inject a core fault below).",
       "Run the flow on the App, USSD or Checkout page and check the result there.",
       "Come back and press Reset everything (faults last until reset).",
     ],
@@ -165,9 +166,11 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       { label: "Lose the next PostTransfer reply", values: { "core-fault:mode": "DROP_REPLY", "core-fault:commandType": "PostTransfer", "core-fault:times": "1" } },
       { label: "Refuse the next validation", values: { "core-fault:mode": "REJECT", "core-fault:commandType": "ValidateTransaction", "core-fault:times": "1", "core-fault:reasonCode": "INSUFFICIENT_BALANCE" } },
       { label: "Delay PostTransfer 3 s", values: { "core-fault:mode": "DELAY", "core-fault:commandType": "PostTransfer", "core-fault:times": "1", "core-fault:delayMs": "3000" } },
-      { label: "OCS: unknown code", values: { "scenario-ocs:forceMode": "UNKNOWN_CODE" } },
-      { label: "OCS: 3 s latency", values: { "scenario-ocs:forceMode": "", "scenario-ocs:latencyMs": "3000" } },
-      { label: "Bill aggregator refuses", values: { "scenario-billagg:forceMode": "BUSINESS_FAILURE" } },
+      { label: "OCS: unknown code", values: { "mock-scenario:party": "ocs", "mock-scenario:operation": "topup", "mock-scenario:behaviour": "BUSINESS_ERROR", "mock-scenario:code": "9876" } },
+      { label: "OCS: 3 s latency", values: { "mock-switch:party": "ocs", "mock-switch:state": "SLOW", "mock-switch:latencyMinMs": "3000" } },
+      { label: "Bill aggregator refuses", values: { "mock-scenario:party": "billagg", "mock-scenario:operation": "pay", "mock-scenario:behaviour": "BUSINESS_ERROR" } },
+      { label: "SMSC: no DLR for customer02", values: { "mock-scenario:party": "smsc", "mock-scenario:operation": "submit", "mock-scenario:behaviour": "NO_CALLBACK", "mock-scenario:key": "01711000002" } },
+      { label: "USSD gateway: throttle the next screen", values: { "mock-scenario:party": "ussdgw", "mock-scenario:operation": "submit", "mock-scenario:behaviour": "BUSINESS_ERROR", "mock-scenario:code": "0x58", "mock-scenario:nextN": "1" } },
     ],
   },
   inbox: {

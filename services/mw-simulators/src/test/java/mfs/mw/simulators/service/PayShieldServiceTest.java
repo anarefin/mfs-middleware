@@ -3,9 +3,7 @@ package mfs.mw.simulators.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.HexFormat;
-import java.util.List;
 import mfs.mw.simulators.client.InMemoryLmkStore;
-import mfs.mw.simulators.dto.PayShieldScenario;
 import mfs.mw.simulators.util.PayShieldCrypto;
 import mfs.mw.simulators.util.PinBlocks;
 import mfs.mw.simulators.util.PinBlocks.Format;
@@ -27,7 +25,6 @@ class PayShieldServiceTest {
   static final String PAN = "4000001234562000";
   static final String ACCOUNT = PinBlocks.account12(PAN);
 
-  PayShieldScenarioStore scenario;
   PayShieldKeys keys;
   PayShieldService service;
   String tpk;
@@ -37,9 +34,8 @@ class PayShieldServiceTest {
 
   @BeforeEach
   void setUp() {
-    scenario = new PayShieldScenarioStore();
     keys = new PayShieldKeys(new InMemoryLmkStore());
-    service = new PayShieldService(keys, scenario, false);
+    service = new PayShieldService(keys, false);
     tpk = keys.wrap(PayShieldKeys.KeyType.TPK, TPK, 'U');
     zpk = keys.wrap(PayShieldKeys.KeyType.ZPK, ZPK, 'U');
     pvk = keys.wrap(PayShieldKeys.KeyType.PVK, PayShieldCrypto.withOddParity(PVK), 'U');
@@ -89,7 +85,7 @@ class PayShieldServiceTest {
   @Test
   void translateZpkToZpkFormat3To1() {
     String zpk2 = keys.wrap(PayShieldKeys.KeyType.ZPK, TPK, 'U');
-    String r = new PayShieldService(keys, scenario, true)
+    String r = new PayShieldService(keys, true)
         .handle("CC" + zpk + zpk2 + "12" + block(Format.ISO3, "987654", ZPK) + "4705" + ACCOUNT);
     assertThat(r).startsWith("CD0006").endsWith("05");
     assertThat(PinBlocks.decipher(Format.ISO1, HEX.parseHex(r.substring(6, 22)), PAN, TPK)).isEqualTo("987654");
@@ -155,7 +151,7 @@ class PayShieldServiceTest {
         .startsWith("CB00");
     assertThat(service.handle("CA" + tpk + zpk + "12" + block(Format.ISO1, "1234", TPK) + "0501" + ACCOUNT))
         .startsWith("CB00");
-    var permissive = new PayShieldService(keys, scenario, true);
+    var permissive = new PayShieldService(keys, true);
     assertThat(permissive.handle("CA" + tpk + zpk + "12" + block(Format.ISO0, "1234", TPK) + "0105" + ACCOUNT))
         .startsWith("CB00");
   }
@@ -170,14 +166,9 @@ class PayShieldServiceTest {
   }
 
   @Test
-  void scenarioForcesAnErrorCodeOrDisablesCommands() {
-    scenario.set(new PayShieldScenario(null, "68", null, List.of("DG")));
-    assertThat(service.handle("DG" + pvk + "0".repeat(32) + ACCOUNT + "1")).isEqualTo("DH68");
-    assertThat(service.handle("NC")).startsWith("ND00");
-    scenario.set(new PayShieldScenario(null, "15", null, null));
-    assertThat(service.handle("NC")).isEqualTo("ND15");
-    scenario.reset();
-    assertThat(service.handle("NC")).startsWith("ND00");
+  void aRefusalOrACutShortAnswerCarriesTheCommandsResponseCode() {
+    assertThat(service.refuse("DG" + pvk, "68")).isEqualTo("DH68");
+    assertThat(service.cutShort("NC")).isEqualTo("ND");
   }
 
   @Test
