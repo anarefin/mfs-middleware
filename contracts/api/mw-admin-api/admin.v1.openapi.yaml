@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits admin API v1 (mw-admin-api)
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Operations console API (ticket 36, spec 15). Reached by mw-admin-ui server-side through the
     internal APISIX route `/admin/v1/*` (Keycloak realm `ops`, password + TOTP); never by a browser
@@ -68,6 +68,18 @@ info:
     MW-VAL-050). Components are never stored or logged; the audit has who and when. Rejection or
     expiry destroys the staged key. mw-crypto's own refusals pass through with its code (400
     MW-VAL-017 bad component, 409 MW-VAL-018 conflict, ...); mw-crypto down is 503 MW-SYS-042.
+
+    Channel clients (ticket 100a, FRS PLT-003, PLT-004 quota part, ADM-03 API part): the registry of
+    every client that calls the edge (app types, MNO USSD gateways, partners, merchants, portals) with
+    its auth method, allowed APISIX routes, IP allow-list, rate limit and daily quota. Changed only
+    through a change request (resourceType `channel_client`, action UPSERT with the full definition):
+    makers `ops-maker` or `integration-maker`, checkers `ops-checker` or `integration-checker` (never
+    the maker). The registry is the source of truth and APISIX a projection: after the approval
+    commits, a client whose auth method has an APISIX consumer (BASIC in this version) is written as
+    consumer `<clientId with - as _>` (its secret a `$secret://vault/...` reference to the Vault KV v1
+    mount `apisix/`, never in the registry) plus consumer group `client_<name>` (`limit-req` rate,
+    `limit-count` daily quota, `ip-restriction`); a periodic reconcile repairs drift. Secrets (HMAC
+    keys, client secrets, passwords) never appear in a registry row.
 servers:
   - url: https://localhost
 security:
@@ -419,6 +431,75 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/channel-clients:
+    get:
+      operationId: listChannelClients
+      summary: The channel client registry (ticket 100a)
+      description: Roles that may read partners (the transaction readers and integration-maker / integration-checker).
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Every registered client, by id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChannelClientPage" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /admin/v1/channel-clients/{clientId}:
+    get:
+      operationId: getChannelClient
+      summary: One registered channel client
+      parameters:
+        - { name: clientId, in: path, required: true, schema: { $ref: "#/components/schemas/ChannelClientId" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The client
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChannelClient" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /admin/v1/channel-clients/{clientId}/change-requests:
+    post:
+      operationId: requestChannelClientChange
+      summary: Register or change a channel client (maker)
+      description: >-
+        Role `ops-maker` or `integration-maker`. UPSERT with the full `client` definition registers
+        a new client or replaces an existing one (the type and auth method of a client never change:
+        400 MW-VAL-001). A change that changes nothing is 409 MW-VAL-030; one open request per client
+        (409 MW-VAL-031). `diff` shows the changed fields before and after; `payload.client` the full
+        definition and `payload.baseVersion` the version the maker saw (absent for a new client).
+        Approved by a different `ops-checker` / `integration-checker` on the shared approve endpoint:
+        the row is written (version + 1) and audited in one transaction, then projected to APISIX.
+      parameters:
+        - { name: clientId, in: path, required: true, schema: { $ref: "#/components/schemas/ChannelClientId" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, reason, client]
+              additionalProperties: false
+              properties:
+                action: { $ref: "#/components/schemas/ChannelClientAction" }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+                client: { $ref: "#/components/schemas/ChannelClientSpec" }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
   /admin/v1/change-requests:
     get:
@@ -890,11 +971,14 @@ components:
         A `key` request (ticket 75): `payload` the `keyId`, `purpose`, `version` (retire) and, for a
         ceremony, the `kid` it makes, the `shares` entered (share, custodian, enteredAt) and the
         combined `checkValue`; `diff` the key version before and after (`kid`, `state`).
+        A `channel_client` request (ticket 100a): `payload` the full `client` definition and the
+        `baseVersion` the maker saw (absent for a new client) and, once approved, the stored
+        `version`; `diff` the changed fields before and after.
       required: [id, resourceType, resourceId, action, payload, diff, makerId, status, reason, createdAt, expiresAt]
       properties:
         id: { type: string, format: uuid }
         resourceType: { $ref: "#/components/schemas/ResourceType" }
-        resourceId: { type: string, description: "txnId; wallet id (masked); partnerId; menuId; or <code>/<channel>/<locale>" }
+        resourceId: { type: string, description: "txnId; wallet id (masked); partnerId; menuId; <code>/<channel>/<locale>; keyId; or clientId" }
         action:
           anyOf:
             - { $ref: "#/components/schemas/TxnAction" }
@@ -902,6 +986,7 @@ components:
             - { $ref: "#/components/schemas/PartnerAction" }
             - { $ref: "#/components/schemas/ContentAction" }
             - { $ref: "#/components/schemas/KeyAction" }
+            - { $ref: "#/components/schemas/ChannelClientAction" }
         payload: { type: object }
         diff:
           type: object
@@ -968,7 +1053,7 @@ components:
         offset: { type: integer }
     ResourceType:
       type: string
-      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template, key]
+      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template, key, channel_client]
     KeyAction:
       type: string
       description: Key changes and the key ceremony (ticket 75)
@@ -1174,6 +1259,77 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/Partner" }
+    ChannelClientAction:
+      type: string
+      description: Register or replace a channel client with its full definition (ticket 100a)
+      enum: [UPSERT]
+    ChannelClientId:
+      type: string
+      description: The client id; its APISIX consumer (if any) is the id with `-` turned into `_`
+      pattern: "^[a-z0-9][a-z0-9-]{1,63}$"
+    ChannelClientType:
+      type: string
+      enum: [APP, MNO, PARTNER, MERCHANT, PORTAL]
+    ChannelAuthMethod:
+      type: string
+      description: >-
+        How the client authenticates. BASIC: an APISIX consumer with basic-auth (user = clientId,
+        password in Vault `apisix/<clientId>` field `password`). JWT (Keycloak or mw-auth tokens) and
+        HMAC (checked by the service, e.g. merchants and partner callbacks) have no consumer.
+        OAUTH2_CC (ticket 100b) and MTLS (ticket 100c) are registered here but not projected yet.
+      enum: [JWT, OAUTH2_CC, MTLS, HMAC, BASIC]
+    ChannelClientSpec:
+      type: object
+      description: >-
+        A client's definition, without secrets. `ratePerSec` (APISIX `limit-req`), `dailyQuota`
+        (`limit-count`, 24 h window, 429) and `ipAllowList` (`ip-restriction`, 403) apply to clients
+        with an APISIX consumer; left out = no limit of this kind. A consumer's plugin replaces a
+        route's plugin of the same name for that consumer (APISIX precedence): a `dailyQuota` on a
+        client whose routes have their own `limit-count` replaces that route limit for the client.
+      required: [type, authMethod, allowedRoutes, ipAllowList, enabled]
+      additionalProperties: false
+      properties:
+        type: { $ref: "#/components/schemas/ChannelClientType" }
+        authMethod: { $ref: "#/components/schemas/ChannelAuthMethod" }
+        allowedRoutes:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          description: The APISIX route ids the client may call
+          items: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,63}$" }
+        ipAllowList:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          description: Source addresses or CIDRs; empty = any source (the route's own allow-list still applies)
+          items: { type: string, pattern: "^[0-9A-Fa-f.:]{2,39}(/[0-9]{1,3})?$" }
+        ratePerSec: { type: integer, minimum: 1, maximum: 100000 }
+        dailyQuota: { type: integer, minimum: 1, maximum: 1000000000 }
+        enabled: { type: boolean, description: "A disabled client keeps its row; its consumer has no credential (401)" }
+    ChannelClient:
+      type: object
+      required: [clientId, type, authMethod, allowedRoutes, ipAllowList, enabled, version, updatedAt, updatedBy]
+      properties:
+        clientId: { $ref: "#/components/schemas/ChannelClientId" }
+        type: { $ref: "#/components/schemas/ChannelClientType" }
+        authMethod: { $ref: "#/components/schemas/ChannelAuthMethod" }
+        allowedRoutes: { type: array, items: { type: string } }
+        ipAllowList: { type: array, items: { type: string } }
+        ratePerSec: { type: integer }
+        dailyQuota: { type: integer }
+        enabled: { type: boolean }
+        version: { type: integer, minimum: 1, description: The approved version (each approval adds one) }
+        consumer: { type: string, description: The APISIX consumer it is projected to; absent when its auth method has none }
+        updatedAt: { type: string, format: date-time }
+        updatedBy: { type: string, description: The maker of the last change }
+        approvedBy: { type: string, description: The checker of the last change }
+    ChannelClientPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ChannelClient" }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

@@ -58,6 +58,9 @@ public class BodySchema {
   /** {@code POST /admin/v1/key-ceremonies/{id}/components} (ticket 75). */
   public static final String KEY_COMPONENT = "derived-schemas/admin-v1-key-component-request.json";
 
+  /** {@code POST /admin/v1/channel-clients/{clientId}/change-requests} (ticket 100a). */
+  public static final String CHANNEL_CLIENT_CHANGE = "derived-schemas/admin-v1-channel-client-change-request.json";
+
   private final ObjectReader reader;
   private final Schema schema;
 

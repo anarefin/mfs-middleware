@@ -110,6 +110,36 @@ pki_role() {
   log "pki: role $1 ready"
 }
 
+# apisix_edge: the edge credentials APISIX reads itself (ticket 100a, 100 split decision): APISIX's
+# Vault secret manager speaks KV version 1 only, so a KV v1 mount apisix/ (secret/ is KV v2) holds
+# one secret per channel client, apisix/<clientId> field password (EDGE_SECRETS of services.sh,
+# synced from deploy/.env on every run); policy apisix-edge reads that mount and nothing else; the
+# token APISIX uses (secret manager vault/edge, deploy/apisix/vault/edge.json) is created with the
+# fixed dev id APISIX_VAULT_TOKEN (DEV ONLY, a fake value in dev.env.defaults), orphan and periodic,
+# and renewed on every run. Values and the token id go through files, never on a command line.
+apisix_edge() {
+  [ -n "${APISIX_VAULT_TOKEN:-}" ] || die "edge: APISIX_VAULT_TOKEN is not set (cp dev.env.defaults .env first)"
+  vault secrets list -format=json | grep -q '"apisix/"' || vault secrets enable -path=apisix -version=1 kv >/dev/null
+  printf 'path "apisix/*" { capabilities = ["read"] }\n' | vault policy write apisix-edge - >/dev/null
+  printf '%s' "$APISIX_VAULT_TOKEN" >"$tmp/tok"
+  if vault write auth/token/lookup token=@"$tmp/tok" >/dev/null 2>&1; then
+    vault write auth/token/renew token=@"$tmp/tok" >/dev/null
+  else
+    vault write auth/token/create-orphan id=@"$tmp/tok" policies=apisix-edge no_default_policy=true period=768h \
+      display_name=apisix-edge >/dev/null
+    log "edge: created the APISIX Vault token (policy apisix-edge)"
+  fi
+  rm -f "$tmp/tok"
+  for e in ${EDGE_SECRETS:-}; do
+    eval "val=\${${e#*:}:-}"
+    [ -n "$val" ] || die "edge: ${e#*:} is not set (cp dev.env.defaults .env first)"
+    printf '%s' "$val" >"$tmp/v"
+    vault write "apisix/${e%%:*}" password=@"$tmp/v" >/dev/null
+    rm -f "$tmp/v"
+  done
+  log "edge: apisix/ (KV v1) holds $(printf '%s\n' ${EDGE_SECRETS:-} | grep -c .) client secret(s)"
+}
+
 # in_pki <svc>: whether the service gets a certificate (PKI_SERVICES of services.sh).
 in_pki() {
   case " $(printf '%s' "${PKI_SERVICES:-}" | tr '\n' ' ') " in *" $1 "*) return 0 ;; esac

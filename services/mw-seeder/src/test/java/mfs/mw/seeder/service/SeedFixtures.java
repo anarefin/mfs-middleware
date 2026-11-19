@@ -58,6 +58,11 @@ final class SeedFixtures {
             new WalletSpec("01712000001", "CUSTOMER", 1_000_000, "Sumaiya Islam"),
             new WalletSpec("01812000001", "AGENT", 5_000_000, null)),
         List.of(new PartnerSpec("ocs", true, 20_000L)),
+        List.of(
+            new SeederProperties.ChannelClientSpec(
+                "ussd-gp", "MNO", "BASIC", List.of("ussd-http-gp"), List.of(), 100L, null, true),
+            new SeederProperties.ChannelClientSpec(
+                "customer-app", "APP", "JWT", List.of("app-v1", "auth-v1"), List.of(), null, null, null)),
         new Content(
             List.of(new MenuSpec("main", "classpath:seed-content/menus/main.json", List.of("gp", "robi"))),
             List.of(new TemplateSpec("TXN_P2P_RECEIVED", "SMS", "en", "You have received Tk {{amount}}", null, "Bits"))),

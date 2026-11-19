@@ -24,7 +24,70 @@ render() {
     MW_PUBLIC_HOST="${MW_PUBLIC_HOST-localhost}" \
     CHECKOUT_PHARMACY_MERCHANT_SECRET="${CHECKOUT_PHARMACY_MERCHANT_SECRET-fakePharmacySecret}" \
     CHECKOUT_FASHION_MERCHANT_SECRET="${CHECKOUT_FASHION_MERCHANT_SECRET-fakeFashionSecret}" \
+    APISIX_VAULT_TOKEN="${APISIX_VAULT_TOKEN-fakeApisixVaultToken}" \
     APISIX_DRY_RUN="$PWD/out" APISIX_CONFIG_DIR="$dir" bash "$APPLY" 2>&1)"
+}
+
+# Ticket 100a: secret manager vault/edge (the Vault KV v1 mount apisix/, APISIX's read-only token
+# from the environment, never in the repo), PUT before any consumer that may reference it.
+test_vault_secret_manager_is_applied_before_the_consumers() {
+  render || fail "dry run failed: $OUT"
+  jq -e '. == {"uri": "http://vault:8200", "prefix": "apisix", "token": "fakeApisixVaultToken"}' \
+    out/secrets/vault/edge.json >/dev/null || fail "vault/edge: $(cat out/secrets/vault/edge.json 2>&1)"
+  local first_secret first_consumer
+  first_secret="$(printf '%s\n' "$OUT" | grep -n 'PUT /apisix/admin/secrets/vault/edge' | head -1 | cut -d: -f1)"
+  first_consumer="$(printf '%s\n' "$OUT" | grep -n 'PUT /apisix/admin/consumers/' | head -1 | cut -d: -f1)"
+  [ -n "$first_secret" ] && [ "$first_secret" -lt "$first_consumer" ] || fail "secret manager not applied first: $OUT"
+  APISIX_VAULT_TOKEN="" render && fail "an empty APISIX_VAULT_TOKEN must fail the apply"
+  grep -q 'fakeApisixVaultToken' "$REPO_DIR/deploy/apisix/vault/edge.json" && fail "token value in the repo"
+  return 0
+}
+
+# Ticket 100a: a consumer the mw-admin-api registry projected (label managed-by=mw-admin-api) is
+# left alone by apisix-init, every other consumer is PUT as before.
+test_apply_skips_consumers_the_registry_manages() {
+  command -v python3 >/dev/null 2>&1 || { echo "    skipped: python3 not available" >&2; return 0; }
+  # a stand-in Admin API: consumer ussd_gp carries the registry label, everything else is unknown
+  cat >admin.py <<'EOF'
+import http.server, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def _answer(self, status, body):
+        self.send_response(status); self.send_header("Content-Length", str(len(body))); self.end_headers()
+        self.wfile.write(body)
+    def do_GET(self):
+        open("calls.txt", "a").write("GET " + self.path + "\n")
+        if self.path == "/apisix/admin/consumers/ussd_gp":
+            self._answer(200, b'{"key":"/apisix/consumers/ussd_gp","value":{"username":"ussd_gp","labels":{"managed-by":"mw-admin-api"}}}')
+        else:
+            self._answer(404, b'{"message":"Key not found"}')
+    def do_PUT(self):
+        self.rfile.read(int(self.headers.get("Content-Length", "0")))
+        open("calls.txt", "a").write("PUT " + self.path + "\n")
+        self._answer(200, b"{}")
+    def do_DELETE(self):
+        open("calls.txt", "a").write("DELETE " + self.path + "\n")
+        self._answer(404, b"{}")
+    def log_message(self, *a): pass
+s = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+open("port.txt", "w").write(str(s.server_address[1]))
+s.serve_forever()
+EOF
+  rm -f calls.txt port.txt
+  python3 -I admin.py & local pid=$!
+  local i=0
+  until [ -s port.txt ]; do i=$((i + 1)); [ "$i" -lt 50 ] || { kill "$pid"; fail "stand-in did not start"; }; sleep 0.1; done
+  mkdir -p tls && printf 'CERT' >tls/edge.crt && printf 'KEY' >tls/edge.key
+  OUT="$(USSD_GP_GATEWAY_SECRET=a USSD_ROBI_GATEWAY_SECRET=b USSD_BL_GATEWAY_SECRET=c USSD_TELETALK_GATEWAY_SECRET=d \
+    USSD_GP_ALLOWED_CIDRS=10.1.0.0/16 USSD_ROBI_ALLOWED_CIDRS=10.2.0.0/16 USSD_BL_ALLOWED_CIDRS=10.3.0.0/16 \
+    USSD_TELETALK_ALLOWED_CIDRS=10.4.0.0/16 MW_PUBLIC_HOST=localhost APISIX_VAULT_TOKEN=t \
+    CHECKOUT_PHARMACY_MERCHANT_SECRET=p CHECKOUT_FASHION_MERCHANT_SECRET=f \
+    APISIX_ADMIN="127.0.0.1:$(cat port.txt)" APISIX_ADMIN_KEY=k APISIX_TLS_DIR="$PWD/tls" bash "$APPLY" 2>&1)"; local rc=$?
+  kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+  [ "$rc" = 0 ] || fail "apply failed: $OUT"
+  grep -q '^PUT /apisix/admin/consumers/ussd_gp$' calls.txt && fail "the managed consumer ussd_gp was overwritten"
+  grep -q '^PUT /apisix/admin/consumers/ussd_robi$' calls.txt || fail "the unmanaged consumer ussd_robi was not applied"
+  grep -q '^PUT /apisix/admin/secrets/vault/edge$' calls.txt || fail "secret manager vault/edge not applied"
+  assert_out_contains "belongs to the mw-admin-api channel client registry"
 }
 
 # obj KIND ID: the rendered object

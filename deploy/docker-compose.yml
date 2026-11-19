@@ -551,6 +551,9 @@ services:
     environment: &apisix-init-env
       APISIX_ADMIN: apisix:9180
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?cp dev.env.defaults .env}
+      # APISIX's read-only Vault token, put into secret manager vault/edge (deploy/apisix/vault/edge.json;
+      # Vault KV v1 mount apisix/, ticket 100a). provision creates the token with this fixed dev id.
+      APISIX_VAULT_TOKEN: ${APISIX_VAULT_TOKEN:?cp dev.env.defaults .env}
       # Test-only objects (deploy/apisix/routes-test, consumers-test): off unless scripts/api-test.sh
       # (tests/api/run.sh) or scripts/tester.sh re-runs this one-shot with MW_E2E_ROUTES=1; off also removes them.
       MW_E2E_ROUTES: ${MW_E2E_ROUTES:-0}
@@ -698,6 +701,10 @@ services:
       OUT_ROOT: /out
       # deploy/.env values synced into the services' secrets on every run (services.sh sync_env)
       REDIS_PASSWORD: ${REDIS_PASSWORD:?cp dev.env.defaults .env}
+      # the APISIX Admin API key, into secret/mw-admin-api (channel client registry, ticket 100a), and
+      # the fixed id of APISIX's read-only token on the Vault KV v1 mount apisix/ (lib.sh apisix_edge)
+      APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?cp dev.env.defaults .env}
+      APISIX_VAULT_TOKEN: ${APISIX_VAULT_TOKEN:?cp dev.env.defaults .env}
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?cp dev.env.defaults .env}
       BILLAGG_WS_PASSWORD: ${BILLAGG_WS_PASSWORD:?cp dev.env.defaults .env}
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
@@ -1081,6 +1088,9 @@ services:
       - "127.0.0.1:${MW_PORT_ADMIN_API:-8088}:8080"
     image: mfs-mw/mw-admin-api:local
     build: { context: ../services/mw-admin-api, args: *jvm-build-args }
+    # ops too (ticket 100a): the channel client registry projects its APISIX consumers through the
+    # Admin API, which only accepts callers from the ops subnet (deploy/apisix/config.yaml allow_admin)
+    networks: [app, data, ops]
     depends_on:
       <<: *infra-deps
     volumes:
@@ -1091,12 +1101,15 @@ services:
       # Dev profile (application-dev.yml): the partner seeds mirroring the adapters' dev seeds (ticket 38).
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       # Signing keys of Keycloak realm `ops` (operators, spec 15.1). Keycloak sits on `ops` and, as
-      # the recorded MVP deviation of 18.1, on `data`: the service reaches it over `data` and
-      # joins no ops network (the ops subnet may call the APISIX Admin API).
+      # the recorded MVP deviation of 18.1, on `data`: the service reaches it over `data`.
       MW_ADMIN_JWK_SET_URI: ${MW_ADMIN_JWK_SET_URI:-http://keycloak:8080/realms/ops/protocol/openid-connect/certs}
       # mTLS client certificate (pki_int/issue/mw-admin-api) for the key screens and the key ceremony
       # at mw-crypto (ticket 75)
       MW_TLS_ENABLED: "true"
+      # Channel client registry -> APISIX consumers (ticket 100a): after each approval and every 5 min
+      # (scheduler/ApisixReconcileJob); the admin key comes from Vault (secret/mw-admin-api)
+      MW_APISIX_SYNC_ENABLED: "true"
+      MW_APISIX_ADMIN_URL: http://apisix:9180
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }

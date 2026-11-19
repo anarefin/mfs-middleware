@@ -31,6 +31,7 @@ public record SeederProperties(
     Operators operators,
     List<WalletSpec> wallets,
     List<PartnerSpec> partners,
+    List<ChannelClientSpec> channelClients,
     Content content,
     AppPins appPins) {
 
@@ -42,6 +43,7 @@ public record SeederProperties(
     importedUsers = importedUsers == null ? List.of() : importedUsers;
     wallets = wallets == null ? List.of() : wallets;
     partners = partners == null ? List.of() : partners;
+    channelClients = channelClients == null ? List.of() : channelClients;
     content = content == null ? new Content(List.of(), List.of()) : content;
   }
 
@@ -134,6 +136,20 @@ public record SeederProperties(
 
   /** A partner's baseline in mw-admin-api: enabled, and the time limit of one call (null: any). */
   public record PartnerSpec(String partnerId, boolean enabled, Long timeoutMs) {}
+
+  /**
+   * A channel client of the edge registry (ticket 100a) at its baseline: today's clients, so the
+   * registry matches what the edge does (admin.v1 {@code ChannelClientSpec}, no secrets).
+   */
+  public record ChannelClientSpec(
+      String clientId, String type, String authMethod, List<String> allowedRoutes, List<String> ipAllowList,
+      Long ratePerSec, Long dailyQuota, Boolean enabled) {
+
+    public mfs.mw.seeder.dto.ChannelClientDefinition definition() {
+      return new mfs.mw.seeder.dto.ChannelClientDefinition(
+          type, authMethod, allowedRoutes, ipAllowList, ratePerSec, dailyQuota, enabled == null || enabled);
+    }
+  }
 
   public record Content(List<MenuSpec> menus, List<TemplateSpec> templates) {
 

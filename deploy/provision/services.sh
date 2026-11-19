@@ -15,6 +15,13 @@ SECRETS_AHEAD=""
 # policy may issue from that role only. A role may exist before its service is in SERVICES.
 PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api"
 
+# EDGE_SECRETS: the credentials APISIX reads from the Vault KV v1 mount apisix/ (ticket 100a, lib.sh
+# apisix_edge), <clientId>:<VAR>: apisix/<clientId> field password = deploy/.env's VAR, synced on every
+# run. A channel client of the mw-admin-api registry with auth method BASIC is projected as a consumer
+# whose basic-auth password is $secret://vault/edge/<clientId>/password.
+EDGE_SECRETS="ussd-gp:USSD_GP_GATEWAY_SECRET ussd-robi:USSD_ROBI_GATEWAY_SECRET ussd-bl:USSD_BL_GATEWAY_SECRET
+  ussd-teletalk:USSD_TELETALK_GATEWAY_SECRET"
+
 SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank
@@ -137,6 +144,8 @@ provision_mw_ussd() {
 provision_mw_admin_api() {
   gen_once spring.datasource.password 40
   sync_env mw.admin-api.internal-auth.client-secret KC_MW_ADMIN_API_SECRET
+  # the APISIX Admin API key: the channel client registry projects its consumers there (ticket 100a)
+  sync_env mw.apisix.admin-key APISIX_ADMIN_KEY
   db_role admin_api_rw admin partner
 }
 

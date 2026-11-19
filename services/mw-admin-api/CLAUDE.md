@@ -60,7 +60,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   approval (moved on: `409 MW-VAL-030`, request stays PENDING); expired: marked EXPIRED + audited,
   `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
   `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]` (`resourceType`
-  transaction|wallet|pin_reset|partner|ussd_menu|notify_template; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
+  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|key|channel_client; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
   (`READ_CHANGE_REQUESTS`: the transaction readers and integration-maker/checker, ticket 38; an
   operator without `READ_TRANSACTIONS` sees partner requests only: transaction and wallet ones are
   left out of the list, `?resourceType=transaction|wallet` and their detail are 403).
@@ -323,6 +323,40 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `mw-crypto`. Test `controller/KeyCeremonyApiIT` (stand-in mw-crypto: same-user approval, stale MFA
   for maker, checker and a token without auth_time, ops-checker refused, ceremony before both
   components, same custodian, components never in the row / outbox, commit and abort calls).
+- Channel client registry (ticket 100a, FRS PLT-003, PLT-004 quota part, ADM-03 API part; 100 split
+  decisions; `controller/ChannelClientController` -> `service/ChannelClientService` (reads, maker) and
+  `service/ChannelClientChangeHandler` (approval) -> `repository/ChannelClientRepository`, table
+  `admin.channel_client` V12 (clientId, type APP|MNO|PARTNER|MERCHANT|PORTAL, authMethod
+  JWT|OAUTH2_CC|MTLS|HMAC|BASIC, allowedRoutes, ipAllowList, ratePerSec?, dailyQuota?, enabled, version;
+  never a secret), `entity/ChannelClient`, `dto/ChannelClientSpec`, `mapper/ChannelClientMapper`):
+  `GET /admin/v1/channel-clients[/{clientId}]` (`AdminRole.READ_CHANNEL_CLIENTS` = the partner readers);
+  `POST /admin/v1/channel-clients/{clientId}/change-requests {action: UPSERT, reason, client}`
+  (`CHANNEL_CLIENT_MAKER` = ops-maker, integration-maker) -> 201 PENDING, resourceType `channel_client`,
+  `payload {baseVersion?, client}`, `diff` the changed fields; type or auth method change, a bad route
+  id / address (the contract's patterns, checked here: the derived schema keeps none) `400 MW-VAL-001`;
+  nothing changes `409 MW-VAL-030`. Approve / reject on the shared endpoints (`CHANNEL_CLIENT_CHECKER` =
+  ops-checker, integration-checker; never the maker): the row locked and still at `baseVersion` (else
+  409, stays PENDING), stored as version + 1, audited (`sentAs` `apisix`) in the decision transaction;
+  only AFTER the commit (`TransactionSynchronization.afterCommit`) `service/ChannelClientProjection`
+  projects it with `service/ApisixConsumerSync` through `client/ApisixAdminClient` (APISIX Admin API,
+  `mw.apisix.*` / `config/ApisixProperties`: `enabled` (`MW_APISIX_SYNC_ENABLED`, true in the stack, off
+  in tests), `admin-url`, `admin-key` from Vault `secret/mw-admin-api` (synced from `APISIX_ADMIN_KEY`),
+  `secret-ref` `$secret://vault/edge`, Redis of the quota). Projection (BASIC only; JWT / HMAC are rows
+  only, OAUTH2_CC 100b, MTLS 100c): consumer `<clientId - as _>` (labels `managed-by=mw-admin-api`,
+  `channel-client`, `registry-version`; basic-auth user clientId, password
+  `$secret://vault/edge/<clientId>/password` from the Vault KV v1 mount `apisix/`), consumer group
+  `client_<name>` (`limit-req`, `limit-count` per 86400 s, `ip-restriction`) only when it has a limit;
+  a disabled client keeps a consumer without credential or group; an object equal to the wanted one is
+  not written again (re-apply is a no-op). An Admin API failure never fails the approval (WARN
+  `apisix.consumer.sync_failed`); `scheduler/ApisixReconcileJob` (ShedLock `apisix-consumer-reconcile`,
+  `mw.apisix.reconcile-cron` every 5 min) re-projects everything and deletes managed consumers and groups
+  of clients no longer projected (unlabelled objects never). The stack puts this service on the `ops`
+  network (the Admin API's only allowed subnet). Seeds: mw-seeder `seed-channel-clients`. Tests
+  `service/ApisixConsumerSyncTest`, `controller/ChannelClientChangeRequestIT` (stand-in Admin API).
+  Decisions (split of ticket 100): makers / checkers as for partners; a client's type and auth method
+  never change (register a new client); a consumer's plugin replaces the route's of the same name, so a
+  `dailyQuota` on a USSD client would replace its route's per-MSISDN `limit-count` (the seeds carry a
+  rate only).
 - Internal API identity (M3 gate decision; `client/ServiceTokenClient`, `client/InternalApiCaller`):
   Keycloak realm `services` client `mw-admin-api` (client credentials, HTTP Basic, token carries
   audiences mw-orchestrator and mw-audit-dw), cached until 30 s before `expires_in`, dropped on a
@@ -330,7 +364,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   from `KC_MW_ADMIN_API_SECRET`. Resilience4j `orchestrator` and `audit-dw` (retry + breaker on
   `QueryUnavailableException` only).
 - Dev provisioning (`provision_mw_admin_api` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
-  `admin_api_rw`, schemas `admin` and `partner` (spec 16.2), `secret/mw-admin-api` (DB password; client secret),
+  `admin_api_rw`, schemas `admin` and `partner` (spec 16.2), `secret/mw-admin-api` (DB password; client secret; APISIX admin key `mw.apisix.admin-key`, ticket 100a),
   AppRole. Stack: a service of `deploy/docker-compose.yml` (profiles `minimal`, `core`), limit 512 MiB, Hikari pool 2.
 - Keycloak realm `ops` (`deploy/keycloak/realms/ops-realm.json`) carries the 15.4
   roles; dev users `ops-viewer01` (viewer), `ops-maker01`, `ops-checker01`, `ops-admin01`

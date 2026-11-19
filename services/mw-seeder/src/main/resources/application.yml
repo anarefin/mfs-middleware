@@ -207,6 +207,26 @@ mw:
     # Partner baselines in mw-admin-api (the e2e suite's restore values: enabled, 20 s).
     partners:
       - { partner-id: ocs, enabled: true, timeout-ms: 20000 }
+    # Today's edge clients as rows of mw-admin-api's channel client registry (ticket 100a), so the
+    # registry matches what the edge does. Only BASIC clients (the MNO gateways) become APISIX consumers
+    # (ussd_<mno>, password $secret://vault/edge/ussd-<mno>/password, Vault KV v1 apisix/ synced by
+    # provision from USSD_<MNO>_GATEWAY_SECRET); their route keeps its own allow-list and per-MSISDN
+    # limit-count, so they get a rate limit only (a dailyQuota would replace the route's limit-count
+    # for the consumer). JWT and HMAC clients are registry rows only (100 split decision).
+    channel-clients:
+      - { client-id: customer-app, type: APP, auth-method: JWT, allowed-routes: [app-v1, auth-v1, auth-v1-keys, auth-v1-pin-resets], ip-allow-list: [] }
+      - { client-id: agent-app, type: APP, auth-method: JWT, allowed-routes: [app-v1, auth-v1, auth-v1-keys, auth-v1-pin-resets], ip-allow-list: [] }
+      - { client-id: merchant-app, type: APP, auth-method: JWT, allowed-routes: [app-v1, auth-v1, auth-v1-keys, auth-v1-pin-resets], ip-allow-list: [] }
+      - { client-id: ussd-gp, type: MNO, auth-method: BASIC, allowed-routes: [ussd-http-gp], ip-allow-list: [], rate-per-sec: 100 }
+      - { client-id: ussd-robi, type: MNO, auth-method: BASIC, allowed-routes: [ussd-http-robi], ip-allow-list: [], rate-per-sec: 100 }
+      - { client-id: ussd-bl, type: MNO, auth-method: BASIC, allowed-routes: [ussd-http-bl], ip-allow-list: [], rate-per-sec: 100 }
+      - { client-id: ussd-teletalk, type: MNO, auth-method: BASIC, allowed-routes: [ussd-http-teletalk], ip-allow-list: [], rate-per-sec: 100 }
+      - { client-id: billagg, type: PARTNER, auth-method: HMAC, allowed-routes: [partner-billagg-callback], ip-allow-list: [] }
+      - { client-id: c2wbank, type: PARTNER, auth-method: HMAC, allowed-routes: [partner-c2wbank-callback], ip-allow-list: [] }
+      - { client-id: merchant-demo, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }
+      - { client-id: merchant-pharmacy, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }
+      - { client-id: merchant-fashion, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }
+      - { client-id: org-portal, type: PORTAL, auth-method: JWT, allowed-routes: [portal-org-v1, auth-portals-token], ip-allow-list: [] }
     # First admin versions: copies of what mw-ussd (menus/main-v3.json) and mw-notify (V5) ship,
     # so publishing them changes no text. Keep the copies identical.
     content:

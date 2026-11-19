@@ -161,9 +161,9 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
 | PLT-001 | done | APISIX is the only port beyond loopback (D3 amendment); production is edge-only |
-| PLT-002 | ticket 100 | app JWTs (mw-auth) and merchant API key + HMAC built; partner client credentials and inbound mTLS in 100 |
-| PLT-003 | tickets 100, 132 | client registry (APISIX consumers) API in 100, console in 132 |
-| PLT-004 | ticket 100 | 429 with `Retry-After` on every route, one bucket per route group keyed per client (ticket 99, `lua/edge-error-headers.lua`, `test_apisix_edge.sh`, `scripts/edge-test.sh`); counters in Redis (ticket 90, D29); token-bucket quotas per registered client 100 |
+| PLT-002 | ticket 100 | app JWTs (mw-auth) and merchant API key + HMAC built; the client registry records each client's auth method (ticket 100a); partner client credentials (100b) and inbound mTLS (100c) follow |
+| PLT-003 | ticket 132 | client registry built (ticket 100a): mw-admin-api `admin.channel_client` (V12), `/admin/v1/channel-clients` maker-checker (`ChannelClientChangeRequestIT`), projected to APISIX consumers + consumer groups after the approval commits and on a ShedLock reconcile (`service/ApisixConsumerSync`, `ApisixConsumerSyncTest`), secrets as `$secret://vault/edge/...` on the Vault KV v1 mount `apisix/`; today's clients seeded by mw-seeder (`seed-channel-clients`); console in 132 |
+| PLT-004 | ticket 100 | 429 with `Retry-After` on every route, one bucket per route group keyed per client (ticket 99, `lua/edge-error-headers.lua`, `test_apisix_edge.sh`, `scripts/edge-test.sh`); counters in Redis (ticket 90, D29); per registered client with an APISIX consumer: `limit-req` rate and `limit-count` daily quota in its consumer group (ticket 100a, `ApisixConsumerSyncTest`); consumer-less clients keyed by token client id in 100b |
 | PLT-005 | done | `CorrelationIdFilter` in every service, `MwHeaders` on Kafka, propagated on outbound calls (root `CLAUDE.md`) |
 | PLT-006 | ticket 108 | Bean Validation and body JSON Schema (`MW-VAL-001`) built; XSD with the SOAP facade |
 | PLT-007 | done | `MaskingPolicy` and `@Sensitive` in every service, `scripts/log-scan.sh`; mask shape `0171****789` (repo rule) |
@@ -346,7 +346,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | --- | --- | --- |
 | ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); maintenance window and mock/real switch in 131 |
 | ADM-02 | ticket 131 | partner credentials already live in Vault (`secret/mw-adapter-*/<partner>`, ticket 91); the upload and expiry dashboard are ticket 131 |
-| ADM-03 | tickets 100, 132 | channel clients |
+| ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
 | ADM-04 | tickets 98, 132 | routing rules |
 | ADM-05 | tickets 113, 132 | billers |
 | ADM-06 | ticket 133 | USSD menu JSON editing built; visual editor and preview in 133 |
