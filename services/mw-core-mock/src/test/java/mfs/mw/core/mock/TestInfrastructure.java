@@ -102,6 +102,8 @@ public class TestInfrastructure {
       registry.add("spring.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
       // mw-auth's assertion key set (ticket 71), served by the test's own JWKS server
       registry.add("mw.coremock.assertion.jwks-uri", mfs.mw.core.mock.security.TestAssertions::jwksUri);
+      // the core wallet API's service tokens (ticket 93), signed by the test's own Keycloak stand-in
+      registry.add("mw.internal-auth.jwk-set-uri", mfs.mw.core.mock.security.InternalTokens::jwkSetUri);
     };
   }
 

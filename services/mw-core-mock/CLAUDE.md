@@ -21,6 +21,34 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 
 - Test double of the core wallet (spec "Core mock", 6.3, WP06): never ships to production, replaced by
   the real core with no change to the orchestrator.
+- **Core wallet REST API** (FRS 7.2 WAL-01, WAL-03..13, ADR D31, ticket 93; contract
+  `api/mw-core-mock/core-wallet.v1.openapi.yaml`, base `/core/v1`), beside the Kafka commands until ticket 95
+  retires them: `controller/CoreWalletController` (mapping and `@Valid` only) -> `service/CoreWalletService`.
+  Money operations are the Kafka commands of the same name, built there and handed to
+  `CoreCommandService.handle(cmd, topic)`: holds `HoldFunds`, `.../{holdId}/commit` `CommitHold`,
+  `.../release` `ReleaseHold` (answers on `core.payment.event.v1`), transfers `PostTransfer`, credits
+  `CreditWallet`, reversals `ReverseTransaction` (`amount` optional = the whole original; partial is
+  `AMOUNT_MISMATCH` until ticket 116) on `core.wallet.event.v1`. So the rules, the faults, the `command_log`
+  replay and the `core.event.v1` outbox results are the commands' (test `controller/CoreWalletEventsIT`).
+  Idempotent by txnId and operation (FRS 7.3): commandId `<txnId>:rest:<op>` (commit and release: the
+  hold's txnId), `rest_request` (`V12__rest_request.sql`) keeps the SHA-256 of the first body; same body =
+  the stored answer and no second posting, another body `409 MW-IDEM-001`. A core refusal is `422
+  MW-CORE-<reason>` (stored and committed like a success, so a repeat is the same 422), a refused
+  assertion `401 MW-AUTH-046`; an unknown hold `422 MW-CORE-HOLD_NOT_FOUND` (no command, no event).
+  Holds and transfers need mw-auth's assertion in `X-Txn-Assertion` plus the body's `idempotencyKey`
+  (`security/TxnAssertionHeader`: missing `401 MW-AUTH-046` before anything runs; BULK_DISBURSE needs
+  none), then `AssertionCheck` as on the command; credits need none. Reads write nothing: accounts,
+  balance (available/held/total), charges (flat fee, VAT and commission 0 until ticket 94), limits (per txn
+  and daily, `allowed` + `reasonCode`), statements (entries by wallet and `[from, to)`, `limit` <= 500;
+  balance after each entry in 94), transactions (`StatusOperations.current`, the QueryTransaction view,
+  plus every entry). WAL-02 `/pin/verify` is not built (D20, D22, D31). Auth: `/core/v1/**` needs a
+  Keycloak realm `services` client-credentials JWT (`config/SecurityConfig`, `config/InternalAuthProperties`
+  `mw.internal-auth.*`: exact issuer, `aud` mw-core-mock, `azp` in `allowed-clients` mw-orchestrator,
+  mw-auth, mw-admin-api; no or bad token `401 MW-AUTH-001`, other client `403 MW-AUTH-002`); every other
+  path (`/core-mock/v1/**` test/admin API, the dev-only APISIX route `/test/core-mock`, actuator) stays
+  open as before. The Keycloak clients and their `aud-mw-core-mock` mappers come with the callers (ticket
+  95). Tests: `controller/CoreWalletControllerTest` (slice, `security/InternalTokens`),
+  `controller/CoreWalletRestIT` (money, idempotency, every body against the contract).
 - Consumes `core.wallet.command.v1` and `core.payment.command.v1` (two `@KafkaListener`s on
   `messaging/CoreCommandListener`, off with `mw.coremock.consumer.enabled=false`), both with retry topics + DLQ. Handled: `ValidateTransaction`
   (fee, limits, assertion, account status; moves no money), `PostTransfer` (double-entry debit/credit plus
@@ -207,6 +235,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `ConsumedContractsTest` (no Spring, no Docker). The fault and balance admin API is not a product
   contract; the wallet GET and the test-only seed PUT are `api/mw-core-mock/core-mock-seed.v1.openapi.yaml`
   (ticket 57, consumed by mw-seeder), served shapes checked by `contracts/ApiContractsTest`.
+- `api/mw-core-mock/core-wallet.v1.openapi.yaml` (ticket 93, ADR D31): the core wallet REST API `/core/v1`,
+  the proposal for the real core's contract; consumed by mw-orchestrator from ticket 95. Served bodies
+  checked by `controller/CoreWalletRestIT`, request schemas by `contracts/ApiContractsTest`.
 
 ## Contracts used
 

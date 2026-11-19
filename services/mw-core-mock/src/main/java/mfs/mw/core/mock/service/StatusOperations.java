@@ -58,20 +58,10 @@ class StatusOperations {
         status = statusOf(e.path("eventType").asString());
         holdId = e.path("payload").path("holdId").asString(null);
       }
-    } else if (ledger.isReversed(cmd.txnId())) {
-      status = "REVERSED";
-      holdId = holds.latestForTxn(cmd.txnId()).map(Hold::id).orElse(null);
     } else {
-      Optional<Hold> hold = holds.latestForTxn(cmd.txnId());
-      if (hold.isPresent()) {
-        status = hold.get().status().equals(Hold.HELD) ? "HELD" : hold.get().status();
-        holdId = hold.get().id();
-      } else {
-        Optional<String> latest = commandLog.latestEventOfTxn(cmd.txnId());
-        if (latest.isPresent()) {
-          status = statusOf(json.readTree(latest.get()).path("eventType").asString());
-        }
-      }
+      TxnStatus current = current(cmd.txnId());
+      status = current.status();
+      holdId = current.holdId();
     }
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("txnStatus", status);
@@ -79,6 +69,27 @@ class StatusOperations {
       payload.put("holdId", holdId);
     }
     return events.succeeded(cmd, "TransactionStatus", coreRef, null, payload);
+  }
+
+  /** A transaction's status and the hold it has, if any. */
+  record TxnStatus(String status, String holdId) {}
+
+  /**
+   * The core's view of {@code txnId} (QueryTransaction without queryCommandId, and WAL-13): reversed,
+   * else the latest hold's state, else the latest non-query command's outcome, else NOT_FOUND.
+   * Reads only; changes nothing.
+   */
+  TxnStatus current(String txnId) {
+    if (ledger.isReversed(txnId)) {
+      return new TxnStatus("REVERSED", holds.latestForTxn(txnId).map(Hold::id).orElse(null));
+    }
+    Optional<Hold> hold = holds.latestForTxn(txnId);
+    if (hold.isPresent()) {
+      return new TxnStatus(hold.get().status().equals(Hold.HELD) ? "HELD" : hold.get().status(), hold.get().id());
+    }
+    return commandLog.latestEventOfTxn(txnId)
+        .map(e -> new TxnStatus(statusOf(json.readTree(e).path("eventType").asString()), null))
+        .orElse(new TxnStatus("NOT_FOUND", null));
   }
 
   static String statusOf(String eventType) {

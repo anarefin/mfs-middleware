@@ -41,6 +41,11 @@ public class HoldRepository {
     return jdbc.query("select * from hold where id = ? for update", MAPPER, id).stream().findFirst();
   }
 
+  /** Reads a hold without locking it (the core wallet API finds the hold's txnId first, ticket 93). */
+  public Optional<Hold> find(String id) {
+    return jdbc.query("select * from hold where id = ?", MAPPER, id).stream().findFirst();
+  }
+
   public Optional<Hold> latestForTxn(String txnId) {
     return jdbc.query("select * from hold where txn_id = ? order by created_at desc, id desc limit 1", MAPPER, txnId)
         .stream()

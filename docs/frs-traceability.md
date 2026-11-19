@@ -275,7 +275,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-15 | ticket 119 | UCB IMT mock |
 | EXT-16 | ticket 120 | UCB ATM mock |
 | EXT-17 | tickets 123, 128 | DW Kafka and SFTP drop |
-| EXT-18 | tickets 93, 95 | core over REST (D31) |
+| EXT-18 | ticket 95 | core over REST (D31): the mock serves it, `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93); the orchestrator's client in 95 |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
 | MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
 | MCK-03 | tickets 102, 136 | magic values built (spec 22.2); documented per mock in 136 |
@@ -290,19 +290,19 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| WAL-01 | ticket 93 | account info |
+| WAL-01 | done | `GET /core/v1/accounts/{msisdn}` (ticket 93; KYC level with the core model, ticket 94) |
 | WAL-02 | deviation | not built: the middleware owns the PIN (D20); mw-auth checks it and the core verifies the mw-auth assertion header instead (D22, D31) |
-| WAL-03 | ticket 93 | balance (today `BalanceInquiry` over Kafka, D26) |
-| WAL-04 | tickets 93, 94 | charges with VAT and commission |
-| WAL-05 | tickets 93, 94 | daily and monthly limits |
-| WAL-06 | ticket 93 | hold (today `HoldFunds`) |
-| WAL-07 | tickets 93, 94 | commit with double entries to system wallets |
-| WAL-08 | ticket 93 | release |
-| WAL-09 | ticket 93 | transfer (today `PostTransfer`) |
-| WAL-10 | tickets 93, 94 | credit from a settlement wallet |
-| WAL-11 | tickets 93, 116 | reversal; partial reversal for refunds in 116 |
-| WAL-12 | tickets 94, 107 | statements |
-| WAL-13 | tickets 93, 95 | transaction status as the inquiry (D31) |
+| WAL-03 | done | `GET /core/v1/balance/{walletId}`: available, held, total (ticket 93) |
+| WAL-04 | ticket 94 | `POST /core/v1/charges/calculate` built (ticket 93, flat fee); VAT and commission in 94 |
+| WAL-05 | ticket 94 | `POST /core/v1/limits/check` built (ticket 93, per txn and daily); monthly in 94 |
+| WAL-06 | done | `POST /core/v1/holds` (ticket 93): the `HoldFunds` rules, `X-Txn-Assertion` |
+| WAL-07 | ticket 94 | `POST /core/v1/holds/{id}/commit` built (ticket 93, settlement and fee wallets); VAT and commission wallets in 94 |
+| WAL-08 | done | `POST /core/v1/holds/{id}/release` (ticket 93) |
+| WAL-09 | done | `POST /core/v1/transfers` (ticket 93): the `PostTransfer` rules |
+| WAL-10 | ticket 94 | `POST /core/v1/credits` built (ticket 93, from `SETTLEMENT`); a settlement wallet per partner in 94 |
+| WAL-11 | ticket 116 | `POST /core/v1/reversals` built (ticket 93, full, idempotent, once); partial reversal for refunds in 116 |
+| WAL-12 | tickets 94, 107 | `GET /core/v1/statements` built (ticket 93: entries by wallet and range); balance after each entry in 94 |
+| WAL-13 | ticket 95 | `GET /core/v1/transactions/{txnId}` built (ticket 93: status and entries); the orchestrator's inquiry uses it in 95 |
 
 ## 8. Supporting services (FRS 8)
 

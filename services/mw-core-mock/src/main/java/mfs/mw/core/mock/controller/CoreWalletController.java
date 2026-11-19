@@ -1,0 +1,119 @@
+package mfs.mw.core.mock.controller;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import java.time.Instant;
+import mfs.mw.core.mock.dto.AccountView;
+import mfs.mw.core.mock.dto.BalanceView;
+import mfs.mw.core.mock.dto.ChargesRequest;
+import mfs.mw.core.mock.dto.ChargesView;
+import mfs.mw.core.mock.dto.HoldActionRequest;
+import mfs.mw.core.mock.dto.LimitsRequest;
+import mfs.mw.core.mock.dto.LimitsView;
+import mfs.mw.core.mock.dto.OperationResult;
+import mfs.mw.core.mock.dto.ReversalRequest;
+import mfs.mw.core.mock.dto.StatementView;
+import mfs.mw.core.mock.dto.TransactionStatusView;
+import mfs.mw.core.mock.dto.WalletCreditRequest;
+import mfs.mw.core.mock.dto.WalletTransferRequest;
+import mfs.mw.core.mock.security.TxnAssertionHeader;
+import mfs.mw.core.mock.service.CoreWalletService;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * The core wallet over REST (FRS 7.2 WAL-01, WAL-03..13, ADR D31, ticket 93; contract {@code
+ * api/mw-core-mock/core-wallet.v1.openapi.yaml}). Mapping and validation only: the rules are the
+ * core's ({@link CoreWalletService}, the same code as the Kafka commands). Service token checked by
+ * {@code config/SecurityConfig}; the assertion header's presence by {@link TxnAssertionHeader}.
+ */
+@RestController
+@RequestMapping("/core/v1")
+public class CoreWalletController {
+
+  private final CoreWalletService wallet;
+
+  public CoreWalletController(CoreWalletService wallet) {
+    this.wallet = wallet;
+  }
+
+  @GetMapping("/accounts/{msisdn}")
+  AccountView account(@PathVariable @Size(min = 1, max = 64) String msisdn) {
+    return wallet.account(msisdn);
+  }
+
+  @GetMapping("/balance/{walletId}")
+  BalanceView balance(@PathVariable @Size(min = 1, max = 64) String walletId) {
+    return wallet.balance(walletId);
+  }
+
+  @PostMapping("/charges/calculate")
+  ChargesView charges(@Valid @RequestBody ChargesRequest req) {
+    return wallet.charges(req);
+  }
+
+  @PostMapping("/limits/check")
+  LimitsView limits(@Valid @RequestBody LimitsRequest req) {
+    return wallet.limits(req);
+  }
+
+  @PostMapping("/holds")
+  OperationResult hold(
+      @Valid @RequestBody WalletTransferRequest req,
+      @RequestHeader(name = TxnAssertionHeader.NAME, required = false) String assertion) {
+    return wallet.hold(req, TxnAssertionHeader.require(req, assertion));
+  }
+
+  @PostMapping("/holds/{holdId}/commit")
+  OperationResult commit(
+      @PathVariable @Size(min = 1, max = 64) String holdId, @Valid @RequestBody(required = false) HoldActionRequest req) {
+    return wallet.commit(holdId, req == null ? HoldActionRequest.NONE : req);
+  }
+
+  @PostMapping("/holds/{holdId}/release")
+  OperationResult release(
+      @PathVariable @Size(min = 1, max = 64) String holdId, @Valid @RequestBody(required = false) HoldActionRequest req) {
+    return wallet.release(holdId, req == null ? HoldActionRequest.NONE : req);
+  }
+
+  @PostMapping("/transfers")
+  OperationResult transfer(
+      @Valid @RequestBody WalletTransferRequest req,
+      @RequestHeader(name = TxnAssertionHeader.NAME, required = false) String assertion) {
+    return wallet.transfer(req, TxnAssertionHeader.require(req, assertion));
+  }
+
+  @PostMapping("/credits")
+  OperationResult credit(@Valid @RequestBody WalletCreditRequest req) {
+    return wallet.credit(req);
+  }
+
+  @PostMapping("/reversals")
+  OperationResult reverse(@Valid @RequestBody ReversalRequest req) {
+    return wallet.reverse(req);
+  }
+
+  @GetMapping("/statements")
+  StatementView statement(
+      @RequestParam @Size(min = 1, max = 64) String walletId,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+      @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+      @RequestParam(defaultValue = "100") @Min(1) @Max(500) int limit) {
+    return wallet.statement(walletId, from, to, limit);
+  }
+
+  @GetMapping("/transactions/{txnId}")
+  TransactionStatusView transaction(@PathVariable @Pattern(regexp = WalletTransferRequest.TXN_ID) String txnId) {
+    return wallet.transaction(txnId);
+  }
+}
