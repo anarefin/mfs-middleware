@@ -14,7 +14,7 @@ import org.springframework.validation.annotation.Validated;
  * Transaction search under {@code mw.orchestrator.search} (ticket 35, spec 14.3, 16.3).
  *
  * @param hashKey HMAC key of {@code initiator_hash} and {@code payee_hash} ({@code
- *     util/SearchHash}); a secret, read from OpenBao ({@code secret/mw-orchestrator}), never
+ *     util/SearchHash}); a secret, read from Vault ({@code secret/mw-orchestrator}), never
  *     written in a config file
  * @param orgPayees per org id, the billers and merchant wallets the org collects for, each {@code
  *     BILLER:<billerCode>} or {@code MERCHANT:<wallet MSISDN>} (A3): an org-scoped query also

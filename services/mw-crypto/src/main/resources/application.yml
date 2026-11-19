@@ -1,5 +1,5 @@
 # Static configuration baked into the image (spec 20.4). Per-environment overrides are
-# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from OpenBao/Vault
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from Vault
 # only (18.4) and are never written here.
 spring:
   application:
@@ -14,7 +14,7 @@ spring:
   cloud:
     vault:
       enabled: ${VAULT_ENABLED:false}
-      uri: ${VAULT_ADDR:http://openbao:8200}
+      uri: ${VAULT_ADDR:http://vault:8200}
       authentication: APPROLE
       app-role:
         role-id: ${VAULT_ROLE_ID:}
@@ -27,7 +27,7 @@ spring:
     problemdetails:
       enabled: false
   # This service's own schema (16.2), migrated by Flyway on start-up from
-  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from OpenBao's database engine
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from Vault's database engine
   # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
   datasource:
     url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
@@ -149,7 +149,7 @@ logging:
 server:
   port: 8080
   shutdown: graceful
-  # mTLS (spec 18.2, D24, ticket 66): the API port needs a client certificate of the OpenBao
+  # mTLS (spec 18.2, D24, ticket 66): the API port needs a client certificate of the Vault
   # intermediate (handshake fails without one); the bundle is this service's own certificate,
   # issued and renewed in memory by config/ServiceCertificateManager (mw.tls below).
   ssl:
@@ -247,7 +247,7 @@ mw:
       # The image's p11-kit proxy: its one module is the softhsm mw-crypto token over TCP (Dockerfile).
       library: /usr/lib/libp11-kit.so.0
       slot-list-index: 0
-      # From OpenBao secret/mw-crypto (deploy/provision/services.sh); never written here.
+      # From Vault secret/mw-crypto (deploy/provision/services.sh); never written here.
       user-pin: ""
       max-sessions: 8
       acquire-timeout: 2s
@@ -301,7 +301,7 @@ mw:
         # No caller yet (ticket 65 building blocks): XMLDSIG (/xmldsig/**, also verify with a partner
         # PEM), HTTP_SIGN_RSA and HTTP_SIGN_EC (/http-signature/**, a partner PEM by its key type) and
         # every HMAC_<use> stay denied until the ATM, interop and merchant SOAP adapter tickets add theirs.
-  # This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; config/TlsProperties,
+  # This service's certificate from Vault PKI (spec 18.2, 18.4, D24; config/TlsProperties,
   # config/ServiceCertificateManager): issued at start through Spring Cloud Vault (AppRole policy:
   # pki_int/issue/mw-crypto only), renewed at two thirds of its life, never written to disk.
   tls:

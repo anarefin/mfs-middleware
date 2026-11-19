@@ -24,7 +24,7 @@ mw:
       enabled: false
   internal-auth:
     issuer: http://keycloak.test/realms/services
-  # The host test JVM has no OpenBao by default: plain HTTP. The mTLS ITs turn it on with
+  # The host test JVM has no Vault by default: plain HTTP. The mTLS ITs turn it on with
   # PkiTestAuthority (controller/InternalApiMtlsIT, client/CryptoClientIT).
   tls:
     enabled: false

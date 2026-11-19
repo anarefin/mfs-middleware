@@ -2,6 +2,8 @@
 
 Status: Accepted, 2026-11-18 (user decisions, ticket 77). Amends spec 12 (the adapter framework's
 route templates) and spec 13 (reconciliation ingest moves to the adapters).
+Amended 2026-11-19 by [D30](D30-hashicorp-vault.md): HashiCorp Vault replaces OpenBao (ticket 91); the
+OpenBao names below describe the stack before it.
 
 ## Context
 

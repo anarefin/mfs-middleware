@@ -5,7 +5,7 @@ info:
   description: |
     Internal API of mw-auth (spec 18.7, ADR D24), on its internal port (`https://mw-auth:8443`, the
     `app` zone network; not routed by APISIX). mTLS is mandatory: the TLS handshake needs a client
-    certificate issued by the OpenBao services intermediate CA (`pki_int`, CN = service name), and
+    certificate issued by the Vault services intermediate CA (`pki_int`, CN = service name), and
     the caller sends its Keycloak realm `services` client-credentials JWT (`aud` contains `mw-auth`),
     whose `azp` must be on the allow-list (mw-app-gateway, mw-ussd, mw-checkout, mw-admin-api) and
     equal the certificate's CN. No or bad token: 401 MW-AUTH-001; another client, a certificate of
@@ -272,7 +272,7 @@ components:
     serviceCertificate:
       type: mutualTLS
       description: >-
-        A client certificate of the OpenBao services intermediate CA (`pki_int/issue/<service>`, CN
+        A client certificate of the Vault services intermediate CA (`pki_int/issue/<service>`, CN
         = the calling service, at most 72 h). Required by the handshake (D24).
   parameters:
     DeviceId:

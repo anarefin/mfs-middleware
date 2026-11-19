@@ -18,7 +18,7 @@ import mfs.mw.adapter.telco.partner.mapping.CompiledStylesheet;
  * @param routeId the partner route's id, {@code partner-<id>-v<version>}
  * @param endpoint the partner route's endpoint, {@code direct:partner-<id>-v<version>}
  * @param mappings the record's JSONata mappings, compiled once
- * @param secrets secret field -> value, read from OpenBao when the route loaded (never logged)
+ * @param secrets secret field -> value, read from Vault when the route loaded (never logged)
  * @param allowedHosts the hosts the route may call (record narrowed by the static floor)
  * @param kamelets the mw-* Kamelets the route uses (Kamelet usage, ticket 83)
  * @param stylesheets the XSLT stylesheets {@code mw-soap-call} names (ticket 85): the record's

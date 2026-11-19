@@ -9,16 +9,16 @@ one Gradle build, the admin console, and one hand-written compose file.
 - New to the project: [docs/tutorial/index.html](docs/tutorial/index.html), a guided tour for a new
   developer (the architecture in plain English with diagrams, every feature's flow, a hands-on first day);
   then [docs/concepts/index.html](docs/concepts/index.html), one page per component (APISIX, Keycloak,
-  OpenBao, the HSM, the test doubles, Camel, Resilience4j, ...) and how this project uses it.
+  Vault, the HSM, the test doubles, Camel, Resilience4j, ...) and how this project uses it.
 - Design: [spec/bits-mfs-middleware-spec.md](spec/bits-mfs-middleware-spec.md) (the "MVP scope"
   section wins over sections 1–25 for the MVP).
 - Why it is built this way: [docs/adr/README.md](docs/adr/README.md), one record per decision.
 - The Upay FRS build (tickets 89–138, ADRs D29–D33): [docs/frs-traceability.md](docs/frs-traceability.md)
   maps every FRS requirement id and name to the repo name, its status and the ticket. Decided there and
-  not built yet: Redis replaces Valkey (D29, ticket 90), HashiCorp Vault replaces OpenBao (D30, ticket 91),
+  not built yet: Redis replaces Valkey (D29, ticket 90),
   the core over REST (D31), new services `mw-adapter-card`, `-remit`, `-atm`, `-interop`, `-merchant`,
   `mw-compliance`, `mw-recon`, `mw-data-export` (D32) and one mock control API (D33). Until each ticket
-  lands, this README describes the stack as it runs (Valkey, OpenBao).
+  lands, this README describes the stack as it runs (Valkey). HashiCorp Vault (D30, ticket 91) is built.
 - Running the MVP host: [docs/runbook.md](docs/runbook.md).
 - Milestone demos M0–M6: [docs/demo.md](docs/demo.md).
 - Testing every feature by hand from a browser (app flows, USSD, bank, failures, checkout, bulk,
@@ -38,7 +38,7 @@ one Gradle build, the admin console, and one hand-written compose file.
 ## Prerequisites
 
 The quick start needs nothing but this repo and the tools below. Everything else (Kafka,
-PostgreSQL, Valkey, Keycloak, OpenBao, APISIX, GreenMail, every service and the admin console)
+PostgreSQL, Valkey, Keycloak, Vault, APISIX, GreenMail, every service and the admin console)
 runs in Docker.
 
 | What | Why | Check |
@@ -102,7 +102,7 @@ Without the test console: `docker compose --profile core --profile seed up -d --
 
 Compose builds the images (`mfs-mw/<service>:local`, both consoles included), then starts everything in dependency order:
 the platform, the one-shots (`kafka-init` creates the topics, `etcd-init` and `apisix-init` the
-edge config, `provision` every service's OpenBao secret, database role, schema and AppRole), the
+edge config, `provision` every service's Vault secret, database role, schema and AppRole), the
 15 services (mw-auth and mw-crypto included) and the admin console, then the one-shot `mw-seeder`,
 and with `--profile tester` the one-shot `apisix-init-tester` (the test-only routes) and the test console at https://localhost/tester. `provision` runs again on every
 `up` and creates what is missing, so a new service's schema appears without dropping volumes.
@@ -120,7 +120,7 @@ path, unseeded.
 
 ```sh
 cd ..
-scripts/smoke.sh          # containers, topics, Kafka, PG, Valkey, Keycloak tokens, OpenBao, APISIX
+scripts/smoke.sh          # containers, topics, Kafka, PG, Valkey, Keycloak tokens, Vault, APISIX
 ```
 
 Seeded on start, no extra step: `mw-core-mock` creates 1,000 customer wallets `01711000001..`,
@@ -173,15 +173,15 @@ tests use. The realm-import users' names show only after `deploy/reset.sh` (Keyc
 | mw-auth (no realm, ticket 69) | the app wallets `01711000001` (customer01), `01711000002`, `01811000001` (agent01), `01911000001` (merchant01), `01911000002` and mw-seeder's app wallets: log in with MSISDN + app PIN + a bound device; transactions (app, USSD, checkout) take the same PIN, checked by mw-auth (ticket 72) | app PIN `13579` (`MW_SEED_APP_PIN`, set by mw-seeder through mw-auth's dev-only seed API, `MW_AUTH_SEED_API_ENABLED=true`) | app API, API suite, test console, `scripts/edge-test.sh` |
 | `portals` | `seed-org-maker`, `seed-org-checker` (seeded), `org-maker01`, `org-checker01`, `org-checker02`, `org-makerchecker01`, `sp-viewer01`: the realm demands TOTP (ticket 73), every user has the pre-set secret `KC_PORTALS_TEST_TOTP_SECRET` (code: `scripts/totp.sh <user>`) | `portal-test-pass` (`KC_PORTALS_TEST_PASSWORD`) | org / SP portal API |
 | `master` | `kc-admin` (kcadm.sh in the container, or the test console's account tools through a test-only route) | `kc-admin-test-pass` (`KC_BOOTSTRAP_ADMIN_PASSWORD`) | Keycloak admin |
-| OpenBao | the tester token (root policy), created by `deploy/openbao/dev-unseal.sh` when the `openbao-data` volume is first initialised | `dev-root-token` (`OPENBAO_DEV_ROOT_TOKEN`; change it only together with `./reset.sh`) | `scripts/creds.sh`, test console, `bao` in the container |
+| Vault | the tester token (root policy), created by `deploy/vault/dev-unseal.sh` when the `vault-data` volume is first initialised | `dev-root-token` (`VAULT_DEV_ROOT_TOKEN`; change it only together with `./reset.sh`) | `scripts/creds.sh`, test console, `vault` in the container |
 
 The `softhsm` dev/test PKCS#11 tokens (`deploy/softhsm/README.md`, ticket 61) use fixed, documented
 fake values too:
 
 | Token label (variable) | User PIN (variable) | SO PIN (variable) | Port | Used by |
 | --- | --- | --- | --- | --- |
-| `mw-crypto` (`SOFTHSM_MWCRYPTO_LABEL`) | `dev-mwcrypto-user-pin` (`SOFTHSM_MWCRYPTO_USER_PIN`, copied to OpenBao `secret/mw-crypto`) | `dev-mwcrypto-so-pin` (`SOFTHSM_MWCRYPTO_SO_PIN`) | 5657 | `mw-crypto` |
-| `paysim` (`SOFTHSM_PAYSIM_LABEL`) | `dev-paysim-user-pin` (`SOFTHSM_PAYSIM_USER_PIN`, copied to OpenBao `secret/mw-simulators`) | `dev-paysim-so-pin` (`SOFTHSM_PAYSIM_SO_PIN`) | 5658 | payShield simulator (`mw-simulators`) |
+| `mw-crypto` (`SOFTHSM_MWCRYPTO_LABEL`) | `dev-mwcrypto-user-pin` (`SOFTHSM_MWCRYPTO_USER_PIN`, copied to Vault `secret/mw-crypto`) | `dev-mwcrypto-so-pin` (`SOFTHSM_MWCRYPTO_SO_PIN`) | 5657 | `mw-crypto` |
+| `paysim` (`SOFTHSM_PAYSIM_LABEL`) | `dev-paysim-user-pin` (`SOFTHSM_PAYSIM_USER_PIN`, copied to Vault `secret/mw-simulators`) | `dev-paysim-so-pin` (`SOFTHSM_PAYSIM_SO_PIN`) | 5658 | payShield simulator (`mw-simulators`) |
 
 The payShield 10K simulator (ticket 64) listens for host commands on `mw-simulators:1500` (internal
 network only, not published) and keeps its LMK in the `paysim` token; `mw-crypto`'s payShield provider
@@ -210,7 +210,7 @@ docker compose --profile core --profile seed down    # remove containers, keep v
 ./reset.sh                                           # wipe ALL state: every container and volume of every profile
 ```
 
-Never reset a single store. PostgreSQL, Kafka, Valkey, OpenBao, Keycloak and the core-mock ledger
+Never reset a single store. PostgreSQL, Kafka, Valkey, Vault, Keycloak and the core-mock ledger
 describe the same books, so `deploy/reset.sh` always resets them together. After a reset, repeat
 step 3.
 
@@ -300,13 +300,13 @@ Every script prints its usage in its header comment. They read the running stack
 
 | Script | What it does |
 | --- | --- |
-| `scripts/smoke.sh` | live checks: every platform container healthy and the one-shots exited 0, topics, Kafka produce/consume, PostgreSQL, Valkey, Keycloak tokens for every test user, OpenBao, APISIX `/healthz` |
+| `scripts/smoke.sh` | live checks: every platform container healthy and the one-shots exited 0, topics, Kafka produce/consume, PostgreSQL, Valkey, Keycloak tokens for every test user, Vault, APISIX `/healthz` |
 | `scripts/edge-test.sh` | APISIX edge policies on the running stack: 401/400/413/429 envelopes, header stripping, correlation ID, quotas, mw-auth's `/auth/v1` and its tokens on `app-v1` (app logins by `scripts/lib/mw-auth-token.mjs`), partner and checkout callbacks, USSD credentials, idempotent apply |
 | `scripts/api-test.sh [FOLDER] [ALL]` | Newman API suite in `tests/api` against the running, seeded stack (with the test timers of `deploy/.env`): every folder but `90 Slow`, or the given ones (numbers or names, comma-separated, e.g. `scripts/api-test.sh "01, 03"`); `1` as the second argument adds `90 Slow`. Re-applies the test-only gateway routes first; JUnit report `tests/api/build/newman-report.xml` |
 | `scripts/ui-e2e.sh [GREP]` | admin console Playwright suite (`ui/mw-admin-ui/e2e`) on the running, seeded stack: real Keycloak logins as the seeded personas, the real mw-admin-api behind APISIX; tags `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`, `@keys`; installs pnpm packages and Chromium when needed |
 | `scripts/tester.sh` | start the dev/test-only test console (`ui/mw-test-console`, ADR D17): re-applies the test-only gateway routes with `/tester`, starts `mw-test-console` (profile `tester`, about 192 MiB outside the core budget), prints https://localhost/tester; a later `docker compose up` removes the routes again (run it once more) |
 | `scripts/tester-e2e.sh [GREP]` | the test console's Playwright suite (`ui/mw-test-console/e2e`) after `scripts/tester.sh`: app flows with balances, USSD over HTTP and SMPP, a lost core reply resolved by the status inquiry, checkout with IPN, a bulk batch, wallet authentication, the Logins & secrets and Seed data pages (a live code signs in), the account tools, the transaction explorer (tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`, `@auth`, `@transactions`) |
-| `scripts/creds.sh` | print every login and key a tester needs (ops, app and portal users, Keycloak admin, the OpenBao root token while the stack is up, APISIX keys, partner and merchant signing secrets, USSD gateway passwords), from `deploy/.env`; first the test console pages `/tester/credentials` and `/tester/seed-data` that show the same in the browser |
+| `scripts/creds.sh` | print every login and key a tester needs (ops, app and portal users, Keycloak admin, the Vault root token while the stack is up, APISIX keys, partner and merchant signing secrets, USSD gateway passwords), from `deploy/.env`; first the test console pages `/tester/credentials` and `/tester/seed-data` that show the same in the browser |
 | `scripts/totp.sh [PERSONA]` | the current one-time code of an ops or portals persona with a pre-set secret (default `seed-ops-maker`; also `seed-ops-checker`, `seed-ops-viewer`, `seed-ops-compliance`, `seed-ops-secadmin1`, `seed-ops-secadmin2`, `ops-e2e-*`; portals `seed-org-*`, `org-*`, `sp-viewer01`) |
 | `scripts/log-scan.sh [FILE...]` | scan every container log of the stack (or the given files) for a PIN, PIN ciphertext or an unmasked MSISDN / NID; findings printed masked |
 | `scripts/security.sh [MODULE]` | gitleaks, CycloneDX SBOM + trivy per module (builds its boot jar), trivy on the built and pinned images; with the stack up also the ZAP baseline and the log scan (`SECURITY_LIVE=1 scripts/security.sh` makes them mandatory). Decisions in `docs/security-findings.md` |
@@ -342,7 +342,7 @@ peaks, is the header of `deploy/docker-compose.yml`.
 | `APISIX_MEM` (384M) | `apisix` |
 | `POSTGRES_MEM` (320M) | `postgres` |
 | `GREENMAIL_MEM` (160M) | `greenmail` |
-| `OPENBAO_MEM` (128M), `ETCD_MEM` (64M), `VALKEY_MEM` (64M) | `openbao`, `etcd`, `valkey` |
+| `VAULT_MEM` (128M), `ETCD_MEM` (64M), `VALKEY_MEM` (64M) | `vault`, `etcd`, `valkey` |
 | `SOFTHSM_MEM` (48M) | `softhsm` (profiles `minimal` and `core`) |
 | `ADMIN_UI_MEM` (64M) | `mw-admin-ui` (was 160M; trimmed in ticket 62 to free memory for `mw-crypto`: measured peak 46 MiB x 1.3, rounded up to 32 MiB) |
 
@@ -389,7 +389,7 @@ https://localhost on 443. Production stays edge-only (ADR D3 amendment).
 | 6379 | `valkey` (`MW_PORT_VALKEY`) |
 | 9094 | `kafka`, host listener `localhost:9094` (`MW_PORT_KAFKA`) |
 | 8180 | `keycloak` (`MW_PORT_KEYCLOAK`) |
-| 8200 | `openbao` (`MW_PORT_OPENBAO`) |
+| 8200 | `vault` (`MW_PORT_VAULT`) |
 | 8025 / 3025 | `greenmail` API / SMTP (`MW_PORT_GREENMAIL`, `MW_PORT_GREENMAIL_SMTP`) |
 | 5657 / 5658 | `softhsm` PKCS#11 tokens `mw-crypto` / `paysim`, p11-kit RPC (`MW_PORT_SOFTHSM_MWCRYPTO`, `MW_PORT_SOFTHSM_PAYSIM`) |
 
@@ -407,7 +407,7 @@ on 8080 inside the container).
 | `port is already allocated` | Another process holds that port (`lsof -i :443`, or the port named). Stop it, or move ours: `MW_HTTPS_PORT=8443` for the edge (the APIs work; the console login needs 443), `MW_PORT_<NAME>` for a direct port (e.g. `MW_PORT_POSTGRES=15432`), in the shell or `deploy/.env`. |
 | Containers restart or exit with code 137 | Docker is out of memory. Give Docker Desktop 8 GB, lower a knob above, or use `--profile minimal`. |
 | A one-shot (`provision`, `kafka-init`, `etcd-init`, `apisix-init`) exits non-zero | `docker compose logs provision` (it names the service and step), or that one-shot. Usually volumes created with other credentials (a changed value in `deploy/.env`): `./reset.sh`, then start again. |
-| A service stays `starting` | `docker compose logs <service>`. It is usually waiting on postgres, kafka, keycloak, openbao or provision. |
+| A service stays `starting` | `docker compose logs <service>`. It is usually waiting on postgres, kafka, keycloak, vault or provision. |
 | `up --wait` or `wait mw-seeder` exits non-zero on the seeder | `docker compose --profile core --profile seed logs mw-seeder`: the line `seed.step.failed` names the step. An open change request left in the console blocks it: approve or reject it, then start again. |
 | Every console or suite sign-in fails | The seeder has not finished, or `deploy/.env` holds other values than the volumes: `scripts/creds.sh` prints the current values; `./reset.sh` and copy `dev.env.defaults` again. |
 | 404 on `/test/...` routes or `/tester` | The stack was started without `--profile tester`: start it with the three profiles again, or `scripts/tester.sh`; `scripts/api-test.sh` re-applies the test-only routes itself. |
@@ -430,7 +430,7 @@ Recovery and operations in depth: [docs/runbook.md](docs/runbook.md).
 | Partners | `mw-adapter-telco`, `mw-adapter-billpay`, `mw-adapter-bank` |
 | Security | `mw-auth` (wallet authentication: OTP, device binding, login and RS256 tokens, PIN custody and lockout, resets, the ES256 transaction assertion; public `/auth/v1`, mTLS internal API), `mw-crypto` (the HSM gateway: the only process that talks to an HSM, SoftHSM over PKCS#11 and the payShield simulator in dev; mTLS internal API only), `softhsm` |
 | Support | `mw-notify` (SMS over SMPP, email), `mw-audit-dw` (hash-chained audit trail, signed daily anchor), `mw-admin-api` (also key management and the key ceremony), `mw-admin-ui` (console at `/console`) |
-| Platform | `kafka` (KRaft), `postgres` (18), `valkey`, `keycloak`, `openbao`, one-shots `kafka-init` and `provision` (every service's secret, database role and AppRole, `deploy/provision`), `softhsm` (dev/test PKCS#11 tokens, profiles `minimal` and `core`, `deploy/softhsm`) |
+| Platform | `kafka` (KRaft), `postgres` (18), `valkey`, `keycloak`, `vault`, one-shots `kafka-init` and `provision` (every service's secret, database role and AppRole, `deploy/provision`), `softhsm` (dev/test PKCS#11 tokens, profiles `minimal` and `core`, `deploy/softhsm`) |
 | Test | `mw-simulators` (OCS, bill aggregator, C2W bank, SMSC, USSD gateway), `greenmail`, `mw-seeder` (profile `seed`), `mw-test-console` (profile `tester`) |
 
 The compose profiles: no profile = the platform (always starts), `minimal` = the P2P and cash path,

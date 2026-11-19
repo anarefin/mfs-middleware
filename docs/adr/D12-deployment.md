@@ -1,6 +1,8 @@
 # D12: Docker Compose for everything
 
 Status: Accepted, 2026-11-03 (spec revision 2). The file layout (one `compose.yml` per module, the generated flat file) is superseded by [D16](D16-single-compose-file.md), 2026-11-06.
+Amended 2026-11-19 by [D30](D30-hashicorp-vault.md): HashiCorp Vault replaces OpenBao (ticket 91); the
+OpenBao names below describe the stack before it.
 
 ## Context
 

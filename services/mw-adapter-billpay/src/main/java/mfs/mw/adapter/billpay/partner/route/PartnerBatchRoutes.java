@@ -20,7 +20,7 @@ import org.springframework.scheduling.support.CronExpression;
  * anything else (an SFTP option such as {@code delete}, {@code strictHostKeyChecking}, {@code
  * privateKeyFile}, {@code scheduler}) is refused, and the call is rebuilt from the accepted values
  * only. The credential ({@code secretField}, a password or with {@code auth=key} a private key) and
- * the host's known hosts ({@code knownHostsField}) are fields of the partner's own OpenBao secret:
+ * the host's known hosts ({@code knownHostsField}) are fields of the partner's own Vault secret:
  * the loader reads them and the Kamelet gets only registry references ({@code
  * #bean:mw-sftp-<routeId>-<field>}, bound by {@link PartnerRoutes}), never a value in a URI. Every
  * host is checked against the record's allowed hosts by the loader.

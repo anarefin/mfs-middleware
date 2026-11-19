@@ -4,6 +4,8 @@ Status: Accepted, 2026-11-07. Amended 2026-11-15: the console shows the dev secr
 manifest and offers account tools through test-only routes (below). Amended 2026-11-16: every ops
 user has the pre-set one-time code, usernames are copyable, no Reset TOTP tool (below). Amended 2026-11-16: the tester profile starts the
 console with the whole stack in one command and turns the test-only routes on by itself (below).
+Amended 2026-11-19 by [D30](D30-hashicorp-vault.md): HashiCorp Vault replaces OpenBao (ticket 91); the
+OpenBao names below describe the stack before it.
 
 ## Context
 

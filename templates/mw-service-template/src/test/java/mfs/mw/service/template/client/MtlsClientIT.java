@@ -31,7 +31,7 @@ import org.springframework.web.client.RestClient;
 
 /**
  * The caller side of mTLS phase 1 (D24, ticket 66): the service issues its certificate from the
- * OpenBao intermediate ({@link PkiTestAuthority}) and a {@link RestClient} on {@link
+ * Vault intermediate ({@link PkiTestAuthority}) and a {@link RestClient} on {@link
  * ServiceCertificateManager#clientSslContext()} calls a server that needs a client certificate (as
  * mw-crypto does), across a renewal on the same context. Without the certificate the handshake fails.
  */

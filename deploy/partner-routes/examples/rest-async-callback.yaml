@@ -7,7 +7,7 @@
 # Only the outbound calls are the route: PAY (the debit, never sent twice) and STATUS_QUERY (spec 7.4).
 # The callback is not a route. APISIX forwards POST /partner/acmebank/callback/** to mw-adapter-bank's
 # controller/PartnerCallbackController, which verifies it with `auth` below (hmac-sha256, the field
-# hmac-secret of OpenBao secret/mw-adapter-bank/acmebank), reads it with the CALLBACK.response mapping
+# hmac-secret of Vault secret/mw-adapter-bank/acmebank), reads it with the CALLBACK.response mapping
 # (it must return our `reference`) and publishes mw.partner.inbound.v1. The same secret signs the
 # outbound calls (secretField=hmac-secret). An APISIX route per partner bank
 # (deploy/apisix/routes/partner-c2wbank-callback.json is the dev one) is platform config.

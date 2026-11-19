@@ -48,7 +48,7 @@ spec:
         default: none
       secretField:
         title: Secret field
-        description: Field of this partner's own OpenBao secret (secret/<service>/<partnerId>) the auth scheme uses; a reference, never the value.
+        description: Field of this partner's own Vault secret (secret/<service>/<partnerId>) the auth scheme uses; a reference, never the value.
         type: string
         format: password
         default: ""
@@ -67,7 +67,7 @@ spec:
         default: ""
       userField:
         title: User secret field
-        description: Field of this partner's own OpenBao secret holding the user name (basic); a reference, never the value.
+        description: Field of this partner's own Vault secret holding the user name (basic); a reference, never the value.
         type: string
         format: password
         default: ""
@@ -102,7 +102,7 @@ spec:
       sslContextRef:
         title: TLS client context
         description: >-
-          Name of a client keystore (mTLS) registered at startup from OpenBao for this partner
+          Name of a client keystore (mTLS) registered at startup from Vault for this partner
           (mw.partners.tls.contexts.<name>, bean mwTls-<name>); https only. The route only names it,
           never supplies key material. Empty = no client certificate.
         type: string

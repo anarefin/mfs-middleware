@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Flyway migration 13 (ADR D25), in Java because it needs the search hash key from OpenBao: every
+ * Flyway migration 13 (ADR D25), in Java because it needs the search hash key from Vault: every
  * transaction written before V12 gets its {@code wallet_txn} rows ({@link
  * SearchKeys#walletParties}, keyed {@code HMAC(WALLET:<MSISDN>)}) from its stored request, so an
  * old transaction is in the wallet history exactly like a new one. A row already there is left

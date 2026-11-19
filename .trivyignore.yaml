@@ -4,12 +4,12 @@
 vulnerabilities:
   - id: CVE-2026-116587
     paths:
-      - "usr/local/bin/bao"
+      - "usr/local/bin/vault"
     statement: >-
-      go-jose v4.1.4 in the OpenBao CLI copied into the dev-only mw-*-init one-shots (DoS via
-      crafted RSA parameters in a JWK). No fixed OpenBao release yet (2.7.2 is the latest); the
-      CLI only talks to the local OpenBao during the stack start and never parses a foreign JWK.
-      Re-pin when OpenBao ships go-jose >= 4.1.6.
+      go-jose v3.0.5 in the HashiCorp Vault CLI copied into the dev-only `provision` one-shot (DoS
+      via crafted RSA parameters in a JWK; no fixed version yet). Vault 2.2.2 is the latest release
+      (ADR D30); the CLI only talks to the local Vault during the stack start and never parses a
+      foreign JWK. Re-pin when Vault ships a fixed go-jose.
     expired_at: 2027-02-01
   - id: CVE-2026-109518
     statement: >-

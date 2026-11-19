@@ -112,7 +112,7 @@
   <h2 id="never">Never do this</h2>
   <div class="box wrong"><div class="tag">Never</div>
     <ul>
-      <li>Put a secret in code, a config file or a test. Use OpenBao; test fixtures use obviously fake values.</li>
+      <li>Put a secret in code, a config file or a test. Use Vault; test fixtures use obviously fake values.</li>
       <li>Use <code>System.out</code>, <code>System.err</code> or <code>printStackTrace</code>. Log through SLF4J.</li>
       <li>Log a PIN, or an unmasked phone number, national ID, account number or name.</li>
       <li>Block a Kafka listener thread: no waiting for replies, no sleeps, no long partner calls on it.</li>

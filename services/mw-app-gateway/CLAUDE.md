@@ -59,7 +59,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   TTL instead of the 5 min key cache (`service/DeviceVerifierTest`).
 - mw-auth client (`client/AuthClient`, `client/ServiceTokenClient`, `config/AuthClientProperties`
   `mw.app-gateway.auth.*`; contract `api/mw-auth/auth-internal.v1.openapi.yaml`): `https://mw-auth:8443` over mTLS
-  with this service's OpenBao certificate (`config/ServiceCertificateManager` + `TlsProperties` from the template,
+  with this service's Vault certificate (`config/ServiceCertificateManager` + `TlsProperties` from the template,
   `mw.tls.enabled`: off in the image default and tests, `MW_TLS_ENABLED=true` in compose; PKI role
   `mw-app-gateway`) and a Keycloak realm `services` client-credentials JWT of client `mw-app-gateway` (audience
   mapper `aud-mw-auth`; secret `mw.app-gateway.auth.client-secret` in `secret/mw-app-gateway`, synced from
@@ -267,7 +267,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers (+ extra headers such as `mw-reply-to`)
   through Spring Kafka's `KafkaTemplate` (ADR D27), idempotent `acks=all` producer; `publish` waits at most
   `mw.kafka.send-timeout`. The admin client (asked for the cluster id by the observed template's first

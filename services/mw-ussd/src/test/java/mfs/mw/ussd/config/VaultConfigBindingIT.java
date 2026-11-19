@@ -18,7 +18,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Secrets bind from OpenBao at start-up through Spring Cloud Vault (spec 18.4): a value written
+ * Secrets bind from Vault at start-up through Spring Cloud Vault (spec 18.4): a value written
  * to {@code secret/<service>} shows up in the {@code mw.service} properties, and the mw-auth client
  * secret ({@code mw.ussd.auth.client-secret}, ticket 72) comes from there too.
  */
@@ -28,18 +28,18 @@ class VaultConfigBindingIT {
   static final String TOKEN = "test-root-token";
 
   @Container
-  static final GenericContainer<?> OPENBAO =
-      new GenericContainer<>("openbao/openbao:2.7.2")
+  static final GenericContainer<?> VAULT =
+      new GenericContainer<>("hashicorp/vault:2.2.2")
           .withCommand("server", "-dev", "-dev-root-token-id=" + TOKEN, "-dev-listen-address=0.0.0.0:8200")
           .withExposedPorts(8200)
           .waitingFor(Wait.forHttp("/v1/sys/health").forStatusCode(200));
 
   String vaultUri() {
-    return "http://" + OPENBAO.getHost() + ":" + OPENBAO.getMappedPort(8200);
+    return "http://" + VAULT.getHost() + ":" + VAULT.getMappedPort(8200);
   }
 
   @Test
-  void secretFromOpenBaoBindsToServiceProperties() throws Exception {
+  void secretFromVaultBindsToServiceProperties() throws Exception {
     HttpResponse<String> put =
         HttpClient.newHttpClient()
             .send(
@@ -49,8 +49,8 @@ class VaultConfigBindingIT {
                         HttpRequest.BodyPublishers.ofString(
                             JsonMapper.builder().build().createObjectNode()
                                 .set("data", JsonMapper.builder().build().createObjectNode()
-                                    .put("mw.service.env", "from-openbao")
-                                    .put("mw.ussd.auth.client-secret", "fake-secret-from-openbao"))
+                                    .put("mw.service.env", "from-vault")
+                                    .put("mw.ussd.auth.client-secret", "fake-secret-from-vault"))
                                 .toString()))
                     .build(),
                 HttpResponse.BodyHandlers.ofString());
@@ -67,9 +67,9 @@ class VaultConfigBindingIT {
                 "--spring.cloud.vault.uri=" + vaultUri(),
                 "--spring.cloud.vault.authentication=TOKEN",
                 "--spring.cloud.vault.token=" + TOKEN)) {
-      assertThat(ctx.getBean(MwServiceProperties.class).env()).isEqualTo("from-openbao");
-      assertThat(ctx.getBean(AuthClientProperties.class).clientSecret()).isEqualTo("fake-secret-from-openbao");
-      assertThat(ctx.getBean(AuthClientProperties.class).toString()).doesNotContain("fake-secret-from-openbao");
+      assertThat(ctx.getBean(MwServiceProperties.class).env()).isEqualTo("from-vault");
+      assertThat(ctx.getBean(AuthClientProperties.class).clientSecret()).isEqualTo("fake-secret-from-vault");
+      assertThat(ctx.getBean(AuthClientProperties.class).toString()).doesNotContain("fake-secret-from-vault");
     }
   }
 }

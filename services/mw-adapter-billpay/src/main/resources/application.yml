@@ -1,5 +1,5 @@
 # Static configuration baked into the image (spec 20.4). Per-environment overrides are
-# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from OpenBao/Vault
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from Vault
 # only (18.4) and are never written here.
 spring:
   application:
@@ -14,7 +14,7 @@ spring:
   cloud:
     vault:
       enabled: ${VAULT_ENABLED:false}
-      uri: ${VAULT_ADDR:http://openbao:8200}
+      uri: ${VAULT_ADDR:http://vault:8200}
       authentication: APPROLE
       app-role:
         role-id: ${VAULT_ROLE_ID:}
@@ -27,7 +27,7 @@ spring:
     problemdetails:
       enabled: false
   # This service's own schema (16.2), migrated by Flyway on start-up from
-  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from OpenBao's database engine
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from Vault's database engine
   # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
   datasource:
     url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
@@ -124,7 +124,7 @@ camel:
       disable-core-processors: false
   vault:
     hashicorp:
-      # Partner secrets through Camel's HashiCorp Vault properties function against OpenBao (D28):
+      # Partner secrets through Camel's HashiCorp Vault properties function against Vault (D28):
       # read when a partner route loads, never refreshed. The function uses Spring Cloud Vault's
       # VaultTemplate (AppRole) when VAULT_ENABLED=true (partner/route/PartnerSecretsConfiguration).
       refresh-enabled: false
@@ -235,7 +235,7 @@ mw:
   # route (built from the mw-* Kamelets in classpath:kamelets), its JSONata mappings, the hosts it may
   # call and its error-code map. These are seeds (version 0); a mw.config.changed.v1 PARTNER record
   # (configKey partner/<id>, same field names in camelCase) replaces or adds one without a restart.
-  # Secrets are never here: a route names a field of the partner's own OpenBao secret
+  # Secrets are never here: a route names a field of the partner's own Vault secret
   # (secret/mw-adapter-billpay/<partner>), read when the route loads.
   partners:
     # partnerId a channel sends -> the partner that serves it (D28; no silent default partner). The

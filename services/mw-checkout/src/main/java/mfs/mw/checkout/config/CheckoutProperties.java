@@ -51,7 +51,7 @@ public record CheckoutProperties(
    *
    * @param wallet the merchant wallet the customer pays (MSISDN form, wallet type MERCHANT)
    * @param name shown on the hosted page and in the OTP SMS
-   * @param secret signs the redirect result (and the IPN, ticket 32); from OpenBao only
+   * @param secret signs the redirect result (and the IPN, ticket 32); from Vault only
    */
   public record Merchant(
       @NotBlank String wallet,

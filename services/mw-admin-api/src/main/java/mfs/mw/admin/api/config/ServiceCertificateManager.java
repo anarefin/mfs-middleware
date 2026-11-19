@@ -43,7 +43,7 @@ import org.springframework.vault.support.CertificateBundle;
 import org.springframework.vault.support.VaultCertificateRequest;
 
 /**
- * This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; ticket 66; copied, D14).
+ * This service's certificate from Vault PKI (spec 18.2, 18.4, D24; ticket 66; copied, D14).
  *
  * <ul>
  *   <li>Issues at start from {@code <pki-mount>/issue/<role>} (CN = service name, SAN = compose DNS

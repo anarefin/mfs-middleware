@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Configuration;
 /**
  * mw-auth listens on two ports (spec 18.7, D24, ticket 67). {@code server.port} (8443) is the
  * internal API {@code /internal/v1/**}, set up as mw-crypto's: mTLS with {@code client-auth: need}
- * on this service's OpenBao certificate ({@code server.ssl}, {@link ServiceCertificateManager}), so
+ * on this service's Vault certificate ({@code server.ssl}, {@link ServiceCertificateManager}), so
  * the certificate renews without a restart. This class adds the public plain-HTTP connector
  * {@code mw.auth.public-port} (8080) for {@code /auth/v1/**} behind APISIX (tickets 68-69). {@link
  * PublicConnector} tells the security rules which requests came in on it: {@code /internal/**} is

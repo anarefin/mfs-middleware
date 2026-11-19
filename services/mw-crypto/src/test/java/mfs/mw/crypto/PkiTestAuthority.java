@@ -23,8 +23,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Test-only OpenBao PKI (spec 18.2, D24): an OpenBao dev server in a container (network alias {@code
- * openbao} on {@link HsmStack#NETWORK}) set up like {@code deploy/provision} does on the stack: a
+ * Test-only Vault PKI (spec 18.2, D24): a Vault dev server in a container (network alias {@code
+ * vault} on {@link HsmStack#NETWORK}) set up like {@code deploy/provision} does on the stack: a
  * root CA at {@code pki/}, an intermediate at {@code pki_int/} signed by it, and one role per service
  * (CN and SAN = the service name, 72 h max, EC P-256). Roles are created on first use, so any client
  * id gets one. Started once per JVM, removed by Ryuk. Fake root token only.
@@ -35,10 +35,10 @@ public final class PkiTestAuthority {
   private static final JsonMapper JSON = JsonMapper.builder().build();
   private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
-  static final GenericContainer<?> OPENBAO =
-      new GenericContainer<>("openbao/openbao:2.7.2")
+  static final GenericContainer<?> VAULT =
+      new GenericContainer<>("hashicorp/vault:2.2.2")
           .withNetwork(HsmStack.NETWORK)
-          .withNetworkAliases("openbao")
+          .withNetworkAliases("vault")
           .withCommand("server", "-dev", "-dev-root-token-id=" + TOKEN, "-dev-listen-address=0.0.0.0:8200")
           .withExposedPorts(8200)
           .waitingFor(Wait.forHttp("/v1/sys/health").forStatusCode(200));
@@ -48,12 +48,12 @@ public final class PkiTestAuthority {
 
   private PkiTestAuthority() {}
 
-  /** Starts OpenBao and sets up the root, the intermediate and the mw-crypto role (idempotent). */
+  /** Starts Vault and sets up the root, the intermediate and the mw-crypto role (idempotent). */
   public static synchronized void start() {
     if (ready) {
       return;
     }
-    OPENBAO.start();
+    VAULT.start();
     post("/v1/sys/mounts/pki", Map.of("type", "pki", "config", Map.of("max_lease_ttl", "87600h")));
     post("/v1/sys/mounts/pki_int", Map.of("type", "pki", "config", Map.of("max_lease_ttl", "720h")));
     post("/v1/pki/root/generate/internal",
@@ -69,9 +69,9 @@ public final class PkiTestAuthority {
     role("mw-crypto", true);
   }
 
-  /** The OpenBao address seen from the host. */
+  /** The Vault address seen from the host. */
   public static String address() {
-    return "http://" + OPENBAO.getHost() + ":" + OPENBAO.getMappedPort(8200);
+    return "http://" + VAULT.getHost() + ":" + VAULT.getMappedPort(8200);
   }
 
   /** A root-token VaultTemplate against the container (stands in for Spring Cloud Vault's). */
@@ -161,7 +161,7 @@ public final class PkiTestAuthority {
               .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body))).build(),
           HttpResponse.BodyHandlers.ofString());
       if (r.statusCode() / 100 != 2) {
-        throw new IllegalStateException("OpenBao " + path + ": " + r.statusCode() + " " + r.body());
+        throw new IllegalStateException("Vault " + path + ": " + r.statusCode() + " " + r.body());
       }
       return r.body().isBlank() ? JSON.createObjectNode() : JSON.readTree(r.body());
     } catch (IOException e) {

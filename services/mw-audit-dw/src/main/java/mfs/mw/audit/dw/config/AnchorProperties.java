@@ -35,7 +35,7 @@ public record AnchorProperties(
    * @param baseUrl mw-crypto's internal API
    * @param tokenUri Keycloak token endpoint
    * @param clientId this service's client ({@code azp} = certificate CN)
-   * @param clientSecret from OpenBao ({@code secret/mw-audit-dw}), never in config files
+   * @param clientSecret from Vault ({@code secret/mw-audit-dw}), never in config files
    * @param connectTimeout connect timeout of both calls
    * @param readTimeout request timeout of both calls
    */

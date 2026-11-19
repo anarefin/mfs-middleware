@@ -14,7 +14,7 @@
     <a href="index.html">Start</a>
     <a href="apisix.html">APISIX</a>
     <a href="keycloak.html" aria-current="page">Keycloak</a>
-    <a href="openbao.html">OpenBao</a>
+    <a href="vault.html">Vault</a>
     <a href="hsm.html">HSM</a>
     <a href="greenmail.html">GreenMail</a>
     <a href="core-mock.html">Core mock</a>
@@ -91,7 +91,7 @@
     <tr><td><code>keycloak</code></td><td>long-running</td><td>Keycloak 26 in production mode on PostgreSQL (its own <code>keycloak</code> database). Plain HTTP on port 8080 inside the stack, published on
       127.0.0.1:8180 (knob <code>MW_PORT_KEYCLOAK</code>). Browsers reach it only through APISIX on 443. Health on management port 9000.</td></tr>
     <tr><td><code>provision</code></td><td>one-shot, profiles <code>minimal</code> and <code>core</code></td><td>Waits for a healthy Keycloak, then registers the certificate of the
-      partner client <code>partner-sim</code> in realm <code>partners</code> (see <a href="openbao.html">OpenBao</a> for the rest of its job).</td></tr>
+      partner client <code>partner-sim</code> in realm <code>partners</code> (see <a href="vault.html">Vault</a> for the rest of its job).</td></tr>
   </table></div>
   <p>The image is built from <code>deploy/keycloak/Dockerfile</code>. It runs <code>kc.sh build</code> once at image build time, so each start
     can use <code>start --optimized --import-realm</code> and skip about ten seconds of start-up work. There is no custom plugin and no theme.</p>
@@ -141,7 +141,7 @@
     <li><strong>A service token</strong> on an <code>/internal/v1</code> API (mw-orchestrator, mw-audit-dw, mw-auth, mw-crypto). The token must name the called
       service in <code>aud</code> (audience), and its <code>azp</code> claim (the client id that asked for it) must be on that service's allow-list. An
       <code>InternalCallerPolicy</code> class holds these rules. mw-auth and mw-crypto also require mTLS: <code>azp</code> must equal the name in the caller's
-      client certificate, which comes from <a href="openbao.html">OpenBao</a>.</li>
+      client certificate, which comes from <a href="vault.html">Vault</a>.</li>
   </ul>
 
   <h2 id="notapp">Why app users are not in Keycloak</h2>
@@ -202,7 +202,7 @@ mw-admin-ui --> Browser : the transactions page
       <code>SecurityConfig</code> asks: does this operator have a role that may read transactions?</li>
     <li><strong>A service token for the next hop.</strong> mw-admin-api needs data from mw-orchestrator's internal API. It cannot forward the operator's
       token there; it gets its own token from realm <code>services</code> with the client-credentials grant (client <code>mw-admin-api</code>, secret
-      from OpenBao). That token's audience includes <code>mw-orchestrator</code>.</li>
+      from Vault). That token's audience includes <code>mw-orchestrator</code>.</li>
     <li><strong>The orchestrator checks the caller.</strong> mw-orchestrator checks the realm <code>services</code> signature and issuer, that <code>aud</code> contains
       <code>mw-orchestrator</code>, and that <code>azp</code> is one of <code>mw-portal-api</code>, <code>mw-admin-api</code>, <code>mw-app-gateway</code>. Then it answers.</li>
   </ol>
@@ -250,13 +250,13 @@ mw-admin-ui --> Browser : the transactions page
   <ul>
     <li><a href="../adr/D9-platform-services.md">ADR D9</a> (and its realm amendment) and <a href="../adr/D21-wallet-token-issuer.md">ADR D21</a> (mw-auth issues the app tokens).</li>
     <li>Spec section 18.2 (<a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>): authentication for every kind of caller.</li>
-    <li><a href="../tutorial/07-ops-platform.html#keycloak">Tutorial chapter 7</a> for the short version; <a href="openbao.html">OpenBao</a> for where the client secrets and
+    <li><a href="../tutorial/07-ops-platform.html#keycloak">Tutorial chapter 7</a> for the short version; <a href="vault.html">Vault</a> for where the client secrets and
       service certificates come from.</li>
   </ul>
 
   <nav class="pager">
     <a href="apisix.html"><small>Previous</small>← APISIX</a>
-    <a class="next" href="openbao.html"><small>Next</small>OpenBao →</a>
+    <a class="next" href="vault.html"><small>Next</small>Vault →</a>
   </nav>
 </main>
 </body>

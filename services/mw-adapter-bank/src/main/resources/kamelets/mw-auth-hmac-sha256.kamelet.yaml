@@ -15,14 +15,14 @@ spec:
     description: >-
       Signs the request: Base64 HMAC-SHA256 over method, path and query, timestamp (epoch seconds) and
       the hex SHA-256 of the body, one per line, in X-Signature, the timestamp in X-Timestamp and the key
-      id in X-Key-Id when one is set. The shared secret is a field of this partner's own OpenBao secret,
+      id in X-Key-Id when one is set. The shared secret is a field of this partner's own Vault secret,
       read when the route loaded. Input and output: the prepared request; only headers change.
     type: object
     required: [secretField]
     properties:
       secretField:
         title: Secret field
-        description: Field of this partner's own OpenBao secret holding the shared HMAC secret; a reference, never the value.
+        description: Field of this partner's own Vault secret holding the shared HMAC secret; a reference, never the value.
         type: string
         format: password
         x-descriptors:

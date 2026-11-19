@@ -100,7 +100,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `config/AuthClientProperties` `mw.checkout.auth.*`, `config/ServiceCertificateManager` + `TlsProperties`
   from the template, `mw.tls.enabled` off in the image default and tests, `MW_TLS_ENABLED=true` in
   compose; PKI role `mw-checkout`): internal API `https://mw-auth:8443` (`MW_AUTH_URL`) over mTLS with this
-  service's OpenBao certificate and a Keycloak realm `services` client-credentials JWT of client
+  service's Vault certificate and a Keycloak realm `services` client-credentials JWT of client
   `mw-checkout` (audience mapper `aud-mw-auth`; secret `mw.checkout.auth.client-secret` in
   `secret/mw-checkout`, synced from `KC_MW_CHECKOUT_SECRET`; on mw-auth's allow-list and its
   `mw.auth.assertion.callers`); the PIN key on the same internal port (`GET /internal/v1/pin-key`). Timeout 2 s, Resilience4j breaker `mw-auth` (count based, 4xx
@@ -180,7 +180,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   token, PIN ciphertext, the assertion and merchant secret are `SECRET`.
 - `config/ServiceCertificateManager` + `TlsProperties` (ticket 66 template, copied in ticket 72).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers (+ extra headers such as `mw-reply-to`)
   through Spring Kafka's `KafkaTemplate` (ADR D27), idempotent `acks=all` producer; `publish` waits at most
   `mw.kafka.send-timeout`. The admin client (asked for the cluster id by the observed template's first

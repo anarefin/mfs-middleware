@@ -6,7 +6,7 @@
 # outbox and moves the file to .done (a file it cannot read to .error). No dry-run: a batch route
 # takes no calls. `enabled: false` stops the polling (the route is not added).
 #
-# Secrets (never in the record): OpenBao secret/mw-adapter-billpay/billagg-recon, field
+# Secrets (never in the record): Vault secret/mw-adapter-billpay/billagg-recon, field
 # sftp-password (or with auth=key a private key, PEM) and field sftp-known-hosts, the host's
 # known_hosts lines (`ssh-keyscan -p <port> <host>`); host keys are checked strictly, an unknown or
 # changed key is refused before the login.

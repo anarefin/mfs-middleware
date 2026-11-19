@@ -1,5 +1,5 @@
 # Static configuration baked into the image (spec 20.4). Per-environment overrides are
-# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from OpenBao/Vault
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from Vault
 # only (18.4) and are never written here.
 spring:
   application:
@@ -14,7 +14,7 @@ spring:
   cloud:
     vault:
       enabled: ${VAULT_ENABLED:false}
-      uri: ${VAULT_ADDR:http://openbao:8200}
+      uri: ${VAULT_ADDR:http://vault:8200}
       authentication: APPROLE
       app-role:
         role-id: ${VAULT_ROLE_ID:}
@@ -27,7 +27,7 @@ spring:
     problemdetails:
       enabled: false
   # This service's own schema (16.2), migrated by Flyway on start-up from
-  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from OpenBao's database engine
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from Vault's database engine
   # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
   datasource:
     url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
@@ -254,7 +254,7 @@ mw:
       connect-timeout: 2s
       read-timeout: 5s
       # Client credentials of Keycloak realm `services` (M3 gate: /internal/v1/** needs a token for
-      # audience mw-orchestrator). The secret comes from OpenBao (secret/mw-portal-api,
+      # audience mw-orchestrator). The secret comes from Vault (secret/mw-portal-api,
       # mw.portal-api.orchestrator.auth.client-secret, synced by the init from KC_MW_PORTAL_API_SECRET).
       auth:
         token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}

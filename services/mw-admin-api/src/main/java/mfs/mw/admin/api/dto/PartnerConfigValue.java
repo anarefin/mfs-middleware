@@ -11,7 +11,7 @@ import java.util.Map;
  * The full config of one partner (ticket 38, spec 12.1, ADR D28), in the field names of the
  * adapters' partner record ({@code partner/config/PartnerConfig} in mw-adapter-telco, -billpay,
  * -bank): published unchanged as the {@code value} of a {@code mw.config.changed.v1} PARTNER record.
- * Holds no secret: {@code auth.credentialsRef} names one of the partner's secrets in OpenBao.
+ * Holds no secret: {@code auth.credentialsRef} names one of the partner's secrets in Vault.
  * Missing optional fields are left out (the adapters apply their defaults).
  *
  * <p>Every partner is a route (ADR D28; the old template shape went with ticket 84): {@code route}

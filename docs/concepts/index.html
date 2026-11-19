@@ -13,7 +13,7 @@
     <a href="index.html" aria-current="page">Start</a>
     <a href="apisix.html">APISIX</a>
     <a href="keycloak.html">Keycloak</a>
-    <a href="openbao.html">OpenBao</a>
+    <a href="vault.html">Vault</a>
     <a href="hsm.html">HSM</a>
     <a href="greenmail.html">GreenMail</a>
     <a href="core-mock.html">Core mock</a>
@@ -38,7 +38,7 @@
   <div class="box plain">
     <div class="tag">How this differs from the tutorial</div>
     <p>The <a href="../tutorial/index.html">tutorial</a> follows the business: money flows, partners, ops. It mentions APISIX,
-      Keycloak and OpenBao in a few lines each. These pages go the other way round. They take one component, open it up,
+      Keycloak and Vault in a few lines each. These pages go the other way round. They take one component, open it up,
       and show its config files, the classes that use it, one request from start to end, and the usual mistakes with it.
       Read the tutorial's chapters 1 to 3 first if the words <em>saga</em>, <em>outbox</em> or <em>core</em> are new.</p>
   </div>
@@ -46,7 +46,7 @@
   <h2 id="map">Where each piece sits</h2>
   <figure class="wide">
     <div class="canvas">
-      <svg viewBox="0 0 960 400" role="img" aria-label="Callers reach APISIX; APISIX forwards to the mw services; the services use Keycloak, OpenBao and mw-crypto with SoftHSM beside them, and talk to test doubles that stand in for the core, partners, SMS and email">
+      <svg viewBox="0 0 960 400" role="img" aria-label="Callers reach APISIX; APISIX forwards to the mw services; the services use Keycloak, Vault and mw-crypto with SoftHSM beside them, and talk to test doubles that stand in for the core, partners, SMS and email">
         <defs>
           <marker id="ia" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2a5db0"/></marker>
         </defs>
@@ -74,7 +74,7 @@
 
         <text x="840" y="16" text-anchor="middle" class="t-sm">IDENTITY, SECRETS, KEYS</text>
         <rect x="725" y="30" width="225" height="50" rx="8" class="n"/><text x="837" y="52" text-anchor="middle" class="t-md">Keycloak</text><text x="837" y="69" text-anchor="middle" class="t-sm">staff, portal, service logins</text>
-        <rect x="725" y="100" width="225" height="50" rx="8" class="n"/><text x="837" y="122" text-anchor="middle" class="t-md">OpenBao</text><text x="837" y="139" text-anchor="middle" class="t-sm">secrets and certificates</text>
+        <rect x="725" y="100" width="225" height="50" rx="8" class="n"/><text x="837" y="122" text-anchor="middle" class="t-md">Vault</text><text x="837" y="139" text-anchor="middle" class="t-sm">secrets and certificates</text>
         <rect x="725" y="170" width="225" height="50" rx="8" class="n"/><text x="837" y="192" text-anchor="middle" class="t-md">mw-crypto + SoftHSM</text><text x="837" y="209" text-anchor="middle" class="t-sm">the PIN and signing keys</text>
 
         <text x="545" y="272" text-anchor="middle" class="t-sm">TEST DOUBLES (stand-ins for real outside systems)</text>
@@ -101,7 +101,7 @@
   <div class="cards">
     <a class="card" href="apisix.html"><div class="no">EDGE</div><h3>APISIX and etcd</h3><p>The one front door. Checks tokens, counts requests, strips forged headers, writes the error envelope.</p></a>
     <a class="card" href="keycloak.html"><div class="no">IDENTITY</div><h3>Keycloak</h3><p>Logins for staff, portal users, services and partners, in four realms. Why app users are not in it.</p></a>
-    <a class="card" href="openbao.html"><div class="no">SECRETS</div><h3>OpenBao</h3><p>Where every password and key lives, how a service logs in at start-up, and the certificates for mTLS.</p></a>
+    <a class="card" href="vault.html"><div class="no">SECRETS</div><h3>Vault</h3><p>Where every password and key lives, how a service logs in at start-up, and the certificates for mTLS.</p></a>
   </div>
   <h3>Crypto and test doubles</h3>
   <div class="cards">

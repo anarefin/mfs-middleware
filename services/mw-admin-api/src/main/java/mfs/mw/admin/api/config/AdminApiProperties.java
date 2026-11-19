@@ -54,7 +54,7 @@ public record AdminApiProperties(
    *
    * @param tokenUri the realm's token endpoint
    * @param clientId the client id ({@code azp} of the token)
-   * @param clientSecret from OpenBao ({@code secret/mw-admin-api}), never in config files
+   * @param clientSecret from Vault ({@code secret/mw-admin-api}), never in config files
    */
   public record InternalAuth(@NotNull URI tokenUri, @NotBlank String clientId, @NotBlank String clientSecret) {
 

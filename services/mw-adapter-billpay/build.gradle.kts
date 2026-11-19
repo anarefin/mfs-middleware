@@ -50,7 +50,7 @@ dependencies {
     // Camel for the partner side only (ADR D1 amendment, D28): partner routes are YAML DSL loaded at
     // runtime from the partner record, built from the mw-* Kamelets in src/main/resources/kamelets
     // (HTTP inside a resilience4j breaker, the result checked with json-validator, secrets through the
-    // HashiCorp Vault properties function against OpenBao, route metrics and observation).
+    // HashiCorp Vault properties function against Vault, route metrics and observation).
     implementation("org.apache.camel.springboot:camel-spring-boot-starter")
     implementation("org.apache.camel.springboot:camel-yaml-dsl-starter")
     implementation("org.apache.camel.springboot:camel-kamelet-starter")

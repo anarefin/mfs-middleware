@@ -34,7 +34,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  * JWT of an allowed client ({@link InternalAuthProperties}, {@link InternalCallerPolicy}), on the
  * internal port only ({@link PublicConnectorConfig}) and, with {@code mw.tls.enabled}, a client
  * certificate whose CN equals the token's {@code azp} (the connector itself needs a certificate of
- * the OpenBao intermediate: {@code server.ssl.client-auth: need}). {@code /auth/v1/**} (ticket 69) is
+ * the Vault intermediate: {@code server.ssl.client-auth: need}). {@code /auth/v1/**} (ticket 69) is
  * open (OTP, binding, login, refresh, the key documents: they prove the wallet themselves with the
  * device signature, OTP and PIN), except logout and the first PIN, which take mw-auth's own access
  * token ({@link OwnTokenDecoder}: RS256 against the JWT_SIGN keys, exact issuer and audience; a

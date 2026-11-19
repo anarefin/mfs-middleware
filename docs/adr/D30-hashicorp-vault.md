@@ -35,10 +35,12 @@ are Vault clients already (Spring Cloud Vault, Camel's `camel-hashicorp-vault` i
 - The secret, PKI and key paths in mw-crypto, mw-auth and the adapters do not move; ticket 91 is a
   container, provision and naming change, tested by `scripts/smoke.sh` and the mTLS ITs of ticket 66.
 - A BSL licence change by HashiCorp would mean switching back to OpenBao, an image change.
-- OpenBao stays in the repo until ticket 91 lands; docs that name OpenBao describe the stack as it runs.
+- Built by ticket 91 (2026-11-19): the compose service `vault`, `deploy/vault/`, the `provision` one-shot on the
+  `vault` CLI, every Testcontainers IT on `hashicorp/vault:2.2.2`; `scripts/test/test_vault.sh` runs the dev
+  unseal and `provision` against a real Vault and fails when OpenBao is named outside the decision records.
 
 ## Where in the repo
 
-- `deploy/docker-compose.yml` (the `openbao` service and the `provision` one-shot until ticket 91)
+- `deploy/docker-compose.yml` (the `vault` service and the `provision` one-shot), `deploy/vault/`, `deploy/provision/`
 - `scripts/creds.sh`
 - spec decision table (D30), section 3

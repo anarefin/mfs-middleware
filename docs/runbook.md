@@ -104,7 +104,7 @@ D3 amendment 2026-11-13).
 | 6379 | `valkey` | `MW_PORT_VALKEY` |
 | 9094 | `kafka` (host listener `localhost:9094`) | `MW_PORT_KAFKA` |
 | 8180 | `keycloak` | `MW_PORT_KEYCLOAK` |
-| 8200 | `openbao` | `MW_PORT_OPENBAO` |
+| 8200 | `vault` | `MW_PORT_VAULT` |
 | 8025 / 3025 | `greenmail` API / SMTP | `MW_PORT_GREENMAIL`, `MW_PORT_GREENMAIL_SMTP` |
 | 5657 / 5658 | `softhsm` PKCS#11 tokens `mw-crypto` / `paysim` (p11-kit RPC, `deploy/softhsm/README.md`) | `MW_PORT_SOFTHSM_MWCRYPTO`, `MW_PORT_SOFTHSM_PAYSIM` |
 
@@ -136,14 +136,14 @@ machine, browse on the host itself or forward the port (`sudo ssh -L 443:localho
   fake value in the committed `deploy/dev.env.defaults` (ADR D9 amendment; the tester logins are in
   `docs/testing-guide.html` section 1). `cd deploy && cp dev.env.defaults .env` before the first
   `up`; `scripts/smoke.sh`, `scripts/tester.sh`, `scripts/suite.sh` and `deploy/reset.sh` copy it
-  when `deploy/.env` is missing. Deleting `deploy/.env` and copying it again is safe. OpenBao also gets the
+  when `deploy/.env` is missing. Deleting `deploy/.env` and copying it again is safe. Vault also gets the
   fixed token `dev-root-token` on the first start of a fresh volume. The one-shot `provision`
-  (`deploy/provision`) writes the services' secrets into OpenBao; services read them from OpenBao at start.
+  (`deploy/provision`) writes the services' secrets into Vault; services read them from Vault at start.
 - Test users and which variable holds their password: README, "Test users".
 - Changing a value: edit `deploy/.env`, then `deploy/reset.sh` and start again. The volumes
   (PostgreSQL, Keycloak, etcd) were initialised with the old values, so a changed value with the
   old volumes keeps the stack from coming up.
-- The OpenBao root token is kept in its data volume (dev only, a known gap; production unseal is
+- The Vault root token is kept in its data volume (dev only, a known gap; production unseal is
   deferred).
 
 ### An operator lost their TOTP device
@@ -192,7 +192,7 @@ Log events that need a person:
 | `audit.anchor.broken` | mw-audit-dw | a signed daily audit anchor failed verification (reason: signature, anchor chain, anchor missing (also: its row gone while `<date>.jws` exists; that day is never re-signed), chain heads differ, export missing or differs; gauge `mw_audit_anchor_broken`; the admin console's audit view shows "Anchor check failed"): treat as an incident like a broken chain, keep `audit.anchor` and the exported `<date>.jws` files as they are |
 | `audit.anchor.failed` | mw-audit-dw | the day's anchor could not be signed at mw-crypto (WARN `audit.anchor.unverifiable` when its keys cannot be read): check `mw-crypto` health, the mw-audit-dw certificate (`tls.certificate.*`) and its Keycloak client; the job retries every hour and catches up the missed days |
 | `crypto.hsm.down` | mw-crypto | the HSM does not answer (gauge `crypto_hsm_up` 0): PIN checks, logins and signing fail closed with `MW-SYS-010`. Check `softhsm` health (dev) or the HSM; mw-crypto reconnects by itself (`crypto.hsm.up` when back) |
-| `tls.certificate.expiring` | mw-crypto (any service with `mw.tls.enabled`) | its OpenBao service certificate has less than a third of its 72 h life left: renewal at two thirds failed (WARN `tls.certificate.renew_failed`, retried every minute; gauge `tls_certificate_expiry_seconds`). Check `openbao` health and the service's AppRole policy (`pki_int/issue/<service>`, `dc logs provision`); once the certificate expires callers fail the handshake |
+| `tls.certificate.expiring` | mw-crypto (any service with `mw.tls.enabled`) | its Vault service certificate has less than a third of its 72 h life left: renewal at two thirds failed (WARN `tls.certificate.renew_failed`, retried every minute; gauge `tls_certificate_expiry_seconds`). Check `vault` health and the service's AppRole policy (`pki_int/issue/<service>`, `dc logs provision`); once the certificate expires callers fail the handshake |
 | `smpp.bind.down` | mw-ussd, mw-notify | the SMPP bind to the USSD gateway or SMSC is lost; it reconnects by itself, check the peer |
 | `partner.call.failed`, `partner.route.failed` | adapters | partner errors or a route that failed to start after a config change |
 | `mw.edge.rate_limit_degraded` | apisix | Valkey is unreachable and the rate limiter fails open: check `valkey` |
@@ -216,7 +216,7 @@ dc exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select
 | --- | --- |
 | A service crashed or was killed | `dc start <service>` (or the start command again). The outbox resends, the inbox drops duplicates, saga timers and the status inquiry finish what was in flight; `scripts/chaos.sh` proves this for every service, Kafka and PostgreSQL |
 | Transactions stuck in `PROCESSING` / `UNKNOWN` | wait for the status inquiry schedule (30 s, 1, 2, 5 min); what it cannot settle goes to `MANUAL_REVIEW`, handled in the console |
-| `up` stops at a one-shot | `dc logs provision` (it names the service and step that failed; or `kafka-init`, `etcd-init`, `apisix-init`, `apisix-init-tester`); most often a volume made with other credentials (see Credentials) or an OpenBao that is still sealed: `dc down`, then start again |
+| `up` stops at a one-shot | `dc logs provision` (it names the service and step that failed; or `kafka-init`, `etcd-init`, `apisix-init`, `apisix-init-tester`); most often a volume made with other credentials (see Credentials) or a Vault that is still sealed: `dc down`, then start again |
 | `up --wait` or `wait mw-seeder` exits non-zero on the seeder | `dc --profile seed logs mw-seeder`: the line `seed.step.failed` names the step. `not ready yet: <svc>` = a service never became ready (fix it, seed again); `open change request of <operator>` = a partner, menu or template has a pending request someone else made: approve or reject it in the console, then run the start command again. Seeding is idempotent, so re-running is always safe |
 | APISIX answers 404 for test routes (`/test/...`, `/tester`) | expected after an `up` without `--profile tester`; that profile, `scripts/api-test.sh`, `scripts/tester.sh` and `scripts/suite.sh perf` enable them |
 | A service answers 404 `MW-VAL-003` for paths it serves, after `dc up -d <service>` recreated just that container | APISIX still sends to the old container IP, which another service may own now: `dc restart apisix` (a full start does not hit this) |
@@ -245,10 +245,10 @@ PIN is counted while it lasts.
 ### Certificate expiry (mTLS, D24)
 
 Every internal hop to mw-crypto and mw-auth's internal API is mTLS with a 72 h certificate from
-OpenBao `pki_int` that each service issues itself at start and renews at two thirds of its life.
+Vault `pki_int` that each service issues itself at start and renews at two thirds of its life.
 
 1. WARN `tls.certificate.renew_failed` (retried every minute) then ERROR `tls.certificate.expiring`
-   (less than a third left; gauge `tls_certificate_expiry_seconds`): check `dc ps openbao` (sealed or
+   (less than a third left; gauge `tls_certificate_expiry_seconds`): check `dc ps vault` (sealed or
    down?) and the service's AppRole (`dc logs provision | grep pki`).
 2. Once a certificate expired, its callers fail the handshake (mw-auth: `MW-SYS-050`; the channels:
    `MW-SYS-012`). Restart the service whose certificate expired (`dc restart <service>`): it issues a
@@ -304,8 +304,8 @@ dc exec -T postgres sh -c 'pg_dumpall -U "$POSTGRES_USER"' > mw-backup.sql
 ```
 
 Restoring means a fresh stack (`deploy/reset.sh`, then start again) and feeding that file to
-`psql`. Kafka, Valkey and OpenBao are not backed up: Kafka holds only in-flight messages (each
-service's outbox is in PostgreSQL), Valkey only sessions and locks, OpenBao only the generated dev
+`psql`. Kafka, Valkey and Vault are not backed up: Kafka holds only in-flight messages (each
+service's outbox is in PostgreSQL), Valkey only sessions and locks, Vault only the generated dev
 secrets that `provision` writes again on every `up`.
 
 ## Onboard a biller
@@ -357,25 +357,25 @@ partner route as config: no Java, no release, no restart for the route itself.
    a Kamelet: `GET /admin/v1/partners/kamelet-usage` (or mw-adapter-billpay's
    `GET /internal/v1/partners/kamelet-usage`).
 5. **Catalogue and secret** (static by decision): add `mw.billers.<CODE>: {name, category, partner-id}` to
-   mw-adapter-billpay's config and the secret fields the route names to OpenBao
+   mw-adapter-billpay's config and the secret fields the route names to Vault
    `secret/mw-adapter-billpay/<id>`, then restart mw-adapter-billpay
    (`./gradlew :mw-adapter-billpay:bootJar`, then from `deploy/`: `docker compose --profile core up -d --build mw-adapter-billpay`).
    Auth options (ticket 87; details in `docs/concepts/camel-partner-routes.md`). Every "field" is a field
-   of `secret/<adapter>/<id>` in OpenBao:
+   of `secret/<adapter>/<id>` in Vault:
 
-   | `mw-http-call` | Needs | OpenBao fields | Notes |
+   | `mw-http-call` | Needs | Vault fields | Notes |
    | --- | --- | --- | --- |
    | `auth=apikey` | `secretField`, `authHeader` | the key | header default `X-Api-Key` |
    | `auth=hmac-sha256` | `secretField`, `keyId` | the shared secret | |
    | `auth=basic` | `userField`, `secretField` | user, password | RFC 7617 |
    | `auth=oauth2-cc` | `tokenUrl`, `clientId`, `secretField`, `scope`, `audience` | client secret | `tokenUrl` host in `allowedHosts`; one token per partner until `expires_in` - 30 s (`mw.partners.oauth2.expiry-skew`); a 401 takes one fresh token; log `partner.oauth2.token_fetched` / `partner.oauth2.token_failed` (no token) |
-   | `auth=jws` | `secretField`, `alg` (`RS256`/`ES256`), `keyId`, `authHeader` | PKCS#8 PEM private key | detached JWS in `X-JWS-Signature` by default; no mw-crypto key purpose fits, so an OpenBao key (dev: a fake one) |
+   | `auth=jws` | `secretField`, `alg` (`RS256`/`ES256`), `keyId`, `authHeader` | PKCS#8 PEM private key | detached JWS in `X-JWS-Signature` by default; no mw-crypto key purpose fits, so a Vault key (dev: a fake one) |
    | `sslContextRef=<name>` | https `url` | `<name>-keystore` (base64 PKCS#12), `<name>-keystore-password`, with `truststore: true` also `<name>-truststore`, `<name>-truststore-password` (a failed read leaves the context unregistered, never the JVM trust store) | static config `mw.partners.tls.contexts.<name>.partner-id: <id>`, read at startup (restart after a change); log `partner.tls_context_registered` / `partner.tls_context_unavailable` |
 
 6. **A SOAP biller** (ticket 85) follows the same steps with `mw-soap-call` in place of `mw-http-call`
    (example: `deploy/partner-routes/examples/soap-biller.yaml`): `mw-map` (JSONata, the request fields) ->
    `mw-soap-call?address=<static https URL>&request=<x.xsl>&response=<y.xsl>&soapAction=<action>` (optional
-   `soapVersion=1.2`, `wsUsername` + `wsPasswordSecret=<OpenBao field>` for a WS-Security UsernameToken) ->
+   `soapVersion=1.2`, `wsUsername` + `wsPasswordSecret=<Vault field>` for a WS-Security UsernameToken) ->
    `mw-classify?...&definiteStatuses=200` -> `mw-audit`. The two stylesheets are mappings whose names end in
    `.xsl` (XSLT 3.0): the request one reads the JSON as `fn:map` / `fn:string[@key=...]` and makes the SOAP
    body element; the response one turns the SOAP body, or a fault (`<fault xmlns="urn:bits:mw:soap-fault"
@@ -429,7 +429,7 @@ puts no file (the loader sets the sink's `dryRun`). Example:
 as it is (no `mapping`: a batch route has no JSON body). `bindy` is not offered (it needs a Java model
 class per layout).
 
-1. **Secrets**, in the partner's own OpenBao secret `secret/<adapter>/<id>`: the login password (field
+1. **Secrets**, in the partner's own Vault secret `secret/<adapter>/<id>`: the login password (field
    named by `secretField`; with `auth=key` a PEM private key) and the host's known_hosts lines (field
    named by `knownHostsField`). Host keys are checked strictly: an unknown or changed key is refused
    before the login (`HostKeyException` in the adapter's log, the file stays on the host). Get the lines

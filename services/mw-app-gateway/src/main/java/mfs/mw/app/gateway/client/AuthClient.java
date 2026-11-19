@@ -36,7 +36,7 @@ import tools.jackson.databind.json.JsonMapper;
  * auth.v1.openapi.yaml}, spec 18.7, D22, D24).
  *
  * <ul>
- *   <li>Only the internal port, over mTLS with this service's OpenBao certificate ({@link
+ *   <li>Only the internal port, over mTLS with this service's Vault certificate ({@link
  *       ServiceCertificateManager#clientSslContext()}, CN {@code mw-app-gateway}) and a
  *       client-credentials JWT of the same client ({@link ServiceTokenClient}): the device gate's
  *       {@link #device} and {@link #session}, the transaction assertion {@link #authorise} and the

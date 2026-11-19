@@ -14,14 +14,14 @@ spec:
     title: MW auth basic
     description: >-
       Sets Authorization: Basic base64(user:password) (RFC 7617, UTF-8). User and password are two
-      fields of this partner's own OpenBao secret, read when the route loaded; neither is ever logged,
+      fields of this partner's own Vault secret, read when the route loaded; neither is ever logged,
       audited or put in a URI. Input and output: the prepared request; only headers change.
     type: object
     required: [secretField, userField]
     properties:
       secretField:
         title: Password secret field
-        description: Field of this partner's own OpenBao secret holding the password; a reference, never the value.
+        description: Field of this partner's own Vault secret holding the password; a reference, never the value.
         type: string
         format: password
         x-descriptors:
@@ -29,7 +29,7 @@ spec:
           - urn:alm:descriptor:com.tectonic.ui:password
       userField:
         title: User secret field
-        description: Field of this partner's own OpenBao secret holding the user name; a reference, never the value.
+        description: Field of this partner's own Vault secret holding the user name; a reference, never the value.
         type: string
         format: password
         x-descriptors:

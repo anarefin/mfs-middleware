@@ -6,7 +6,7 @@
 STACK_FILE="$REPO_DIR/deploy/docker-compose.yml"
 # the P2P and cash path of the API suite folders 01 / 03 (profile minimal)
 MINIMAL_SERVICES="mw-admin-api mw-app-gateway mw-audit-dw mw-auth mw-core-mock mw-crypto mw-notify mw-orchestrator mw-simulators mw-ussd"
-PLATFORM_SERVICES="kafka kafka-init postgres valkey keycloak openbao etcd etcd-init apisix apisix-init greenmail"
+PLATFORM_SERVICES="kafka kafka-init postgres valkey keycloak vault etcd etcd-init apisix apisix-init greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 SECRET_VARS="APISIX_ADMIN_KEY ETCD_ROOT_PASSWORD ETCD_APISIX_PASSWORD ETCD_HEALTH_PASSWORD
   POSTGRES_PASSWORD VALKEY_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD
@@ -202,7 +202,7 @@ mw-portal-api:127.0.0.1:8093->8080
 mw-simulators:127.0.0.1:8085->8080
 mw-test-console:127.0.0.1:3001->3000
 mw-ussd:127.0.0.1:8082->8080
-openbao:127.0.0.1:8200->8200
+vault:127.0.0.1:8200->8200
 postgres:127.0.0.1:5432->5432
 softhsm:127.0.0.1:5657->5657
 softhsm:127.0.0.1:5658->5658
@@ -277,13 +277,13 @@ test_keycloak_is_built_once_as_a_local_image() {
   grep -qE 'KC_HEALTH_ENABLED=true' "$REPO_DIR/deploy/keycloak/Dockerfile" || fail "KC_HEALTH_ENABLED not set for kc.sh build"
 }
 
-test_provision_waits_for_healthy_postgres_and_openbao_through_compose_not_sleep_loops() {
+test_provision_waits_for_healthy_postgres_and_vault_through_compose_not_sleep_loops() {
   # the scripts themselves never poll (scripts/test/test_provision.sh)
   compose_json | jq -e '.services.provision | .depends_on.postgres.condition == "service_healthy"
-    and .depends_on.openbao.condition == "service_healthy" and .restart == "no"
+    and .depends_on.vault.condition == "service_healthy" and .restart == "no"
     and .depends_on.keycloak.condition == "service_healthy" and .environment.KC_BOOTSTRAP_ADMIN_PASSWORD == "t"
     and .labels["mw.oneshot"] == "true" and .build.context != null' >/dev/null \
-    || fail "provision is not a one-shot waiting for healthy postgres, openbao and keycloak (partner-sim certificate, ticket 73)"
+    || fail "provision is not a one-shot waiting for healthy postgres, vault and keycloak (partner-sim certificate, ticket 73)"
 }
 
 test_provision_writes_each_service_its_own_approle_volume_only() {
@@ -313,11 +313,11 @@ test_postgres_runs_under_an_init_process() {
   compose_json | jq -e '.services.postgres.init == true' >/dev/null || fail "postgres has no init: true"
 }
 
-test_openbao_is_healthy_only_once_its_engines_are_enabled() {
-  # inits read the dev root token and write KV secrets as soon as openbao is healthy
-  compose_json | jq -e '.services.openbao.healthcheck.test | join(" ") | test("dev-ready")' >/dev/null \
-    || fail "openbao healthcheck does not wait for the dev-ready marker"
-  grep -q 'dev-ready' "$REPO_DIR/deploy/openbao/dev-unseal.sh" || fail "dev-unseal.sh writes no dev-ready marker"
+test_vault_is_healthy_only_once_its_engines_are_enabled() {
+  # inits read the dev root token and write KV secrets as soon as vault is healthy
+  compose_json | jq -e '.services.vault.healthcheck.test | join(" ") | test("dev-ready")' >/dev/null \
+    || fail "vault healthcheck does not wait for the dev-ready marker"
+  grep -q 'dev-ready' "$REPO_DIR/deploy/vault/dev-unseal.sh" || fail "dev-unseal.sh writes no dev-ready marker"
 }
 
 test_every_java_service_starts_after_kafka_init() {
@@ -333,7 +333,7 @@ test_every_java_service_starts_after_kafka_init() {
   for s in $(printf '%s' "$j" | jq -r '.services | keys[] | select(test("^mw-") and (test("-init$") | not) and . != "mw-admin-ui")'); do
     printf '%s' "$j" | jq -e --arg s "$s" '.services[$s].depends_on as $d
       | $d.postgres.condition == "service_healthy" and $d.kafka.condition == "service_healthy"
-      and $d.keycloak.condition == "service_healthy" and $d.openbao.condition == "service_healthy"
+      and $d.keycloak.condition == "service_healthy" and $d.vault.condition == "service_healthy"
       and $d.provision.condition == "service_completed_successfully"
       and ([$d[] | select(.required == false)] | length == 0)' >/dev/null \
       || fail "$s: depends_on is not x-infra-deps + provision: $(printf '%s' "$j" | jq -c --arg s "$s" '.services[$s].depends_on')"
@@ -385,7 +385,7 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
   [ -z "$bad" ] || fail "long-running memory limit is not a \${KNOB:-default}: $bad"
   # the defaults are today's laptop values (MiB)
   j="$(compose_json)"
-  expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 openbao=128 etcd=64 valkey=64 softhsm=48
+  expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 vault=128 etcd=64 valkey=64 softhsm=48
     mw-admin-ui=64 mw-crypto=320 mw-auth=320 mw-simulators=384 mw-orchestrator=448 mw-audit-dw=448 mw-core-mock=384
     mw-notify=384 mw-app-gateway=384 mw-ussd=384 mw-admin-api=384 mw-adapter-telco=384 mw-adapter-billpay=384
     mw-adapter-bank=384 mw-portal-api=384 mw-checkout=384"

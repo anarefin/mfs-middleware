@@ -41,7 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
  * once, each data line is a {@code mw.partner.recon.v1} outbox row matching the contract, and the
  * file moves to {@code .done}; the same file put back is not read again; a file with a bad line
  * moves to {@code .error} and publishes nothing; a disabled record polls nothing. Strict host key
- * checking: the host key must be in the partner's known hosts (a field of its OpenBao secret), an
+ * checking: the host key must be in the partner's known hosts (a field of its Vault secret), an
  * unknown one is refused before any login. Identical in telco, billpay and bank (ticket 84).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)

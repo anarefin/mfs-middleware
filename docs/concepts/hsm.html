@@ -14,7 +14,7 @@
     <a href="index.html">Start</a>
     <a href="apisix.html">APISIX</a>
     <a href="keycloak.html">Keycloak</a>
-    <a href="openbao.html">OpenBao</a>
+    <a href="vault.html">Vault</a>
     <a href="hsm.html" aria-current="page">HSM</a>
     <a href="greenmail.html">GreenMail</a>
     <a href="core-mock.html">Core mock</a>
@@ -91,7 +91,7 @@
     <tr><td><code>mw-crypto</code></td><td>8080 inside (mTLS), published as 127.0.0.1:8094; 8081 plain, health only</td><td>The HSM gateway. Waits for a healthy <code>softhsm</code>. Compose turns on <code>MW_CRYPTO_BOOTSTRAP_KEYS</code> (dev: create a missing key of every purpose) and <code>MW_CRYPTO_PAYSHIELD_ENABLED</code> (the payShield provider).</td></tr>
     <tr><td><code>mw-simulators</code></td><td>1500 (payShield, internal network only)</td><td>Hosts the payShield 10K simulator among its other fakes. Keeps its LMK in the <code>paysim</code> token on 5658.</td></tr>
     <tr><td><code>mw-auth</code></td><td>8080 public <code>/auth/v1</code> (127.0.0.1:8095); 8443 internal mTLS, not published</td><td>The main caller: PIN checks, token and assertion signing. Waits for a healthy <code>mw-crypto</code>.</td></tr>
-    <tr><td><code>provision</code></td><td>none (one-shot)</td><td>Copies the token user PINs from <code>deploy/.env</code> into OpenBao (<code>secret/mw-crypto</code> key <code>mw.crypto.pkcs11.user-pin</code>, and the paysim PIN for mw-simulators), so the services read them from OpenBao, never from a file.</td></tr>
+    <tr><td><code>provision</code></td><td>none (one-shot)</td><td>Copies the token user PINs from <code>deploy/.env</code> into Vault (<code>secret/mw-crypto</code> key <code>mw.crypto.pkcs11.user-pin</code>, and the paysim PIN for mw-simulators), so the services read them from Vault, never from a file.</td></tr>
   </table></div>
   <p>The token labels and PINs are the <code>SOFTHSM_*</code> variables in <code>deploy/dev.env.defaults</code> (fake, documented values).
     They are applied only when a token is first created, so a change needs a fresh volume (see <a href="#wrong">What can go wrong</a>).
@@ -175,7 +175,7 @@
   <p>Holding keys in one place is only half the story. mw-crypto also decides <em>who may ask for what</em>, and the default answer is no.
     Every call needs two things (ADR <a href="../adr/D24-service-mtls-phase-1.md">D24</a>):</p>
   <ol>
-    <li>A <strong>client certificate</strong> from OpenBao's internal CA (mTLS). Without one the TLS handshake fails.</li>
+    <li>A <strong>client certificate</strong> from Vault's internal CA (mTLS). Without one the TLS handshake fails.</li>
     <li>A <strong>service JWT</strong> from Keycloak whose <code>azp</code> (the client that asked for the token) equals the certificate's CN.
       A token stolen from another service does not match the certificate.</li>
   </ol>
@@ -289,11 +289,11 @@ mw-core-mock -> mw-core-mock : ES256 vs cached JWKS, txnHash, jti once
     <li><a href="../tutorial/10-wallet-security.html#assertion">Tutorial chapter 10</a>: login, the assertion and the PIN's life from the business side.</li>
     <li><a href="../adr/D23-hsm-gateway.md">ADR D23</a>, <a href="../adr/D20-pin-custody.md">ADR D20</a> and <a href="../adr/D22-transaction-assertion.md">ADR D22</a>;
       spec sections 18.7 and 18.8 in <a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>.</li>
-    <li><a href="openbao.html">OpenBao</a>, where the token PINs and the service certificates come from.</li>
+    <li><a href="vault.html">Vault</a>, where the token PINs and the service certificates come from.</li>
   </ul>
 
   <nav class="pager">
-    <a href="openbao.html"><small>Previous</small>← OpenBao</a>
+    <a href="vault.html"><small>Previous</small>← Vault</a>
     <a class="next" href="greenmail.html"><small>Next</small>GreenMail →</a>
   </nav>
 </main>

@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
 /**
  * The mTLS client contexts of {@code mw-http-call}'s {@code sslContextRef} (ticket 87): each
  * context of {@link PartnerTlsProperties} is read once when Camel starts (static, D28), from its
- * partner's own OpenBao secret through {@link PartnerCredentials}, and bound in Camel's registry as
+ * partner's own Vault secret through {@link PartnerCredentials}, and bound in Camel's registry as
  * the {@code SSLContextParameters} bean {@code mwTls-<name>}. A context that cannot be read is
  * logged ({@code partner.tls_context_unavailable}, never the material) and not bound (also when
  * its configured trust store cannot be read: no fall-back to the JVM trust store): a route

@@ -1,6 +1,8 @@
 # M7: MVP platform components
 
 Status: Accepted, 2026-11-03.
+Amended 2026-11-19 by [D30](D30-hashicorp-vault.md): HashiCorp Vault replaces OpenBao (ticket 91); the
+OpenBao names below describe the stack before it.
 
 ## Context
 

@@ -1,5 +1,5 @@
 # Static configuration baked into the image (spec 20.4). Per-environment overrides are
-# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from OpenBao/Vault
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from Vault
 # only (18.4) and are never written here.
 spring:
   application:
@@ -14,7 +14,7 @@ spring:
   cloud:
     vault:
       enabled: ${VAULT_ENABLED:false}
-      uri: ${VAULT_ADDR:http://openbao:8200}
+      uri: ${VAULT_ADDR:http://vault:8200}
       authentication: APPROLE
       app-role:
         role-id: ${VAULT_ROLE_ID:}
@@ -27,7 +27,7 @@ spring:
     problemdetails:
       enabled: false
   # This service's own schema (16.2), migrated by Flyway on start-up from
-  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from OpenBao's database engine
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from Vault's database engine
   # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
   datasource:
     url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
@@ -165,7 +165,7 @@ management:
       type: w3c
 
 mw:
-  # This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; config/TlsProperties,
+  # This service's certificate from Vault PKI (spec 18.2, 18.4, D24; config/TlsProperties,
   # config/ServiceCertificateManager): off until the service calls an mTLS server (mw-crypto, the
   # mw-auth internal API). On, it issues pki_int/issue/<service> at start (its provision role
   # needs an entry in PKI_SERVICES of deploy/provision/services.sh), renews at two thirds of the life

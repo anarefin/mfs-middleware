@@ -1,31 +1,31 @@
 # Steps of the dev provisioning one-shot `provision` (sourced by provision.sh; POSIX sh). Each step
 # works on the current service: SVC (mw-x), KV (secret/mw-x) and OUT (its approle volume), set by
 # provision.sh before it calls the service's function in services.sh. Values go through files in
-# $tmp (bao's @file form), never on a command line. Every step is idempotent.
+# $tmp (the vault CLI's @file form), never on a command line. Every step is idempotent.
 
 log() { printf 'provision: %s\n' "$*"; }
 die() { log "$*" >&2; exit 1; }
 
-# bao_login: the dev root token from openbao's init file (DEV ONLY, see deploy/openbao/dev-unseal.sh).
-# Compose starts `provision` once openbao is healthy (unsealed, engines enabled, file written).
-bao_login() {
-  if [ -z "${BAO_TOKEN:-}" ]; then
-    INIT_FILE="${INIT_FILE:?BAO_TOKEN or INIT_FILE is required}"
-    BAO_TOKEN="$(sed -n 's/.*"root_token": *"\([^"]*\)".*/\1/p' "$INIT_FILE" 2>/dev/null | head -1)"
+# vault_login: the dev root token from vault's init file (DEV ONLY, see deploy/vault/dev-unseal.sh).
+# Compose starts `provision` once vault is healthy (unsealed, engines enabled, file written).
+vault_login() {
+  if [ -z "${VAULT_TOKEN:-}" ]; then
+    INIT_FILE="${INIT_FILE:?VAULT_TOKEN or INIT_FILE is required}"
+    VAULT_TOKEN="$(sed -n 's/.*"root_token": *"\([^"]*\)".*/\1/p' "$INIT_FILE" 2>/dev/null | head -1)"
   fi
-  [ -n "$BAO_TOKEN" ] || die "no OpenBao token in ${INIT_FILE:-BAO_TOKEN} (is openbao healthy?)"
-  export BAO_TOKEN BAO_ADDR
+  [ -n "$VAULT_TOKEN" ] || die "no Vault token in ${INIT_FILE:-VAULT_TOKEN} (is vault healthy?)"
+  export VAULT_TOKEN VAULT_ADDR
 }
 
 random() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$1"; }
 
-has_field() { bao kv get -field="$1" "${2:-$KV}" >/dev/null 2>&1; }
-field() { bao kv get -field="$1" "${2:-$KV}"; }
+has_field() { vault kv get -field="$1" "${2:-$KV}" >/dev/null 2>&1; }
+field() { vault kv get -field="$1" "${2:-$KV}"; }
 
 # kv_set key=@file...: write fields into the current secret (put when it does not exist yet).
 kv_set() {
-  if bao kv get "$KV" >/dev/null 2>&1; then bao kv patch "$KV" "$@" >/dev/null
-  else bao kv put "$KV" "$@" >/dev/null; fi
+  if vault kv get "$KV" >/dev/null 2>&1; then vault kv patch "$KV" "$@" >/dev/null
+  else vault kv put "$KV" "$@" >/dev/null; fi
 }
 
 # gen_once <key> <length>: a random value, created once and never overwritten.
@@ -74,27 +74,27 @@ SQL
 }
 
 # pki_setup: the service certificate CA of mTLS phase 1 (spec 18.2, 18.4, D24, ticket 66), once: a
-# root CA at pki/ (DEV ONLY: generated in OpenBao; production signs the intermediate with an offline
+# root CA at pki/ (DEV ONLY: generated in Vault; production signs the intermediate with an offline
 # root, open point 24) and the intermediate at pki_int/ that issues every service certificate.
-# Mounts are made here, not in deploy/openbao/dev-unseal.sh (that runs its setup on the first start
+# Mounts are made here, not in deploy/vault/dev-unseal.sh (that runs its setup on the first start
 # only, so an existing volume would never get them). Idempotent: an existing CA is kept.
 pki_setup() {
-  mounts="$(bao secrets list -format=json)"
-  printf '%s' "$mounts" | grep -q '"pki/"' || bao secrets enable pki >/dev/null
-  printf '%s' "$mounts" | grep -q '"pki_int/"' || bao secrets enable -path=pki_int pki >/dev/null
-  bao secrets tune -max-lease-ttl=87600h pki >/dev/null
-  bao secrets tune -max-lease-ttl=720h pki_int >/dev/null
-  if [ -z "$(bao read -field=certificate pki/cert/ca 2>/dev/null)" ]; then
-    bao write -field=certificate pki/root/generate/internal common_name="mfs-mw dev root CA" \
+  mounts="$(vault secrets list -format=json)"
+  printf '%s' "$mounts" | grep -q '"pki/"' || vault secrets enable pki >/dev/null
+  printf '%s' "$mounts" | grep -q '"pki_int/"' || vault secrets enable -path=pki_int pki >/dev/null
+  vault secrets tune -max-lease-ttl=87600h pki >/dev/null
+  vault secrets tune -max-lease-ttl=720h pki_int >/dev/null
+  if [ -z "$(vault read -field=certificate pki/cert/ca 2>/dev/null)" ]; then
+    vault write -field=certificate pki/root/generate/internal common_name="mfs-mw dev root CA" \
       issuer_name=dev-root key_type=ec key_bits=256 ttl=87600h >/dev/null
     log "pki: created the dev root CA"
   fi
-  if [ -z "$(bao read -field=certificate pki_int/cert/ca 2>/dev/null)" ]; then
-    bao write -field=csr pki_int/intermediate/generate/internal \
+  if [ -z "$(vault read -field=certificate pki_int/cert/ca 2>/dev/null)" ]; then
+    vault write -field=csr pki_int/intermediate/generate/internal \
       common_name="mfs-mw dev services intermediate CA" key_type=ec key_bits=256 >"$tmp/int.csr"
-    bao write -field=certificate pki/root/sign-intermediate csr=@"$tmp/int.csr" format=pem_bundle \
+    vault write -field=certificate pki/root/sign-intermediate csr=@"$tmp/int.csr" format=pem_bundle \
       ttl=43800h >"$tmp/int.pem"
-    bao write pki_int/intermediate/set-signed certificate=@"$tmp/int.pem" >/dev/null
+    vault write pki_int/intermediate/set-signed certificate=@"$tmp/int.pem" >/dev/null
     rm -f "$tmp/int.csr" "$tmp/int.pem"
     log "pki: created the services intermediate CA"
   fi
@@ -104,7 +104,7 @@ pki_setup() {
 # name (its compose DNS name), nothing else (no localhost, no IP), EC P-256, at most 72 h. Written
 # on every run (a changed rule takes effect).
 pki_role() {
-  bao write "pki_int/roles/$1" allowed_domains="$1" allow_bare_domains=true allow_subdomains=false \
+  vault write "pki_int/roles/$1" allowed_domains="$1" allow_bare_domains=true allow_subdomains=false \
     allow_glob_domains=false allow_localhost=false allow_ip_sans=false enforce_hostnames=true \
     server_flag=true client_flag=true key_type=ec key_bits=256 ttl=72h max_ttl=72h >/dev/null
   log "pki: role $1 ready"
@@ -126,13 +126,13 @@ approle() {
     printf 'path "secret/data/%s/*" { capabilities = ["read"] }\n' "$SVC"
     if in_pki "$SVC"; then printf 'path "pki_int/issue/%s" { capabilities = ["update"] }\n' "$SVC"; fi
   } >"$tmp/policy.hcl"
-  bao policy write "$SVC" - <"$tmp/policy.hcl" >/dev/null
+  vault policy write "$SVC" - <"$tmp/policy.hcl" >/dev/null
   rm -f "$tmp/policy.hcl"
-  bao write "auth/approle/role/$SVC" token_policies="$SVC" token_ttl=1h token_max_ttl=24h secret_id_ttl=0 >/dev/null
+  vault write "auth/approle/role/$SVC" token_policies="$SVC" token_ttl=1h token_max_ttl=24h secret_id_ttl=0 >/dev/null
   mkdir -p "$OUT"
   rm -f "$OUT"/spring.cloud.vault.app-role.*
-  bao read -field=role_id "auth/approle/role/$SVC/role-id" >"$OUT/spring.cloud.vault.app-role.role-id"
-  bao write -f -field=secret_id "auth/approle/role/$SVC/secret-id" >"$OUT/spring.cloud.vault.app-role.secret-id"
+  vault read -field=role_id "auth/approle/role/$SVC/role-id" >"$OUT/spring.cloud.vault.app-role.role-id"
+  vault write -f -field=secret_id "auth/approle/role/$SVC/secret-id" >"$OUT/spring.cloud.vault.app-role.secret-id"
   chown 10001:10001 "$OUT"/spring.cloud.vault.app-role.* 2>/dev/null || true
   chmod 0400 "$OUT"/spring.cloud.vault.app-role.*
   log "$SVC: AppRole ready"

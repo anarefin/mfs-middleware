@@ -393,7 +393,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 - `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field.
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - `messaging/OutboxWriter` + `OutboxRelay`: transactional outbox (6.4), used for the reveal audit.
 - Kafka through Spring Kafka (ADR D27; no Camel in this module, copied from the template, ticket 79):
   `messaging/EventPublisher` sends records with the 6.1 headers through `KafkaTemplate` (idempotent,

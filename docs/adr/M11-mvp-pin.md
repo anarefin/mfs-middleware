@@ -1,6 +1,8 @@
 # M11: PIN: encrypted with the core's key from day one
 
 Status: Accepted, 2026-11-03; superseded 2026-11-14 by D20 and D22, built by tickets 71–72 (2026-11-15): removed. M2 gate: the ciphertext may sit on the transaction row until a terminal state, then it is wiped.
+Amended 2026-11-19 by [D30](D30-hashicorp-vault.md): HashiCorp Vault replaces OpenBao (ticket 91); the
+OpenBao names below describe the stack before it.
 
 ## Context
 

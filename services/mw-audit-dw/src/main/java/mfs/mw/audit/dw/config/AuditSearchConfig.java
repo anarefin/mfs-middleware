@@ -11,7 +11,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The audit search (ticket 35) reads as the read-only {@code audit_reader} (the role and password
- * of {@code mw.audit-dw.chain-verify.reader-*}, password in OpenBao): its own small read-only pool,
+ * of {@code mw.audit-dw.chain-verify.reader-*}, password in Vault): its own small read-only pool,
  * lazy like the verifier's, so the INSERT-only writer data source stays the only {@code
  * DataSource} bean and a search never waits for the verify job's single connection.
  */

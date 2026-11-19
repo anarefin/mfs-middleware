@@ -77,14 +77,14 @@ vulnerabilities:
       not deserialize Guava objects from requests; 26.8.2 (latest) carries the same version.
       Upgrade Keycloak when a release ships guava >= 33.7.2.
     expired_at: 2027-02-01
-  # --- openbao 2.7.2 (latest) --------------------------------------------------------------------
+  # --- hashicorp/vault 2.2.2 (latest, ADR D30) ---------------------------------------------------
   - id: CVE-2026-116587
     paths:
-      - "usr/bin/bao"
+      - "bin/vault"
     statement: >-
-      go-jose DoS via crafted RSA parameters in a JWK, in OpenBao 2.7.2 (latest release). The MVP
-      enables no JWT/OIDC auth method on OpenBao (AppRole and token only), so no foreign JWK is
-      parsed. Upgrade when OpenBao ships go-jose >= 4.1.6.
+      go-jose v3.0.5 DoS via crafted RSA parameters in a JWK, in HashiCorp Vault 2.2.2 (latest
+      release; no fixed go-jose version yet). The MVP enables no JWT/OIDC auth method on Vault
+      (AppRole and token only), so no foreign JWK is parsed. Upgrade when Vault ships a fixed go-jose.
     expired_at: 2027-02-01
   # --- gosu in postgres:18.6-alpine (Go 1.24.6 stdlib) -----------------------------------------
   - id: CVE-2025-61726

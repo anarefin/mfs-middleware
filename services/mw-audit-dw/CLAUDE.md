@@ -53,7 +53,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   verifies every month as the read-only role `audit_reader` (`config/AuditReaderConfig`: a lazy
   one-connection read-only Hikari pool on the service's JDBC URL, deliberately not a `DataSource`/
   `JdbcTemplate` bean; `mw.audit-dw.chain-verify.{enabled,reader-username,reader-password}`, password
-  in OpenBao). A broken chain or an unreadable month -> ERROR `audit.chain.broken` (month, failedSeq,
+  in Vault). A broken chain or an unreadable month -> ERROR `audit.chain.broken` (month, failedSeq,
   reason) and gauge `mw.audit.chain.broken` (broken months of the last run, 0 = intact); every run logs
   `audit.chain.verified`. `AuditChainVerifyIT` tampers a row as superuser and checks the reader can only
   read and the writer still cannot SELECT.
@@ -73,7 +73,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   client is built once on `ServiceCertificateManager.clientSslContext()`; `MW_TLS_ENABLED=true` in the
   stack) with a client-credentials JWT from `client/ServiceTokenClient` (Keycloak realm `services`
   client `mw-audit-dw`, audience mapper `aud-mw-crypto`, secret `mw.audit-dw.anchor.crypto.client-secret`
-  in OpenBao from `KC_MW_AUDIT_DW_SECRET`; config `mw.audit-dw.anchor.crypto.*`). Stored INSERT-only in
+  in Vault from `KC_MW_AUDIT_DW_SECRET`; config `mw.audit-dw.anchor.crypto.*`). Stored INSERT-only in
   `audit.anchor` (V6: date PK, payload, jws, kid, anchor_hash, prev_anchor_hash; append-only trigger;
   writer SELECT/INSERT, reader SELECT) as the writer, INFO `audit.anchor.signed`. Export: written to
   `mw.audit-dw.anchor.export-dir` (`/var/lib/mw/audit-anchors`, compose volume `audit-anchors`; blank =
@@ -126,7 +126,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 - Roles (16.4): the service runs as `audit_writer` (INSERT only on `event` and `event_key`; SELECT/INSERT/UPDATE
   on `chain_head`; EXECUTE `ensure_month_partition`; DML on the chassis `inbox`/`outbox`/
   `shedlock`; SELECT/INSERT on `anchor`). Flyway runs as the schema owner `audit_dw_rw` (`SPRING_FLYWAY_USER` +
-  `spring.flyway.password` from OpenBao); V4 grants the writer. `audit_reader` (V5): USAGE on the
+  `spring.flyway.password` from Vault); V4 grants the writer. `audit_reader` (V5): USAGE on the
   schema and SELECT on `event` and `chain_head` only (V6: and `anchor`). Nobody holds UPDATE/DELETE on
   `event` or `anchor`. A superuser can still bypass everything, which the chain detects (`AuditTrailIT`).
 - Dev provisioning (`provision_mw_audit_dw` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): roles
@@ -172,14 +172,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - `config/ServiceCertificateManager` + `config/TlsProperties` (ticket 66, D24; template copy): this
-  service's OpenBao certificate (`pki_int/issue/mw-audit-dw`, role and policy from `PKI_SERVICES` in
+  service's Vault certificate (`pki_int/issue/mw-audit-dw`, role and policy from `PKI_SERVICES` in
   `deploy/provision/services.sh`), in memory, renewed at two thirds of 72 h, gauge
   `tls.certificate.expiry.seconds`. On in the stack (`MW_TLS_ENABLED=true`, ticket 74; default off, so
-  tests need no OpenBao): `client/CryptoClient` is built once on `clientSslContext()` and sends the
+  tests need no Vault): `client/CryptoClient` is built once on `clientSslContext()` and sends the
   client-credentials JWT too (template `CLAUDE.md`, "Service certificate and mTLS").
-  `client/MtlsClientIT` proves the caller side (OpenBao container `PkiTestAuthority`, a server that
+  `client/MtlsClientIT` proves the caller side (Vault container `PkiTestAuthority`, a server that
   needs a client certificate, a renewal, no certificate = failed handshake).
 - Kafka through Spring Kafka (ADR D27; no Camel in this module, copied from the template, ticket 79):
   `messaging/EventPublisher` sends records with the 6.1 headers through `KafkaTemplate` (idempotent,

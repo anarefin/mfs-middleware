@@ -210,7 +210,7 @@ public record PartnerConfig(
    * route ({@code mw-http-call?auth=...}).
    *
    * @param scheme {@code none} (default), {@code api-key}, {@code hmac-sha256}
-   * @param credentialsRef the secret field of this partner ({@code hmac-secret}), read from OpenBao
+   * @param credentialsRef the secret field of this partner ({@code hmac-secret}), read from Vault
    *     {@code secret/<service>/<partner>}; never the secret, never a path
    * @param params non-secret scheme parameters (header names, key id, max skew)
    */

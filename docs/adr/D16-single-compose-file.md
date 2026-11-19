@@ -8,6 +8,8 @@ Amendment (2026-11-13, BitsPay deploy alignment): no `--env-file` flags; Compose
 `deploy/.env` by itself, a copy of the committed `deploy/dev.env.defaults`, which also carries the
 short test timers (the former test-timers.env and `TIMERS=fast` are gone). The dev stack also
 publishes loopback host ports (ADR D3 amendment).
+Amended 2026-11-19 by [D30](D30-hashicorp-vault.md): HashiCorp Vault replaces OpenBao (ticket 91); the
+OpenBao names below describe the stack before it.
 
 ## Context
 

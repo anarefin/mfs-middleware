@@ -9,7 +9,7 @@ script, compose memory knobs, troubleshooting), `docs/runbook.md` (MVP host), `d
 per milestone M0–M6), `docs/testing-guide.html` (QA walkthrough: credentials (`scripts/creds.sh`,
 `scripts/totp.sh`), every feature by hand with the test console and the ops console),
 `docs/tutorial/` (onboarding tour for a new developer: architecture, core ideas, every feature's flow, a first day),
-`docs/concepts/` (one page per component (APISIX, Keycloak, OpenBao, the HSM, the test doubles, the libraries): how this project uses it, with a worked example),
+`docs/concepts/` (one page per component (APISIX, Keycloak, Vault, the HSM, the test doubles, the libraries): how this project uses it, with a worked example),
 `docs/adr/` (one record per spec decision D1–D15, M1–M13, plus later ones), `docs/frs-traceability.md` (every
 Upay FRS requirement id and name mapped to the repo name, its status and the ticket; FRS run 89–138, ADRs D29–D33). `scripts/test/test_repo_docs.sh`
 (in `./gradlew :scriptTests`) fails when they name a script, repo path, `./gradlew` task, API suite
@@ -46,7 +46,7 @@ when a spec decision row has no ADR: a new script, knob or decision updates thes
   `mw-adapter-card`, `mw-adapter-remit`, `mw-adapter-atm`, `mw-adapter-interop`, `mw-adapter-merchant` (Camel and the
   copied `partner/` framework) and `mw-compliance`, `mw-recon`, `mw-data-export` (no Camel: sshj and `RestClient` in
   `client/`); routing is a module of mw-orchestrator. Also decided (not built): Redis replaces Valkey (D29, ticket 90),
-  HashiCorp Vault replaces OpenBao (D30, ticket 91), the core wallet over REST (D31), one `/mock-control` API (D33);
+  the core wallet over REST (D31), one `/mock-control` API (D33);
   until then the rules below name the stack as it runs.
 - `ui/mw-admin-ui/`: the Next.js admin console (spec 4.2), own `package.json` (pnpm), `Dockerfile`,
   `CLAUDE.md`; tests `pnpm test` (Vitest, no stack) and `scripts/ui-e2e.sh` (Playwright against the
@@ -210,16 +210,16 @@ consumers until a module moves to Spring Kafka, ADR D27), and
 | `scripts/versions-check.sh [M]` | report version drift between the modules' build files (report only, not in the build) |
 | `cd deploy && cp dev.env.defaults .env` | the dev settings in the gitignored `deploy/.env`: fixed, obviously fake credentials (ADR D9 amendment) and the short test timers; run once before the first `up` (`scripts/smoke.sh`, `scripts/tester.sh`, `scripts/suite.sh` and `deploy/reset.sh` copy it when it is missing) |
 | `docker compose --profile core --profile seed --profile tester up -d --build --wait` | from `deploy/`, after `./gradlew clean build`: the one-command start of everything (platform, services, both consoles, seed, test-only routes): builds the images from the jars, starts the stack, waits until healthy and seeded (the test console waits for `mw-seeder`'s exit 0 and for `apisix-init-tester`, which applies the test-only routes); without `--profile tester` leave out `--wait` and run `docker compose --profile core --profile seed wait mw-seeder` (nothing waits for the seeder there); the `provision` one-shot re-creates missing roles and schemas on every `up`; `mw-seeder` seeds (must show `exited (0)` in `docker compose --profile core --profile seed ps -a mw-seeder`). Compose reads `deploy/.env` by itself: its short core and partner deadlines, inquiry, reversal, retry-topic, bulk and IPN timers come from `dev.env.defaults` (the compose defaults are the production values); `--profile minimal` = the P2P and cash path only. Laptop demo footprint only (about 7.9 GB of limits), never load tests; knobs in `README.md`. Without the shell: `deploy/RUNNING.html` |
-| dev host ports | the dev stack also publishes on 127.0.0.1 every `mw-*` service (8081-8095), the admin UI (3000), the test console (3001), PostgreSQL 5432, Valkey 6379, Kafka 9094, Keycloak 8180, OpenBao 8200, GreenMail 8025/3025, the softhsm PKCS#11 tokens 5657/5658 (`deploy/softhsm/README.md`) (`MW_PORT_<NAME>` knobs); direct ports skip the edge policies; APISIX 443 is the edge and the only port beyond loopback (ADR D3 amendment); production is edge-only |
+| dev host ports | the dev stack also publishes on 127.0.0.1 every `mw-*` service (8081-8095), the admin UI (3000), the test console (3001), PostgreSQL 5432, Valkey 6379, Kafka 9094, Keycloak 8180, Vault 8200, GreenMail 8025/3025, the softhsm PKCS#11 tokens 5657/5658 (`deploy/softhsm/README.md`) (`MW_PORT_<NAME>` knobs); direct ports skip the edge policies; APISIX 443 is the edge and the only port beyond loopback (ADR D3 amendment); production is edge-only |
 | `./gradlew :mw-x:bootJar && docker compose ... up -d --build mw-x` | rebuild and restart one service after a change |
 | `docker compose --profile core --profile seed down` / `deploy/reset.sh` | stop the stack (data kept) / drop every container and volume of every profile (fresh start) |
-| `scripts/smoke.sh` | live checks against the running stack (health, topics, Kafka, PG, Valkey, Keycloak tokens, OpenBao, APISIX `/healthz`) |
+| `scripts/smoke.sh` | live checks against the running stack (health, topics, Kafka, PG, Valkey, Keycloak tokens, Vault, APISIX `/healthz`) |
 | `scripts/edge-test.sh` | live APISIX edge policy tests on the running stack (401/400/413/429 envelopes, X-Mw-* strip, correlation ID, idempotent apply); edge config rules in `deploy/apisix/README.md` |
 | `scripts/api-test.sh [FOLDER] [ALL]` | Newman API suite in `tests/api` (`tests/api/README.md`) against the running, seeded stack started with the default `dev.env.defaults` timers: one request per scenario, folders `00`-`28` (`"01, 05"` by number or full name; `ALL` = `1` adds `90 Slow`); `tests/api/run.sh` re-runs `apisix-init` with `MW_E2E_ROUTES=1` (test-only routes, key-auth), runs a pinned Newman with `npx`, JUnit report `tests/api/build/newman-report.xml`. Request names carry the requirement tags `scripts/check-api-traceability.sh` checks against `tests/api/TRACEABILITY.md`; regenerate the collection with `node tests/api/build_collection.mjs` |
 | `scripts/ui-e2e.sh [GREP]` | admin UI Playwright suite (`ui/mw-admin-ui/e2e`, numbered specs tagged `@smoke`, `@console`, `@approvals`, `@partners`, `@ussd`, `@templates`, `@keys`) against the running, seeded stack (no mock): real Keycloak logins as the seeded ops personas, the real mw-admin-api behind APISIX; installs pnpm packages / Chromium when needed; credentials from `deploy/.env`, personas from `build/seed/manifest.json`; global setup fails in seconds with the fix when the stack is not ready; idempotent |
 | `scripts/tester.sh` | dev/test-only test console (`ui/mw-test-console`, ADR D17) on a stack started without `--profile tester`: re-runs `apisix-init` with `MW_E2E_ROUTES=1`, starts `mw-test-console` (profile `tester`, outside the core budget), prints https://localhost/tester; walkthrough in `docs/testing-guide.html` |
 | `scripts/tester-e2e.sh [GREP]` | the test console's Playwright suite (`ui/mw-test-console/e2e`, tags `@smoke`, `@app`, `@ussd`, `@failures`, `@checkout`, `@bulk`, `@auth`) on the running, seeded stack started with `--profile tester` (or after `scripts/tester.sh`) and the default `dev.env.defaults` timers |
-| `scripts/creds.sh` | print every dev/test login and key (`deploy/.env`, the OpenBao root token while the stack is up) for testers (`docs/testing-guide.html` section 1) |
+| `scripts/creds.sh` | print every dev/test login and key (`deploy/.env`, the Vault root token while the stack is up) for testers (`docs/testing-guide.html` section 1) |
 | `scripts/totp.sh [PERSONA]` | current ops console TOTP of a persona with the pre-set secret (default `seed-ops-maker`; HmacSHA256, raw UTF-8 key as mw-seeder `util/Totp`) |
 | `scripts/security.sh [M]` | security pass (WP29): gitleaks over the files not gitignored, CycloneDX SBOM + trivy per module (from its boot jar), trivy on the built `mfs-mw/*:local` images and the pinned third-party images (HIGH/CRITICAL fail; accepted findings with reason + expiry in `.trivyignore.yaml` / `deploy/trivyignore-third-party.yaml`); with the stack up also the ZAP baseline on APISIX and `scripts/log-scan.sh` (`SECURITY_LIVE=1` makes them mandatory: the gate runs it after `scripts/api-test.sh`); register `docs/security-findings.md` |
 | `scripts/log-scan.sh` | every container log of the running stack: fails on a PIN, PIN ciphertext, unmasked MSISDN or NID (findings printed masked) |
@@ -242,7 +242,7 @@ the root `./gradlew clean build -PwithSlow` and the whole API suite on a fresh s
 
 ## Never
 
-- Never put secrets in code, config files or tests (use OpenBao/Vault config binding;
+- Never put secrets in code, config files or tests (use Vault config binding;
   test fixtures use obviously fake values). The one exception: the dev/test stack's values (tester logins and
   every other dev credential) are fixed, documented fake values committed in `deploy/dev.env.defaults`
   (ADR D9 amendment 2026-11-13).

@@ -36,7 +36,7 @@ import org.springframework.vault.VaultException;
 import org.springframework.vault.core.VaultTemplate;
 
 /**
- * The service certificate against a real OpenBao PKI (D24, ticket 66; {@link PkiTestAuthority}):
+ * The service certificate against a real Vault PKI (D24, ticket 66; {@link PkiTestAuthority}):
  * issue at start into memory, the expiry gauge, renewal at two thirds of the life (a moved clock, no
  * wait), the SSL bundle update a Tomcat connector reloads from, the client context presenting the
  * new certificate, and a failed renewal keeping the old one.

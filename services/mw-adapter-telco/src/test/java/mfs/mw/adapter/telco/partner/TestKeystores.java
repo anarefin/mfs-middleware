@@ -30,7 +30,7 @@ public final class TestKeystores {
     return DIR.resolve(name + ".p12").toString();
   }
 
-  /** Key store {@code name} as base64, as it is kept in OpenBao. */
+  /** Key store {@code name} as base64, as it is kept in Vault. */
   public static String base64(String name) {
     try {
       return Base64.getEncoder().encodeToString(Files.readAllBytes(Path.of(store(name))));

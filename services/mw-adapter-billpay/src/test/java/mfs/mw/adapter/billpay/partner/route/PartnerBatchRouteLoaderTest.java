@@ -26,7 +26,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 /**
  * Batch partner routes (ticket 86): {@code from: kamelet:mw-sftp-source?...} next to the
  * request/reply shape. The loader injects the partner id and the registry references of the
- * credential and the known hosts (read from OpenBao now, never in the URI), keeps the host to the
+ * credential and the known hosts (read from Vault now, never in the URI), keeps the host to the
  * record's allowed hosts, and refuses every SFTP option outside its short list.
  */
 class PartnerBatchRouteLoaderTest {

@@ -23,7 +23,7 @@ and keep `scripts/test/test_service_template.sh` green.
 | Error envelope, code namespaces -> HTTP status, global advice; logs route templates, not raw URIs | `exception/`, `dto/ErrorEnvelope` | 5.3, 18.6 |
 | `@Sensitive` + `MaskingPolicy` (MSISDN `0171****789`, NID last 3, account last 4, name initial, secrets `****`, `PARTY_ID` by the party's `type`: wallet/MSISDN ids as an MSISDN, anything else last 4); `scrub` also masks MSISDNs written with a single `-`, `.`, `_`, `:` or space between any of their digits (`01711-234567`, `0171.2345.678`, `+880 1711-234567`, an MSISDN spread over UUID groups `aaaa0171-2345-678a-...` -> `0171****567` / `0171****678` / `+880171****567`) and leaves amounts, dates and times alone; no UUID or id-shape exemption: a digit run inside a UUID or trace id in free text is masked too, as a caller can craft an id that hides a number (ticket 50; every service's copy identical apart from the package) | `util/` | 18.3 |
 | JSON logs with the 21.1 fields, masking before output; only system ids are written unmasked, on their shape alone (`CorrelationIdFilter` is the gate for caller correlation and trace ids): `txnId` and `correlationId` when a lower-case RFC 9562 UUID (version 1-8, variant 8-b), `traceId`/`spanId` when 32/16 lower-case hex (generated, or a caller traceparent the filter let through); anything else, `partnerId` always, is `MaskingPolicy.scrub`bed like free text; free text keeps digit-only bounds, so a number glued to letters is still masked | `logging/JsonLogFormatter` | 21.1 |
-| Config binding, OpenBao/Vault via Spring Cloud Vault (AppRole, `VAULT_ENABLED`) | `config/MwServiceProperties`, `application.yml` | 18.4, 20.4 |
+| Config binding, Vault via Spring Cloud Vault (AppRole, `VAULT_ENABLED`) | `config/MwServiceProperties`, `application.yml` | 18.4, 20.4 |
 | Liveness/readiness, `/actuator/prometheus`, Brave tracing (W3C), virtual threads | `application.yml` | 20.1, 21.2, 21.3 |
 | Image: copies the fixed jar `build/libs/mw-service-template.jar` (never a stale one), extracts its layers, no AOT cache and no SBOM in the image (`scripts/security.sh` builds its own); `JVM_OPTS` build arg = `JAVA_TOOL_OPTIONS` (the dev stack sets Serial GC there and only sizes in `JDK_JAVA_OPTIONS`, ticket 55), non-root uid 10001, readiness `HEALTHCHECK` | `Dockerfile` | 20.1 |
 | Compose: no `compose.yml` in the module (ADR D16); `scaffold.sh` prints the service block for `deploy/docker-compose.yml`, which merges `x-app` (read-only FS, tmpfs `/tmp`, `unless-stopped`, readiness healthcheck, zone networks `app`, `data`) and sets the limits | `scaffold.sh` | 20.2 |
@@ -31,7 +31,7 @@ and keep `scripts/test/test_service_template.sh` green.
 ## Service certificate and mTLS (ticket 66, D24)
 
 `config/ServiceCertificateManager` + `config/TlsProperties` (`mw.tls.*`, off by default:
-`MW_TLS_ENABLED`). On, the service issues its certificate from OpenBao PKI at start
+`MW_TLS_ENABLED`). On, the service issues its certificate from Vault PKI at start
 (`pki_int/issue/<service>` through Spring Cloud Vault's `VaultOperations`; CN = service name, SAN =
 `mw.tls.alt-names`, the compose DNS name), keeps key and chain in an in-memory `KeyStore` (never on
 disk), trusts the issuing intermediate only, renews at two thirds of the life (retry every
@@ -52,7 +52,7 @@ cannot issue. Turning it on needs the service in `PKI_SERVICES` of `deploy/provi
   on renewal; Tomcat reloads it), actuator on its own plain port (`management.server.port: 8081`,
   `management.server.ssl.enabled: false`, or it inherits the mTLS), the image and compose healthcheck
   on 8081, and the azp == CN check in the internal caller policy (as `services/mw-crypto`).
-- Tests: `PkiTestAuthority` (OpenBao dev container with root, intermediate and per-service roles, as
+- Tests: `PkiTestAuthority` (Vault dev container with root, intermediate and per-service roles, as
   provisioned) and `client/MtlsClientIT` (issue, renewal by a moved clock, the client presenting the
   renewed certificate to a server that needs one, no certificate = failed handshake).
 

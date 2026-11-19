@@ -18,7 +18,7 @@ import org.springframework.scheduling.support.CronExpression;
  * {@code QueryParams} read it) and held to its pattern, and every SFTP host in the record's allowed
  * hosts. The source polls every {@code delay} ms (100 or more) or on a {@code cron} schedule, never
  * both; the sink may build its text with a JSONata {@code mapping} in a request route only. What
- * only the adapter can check (internal addresses, the secrets in OpenBao, that {@code mw-recon}
+ * only the adapter can check (internal addresses, the secrets in Vault, that {@code mw-recon}
  * sits in a batch route only) is left to it.
  */
 final class PartnerBatchRouteRules {

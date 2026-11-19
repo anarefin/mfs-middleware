@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Static partner config from application config ({@code mw.partners}): seeds in force until a
  * {@code mw.config.changed.v1} record replaces them (seeds have version 0, so any event wins), the
  * partner aliases, and the security settings, which only static config (application.yml,
- * per-environment overrides, OpenBao) can set: a config-changed record can never widen them.
+ * per-environment overrides, Vault) can set: a config-changed record can never widen them.
  *
  * @param partnerAliases partnerId a channel sends -> the partner serving it (ADR D28: replaces the
  *     silent {@code default-partner}); a partnerId that is neither a partner nor an alias is

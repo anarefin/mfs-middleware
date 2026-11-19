@@ -36,7 +36,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <ul>
  *   <li>{@link #authorise}: {@code POST /internal/v1/txn-authorisations} on the internal port over
- *       mTLS with this service's OpenBao certificate ({@link
+ *       mTLS with this service's Vault certificate ({@link
  *       ServiceCertificateManager#clientSslContext()}, CN {@code mw-ussd}) and a client-credentials
  *       JWT of the same client ({@link ServiceTokenClient}).
  *   <li>{@link #pinKey}: {@code GET /internal/v1/pin-key} on the same internal port, mTLS and token

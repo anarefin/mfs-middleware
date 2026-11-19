@@ -12,7 +12,7 @@ info:
     Customer data is masked in every response (spec 18.3): party ids by party type (MSISDN
     `0171****789`, accounts last 4), names to the initial; no PIN, no idempotency key. The MSISDN
     filter is matched through the keyed hash `initiator_hash` (HMAC-SHA256 over `<type>:<id>`, key
-    in OpenBao), so the raw number is never indexed and an org id never matches an MSISDN. Every
+    in Vault), so the raw number is never indexed and an org id never matches an MSISDN. Every
     error is the 5.3 envelope.
     Reveal (1.2.0, ticket 36, spec 15.4): mw-admin-api may ask for one transaction with
     `reveal=true`; MSISDN party ids then come whole (account ids, names and free text stay masked).

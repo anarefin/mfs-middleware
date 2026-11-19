@@ -1,5 +1,5 @@
 // Runtime configuration (read on the server at request time, never baked into the build or sent
-// to the browser). Secrets come from the environment (in the stack: generated dev values, OpenBao
+// to the browser). Secrets come from the environment (in the stack: generated dev values, Vault
 // in later environments); none is in the repo.
 
 /** The console is served under this path (APISIX routes `/console/*` to it); also next.config.ts. */

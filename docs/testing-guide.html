@@ -110,7 +110,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>Logins &amp; secrets page (live one-time codes, PINs, OTP lookup) and Seed data page</td><td><a href="#c1-1">1.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Sign in to the ops console (password + one-time code)</td><td><a href="#c1-3">1.3</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Account tools: unlock, reset a password or a code, wallet PIN, device, balance</td><td><a href="#c1-5">1.5</a></td><td>Test console</td></tr>
-      <tr><td class="tick"></td><td>OpenBao: list and read secrets</td><td><a href="#c1-6">1.6</a></td><td>Terminal</td></tr>
+      <tr><td class="tick"></td><td>Vault: list and read secrets</td><td><a href="#c1-6">1.6</a></td><td>Terminal</td></tr>
       <tr><td class="tick"></td><td>Device binding (OTP by SMS)</td><td><a href="#c3-1">3.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Send money (P2P), idempotent resend, wrong PIN, limits</td><td><a href="#c3-2">3.2</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Cash in (agent → customer)</td><td><a href="#c3-3">3.3</a></td><td>Test console</td></tr>
@@ -304,8 +304,8 @@ scripts/creds.sh</pre></div>
       <tr><td>App users (mw-auth login: MSISDN + app PIN + bound device)</td><td><code>customer01</code>, <code>customer02</code>, <code>agent01</code>, <code>merchant01</code>, <code>merchant02</code>, <code>seed-customer01</code>, …</td><td>app PIN <code>13579</code></td><td>the same <code>13579</code> is the transaction PIN (checked by mw-auth)</td></tr>
       <tr><td>Portal users (realm <code>portals</code>, client <code>mw-portal</code>)</td><td><code>org-maker01</code>, <code>org-checker01</code>, <code>org-makerchecker01</code>, <code>org-checker02</code>, <code>sp-viewer01</code>, <code>seed-org-maker</code>, <code>seed-org-checker</code></td><td><code>portal-test-pass</code></td><td>6-digit code: live on the Logins &amp; secrets page or <code>scripts/totp.sh &lt;user&gt;</code> (every portal user has the pre-set secret)</td></tr>
       <tr><td>Keycloak admin (realm <code>master</code>)</td><td><code>kc-admin</code></td><td><code>kc-admin-test-pass</code></td><td>no web console; the account tools of 1.5 use it for you (kcadm commands there as a fallback)</td></tr>
-      <tr><td>OpenBao (secrets store)</td><td>-</td><td>token <code>dev-root-token</code> (<code>OPENBAO_DEV_ROOT_TOKEN</code>)</td><td>no web UI; commands in 1.6</td></tr>
-      <tr><td rowspan="2">SoftHSM PKCS#11 tokens (<code>softhsm</code>, <code>deploy/softhsm/README.md</code>)</td><td>token <code>mw-crypto</code> (port 5657)</td><td>user PIN <code>dev-mwcrypto-user-pin</code></td><td>SO PIN <code>dev-mwcrypto-so-pin</code>; used by <code>mw-crypto</code> (its PIN is also in OpenBao <code>secret/mw-crypto</code>)</td></tr>
+      <tr><td>Vault (secrets store)</td><td>-</td><td>token <code>dev-root-token</code> (<code>VAULT_DEV_ROOT_TOKEN</code>)</td><td>no web UI; commands in 1.6</td></tr>
+      <tr><td rowspan="2">SoftHSM PKCS#11 tokens (<code>softhsm</code>, <code>deploy/softhsm/README.md</code>)</td><td>token <code>mw-crypto</code> (port 5657)</td><td>user PIN <code>dev-mwcrypto-user-pin</code></td><td>SO PIN <code>dev-mwcrypto-so-pin</code>; used by <code>mw-crypto</code> (its PIN is also in Vault <code>secret/mw-crypto</code>)</td></tr>
       <tr><td>token <code>paysim</code> (port 5658)</td><td>user PIN <code>dev-paysim-user-pin</code></td><td>SO PIN <code>dev-paysim-so-pin</code>; the payShield simulator's LMK store</td></tr>
       <tr><td>Partner SFTP host <code>partner-sftp</code> (profile <code>tester</code>, no host port)</td><td><code>bits</code></td><td><code>SFTP_DEV_PASSWORD</code> in <code>deploy/.env</code> (<code>dev-sftp-password</code>)</td><td>only for the SFTP batch routes (9.9); <code>scripts/creds.sh</code> does not print it</td></tr>
       <tr><td>Test-only API routes (<code>/test/…</code>, Postman)</td><td>-</td><td>header <code>apikey: e2e-test-apikey</code></td><td>exist while the stack runs with <code>--profile tester</code> (step 0.1), after <code>scripts/tester.sh</code> or <code>scripts/api-test.sh</code></td></tr>
@@ -326,7 +326,7 @@ scripts/creds.sh</pre></div>
       <tr><td>App wallets</td><td>the app and transaction PIN <code>13579</code>, a wrong PIN <code>9999</code> for refusal tests (any PIN but <code>13579</code> is wrong; the cases below use <code>97531</code>), and a
         <span class="ui">PIN → ciphertext</span> helper: the PIN encrypted under mw-auth's PIN key, for a request you build by hand (Postman, curl)</td></tr>
       <tr><td>Latest OTP</td><td>type an MSISDN: the latest BIND / LOGIN / RESET code it received by SMS and how old it is</td></tr>
-      <tr><td>Platform</td><td>Keycloak admin <code>kc-admin</code>, the OpenBao token, the APISIX admin key and the test-route apikey, the bill
+      <tr><td>Platform</td><td>Keycloak admin <code>kc-admin</code>, the Vault token, the APISIX admin key and the test-route apikey, the bill
         aggregator and bank HMAC secrets, the USSD gateway passwords, the SoftHSM token labels and PINs</td></tr>
     </table></div>
     <p>To sign in to the ops console or the org portal: copy the username, the password, then the code, into the Keycloak page within its 30 s.
@@ -348,7 +348,7 @@ scripts/creds.sh</pre></div>
       <tr><td>App users</td><td>the app PIN of the seeded app wallets at mw-auth, also the transaction PIN on every channel</td><td><code>13579</code> (<code>MW_SEED_APP_PIN</code>)</td></tr>
       <tr><td>Portal users</td><td>password of the portals realm users and how to get their one-time code</td><td><code>portal-test-pass</code> (<code>KC_PORTALS_TEST_PASSWORD</code>); <code>scripts/totp.sh seed-org-maker</code></td></tr>
       <tr><td>Keycloak admin</td><td>user <code>kc-admin</code> and its password</td><td><code>kc-admin-test-pass</code> (<code>KC_BOOTSTRAP_ADMIN_PASSWORD</code>)</td></tr>
-      <tr><td>OpenBao</td><td>the token (only while the stack is up)</td><td><code>dev-root-token</code> (<code>OPENBAO_DEV_ROOT_TOKEN</code>; an older OpenBao volume: its random root token)</td></tr>
+      <tr><td>Vault</td><td>the token (only while the stack is up)</td><td><code>dev-root-token</code> (<code>VAULT_DEV_ROOT_TOKEN</code>; an older Vault volume: its random root token)</td></tr>
       <tr><td>APISIX</td><td>the <code>apikey</code> of the test-only routes; the admin API key</td><td><code>e2e-test-apikey</code> (<code>MW_E2E_API_KEY</code>); admin key <code>dev-apisix-admin-key</code> (<code>APISIX_ADMIN_KEY</code>)</td></tr>
       <tr><td>Signing secrets</td><td>checkout merchants <code>merchant-demo</code> (Karim Traders), <code>merchant-pharmacy</code> (Lalbagh Pharmacy), <code>merchant-fashion</code> (Gulshan Fashion House), bill aggregator and bank callback HMAC secrets</td><td><code>dev-checkout-merchant-secret</code>, <code>dev-checkout-pharmacy-secret</code>, <code>dev-checkout-fashion-secret</code>, <code>dev-billagg-hmac-secret</code>, <code>dev-c2wbank-hmac-secret</code> (<code>CHECKOUT_DEMO_MERCHANT_SECRET</code>, <code>CHECKOUT_PHARMACY_MERCHANT_SECRET</code>, <code>CHECKOUT_FASHION_MERCHANT_SECRET</code>, <code>BILLAGG_HMAC_SECRET</code>, <code>C2WBANK_HMAC_SECRET</code>)</td></tr>
       <tr><td>SoftHSM tokens</td><td>label, port, user and SO PIN of each dev/test PKCS#11 token</td><td><code>mw-crypto</code> 5657 <code>dev-mwcrypto-user-pin</code> / <code>dev-mwcrypto-so-pin</code>; <code>paysim</code> 5658 <code>dev-paysim-user-pin</code> / <code>dev-paysim-so-pin</code> (<code>SOFTHSM_MWCRYPTO_LABEL</code>, <code>SOFTHSM_MWCRYPTO_USER_PIN</code>, …)</td></tr>
@@ -480,17 +480,17 @@ scripts/creds.sh</pre></div>
   </div>
 
   <div class="case" id="c1-6">
-    <h3><span class="id">1.6</span>OpenBao (secrets store)</h3>
-    <p>OpenBao is reachable only inside the stack; there is no web UI. Its token is <code>dev-root-token</code>
-    (dev only; on an OpenBao volume from before, use the token <code>scripts/creds.sh</code> prints instead). Run from the repository folder:</p>
+    <h3><span class="id">1.6</span>Vault (secrets store)</h3>
+    <p>Vault is reachable only inside the stack; there is no web UI. Its token is <code>dev-root-token</code>
+    (dev only; on a Vault volume from before, use the token <code>scripts/creds.sh</code> prints instead). Run from the repository folder:</p>
     <div class="cmd"><pre><span class="c"># list every service's secret folder</span>
-docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao kv list secret/
+docker compose -f deploy/docker-compose.yml exec -e VAULT_TOKEN=dev-root-token vault vault kv list secret/
 <span class="c"># one service, e.g. mw-crypto (the softhsm token PIN it logs in with)</span>
-docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao kv get secret/mw-crypto
+docker compose -f deploy/docker-compose.yml exec -e VAULT_TOKEN=dev-root-token vault vault kv get secret/mw-crypto
 <span class="c"># one field only</span>
-docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao kv get -field=spring.datasource.password secret/mw-notify
+docker compose -f deploy/docker-compose.yml exec -e VAULT_TOKEN=dev-root-token vault vault kv get -field=spring.datasource.password secret/mw-notify
 <span class="c"># the engines that are on (kv, transit, pki, database; pki_int issues the services' mTLS certificates)</span>
-docker compose -f deploy/docker-compose.yml exec -e BAO_TOKEN=dev-root-token openbao bao secrets list</pre></div>
+docker compose -f deploy/docker-compose.yml exec -e VAULT_TOKEN=dev-root-token vault vault secrets list</pre></div>
     <p>Expect <code>kv list</code> to print one key per service (<code>mw-admin-api</code>, <code>mw-core-mock</code>, …, and <code>mw/</code>).
     "permission denied" means the token is wrong (old volume: use <code>scripts/creds.sh</code>).</p>
     <div class="table-wrap"><table>
@@ -1374,7 +1374,7 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
         then (reload) <code>v1 LIVE</code> with the Kamelets used; <code>GET /sim/stubs/newco/requests</code> shows the dry-run PAY.</li>
       <li>Set the stub to <code>"status":500</code>, submit a changed version and approve it: <code>v2 REJECTED (v1 still serves)</code>
         with the problem (<code>HTTP_5XX</code>); v1 keeps serving.</li>
-      <li>Optional, other route kinds (the partner's secret goes into OpenBao first; steps and commands in <code>docs/runbook.md</code>,
+      <li>Optional, other route kinds (the partner's secret goes into Vault first; steps and commands in <code>docs/runbook.md</code>,
         "Onboard a biller" and "Batch partner over SFTP"):
         <b>SOAP</b>: onboard <code>soapbill</code> from <code>deploy/partner-routes/examples/soap-biller.yaml</code> with the address
         <code>http://mw-simulators:8080/soapbill/v1</code> and host <code>mw-simulators</code> (the simulator's SOAP biller): the dry-run
@@ -1520,7 +1520,7 @@ docker compose -f deploy/docker-compose.yml logs --no-log-prefix mw-app-gateway 
   <h3>Health</h3>
   <div class="cmd"><pre><span class="c"># every container and its health</span>
 docker compose -f deploy/docker-compose.yml ps
-<span class="c"># live checks: gateway, Kafka, PostgreSQL, Keycloak tokens, OpenBao ...</span>
+<span class="c"># live checks: gateway, Kafka, PostgreSQL, Keycloak tokens, Vault ...</span>
 scripts/smoke.sh
 <span class="c"># every container log: fails on a PIN (plain or ciphertext), an unmasked MSISDN or NID</span>
 scripts/log-scan.sh</pre></div>
@@ -1530,11 +1530,11 @@ scripts/log-scan.sh</pre></div>
 
   <div class="case" id="c10-1">
     <h3><span class="id">10.1</span>Security checks: mTLS and HSM down</h3>
-    <p>mw-crypto (the only process that talks to the HSM) and mw-auth's internal API accept only callers with an OpenBao
+    <p>mw-crypto (the only process that talks to the HSM) and mw-auth's internal API accept only callers with a Vault
     service certificate (mTLS, ticket 66). <code>scripts/smoke.sh</code> checks it; expect these lines green:</p>
     <ul>
-      <li><i>openbao PKI: intermediate pki_int with a role per mTLS service</i></li>
-      <li><i>mw-crypto serves its OpenBao certificate (tls_certificate_expiry_seconds on 8081)</i></li>
+      <li><i>vault PKI: intermediate pki_int with a role per mTLS service</i></li>
+      <li><i>mw-crypto serves its Vault certificate (tls_certificate_expiry_seconds on 8081)</i></li>
       <li><i>mw-crypto fails the TLS handshake without a client certificate</i></li>
     </ul>
     <p>By hand: a call without a client certificate never gets an HTTP answer (curl reports a TLS/handshake error, no status code):</p>
@@ -1586,7 +1586,7 @@ scripts/log-scan.sh</pre></div>
     <tr><td>Every app request answers <code>MW-SYS-012</code></td><td>mw-app-gateway cannot ask mw-auth (device keys, sessions) or Valkey: check <code>docker compose -f deploy/docker-compose.yml ps mw-auth valkey</code>; after a realm change (the <code>mw-app-gateway</code> services client) <code>deploy/reset.sh</code></td></tr>
     <tr><td>Sign-in refused with <code>ops-test-pass</code> (or <code>portal-test-pass</code>, app PIN <code>13579</code>)</td><td>your <code>deploy/.env</code> or the volumes hold other values than <code>deploy/dev.env.defaults</code>: use the values <code>scripts/creds.sh</code> prints, or start fresh: <code>cp deploy/dev.env.defaults deploy/.env</code>, <code>deploy/reset.sh</code>, then step 0.1</td></tr>
     <tr><td>The console's login page says "Your session has ended. Sign in again." on the first visit</td><td>a console cookie from before a <code>deploy/reset.sh</code>: just sign in (1.3)</td></tr>
-    <tr><td><code>dev-root-token</code>: "permission denied"</td><td>the OpenBao volume predates it: use the token <code>scripts/creds.sh</code> prints (or <code>deploy/reset.sh</code>)</td></tr>
+    <tr><td><code>dev-root-token</code>: "permission denied"</td><td>the Vault volume predates it: use the token <code>scripts/creds.sh</code> prints (or <code>deploy/reset.sh</code>)</td></tr>
     <tr><td>Console sign-in: "Invalid authenticator code"</td><td>the code was used already or expired: wait for the next one (Logins &amp; secrets or <code>scripts/totp.sh</code>)</td></tr>
     <tr><td>Console sign-in refused although the password and code are right</td><td>5 wrong tries lock the user for 1-15 minutes: wait, or unlock it (1.5)</td></tr>
     <tr><td><code>scripts/totp.sh</code>: "no pre-set secret"</td><td>not a seeded ops or portal user name: check the spelling (the message lists every one)</td></tr>

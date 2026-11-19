@@ -5,7 +5,7 @@ import java.util.regex.Pattern;
 /**
  * Where a partner secret lives, never the secret itself (partner config holds only references,
  * spec 20.4). A partner record names a secret by a bare field name ({@code hmac-secret}), a field
- * of that partner's own OpenBao secret {@code secret/<service>/<partner>}, read when its route
+ * of that partner's own Vault secret {@code secret/<service>/<partner>}, read when its route
  * loads ({@code partner/auth/PartnerCredentials}, ADR D28). So a partner can reach its own secrets
  * only: never another partner's, never any other secret of the service, whatever arrives on {@code
  * mw.config.changed.v1}.

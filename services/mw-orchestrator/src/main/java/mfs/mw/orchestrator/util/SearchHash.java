@@ -8,7 +8,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 /**
  * Keyed search hash (spec 14.3, 16.3 {@code initiator_hash}, {@code payee_hash}): HMAC-SHA256
- * under a key from OpenBao over {@code <type>:<canonical id>}. The type is part of the input, so an
+ * under a key from Vault over {@code <type>:<canonical id>}. The type is part of the input, so an
  * id of one type never matches the same text of another (an org id written like an MSISDN never
  * finds that customer's transactions). An MSISDN in any accepted form ({@code 01...}, {@code
  * 880...}, {@code +880...}, with spaces or dashes) is hashed as {@code 01XNNNNNNNN}, so a search

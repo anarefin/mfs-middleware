@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * {@code mw.ussd.smpp.*}: the SMPP USSD transport's binds (spec 9.2, 9.2.1, WP19). One bind group
  * per MNO whose {@code mw.ussd.mno.<mno>.transport} is SMPP; an MNO switches transport by
- * configuration alone. Passwords come from OpenBao ({@code secret/mw-ussd}, key {@code
+ * configuration alone. Passwords come from Vault ({@code secret/mw-ussd}, key {@code
  * mw.ussd.smpp.mno.<mno>.password}), never from a file here.
  *
  * @param enabled false binds nothing (tests); an SMPP MNO then gets no traffic

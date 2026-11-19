@@ -25,7 +25,7 @@ import { SHOWABLE_ENVS } from "./secrets";
 
 describe("showable env names", () => {
   it("covers the logins and the platform secrets only", () => {
-    for (const e of ["KC_OPS_TEST_PASSWORD", "KC_PORTALS_TEST_TOTP_SECRET", "MW_SEED_APP_PIN", "OPENBAO_DEV_ROOT_TOKEN", "SOFTHSM_PAYSIM_SO_PIN"]) expect(SHOWABLE_ENVS.has(e)).toBe(true);
+    for (const e of ["KC_OPS_TEST_PASSWORD", "KC_PORTALS_TEST_TOTP_SECRET", "MW_SEED_APP_PIN", "VAULT_DEV_ROOT_TOKEN", "SOFTHSM_PAYSIM_SO_PIN"]) expect(SHOWABLE_ENVS.has(e)).toBe(true);
     for (const e of ["PATH", "POSTGRES_PASSWORD", "HOME"]) expect(SHOWABLE_ENVS.has(e)).toBe(false);
   });
 });

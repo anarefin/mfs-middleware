@@ -54,7 +54,7 @@ import tools.jackson.databind.json.JsonMapper;
  * A new biller with no restart and no Java change (ADR D28, ticket 82 acceptance): a {@code
  * mw.config.changed.v1} record for a partner the service has never seen ({@code waterco}: another
  * host, other JSON field names, an api key) arrives on Kafka; its route is built from the shipped
- * Kamelets, its key is read from OpenBao (Testcontainers, the dev image) through Camel's HashiCorp
+ * Kamelets, its key is read from Vault (Testcontainers, the dev image) through Camel's HashiCorp
  * Vault function, and a bill fetch and a payment against the WireMock biller succeed. The biller
  * catalogue entry is static config, on purpose (D28).
  */
@@ -82,22 +82,22 @@ class NewBillerRouteIT {
   static final JsonMapper JSON = JsonMapper.builder().build();
   static final WireMockServer WATERCO = new WireMockServer(WireMockConfiguration.options().dynamicPort());
 
-  static final GenericContainer<?> OPENBAO =
-      new GenericContainer<>("openbao/openbao:2.7.2")
+  static final GenericContainer<?> VAULT =
+      new GenericContainer<>("hashicorp/vault:2.2.2")
           .withCommand("server", "-dev", "-dev-root-token-id=" + TOKEN, "-dev-listen-address=0.0.0.0:8200")
           .withExposedPorts(8200)
           .waitingFor(Wait.forHttp("/v1/sys/health").forStatusCode(200));
 
   static {
     WATERCO.start();
-    OPENBAO.start();
+    VAULT.start();
     secret("billagg", Map.of("hmac-secret", "fake-billagg-hmac-secret-for-tests"));
     secret("waterco", Map.of("api-key", API_KEY));
     secret("gasco", Map.of("client-secret", "fake-gasco-client-secret"));
   }
 
   static String vaultUri() {
-    return "http://" + OPENBAO.getHost() + ":" + OPENBAO.getMappedPort(8200);
+    return "http://" + VAULT.getHost() + ":" + VAULT.getMappedPort(8200);
   }
 
   static void secret(String partner, Map<String, String> data) {
@@ -219,7 +219,7 @@ class NewBillerRouteIT {
 
   /**
    * Ticket 87: a new biller on OAuth2 client credentials, by config only (record on Kafka, client
-   * secret in OpenBao): N payments take one token; a partner 401 (token revoked) takes one fresh
+   * secret in Vault): N payments take one token; a partner 401 (token revoked) takes one fresh
    * token and the payment still succeeds; a token within the expiry skew is never reused.
    */
   @Test

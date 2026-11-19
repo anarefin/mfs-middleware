@@ -63,7 +63,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>Each problem carries the 1-based line of the YAML text and the construct. What only the
  * adapter can check (https or a dev host, internal addresses, the static host floor, JSONata
- * compilation, the secrets in OpenBao, Camel's own parse) is left to it: a version it refuses is
+ * compilation, the secrets in Vault, Camel's own parse) is left to it: a version it refuses is
  * reported REJECTED.
  */
 @Component
