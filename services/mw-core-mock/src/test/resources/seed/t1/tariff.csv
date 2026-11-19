@@ -1,0 +1,2 @@
+txn_type,channel,customer_type,slab_min,slab_max,fee,vat_pct,commission_split
+P2P,*,*,100,500000,700,15,

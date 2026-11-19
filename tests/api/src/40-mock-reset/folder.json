@@ -1,0 +1,4 @@
+{
+  "name": "40 Mock reset (one call resets every mock, core ledger back to its seed)",
+  "description": "Ticket 103, FRS MCT-07, MCK-08, MCT-08: POST /test/mock-control/reset (test-only APISIX route to mw-simulators) resets every mock party of mw-simulators and fans out to mw-core-mock, whose ledger goes back to its seed files (seed/v1/); the core is a party of the same mock-control engine and the old fault API is its alias. Nothing else in the stack is reset."
+}

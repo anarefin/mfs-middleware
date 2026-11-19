@@ -34,6 +34,48 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Party" } }
+  /mock-control/reset:
+    post:
+      operationId: resetAll
+      summary: Reset every mock in one call (MCT-07, ticket 103)
+      description: |
+        Every party of `GET /mock-control/parties` is reset as `DELETE /mock-control/{party}/journal`
+        resets it (journal, scenarios, switch, settings, kept state), then mw-core-mock's own `POST
+        /mock-control/reset` (contract `api/mw-core-mock/core-mock-control.v1`: ledger back to the seed,
+        its scenarios and journal cleared), with `seedVersion` passed on. One line per party, the local
+        ones first; a party that could not be reset is `FAILED` with the reason and the others still go.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seedVersion: { type: [string, "null"], pattern: "^[a-z0-9][a-z0-9-]{0,31}$", description: "mw-core-mock's seed files; absent = the version in force there" }
+      responses:
+        "200":
+          description: What each party reported
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [parties]
+                properties:
+                  parties:
+                    type: array
+                    items:
+                      type: object
+                      required: [party, status]
+                      properties:
+                        party: { type: string }
+                        status: { type: string, enum: [RESET, FAILED] }
+                        seedVersion: { type: string }
+                        detail: { type: string }
+        "400":
+          description: A bad body (MW-VAL-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   /mock-control/{party}/scenarios:
     parameters:
       - $ref: "#/components/parameters/Party"

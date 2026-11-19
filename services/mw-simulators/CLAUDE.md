@@ -16,8 +16,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `controller/MockControlController`, contract `api/mw-simulators/mock-control.v1.openapi.yaml`): one engine
   for every mock party, only in the Spring profile `mock-control` (`MockControl.PROFILE`; the compose block
   sets `SPRING_PROFILES_ACTIVE: mock-control`, the test config too). Without the profile `MagicValuesOnly`
-  answers every call by its magic value and no control path, journal or alias exists (MCT-08 hardening:
-  ticket 103).
+  answers every call by its magic value and no control path, journal or alias exists. MCT-08 (ticket
+  103): `config/MockControlProdGuard` refuses to start with the profile and `mw.service.env` (`MW_ENV`)
+  `prod`; `scripts/check-mock-control-prod.sh` (`./gradlew :mockControlProdCheck`) fails when anything but
+  the test doubles (this service, mw-core-mock) enables it.
+  - Global reset (ticket 103, FRS MCT-07; `controller/MockResetController`, `service/mockcontrol/GlobalReset`,
+    `client/CoreMockControlClient`, `config/CoreMockControlProperties` `sim.core-mock.{base-url
+    http://mw-core-mock:8080, timeout 30s}`): `POST /mock-control/reset {seedVersion?}` resets every party
+    of `MockParties.ALL` as the party reset does (`PartyReset`), then mw-core-mock's `POST
+    /mock-control/reset` (contract `api/mw-core-mock/core-mock-control.v1`: its ledger back to the seed of
+    `seedVersion`, its scenarios and journal cleared); answers `{parties:[{party, status RESET|FAILED,
+    seedVersion?, detail?}]}`, the local parties first; a party that fails (the core unreachable or not
+    200) is FAILED with the reason and the others still go. Test-only APISIX route `/test/mock-control/*`
+    (`MW_E2E_ROUTES=1`). Test: `GlobalResetIT` (a stub core).
   - Parties (`MockParties`, `GET /mock-control/parties`): `ocs` (topup, status, reverse; keys msisdn,
     txnRef), `billagg` (billers, fetch, pay, status, reverse; biller, billNumber, txnRef; REST and SOAP
     front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path). A
@@ -81,7 +92,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   (not applied). A repeated `transactionId` returns the original outcome.
 - Bill aggregator wire format (`billagg`, `controller/BillAggregatorController`,
   `service/BillAggregatorService`, `BillPaymentLedger`): `GET /billagg/v1/billers` -> `[{code,
-  name, category, protocol: REST|SOAP}]`, 10 billers (`BillAggregatorService.BILLERS`): REST BREB, CWASA,
+  name, category, protocol: REST|SOAP}]`, 10 billers (`BillAggregatorService.BILLERS`, read from the seed file
+  `src/main/resources/seed/v1/billers.csv` by `service/SeedFiles`, ticket 103, FRS MCK-08; test
+  `service/SeedFilesTest`; bills and bank accounts have no seed: magic values): REST BREB, CWASA,
   DESCO, DPDC, TITAS, WASA; SOAP BTCL, JGTDSL, KGDCL, LINK3 (categories ELECTRICITY, WATER, GAS, TELECOM,
   INTERNET); `POST /billagg/v1/bills/fetch {billerCode,
   billNumber}` -> 200 `{billerCode, billNumber, status: DUE, code: "000", amount: "667.00",
@@ -271,6 +284,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 ## Contracts used
 
 - `api/mw-ussd/ussd-http.v1.openapi.yaml` (client, USSD gateway simulator; own types `dto/UssdScreen`).
+- `api/mw-core-mock/core-mock-control.v1.openapi.yaml` (ticket 103): `POST /mock-control/reset` of the
+  global reset (`client/CoreMockControlClient`, own types `dto/ResetResult`; checked by
+  `contracts/MockControlContractTest`).
 - Otherwise none. (Later tickets add the core stub: `core.*.command` in, `core.*.event` out, spec 22.2.)
 - `contracts.yml`: the machine-readable list (checked by `./gradlew :contractsLint`): no events produced
   or consumed (the Kafka chassis is unused), so there is no `ProducedContractsTest` /

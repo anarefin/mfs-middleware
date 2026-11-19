@@ -40,6 +40,11 @@ public final class SeedFiles {
     this.version = version;
   }
 
+  /** The folder under {@code seed/} the files come from. */
+  public String version() {
+    return version;
+  }
+
   public List<WalletRange> wallets() {
     return read("wallets.csv", c -> new WalletRange(Wallet.canonicalType(c[0]), c[1], Integer.parseInt(c[2]),
         Integer.parseInt(c[3]), c[4], Long.parseLong(c[5])));

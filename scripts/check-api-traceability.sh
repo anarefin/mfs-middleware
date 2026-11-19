@@ -41,7 +41,7 @@ import json, re, sys
 TAGS = {"health", "seed", "p2p", "device", "cash", "merchant", "topup", "billpay", "callback", "addmoney", "c2w",
         "checkout", "ipn", "notify", "tsq", "reversal", "admin", "operator", "partner-config", "wallet-unlock",
         "ussd", "smpp", "bulk", "sp-query", "dlq", "auth", "edge", "pin", "lock", "assertion", "crypto",
-        "history", "balance", "docs"}
+        "history", "balance", "docs", "mock"}
 # ticket 76: a request with one of these tags proves a security requirement and names its ids
 SECURITY_TAGS = {"auth", "pin", "lock", "assertion", "crypto"}
 REQ_ID = re.compile(r"^(FR|SEC|NFR)-\d\d$")

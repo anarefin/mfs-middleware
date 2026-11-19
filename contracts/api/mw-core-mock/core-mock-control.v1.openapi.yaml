@@ -1,0 +1,319 @@
+openapi: 3.1.0
+info:
+  title: Bits core mock-control API v1 (mw-core-mock, test-only)
+  version: 1.0.0
+  description: |
+    The mock-control API of the core party (ADR D33, FRS 10.1 MCT-01..03, MCT-06, MCT-07, MCK-04 core
+    part, MCK-08; ticket 103), the same shape as mw-simulators' `mock-control.v1` (the engine is copied,
+    module isolation), never part of the product. Served only when mw-core-mock runs with the Spring
+    profile `mock-control` (the dev stack sets it; a start with `MW_ENV=prod` fails, MCT-08). No auth:
+    dev/test only; mw-simulators' global reset calls `POST /mock-control/reset` inside the app network,
+    and the test-only APISIX route `/test/core-mock/v1/*` stays for the old fault alias.
+
+    One party, `core`. Its operations are the WAL operations of `core-wallet.v1` and the Kafka commands:
+    validate, hold, commit, release, transfer, credit, reversal, query, balance, charges, limits,
+    accounts, statements, unlock, factors. Scope keys: the command's parties (`debit`, `credit`,
+    `wallet`: wallet ids / MSISDNs), `txnId`, `holdId`, `originalTxnId`. Per dimension the most specific
+    matching scenario wins (next-N, then key, then operation, then party-wide; the latest among equals);
+    without one the ledger rules decide (the core has no magic values).
+
+    How the behaviours land on the core: BUSINESS_ERROR refuses the call with reason `code` (default
+    `INJECTED_REJECT`; a money call's refusal is stored like any result, `422 MW-CORE-<code>` on REST, the
+    command's failure event on Kafka). TIMEOUT applies the call and holds the REST answer and the result
+    event `delayMs` (default the settings' `timeoutDelayMs`, else 30 s). DELAY adds `delayMs`. HTTP_5XX
+    applies it and answers `<httpStatus, default 500> MW-SYS-CORE_ERROR`; MALFORMED_RESPONSE cuts the
+    answer short; CONNECTION_RESET drops the connection; with these three the result event is lost too.
+    The callback behaviours shape the command's result event (the core's asynchronous answer):
+    DUPLICATE_CALLBACK twice, LATE_CALLBACK after `delayMs`, NO_CALLBACK never. Switch DOWN: REST
+    connections closed unanswered, Kafka commands not handled; MAINTENANCE: `503
+    MW-SYS-CORE_UNAVAILABLE` / the failure event with reason `CORE_UNAVAILABLE` (not kept, a redelivery
+    is decided anew); SLOW: the latency first. The old `/core-mock/v1/faults` is an alias for one release.
+servers:
+  - url: http://mw-core-mock:8080
+paths:
+  /mock-control/parties:
+    get:
+      operationId: listParties
+      summary: The mock party of this service (core) with its operations and scope keys
+      responses:
+        "200":
+          description: Every party
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Party" } }
+  /mock-control/reset:
+    post:
+      operationId: resetAll
+      summary: The core's global reset (MCT-07)
+      description: |
+        The ledger back to the seed: holds, entries, command log, REST request hashes, reversals and used
+        assertion ids removed; the seed's wallets re-created and its tariff and limit sheets loaded from
+        `seed/<seedVersion>/`; every other wallet (made by the seed API: mw-seeder's personas, the test
+        console) back to its opening balance with nothing held. Then the party's scenarios, switch,
+        settings, old faults and journal are cleared. `seedVersion` absent = the version in force (on start
+        `mw.coremock.seed.version`, v1); a given one stays in force.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                seedVersion: { type: [string, "null"], pattern: "^[a-z0-9][a-z0-9-]{0,31}$" }
+      responses:
+        "200":
+          description: What each party reported
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResetResult" }
+        "400":
+          description: No seed files for that version, or a bad body (MW-VAL-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /mock-control/{party}/scenarios:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+    post:
+      operationId: addScenario
+      summary: Add a scenario (MCT-01, MCT-02)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ScenarioRequest" }
+      responses:
+        "201":
+          description: The stored scenario with its id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Scenario" }
+        "400":
+          description: Invalid scenario, or an operation the party does not have (MW-VAL-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: Unknown party (MW-VAL-003)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    get:
+      operationId: listScenarios
+      summary: The party's active scenarios, oldest first
+      responses:
+        "200":
+          description: The scenarios
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Scenario" } }
+        "404":
+          description: Unknown party (MW-VAL-003)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    delete:
+      operationId: clearScenarios
+      summary: Remove every scenario of the party
+      responses:
+        "204": { description: Removed }
+  /mock-control/{party}/scenarios/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+      - { name: id, in: path, required: true, schema: { type: string } }
+    delete:
+      operationId: removeScenario
+      summary: Remove one scenario
+      responses:
+        "204": { description: Removed }
+        "404":
+          description: No such scenario (MW-VAL-003)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /mock-control/{party}/switch:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+    put:
+      operationId: setSwitch
+      summary: Set the party switch (MCT-03)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Switch" }
+      responses:
+        "200":
+          description: The switch now in force
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Switch" }
+        "400":
+          description: Invalid switch (MW-VAL-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    get:
+      operationId: getSwitch
+      summary: The party switch (UP by default)
+      responses:
+        "200":
+          description: The switch
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Switch" }
+  /mock-control/{party}/settings:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+    put:
+      operationId: setSettings
+      summary: Set the party's timeout hold (callbackUrl and callbackOnly are accepted and unused by the core)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Settings" }
+      responses:
+        "200":
+          description: The settings now in force
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+    get:
+      operationId: getSettings
+      summary: The party's settings
+      responses:
+        "200":
+          description: The settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Settings" }
+  /mock-control/{party}/journal:
+    parameters:
+      - $ref: "#/components/parameters/Party"
+    get:
+      operationId: getJournal
+      summary: The commands the core handled, oldest first (MCK-07, MCT-06)
+      parameters:
+        - { name: path, in: query, required: false, schema: { type: string }, description: "part of the path /<operation>/<commandType>" }
+        - { name: contains, in: query, required: false, schema: { type: string }, description: part of the body (the scope keys) }
+        - { name: afterSeq, in: query, required: false, schema: { type: integer, format: int64 }, description: only entries after this sequence number }
+      responses:
+        "200":
+          description: The journal (the last mw.coremock.mock-control.journal-limit commands)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/JournalEntry" } }
+    delete:
+      operationId: resetParty
+      summary: Clear the journal and the party's scenarios, switch and settings (MCT-06; the ledger stays)
+      responses:
+        "204": { description: Reset }
+components:
+  parameters:
+    Party:
+      name: party
+      in: path
+      required: true
+      schema: { type: string, examples: [core] }
+  schemas:
+    Behaviour:
+      type: string
+      enum:
+        - SUCCESS
+        - BUSINESS_ERROR
+        - TIMEOUT
+        - DELAY
+        - HTTP_5XX
+        - MALFORMED_RESPONSE
+        - CONNECTION_RESET
+        - DUPLICATE_CALLBACK
+        - LATE_CALLBACK
+        - OUT_OF_ORDER_CALLBACK
+        - NO_CALLBACK
+        - PARTIAL_SUCCESS
+      description: See the description of this API; OUT_OF_ORDER_CALLBACK and PARTIAL_SUCCESS have no core meaning (answered normally).
+    ScenarioRequest:
+      type: object
+      required: [behaviour]
+      properties:
+        operation: { type: [string, "null"], maxLength: 64, description: "one of the party's operations; absent = all" }
+        behaviour: { $ref: "#/components/schemas/Behaviour" }
+        code: { type: [string, "null"], maxLength: 64, description: "BUSINESS_ERROR: the core reason, e.g. INSUFFICIENT_BALANCE" }
+        delayMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
+        httpStatus: { type: [integer, "null"], minimum: 400, maximum: 599 }
+        key: { type: [string, "null"], maxLength: 64, description: "a wallet id / MSISDN, txnId, holdId or original txnId the call carries" }
+        nextN: { type: [integer, "null"], minimum: 1, description: "only the next N matching calls" }
+    Scenario:
+      allOf:
+        - $ref: "#/components/schemas/ScenarioRequest"
+        - type: object
+          required: [id]
+          properties:
+            id: { type: string }
+            remaining: { type: [integer, "null"], description: "calls left of a nextN scenario" }
+    Switch:
+      type: object
+      required: [state]
+      properties:
+        state: { type: string, enum: [UP, DOWN, MAINTENANCE, SLOW] }
+        latencyMinMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
+        latencyMaxMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
+        ratio: { type: [number, "null"], minimum: 0, maximum: 1, description: "share of calls DOWN or MAINTENANCE hits; default 1" }
+    Settings:
+      type: object
+      properties:
+        callbackUrl: { type: [string, "null"], maxLength: 2048 }
+        callbackOnly: { type: [boolean, "null"] }
+        timeoutDelayMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
+    Party:
+      type: object
+      required: [name, operations, keys]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        operations: { type: array, items: { type: string } }
+        keys: { type: array, items: { type: string } }
+    JournalEntry:
+      type: object
+      required: [seq, at, method, path, headers]
+      properties:
+        seq: { type: integer, format: int64 }
+        at: { type: string, format: date-time }
+        method: { type: string, description: "COMMAND" }
+        path: { type: string, description: "/<operation>/<commandType>" }
+        query: { type: [string, "null"] }
+        headers: { type: object, additionalProperties: { type: string }, description: "x-txn-id" }
+        body: { type: [string, "null"], description: "the scope keys, one key=value per line; never an assertion" }
+    ResetResult:
+      type: object
+      required: [parties]
+      properties:
+        parties:
+          type: array
+          items:
+            type: object
+            required: [party, status]
+            properties:
+              party: { type: string }
+              status: { type: string, enum: [RESET, FAILED] }
+              seedVersion: { type: string }
+              detail: { type: string }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        timestamp: { type: string, format: date-time }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

@@ -96,7 +96,10 @@ paths:
     description: >-
       Fault injection of the test double (ticket 14; documented here by ticket 101, whose drift test
       found it in code only): a fault applies to the core commands whose type and txnId match (absent
-      = any), at most `times` times when set. Ticket 103 moves it onto the unified mock-control API.
+      = any), at most `times` times when set. Deprecated (ticket 103): an alias of the core party's
+      mock-control API (`core-mock-control.v1`) for one release, served only in Spring profile
+      `mock-control`; each fault is one scenario (REJECT = BUSINESS_ERROR, DELAY = DELAY, DROP_REPLY =
+      NO_CALLBACK, DUPLICATE_REPLY = DUPLICATE_CALLBACK, txnId = key, times = nextN).
     parameters:
       - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
     post:

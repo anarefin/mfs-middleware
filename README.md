@@ -218,6 +218,14 @@ Never reset a single store. PostgreSQL, Kafka, Valkey, Vault, Keycloak and the c
 describe the same books, so `deploy/reset.sh` always resets them together. After a reset, repeat
 step 3.
 
+Between test runs, without a restart, the mocks have one-call reset (FRS MCT-07, ticket 103):
+`POST /test/mock-control/reset` through APISIX (`apikey` header, the `MW_E2E_API_KEY` of `deploy/.env`;
+test-only route) resets every mock party of mw-simulators (journal, scenarios, switch, settings, ledgers)
+and mw-core-mock's ledger back to its seed (`services/mw-core-mock/src/main/resources/seed/v1/`; the
+seeder's persona wallets keep their opening balance), and answers one line per party. Optional body
+`{"seedVersion":"v1"}` picks the core's seed files. It leaves the other stores alone (transactions in
+mw-orchestrator, PIN state in mw-auth): use it to start a run from known balances, not as a full reset.
+
 ## Build and test
 
 There is no CI/CD in the MVP and no Makefile: the root Gradle build is the gate. The root is one
@@ -234,6 +242,7 @@ Gradle multi-module build; every `services/*` folder with a `build.gradle.kts` i
 | `./gradlew :checkFieldInjection` | no `@Autowired` field anywhere, tests included (`scripts/check-field-injection.sh`) |
 | `./gradlew :contractsLint` | lint `contracts/` and every module's `contracts.yml`, the derived body schemas, and the API suite's acceptance traceability (`scripts/contracts-lint.sh`) |
 | `./gradlew :composeCheck` | fail when a long-running service of `deploy/docker-compose.yml` has no memory limit or the limits pass 12 GB (`scripts/compose-check.sh`; ADR D32) |
+| `./gradlew :mockControlProdCheck` | only the test doubles (`mw-core-mock`, `mw-simulators`) enable the Spring profile `mock-control` in compose, the env files and the modules' main config (`scripts/check-mock-control-prod.sh`; FRS MCT-08) |
 | `./gradlew :scriptTests` | the shell tests of `scripts/` and of the repo layout and docs, this README's commands included (`scripts/test/run.sh`; files run side by side, `SCRIPT_TESTS_JOBS=3` by default) |
 
 Each module has one `test` task: unit, slice, contract, Camel route, Testcontainers `*IT` and
@@ -322,6 +331,7 @@ Every script prints its usage in its header comment. They read the running stack
 | `scripts/check-field-injection.sh [MODULE]` | no `@Autowired` field injection (`./gradlew :checkFieldInjection`) |
 | `scripts/contracts-lint.sh` | contracts lint, derived body schemas (`scripts/derived-schemas.sh --check`, `--write` regenerates them), API suite traceability (`scripts/check-api-traceability.sh`) (`./gradlew :contractsLint`) |
 | `scripts/compose-check.sh` | the memory budget of `deploy/docker-compose.yml` (`./gradlew :composeCheck`) |
+| `scripts/check-mock-control-prod.sh` | the mock-control profile only on the test doubles (`./gradlew :mockControlProdCheck`) |
 | `deploy/reset.sh` | drop every container, volume and orphan of every profile (a fresh start next time) |
 
 ## Memory knobs

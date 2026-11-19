@@ -4020,6 +4020,75 @@
       ]
     },
     {
+      "name": "40 Mock reset (one call resets every mock, core ledger back to its seed)",
+      "description": "Ticket 103, FRS MCT-07, MCK-08, MCT-08: POST /test/mock-control/reset (test-only APISIX route to mw-simulators) resets every mock party of mw-simulators and fans out to mw-core-mock, whose ledger goes back to its seed files (seed/v1/); the core is a party of the same mock-control engine and the old fault API is its alias. Nothing else in the stack is reset.",
+      "item": [
+        {
+          "name": "[mock] one call resets every mock party and brings the core ledger back to its seed",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[mock] one call resets every mock party and brings the core ledger back to its seed\", eval(MW.forRun(\"async function mockReset(MW, body) {\\n    return MW.http('POST', '/test/mock-control/reset', body ? { apikey: true, json: body } : { apikey: true });\\n  }\\n;(async (MW, S) => {\\n      const scenario = await MW.http('POST', '/test/mock-control/ocs/scenarios',\\n        { apikey: true, json: { operation: 'topup', behaviour: 'TIMEOUT' } });\\n      S.status(201, scenario);\\n\\n      const r = await mockReset(MW, { seedVersion: 'v1' });\\n      S.status(200, r);\\n      const parties = (r.body && r.body.parties) || [];\\n      S.check('every party reports RESET', parties.length > 1 && parties.every(p => p.status === 'RESET'), r.body);\\n      const core = parties.find(p => p.party === 'core');\\n      S.check('the core is one of them, reloaded from seed v1', !!core && core.seedVersion === 'v1', r.body);\\n\\n      const left = await MW.http('GET', '/test/mock-control/ocs/scenarios', { apikey: true });\\n      S.status(200, left);\\n      S.eq('no ocs scenario is left', (left.body || []).length, 0, String(left));\\n      // 01711000899: a seed customer no other scenario of the suite pays from (seed/v1/wallets.csv: 10,000 Tk)\\n      const w = await MW.core.wallet('01711000899');\\n      S.eq('a seed wallet is at its seed balance', w.availableMinor, 1000000, w);\\n      S.eq('nothing is held', w.heldMinor, 0, w);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[mock] a fault set through the old core fault API is a core scenario the reset clears",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[mock] a fault set through the old core fault API is a core scenario the reset clears\", eval(MW.forRun(\"async function mockReset(MW, body) {\\n    return MW.http('POST', '/test/mock-control/reset', body ? { apikey: true, json: body } : { apikey: true });\\n  }\\n;(async (MW, S) => {\\n      await MW.core.fault({ mode: 'DROP_REPLY', commandType: 'PostTransfer', times: 1 });\\n      const before = await MW.http('GET', '/test/core-mock/v1/faults', { apikey: true });\\n      S.eq('the fault is listed', (before.body || []).length, 1, String(before));\\n\\n      S.status(200, await mockReset(MW));\\n\\n      const after = await MW.http('GET', '/test/core-mock/v1/faults', { apikey: true });\\n      S.status(200, after);\\n      S.eq('the reset cleared it', (after.body || []).length, 0, String(after));\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[mock] an unknown core seed version is reported FAILED and changes nothing else",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[mock] an unknown core seed version is reported FAILED and changes nothing else\", eval(MW.forRun(\"async function mockReset(MW, body) {\\n    return MW.http('POST', '/test/mock-control/reset', body ? { apikey: true, json: body } : { apikey: true });\\n  }\\n;(async (MW, S) => {\\n      const r = await mockReset(MW, { seedVersion: 'v404' });\\n      S.status(200, r);\\n      const core = ((r.body && r.body.parties) || []).find(p => p.party === 'core');\\n      S.check('the core reports FAILED with the reason', !!core && core.status === 'FAILED' && /400/.test(core.detail || ''), r.body);\\n      const w = await MW.core.wallet('01711000899');\\n      S.eq('the seed wallet is untouched', w.availableMinor, 1000000, w);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "90 Slow",
       "description": "What stays slow (the 10,000-row payout; the full retry-to-DLQ path, slow with production retry delays; the PIN lockout escalation and the assertion expiry, ticket 76); run with ALL=1.",
       "item": [

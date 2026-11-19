@@ -169,6 +169,10 @@ sim:
   # Simulator settings (spec 22.2). timeout-delay must exceed the caller's time limit (OCS: 20 s).
   timeout-delay: 30s
   record-limit: 1000
+  # The global reset POST /mock-control/reset (ticket 103, FRS MCT-07) also resets mw-core-mock's ledger here.
+  core-mock:
+    base-url: http://mw-core-mock:8080
+    timeout: 30s
   # SMSC simulator (ticket 24): SMPP 3.4 server for mw-notify on the internal network only.
   smsc:
     enabled: true

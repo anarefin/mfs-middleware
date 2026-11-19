@@ -146,19 +146,52 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   Without: `REVERSED` if reversed, else the txn's latest hold state (`HELD`/`COMMITTED`/`RELEASED`,
   with `holdId`), else the outcome of the latest non-query command (`VALIDATED`, `POSTED`, `CREDITED`,
   `REJECTED`), else `NOT_FOUND`.
-- Fault injection (admin API, not a product contract, in memory): `POST /core-mock/v1/faults`
-  `{mode, commandType?, txnId?, delayMs?, reasonCode?, times?}`, `GET` lists, `DELETE
-  /core-mock/v1/faults` is the reset, `DELETE /core-mock/v1/faults/{id}` removes one. Modes:
-  `DELAY` (reply published after `delayMs`, via `outbox.available_at`), `DROP_REPLY` (command takes
-  effect and is logged, no reply), `DUPLICATE_REPLY` (two outbox rows, same eventId), `REJECT`
-  (command refused without effect: the command's failure event with `reasonCode`, default
-  `INJECTED_REJECT`; stored in `command_log` like any result; ignored for `QueryTransaction`, which
-  has no failure event). A fault matches by `commandType` and/or `txnId` (absent = any) and fires at
-  most `times` times (absent = until reset). A replay of an already logged command is answered from
-  the log (REJECT does not re-decide), but DELAY/DROP/DUPLICATE still shape that reply.
+- **Mock control** (ticket 103, ADR D33, FRS MCK-04 core part, MCK-08, MCT-01..03, MCT-06..08, 7.3 "same
+  scenario controls"; `service/mockcontrol/`, copied from mw-simulators' engine (module isolation), contract
+  `api/mw-core-mock/core-mock-control.v1.openapi.yaml`, `controller/MockControlController`): only in Spring
+  profile `mock-control` (`MockControl.PROFILE`; compose sets `${SPRING_PROFILES_ACTIVE:-dev},mock-control`, the
+  test config sets it; without it `NoMockControl` lets the ledger rules decide and no control path, journal or
+  alias exists). `config/MockControlProdGuard` refuses to start with the profile and `mw.service.env`
+  (`MW_ENV`) `prod`; `scripts/check-mock-control-prod.sh` (`./gradlew :mockControlProdCheck`) keeps it off
+  every other service. One party `core` (`MockParties`): operations validate, hold, commit, release,
+  transfer, credit, reversal, query, balance, charges, limits, accounts, statements, unlock, factors (command
+  type -> operation in `MockParties.OPERATION_OF_COMMAND`); keys `debit`, `credit`, `wallet` (wallet ids /
+  MSISDNs), `txnId`, `holdId`, `originalTxnId`. Same paths and lookup as mw-simulators (`/mock-control/core/
+  scenarios|switch|settings|journal`, `GET /mock-control/parties`); a scenario `code` up to 64 chars (core
+  reasons). `ScenarioEngine.decide` runs in `CoreCommandService.handle` for every command, Kafka or REST
+  (after the expiry check): BUSINESS_ERROR = the command's failure event with reason `code` (default
+  `INJECTED_REJECT`; stored in `command_log`, so a repeat is the same refusal; ignored for QueryTransaction),
+  and the result event is shaped: DELAY / TIMEOUT (hold `delayMs`, default settings' `timeoutDelayMs`, else
+  `mw.coremock.mock-control.timeout-delay` 30 s) / LATE_CALLBACK delay it (`outbox.available_at`),
+  DUPLICATE_CALLBACK twice, NO_CALLBACK and HTTP_5XX / MALFORMED_RESPONSE / CONNECTION_RESET never (applied,
+  reply lost). Switch on Kafka: DOWN = not handled (no effect, no event), MAINTENANCE = the failure event
+  `CORE_UNAVAILABLE`, not logged. On `/core/v1/**` `filter/MockControlFilter` (registered after the security
+  chain by `config/MockControlConfig`, with `filter/MockAbortValve` copied from mw-simulators) opens a
+  `RestCall`: the switch once (DOWN closes the connection, MAINTENANCE `503 MW-SYS-CORE_UNAVAILABLE`, SLOW
+  latency), reads decided there (BUSINESS_ERROR `422 MW-CORE-<code>`), money calls by the engine inside the
+  command; then the answer is held (DELAY, TIMEOUT: applied), replaced (`<httpStatus|500> MW-SYS-CORE_ERROR`),
+  cut short or dropped. Journal: one entry per handled command (`COMMAND /<operation>/<commandType>`,
+  header `x-txn-id`, body the keys; never an assertion), last `journal-limit` 1000. `DELETE
+  /mock-control/core/journal` clears journal, scenarios, switch, settings (ledger stays). `POST
+  /mock-control/reset {seedVersion?}` (MCT-07; `CoreReset`, called by mw-simulators' global reset) =
+  `WalletSeeder.restore(version)` then the party reset, answers `{parties:[{party: core, status: RESET,
+  seedVersion}]}`: wallets outside the seed (seed API: mw-seeder's personas, the test console) back to their
+  opening balance (their entries undone), nothing held; `entry`, `hold`, `command_log`, `rest_request`,
+  `reversal`, `used_assertion` truncated; the seed's wallets re-created and the sheets replaced from
+  `seed/<version>/`; a given version stays in force (`WalletSeeder.version()`), an unknown one `400 MW-VAL-001`.
+  Tests: `controller/CoreMockScenarioIT`, `controller/MockControlResetIT` (seed `t1` on the test classpath),
+  `service/mockcontrol/LegacyFaultsTest`, `service/SeedLoaderTest`, `config/ProdGuardTest`.
+- Fault injection, deprecated alias for one release (`controller/FaultController` -> `mockcontrol/LegacyFaults`,
+  profile `mock-control` only, one `coremock.faults.deprecated` log line): `POST /core-mock/v1/faults`
+  `{mode, commandType?, txnId?, delayMs?, reasonCode?, times?}`, `GET` lists, `DELETE /core-mock/v1/faults`
+  removes the faults (only their scenarios), `DELETE /core-mock/v1/faults/{id}` one. Each fault is one scenario
+  of `core`: `commandType` = operation, `txnId` = key, `times` = nextN; `REJECT` = BUSINESS_ERROR `reasonCode`,
+  `DELAY` = DELAY, `DROP_REPLY` = NO_CALLBACK, `DUPLICATE_REPLY` = DUPLICATE_CALLBACK (outcome and reply are
+  separate dimensions: a REJECT with a DROP_REPLY is a lost refusal). A replay of an already logged command is
+  answered from the log (a refusal is not re-decided), but delay / drop / duplicate still shape that reply.
 - Balances (admin API, not a product contract): `GET /core-mock/v1/wallets/{walletId}` (id or MSISDN)
   -> `{walletId, type, status, balanceMinor, heldMinor, availableMinor}`, unknown `400 MW-VAL-003`.
-  The e2e suite reads it (and the faults) through the dev-only APISIX route
+  The e2e suite reads it (and the faults alias) through the dev-only APISIX route
   `/test/core-mock/v1/*` (`deploy/apisix/routes/test-core-mock.json`).
 - Wallet seed API (ticket 57, test-only, for mw-seeder; contract `api/mw-core-mock/core-mock-seed.v1.openapi.yaml`):
   `PUT /core-mock/v1/wallets/{walletId}` `{type: CUSTOMER|AGENT|MERCHANT|DISTRIBUTOR|ORG|ORGANISATION (ORG stored as
@@ -179,7 +212,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   statement, legs in wallet id order (people before system wallets: the lock order), credits before
   debits, and refused unless they balance (FRS 7.3: every txnId sums to zero; `LedgerInvariantIT`).
   `FEE-POOL` became `FEE_INCOME` (V13 moved its balance and entries).
-- Seed (on every start, idempotent, `WalletSeeder` + `service/SeedFiles`, files
+- Seed (on every start, idempotent, `WalletSeeder` + `service/SeedFiles`; the mock-control global reset
+  reloads it, `WalletSeeder.restore`, above; files
   `src/main/resources/seed/<mw.coremock.seed.version, v1>/`): `wallets.csv` (ranges, wallet id = MSISDN:
   1,000 customers `01711000001..` (`..0901..1000` BASIC KYC), 50 agents `01811000001..`, 10 distributors
   `01611000001..`, 20 merchants `01911000001..`, 3 organisations `01311000001..`), `system-wallets.csv`
@@ -283,11 +317,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `core.command.v1` types; `ApplyComplianceAction` is ignored, so neither it nor `ComplianceAction*` is
   listed), checked by `./gradlew :contractsLint`, tested by `contracts/ProducedContractsTest` /
   `ConsumedContractsTest` (no Spring, no Docker). The fault and balance admin API is not a product
-  contract; the wallet GET and the test-only seed PUT are `api/mw-core-mock/core-mock-seed.v1.openapi.yaml`
+  contract; the wallet GET, the test-only seed PUT and the deprecated faults alias are `api/mw-core-mock/core-mock-seed.v1.openapi.yaml`
   (ticket 57, consumed by mw-seeder), served shapes checked by `contracts/ApiContractsTest`.
 - `api/mw-core-mock/core-wallet.v1.openapi.yaml` (ticket 93, ADR D31): the core wallet REST API `/core/v1`,
   the proposal for the real core's contract; consumed by mw-orchestrator from ticket 95. Served bodies
   checked by `controller/CoreWalletRestIT`, request schemas by `contracts/ApiContractsTest`.
+
+- `api/mw-core-mock/core-mock-control.v1.openapi.yaml` (ticket 103, test-only): the core party's mock control
+  and the core's global reset; consumed by mw-simulators (`client/CoreMockControlClient`). Served bodies:
+  `contracts/ApiContractsTest`, the paths: `contracts/ContractDriftTest` (profiles test + mock-control).
 
 ## Contracts used
 

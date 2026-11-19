@@ -6,7 +6,9 @@ import mfs.mw.core.mock.dto.Fault;
 import mfs.mw.core.mock.dto.FaultRequest;
 import mfs.mw.core.mock.exception.ErrorCodes;
 import mfs.mw.core.mock.exception.MwException;
-import mfs.mw.core.mock.service.FaultRegistry;
+import mfs.mw.core.mock.service.mockcontrol.LegacyFaults;
+import mfs.mw.core.mock.service.mockcontrol.MockControl;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -19,15 +21,18 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * Test/admin API of the mock (not a product contract): inject faults per command type or txnId so
- * UNKNOWN and TSQ paths can be exercised. {@code DELETE /faults} is the reset call.
+ * UNKNOWN and TSQ paths can be exercised. {@code DELETE /faults} is the reset call. Deprecated alias of
+ * {@code /mock-control/core} for one release (ticket 103, {@link LegacyFaults}); only in the {@value
+ * MockControl#PROFILE} profile.
  */
 @RestController
+@Profile(MockControl.PROFILE)
 @RequestMapping("/core-mock/v1/faults")
 public class FaultController {
 
-  private final FaultRegistry registry;
+  private final LegacyFaults registry;
 
-  public FaultController(FaultRegistry registry) {
+  public FaultController(LegacyFaults registry) {
     this.registry = registry;
   }
 

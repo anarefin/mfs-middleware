@@ -1,0 +1,14 @@
+code,name,category,protocol
+# Billers of the bill aggregator simulator, seed v1 (ticket 103, FRS MCK-08; were BillAggregatorService
+# constants): the front end each is served on (REST /billagg/v1/..., SOAP /billagg/v1/soap). Plain CSV, no
+# quoting, no comma inside a cell. Bills and bank accounts have no seed: their outcome is the magic values.
+BREB,Bangladesh Rural Electrification Board (Palli Bidyut),ELECTRICITY,REST
+BTCL,Bangladesh Telecommunications Company,TELECOM,SOAP
+CWASA,Chattogram WASA,WATER,REST
+DESCO,Dhaka Electric Supply Company,ELECTRICITY,REST
+DPDC,Dhaka Power Distribution Company,ELECTRICITY,REST
+JGTDSL,Jalalabad Gas Transmission and Distribution System,GAS,SOAP
+KGDCL,Karnaphuli Gas Distribution Company,GAS,SOAP
+LINK3,Link3 Technologies,INTERNET,SOAP
+TITAS,Titas Gas,GAS,REST
+WASA,Dhaka WASA,WATER,REST

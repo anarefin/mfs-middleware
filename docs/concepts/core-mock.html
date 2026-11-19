@@ -118,7 +118,16 @@
   <p>Its tables: <code>wallet</code>, <code>hold</code>, <code>entry</code> (the ledger lines), <code>command_log</code>, <code>reversal</code>, <code>used_assertion</code>, plus the outbox and inbox.</p>
 
   <h2 id="faults">Fault injection</h2>
-  <p>A small HTTP API (in memory, not a product contract) arms faults that match a <code>commandType</code> and/or a <code>txnId</code>, for <code>times</code> uses or until reset:</p>
+  <p>Since ticket 103 the core is a party of the unified mock control (ADR D33), the same engine and API as the
+  simulators: <code>/mock-control/core/scenarios</code> (operations hold, commit, release, transfer, credit, reversal,
+  query, charges, limits and the rest; keys = wallet ids / MSISDNs, txnId, holdId), <code>/switch</code>
+  (DOWN, MAINTENANCE, SLOW), <code>/journal</code> and the global reset <code>POST /mock-control/reset</code>
+  (ledger back to the seed files; mw-simulators' <code>/test/mock-control/reset</code> calls it). Contract
+  <code>contracts/api/mw-core-mock/core-mock-control.v1.openapi.yaml</code>; only in Spring profile
+  <code>mock-control</code>, never with <code>MW_ENV=prod</code>. The old fault API below stays one release as an
+  alias: each fault becomes one scenario (REJECT = BUSINESS_ERROR, DELAY = DELAY, DROP_REPLY = NO_CALLBACK,
+  DUPLICATE_REPLY = DUPLICATE_CALLBACK). It arms faults that match a <code>commandType</code> and/or a
+  <code>txnId</code>, for <code>times</code> uses or until reset:</p>
   <div class="table-wrap"><table>
     <tr><th>Mode</th><th>Effect</th><th>What it tests</th></tr>
     <tr><td><code>DELAY</code></td><td>The reply is sent <code>delayMs</code> later.</td><td>Deadlines and timeouts in the saga.</td></tr>
@@ -171,7 +180,8 @@ mw-orchestrator -> mw-orchestrator : COMPLETED, money moved once
       <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/PostingOperations.java">service/PostingOperations</a>,
       <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/HoldOperations.java">service/HoldOperations</a>,
       <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/AssertionCheck.java">service/AssertionCheck</a>,
-      <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/FaultRegistry.java">service/FaultRegistry</a>,
+      <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/mockcontrol/ScenarioEngine.java">service/mockcontrol/ScenarioEngine</a>,
+      <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/mockcontrol/LegacyFaults.java">service/mockcontrol/LegacyFaults</a>,
       <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/service/WalletSeeder.java">service/WalletSeeder</a>.</li>
     <li>Assertion keys: <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/security/AssertionKeys.java">security/AssertionKeys</a>,
       <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/client/AssertionJwksClient.java">client/AssertionJwksClient</a>.</li>

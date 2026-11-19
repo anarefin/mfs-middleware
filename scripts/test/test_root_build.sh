@@ -53,7 +53,8 @@ test_root_build_shares_nothing_with_the_modules() {
 test_root_check_depends_on_every_repo_check() {
   local t s
   for t in checkIsolation:check-isolation.sh checkFieldInjection:check-field-injection.sh \
-           contractsLint:contracts-lint.sh composeCheck:compose-check.sh scriptTests:test/run.sh; do
+           contractsLint:contracts-lint.sh composeCheck:compose-check.sh \
+           mockControlProdCheck:check-mock-control-prod.sh scriptTests:test/run.sh; do
     s="${t#*:}"; t="${t%%:*}"
     code "$root_build" | grep -q "\"$t\"" || fail "no root task $t"
     code "$root_build" | grep -q "\"$s\"" || fail "root task $t does not run scripts/$s"

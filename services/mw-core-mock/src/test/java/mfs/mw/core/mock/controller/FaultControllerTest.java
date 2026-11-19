@@ -2,7 +2,14 @@ package mfs.mw.core.mock.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import mfs.mw.core.mock.service.FaultRegistry;
+import mfs.mw.core.mock.config.ClockConfig;
+import mfs.mw.core.mock.config.MockControlConfig;
+import mfs.mw.core.mock.config.MockControlProperties;
+import mfs.mw.core.mock.service.mockcontrol.Journal;
+import mfs.mw.core.mock.service.mockcontrol.LegacyFaults;
+import mfs.mw.core.mock.service.mockcontrol.PartySwitch;
+import mfs.mw.core.mock.service.mockcontrol.ScenarioEngine;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -10,18 +17,19 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
-/** The admin API injects, lists and resets faults; it validates what it is given. */
+/** The admin API (the deprecated alias of /mock-control/core) injects, lists and resets faults; it validates what it is given. */
 @WebMvcTest(FaultController.class)
-@Import(FaultRegistry.class)
+@Import({LegacyFaults.class, ScenarioEngine.class, PartySwitch.class, Journal.class, MockControlConfig.class, ClockConfig.class})
+@EnableConfigurationProperties(MockControlProperties.class)
 class FaultControllerTest {
 
   private static final String URI = "/core-mock/v1/faults";
 
   private final MockMvcTester mvc;
-  private final FaultRegistry registry;
+  private final LegacyFaults registry;
 
   @Autowired
-  FaultControllerTest(MockMvcTester mvc, FaultRegistry registry) {
+  FaultControllerTest(MockMvcTester mvc, LegacyFaults registry) {
     this.mvc = mvc;
     this.registry = registry;
   }

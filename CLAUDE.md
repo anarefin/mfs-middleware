@@ -25,7 +25,7 @@ when a spec decision row has no ADR: a new script, knob or decision updates thes
   `mwDockerTests=4` (a Docker and CPU budget for an 8-core host: at most four modules' test JVMs and
   their containers at once, through a `mwDockerTests` build service each module's `test` task uses). `build.gradle.kts` applies
   only `base` and registers the repo checks (`checkIsolation`, `checkFieldInjection`, `contractsLint`,
-  `composeCheck`, `scriptTests`: the scripts in `scripts/` as cached Exec tasks) under the root
+  `composeCheck`, `mockControlProdCheck`, `scriptTests`: the scripts in `scripts/` as cached Exec tasks) under the root
   `check`. No `allprojects`/`subprojects`, no `buildSrc`, no convention plugins, no version catalog.
 - `contracts/` (files only: OpenAPI, AsyncAPI, JSON Schema), owner per file in
   `contracts/OWNERS.yml`. Never change a contract your service does not own.
@@ -207,6 +207,7 @@ consumers until a module moves to Spring Kafka, ADR D27), and
 | `./gradlew :checkFieldInjection` | no `@Autowired` field anywhere, tests included (`scripts/check-field-injection.sh [M]`) |
 | `./gradlew :contractsLint` | lint `contracts/` and every module's `contracts.yml` (entries exist, `#<Msg>` is a message type, every event schema has a producer and a consumer manifest or a side in `contracts/EXTERNAL.yml`), the derived body schemas, then `scripts/check-api-traceability.sh` (every API suite request mapped in `tests/api/TRACEABILITY.md`, requirement tags in its name, every acceptance coverage item claimed, collection not stale) |
 | `./gradlew :composeCheck` | fail when a long-running service of `deploy/docker-compose.yml` (`--profile core`) has no memory limit or the limits (knob values from the shell or `deploy/.env`, else their defaults) add up to more than 12 GB (`MW_RAM_BUDGET_MIB`, default 12288, ADR D32; the stack as built stays within 8 GB) |
+| `./gradlew :mockControlProdCheck` | FRS MCT-08 (ticket 103): only the test doubles (`mw-core-mock`, `mw-simulators`) enable the Spring profile `mock-control` (compose, env files, main config; `scripts/check-mock-control-prod.sh`); each also refuses to start with it and `MW_ENV=prod` |
 | `./gradlew :scriptTests` | the shell tests of `scripts/` and the repo layout and docs (`scripts/test/run.sh [test_file.sh ...]`) |
 | `scripts/versions-check.sh [M]` | report version drift between the modules' build files (report only, not in the build) |
 | `cd deploy && cp dev.env.defaults .env` | the dev settings in the gitignored `deploy/.env`: fixed, obviously fake credentials (ADR D9 amendment) and the short test timers; run once before the first `up` (`scripts/smoke.sh`, `scripts/tester.sh`, `scripts/suite.sh` and `deploy/reset.sh` copy it when it is missing) |

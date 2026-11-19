@@ -136,6 +136,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>MANUAL_REVIEW creation</td><td><a href="#c5-6">5.6</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Custom partner and core faults</td><td><a href="#c5-7">5.7</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>A fault on every core command</td><td><a href="#c5-8">5.8</a></td><td>Test console</td></tr>
+      <tr><td class="tick"></td><td>Reset every mock in one call</td><td><a href="#c5-9">5.9</a></td><td>curl</td></tr>
       <tr><td class="tick"></td><td>SMS content, language, masking, delivery reports; email receipts</td><td><a href="#c6-1">6.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Web checkout: pay, signed redirect, IPN</td><td><a href="#c7-1">7.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Web checkout variants: wrong OTP, pay twice, IPN retries, core refusal</td><td><a href="#c7-2">7.2</a></td><td>Test console</td></tr>
@@ -1054,6 +1055,22 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <tr><td>UnlockWallet</td><td>REJECT</td><td>wallet unlock approval (9.8)</td><td>the approval is recorded but the wallet stays LOCKED (check <i>A wallet in core-mock</i>)</td></tr>
       <tr><td>any command</td><td>DELAY, <code>2000</code> ms</td><td>any flow</td><td>the next core call of any kind is 2 s slower</td></tr>
     </table></div>
+  </div>
+
+  <div class="case" id="c5-9">
+    <h3><span class="id">5.9</span>Reset every mock in one call</h3>
+    <p>Before a run, or when a scenario was left behind: one call (FRS MCT-07) resets every mock party of the
+    simulators (journal, scenarios, switch, settings, partner ledgers) and the core mock (ledger back to its
+    seed files, its scenarios, faults and journal cleared). Transactions in the middleware and PIN state stay.</p>
+    <div class="cmd"><pre>curl -sk -X POST https://localhost/test/mock-control/reset -H 'apikey: e2e-test-apikey'</pre></div>
+    <ol>
+      <li>Expect HTTP 200 and one line per party, every <code>"status":"RESET"</code>, the last one
+        <code>{"party":"core","status":"RESET","seedVersion":"v1"}</code>.</li>
+      <li><i>A wallet in core-mock</i> for <code>01711000001</code>: balance Tk 10,000.00 again, nothing held; a
+        persona wallet (e.g. <code>01712000001</code>) is back at its opening balance.</li>
+      <li>The core's mock control directly: <code>GET http://localhost:8084/mock-control/core/journal</code>
+        (dev port of mw-core-mock) is <code>[]</code> until the next money call.</li>
+    </ol>
   </div>
 </section>
 

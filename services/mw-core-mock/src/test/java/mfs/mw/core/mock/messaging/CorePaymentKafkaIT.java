@@ -10,7 +10,7 @@ import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.Fault.FaultMode;
 import mfs.mw.core.mock.dto.FaultRequest;
 import mfs.mw.core.mock.service.CoreCommandsTestSupport;
-import mfs.mw.core.mock.service.FaultRegistry;
+import mfs.mw.core.mock.service.mockcontrol.LegacyFaults;
 import mfs.mw.core.mock.service.WalletSeeder;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterEach;
@@ -51,7 +51,7 @@ class CorePaymentKafkaIT {
   private final EventPublisher publisher;
   private final KafkaContainer kafka;
   private final WalletSeeder seeder;
-  private final FaultRegistry faults;
+  private final LegacyFaults faults;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
   private final CoreCommandsTestSupport cmds;
@@ -61,7 +61,7 @@ class CorePaymentKafkaIT {
       EventPublisher publisher,
       KafkaContainer kafka,
       WalletSeeder seeder,
-      FaultRegistry faults,
+      LegacyFaults faults,
       JdbcTemplate jdbc,
       JsonMapper json) {
     this.publisher = publisher;

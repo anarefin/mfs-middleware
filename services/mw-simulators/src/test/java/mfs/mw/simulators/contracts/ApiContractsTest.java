@@ -100,6 +100,6 @@ class ApiContractsTest {
     assertThat(m.producedEvents()).as("a produced event needs a ProducedContractsTest").isEmpty();
     assertThat(m.consumedEvents()).as("a consumed event needs a ConsumedContractsTest").isEmpty();
     assertThat(m.producedApis()).containsExactly(MockControlContractTest.API);
-    assertThat(m.consumedApis()).containsExactly(USSD);
+    assertThat(m.consumedApis()).containsExactly(USSD, "api/mw-core-mock/core-mock-control.v1.openapi.yaml");
   }
 }

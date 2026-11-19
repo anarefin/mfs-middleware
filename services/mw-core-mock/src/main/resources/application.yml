@@ -189,6 +189,12 @@ mw:
       version: v1
     # Holds live this long, then the core releases them and publishes HoldExpired (FRS 7.3;
     # scheduler/HoldExpiryJob, ShedLock hold-expiry).
+    # Mock control (ADR D33, ticket 103): the engine, /mock-control/** and the /core-mock/v1/faults alias exist
+    # only in Spring profile mock-control (the dev stack sets it; never production: config/MockControlProdGuard).
+    mock-control:
+      # hold of a TIMEOUT scenario without delayMs (above the callers' time limits)
+      timeout-delay: 30s
+      journal-limit: 1000
     hold-ttl: 30m
     hold-expiry:
       cron: "*/15 * * * * *"
