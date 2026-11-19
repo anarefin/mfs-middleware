@@ -3,6 +3,7 @@ package mfs.mw.app.gateway.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import mfs.mw.app.gateway.client.AuthClient;
@@ -32,7 +33,8 @@ import org.springframework.stereotype.Service;
  * PIN and the request's values (ticket 72, D22), publishes the canonical request with this
  * instance's {@code mw-reply-to}, then waits on the HTTP request's own (virtual) thread for the
  * answer, at most the reply budget. Idempotency itself is decided by mw-orchestrator (7.3); this
- * service only requires the key and passes it on.
+ * service requires the key, passes it on and replays the first 200 answer under it
+ * ({@link IdempotentReplay}, FRS PLT-011).
  */
 @Service
 public class TransactionService {
@@ -49,6 +51,7 @@ public class TransactionService {
   private final Clock clock;
   private final BillerService billers;
   private final AuthClient auth;
+  private final IdempotentReplay replay;
 
   public TransactionService(
       EventPublisher publisher,
@@ -58,7 +61,8 @@ public class TransactionService {
       AppGatewayProperties props,
       Clock clock,
       BillerService billers,
-      AuthClient auth) {
+      AuthClient auth,
+      IdempotentReplay replay) {
     this.exchange = new TxnReplyExchange(publisher, waiters, props);
     this.mapper = mapper;
     this.transactions = transactions;
@@ -66,6 +70,7 @@ public class TransactionService {
     this.clock = clock;
     this.billers = billers;
     this.auth = auth;
+    this.replay = replay;
   }
 
   public SubmitResult submit(AppUser user, String idempotencyKey, TransactionRequest body) {
@@ -79,6 +84,11 @@ public class TransactionService {
     refuseUnknownAttributes(body);
     refuseFieldsOfOtherFlows(body);
     refuseOwnWallet(user, body);
+    // FRS PLT-011: a key already answered 200 gets that very body again (or 409 for other content)
+    Optional<TransactionView> stored = replay.replay(user, idempotencyKey, body);
+    if (stored.isPresent()) {
+      return SubmitResult.done(stored.get());
+    }
     PartnerRef partner =
         RequestMapper.BILL_PAY.equals(body.txnType())
             ? billers.partnerFor(body.partner().billerCode())
@@ -106,7 +116,11 @@ public class TransactionService {
     if (status == null) {
       return SubmitResult.processing(TransactionView.processing(txnId));
     }
-    return answerFor(status);
+    SubmitResult result = answerFor(status);
+    if (result.done()) {
+      replay.remember(user, idempotencyKey, body, result.view());
+    }
+    return result;
   }
 
   /** Only allow-listed attribute keys (MW-VAL-001 naming each other key). */

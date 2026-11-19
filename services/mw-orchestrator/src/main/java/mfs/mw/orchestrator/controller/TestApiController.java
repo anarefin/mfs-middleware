@@ -3,6 +3,8 @@ package mfs.mw.orchestrator.controller;
 import jakarta.validation.Valid;
 import java.util.UUID;
 import mfs.mw.orchestrator.dto.DlqRecord;
+import mfs.mw.orchestrator.dto.DuplicateGuardWindow;
+import mfs.mw.orchestrator.service.DuplicateGuard;
 import mfs.mw.orchestrator.dto.PoisonAccepted;
 import mfs.mw.orchestrator.dto.TestReversalAccepted;
 import mfs.mw.orchestrator.dto.TestReversalRequest;
@@ -30,9 +32,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class TestApiController {
 
   private final TestApiService service;
+  private final DuplicateGuard duplicates;
 
-  public TestApiController(TestApiService service) {
+  public TestApiController(TestApiService service, DuplicateGuard duplicates) {
     this.service = service;
+    this.duplicates = duplicates;
+  }
+
+  /** Ticket 99: sets the business-duplicate window (0 = off) for the API suite's duplicates folder. */
+  @PostMapping("/duplicate-guard")
+  DuplicateGuardWindow duplicateGuard(@Valid @RequestBody DuplicateGuardWindow body) {
+    duplicates.changeWindow(java.time.Duration.ofSeconds(body.windowSeconds()));
+    return new DuplicateGuardWindow((int) duplicates.window().toSeconds());
   }
 
   @PostMapping("/reversals")

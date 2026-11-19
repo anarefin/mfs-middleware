@@ -141,11 +141,34 @@ class AuthSchemesTest {
           .isFalse();
     }
 
+    /** A callback as a partner signs it: the outbound headers plus a nonce line (ticket 99). */
     private Map<String, String> signedHeaders(String method, String path, String body) {
-      OutboundCall call =
-          new OutboundCall(method, URI.create("https://mw.invalid" + path), body.getBytes(StandardCharsets.UTF_8));
-      scheme.apply(call, REF);
-      return call.headers();
+      String nonce = "nonce-" + Long.toHexString(System.nanoTime()) + "-abcdef";
+      String ts = Long.toString(NOW.getEpochSecond());
+      return Map.of(
+          "X-Timestamp", ts,
+          "X-Key-Id", "k1",
+          "X-Nonce", nonce,
+          "X-Signature",
+          HmacSha256AuthScheme.sign(
+              SECRETS.secret(REF), method, path, ts, nonce, body.getBytes(StandardCharsets.UTF_8)));
+    }
+
+    @Test
+    void verifyRejectsACallbackWithoutANonceOrWithTheNonceChanged() {
+      String body = "{}";
+      Map<String, String> headers = new HashMap<>(signedHeaders("POST", "/partner/acme/callback", body));
+      headers.remove("X-Nonce");
+      assertThat(scheme.verify(inbound(headers, body), REF)).as("no nonce").isFalse();
+      headers.put("X-Nonce", "another-nonce-0123456789");
+      assertThat(scheme.verify(inbound(headers, body), REF)).as("nonce not signed").isFalse();
+    }
+
+    @Test
+    void theNonceOfAVerifiedCallbackIsHandedOutWithItsWindow() {
+      Map<String, String> headers = signedHeaders("POST", "/partner/acme/callback", "{}");
+      assertThat(scheme.replayNonce(inbound(headers, "{}"))).contains(headers.get("X-Nonce"));
+      assertThat(scheme.replayWindow()).isEqualTo(java.time.Duration.ofSeconds(630));
     }
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "checkout-v1-sessions",
-  "desc": "Checkout merchant API: create a session (spec 8.2, 9.3, ticket 31) to mw-checkout. hmac-auth (method, path, Date and body Digest signed), consumer name sent as X-Mw-Merchant-Id, quota per merchant; mw-checkout checks the body schema on the exact bytes",
+  "desc": "Checkout merchant API: create a session (spec 8.2, 9.3, ticket 31) to mw-checkout. hmac-auth (method, path, Date, Digest, X-Nonce signed), consumer name sent as X-Mw-Merchant-Id, quota per merchant; mw-checkout checks the body schema on the exact bytes",
   "uri": "/checkout/v1/sessions",
   "methods": [
     "POST"
@@ -17,7 +17,8 @@
       "signed_headers": [
         "@request-target",
         "date",
-        "digest"
+        "digest",
+        "x-nonce"
       ],
       "validate_request_body": true,
       "hide_credentials": true

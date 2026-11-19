@@ -36,6 +36,7 @@ class TestApiControllerTest {
 
     private final MockMvcTester mvc;
     @MockitoBean TestApiService service;
+    @MockitoBean mfs.mw.orchestrator.service.DuplicateGuard duplicates;
 
     @Autowired
     SwitchedOn(MockMvcTester mvc) {
@@ -44,6 +45,19 @@ class TestApiControllerTest {
 
     private MockMvcTester.MockMvcRequestBuilder reverse(String body) {
       return mvc.post().uri("/test/v1/reversals").contentType(MediaType.APPLICATION_JSON).content(body);
+    }
+
+    @Test
+    void theDuplicateWindowCanBeChangedAndOutOfRangeIsRefused() {
+      given(duplicates.window()).willReturn(java.time.Duration.ofSeconds(60));
+
+      assertThat(mvc.post().uri("/test/v1/duplicate-guard").contentType(MediaType.APPLICATION_JSON)
+              .content("{\"windowSeconds\":60}"))
+          .hasStatus(200).bodyJson().extractingPath("$.windowSeconds").isEqualTo(60);
+      org.mockito.Mockito.verify(duplicates).changeWindow(java.time.Duration.ofSeconds(60));
+      assertThat(mvc.post().uri("/test/v1/duplicate-guard").contentType(MediaType.APPLICATION_JSON)
+              .content("{\"windowSeconds\":-1}"))
+          .hasStatus(400);
     }
 
     @Test

@@ -255,6 +255,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   partitioned, so there is no purge by partition drop; an expired key (`expires_at` passed) is
   reclaimed in place by the next request with it, and no job deletes expired rows yet
   (`RetentionService` purges only outbox and inbox).
+- Business duplicates (ticket 99, FRS PLT-013; `service/DuplicateGuard`, settings
+  `mw.orchestrator.duplicate-guard.{enabled, window (60 s, MW_DUPLICATE_WINDOW; 0 = off), prompt-channels,
+  exempt-channels (SYSTEM)}`): before the idempotency lock and the claim, `SET NX EX window` on
+  `mw:orchestrator:dup:<sha256(initiator id, txnType, debit party, credit party, amount, currency)>` with
+  value `sha256(channel, initiator id, key)` in the same Valkey/Redis as the lock (through `IdempotencyLock`,
+  so it is off with it). Held by another key: an app/USSD channel (`prompt-channels`) gets REJECTED
+  `MW-VAL-024` (Bangla text, not retryable), an API client (checkout, portal, partner) `MW-VAL-025`; nothing
+  recorded, the key not consumed, no core call. Held by the same key: idempotency answers (7.3). A request
+  with `confirmDuplicate: true` (contract field, not in the request hash) from a prompt channel passes; an
+  API client cannot confirm. BALANCE, REVERSAL and exempt channels are never checked; Valkey trouble lets the
+  request through (WARN `txn.duplicate.guard_unavailable`, counter `mw.txn.duplicate.guard.unavailable`).
+  The dev stack runs with the window at 0 (`deploy/dev.env.defaults`): the test API `POST
+  /test/v1/duplicate-guard {windowSeconds}` sets it in memory for API folder 36. Tests `DuplicateGuardTest`,
+  `DuplicateGuardIT`.
 - Timers: `txn.saga_timer` (one row per txn and state), swept by `scheduler/SagaTimerJob` every
   second under ShedLock; `SagaTimerService.sweep` uses `FOR UPDATE SKIP LOCKED`. Deadlines are
   `mw.orchestrator.*-timeout`: VALIDATING 5 s -> FAILED (`MW-TMO-001`, retryable), POSTING 5 s ->

@@ -344,6 +344,8 @@ quota() {
   call GET /app/v1/transactions/x -H "Authorization: Bearer $merchant"
   envelope 429 MW-SYS-RATE_LIMITED || return 1
   jq -e '.retryable == true' "$tmp/b" >/dev/null || { echo "429 not retryable"; return 1; }
+  # ticket 99 (FRS PLT-004): the 429 says when to come back, in whole seconds
+  resp_header Retry-After | grep -Eqx '[0-9]+' || { echo "429 without Retry-After"; return 1; }
   # another consumer still passes
   call GET "/app/v1/transactions/$(uniq_id txn)" -H "Authorization: Bearer $customer"
   gateway_gate || { echo "customer01 got HTTP $status after merchant01 hit the quota"; return 1; }
@@ -351,7 +353,7 @@ quota() {
   keys="$(dc exec -T valkey valkey-cli --scan --pattern "*sub:$sub*")"
   [ -n "$keys" ] || { echo "no Valkey counter for sub:$sub"; return 1; }
 }
-check "over the per-consumer quota -> 429 MW-SYS-RATE_LIMITED; counter in Valkey; others unaffected" quota
+check "over the per-consumer quota -> 429 MW-SYS-RATE_LIMITED with Retry-After; counter in Valkey; others unaffected" quota
 
 # ---- partner callback route (ticket 22): edge policies, signature checked by the adapter ----
 cb_path=/partner/billagg/callback/payments
@@ -425,14 +427,17 @@ check "checkout session read without an HMAC signature -> 401 MW-AUTH-001 at the
 co_page_unknown() { call GET "/checkout/pay/v1/$(uniq_id tok)" && envelope 404 MW-VAL-003; }
 check "hosted page API reaches mw-checkout without login (unknown token -> 404 MW-VAL-003)" co_page_unknown
 # co_signed BODY: POST /checkout/v1/sessions signed as the dev merchant (README: hmac-auth)
+# (ticket 99: also a signed X-Nonce, used once per merchant; $2 reuses one)
 co_signed() {
-  local d digest sig
+  local d digest sig nonce
   d="$(LC_ALL=C TZ=GMT date '+%a, %d %b %Y %H:%M:%S GMT')"
   digest="SHA-256=$(printf '%s' "$1" | openssl dgst -sha256 -binary | base64)"
-  sig="$(printf 'merchant-demo\nPOST /checkout/v1/sessions\ndate: %s\ndigest: %s\n' "$d" "$digest" \
+  nonce="${2:-$(uniq_id nonce)}"
+  sig="$(printf 'merchant-demo\nPOST /checkout/v1/sessions\ndate: %s\ndigest: %s\nx-nonce: %s\n' "$d" "$digest" "$nonce" \
     | openssl dgst -sha256 -hmac "$CHECKOUT_DEMO_MERCHANT_SECRET" -binary | base64)"
   call POST /checkout/v1/sessions -H 'Content-Type: application/json' -H "Date: $d" -H "Digest: $digest" \
-    -H "Authorization: Signature keyId=\"merchant-demo\",algorithm=\"hmac-sha256\",headers=\"@request-target date digest\",signature=\"$sig\"" \
+    -H "X-Nonce: $nonce" \
+    -H "Authorization: Signature keyId=\"merchant-demo\",algorithm=\"hmac-sha256\",headers=\"@request-target date digest x-nonce\",signature=\"$sig\"" \
     --data-binary "$1"
 }
 co_schema_400() { # the edge has no body schema any more: mw-checkout refuses it (duplicate key)
@@ -443,6 +448,18 @@ co_schema_400() { # the edge has no body schema any more: mw-checkout refuses it
   co_signed "${co_body/BDT/USD}" && envelope 400 MW-VAL-001
 }
 check "signed checkout body breaking the schema -> 400 MW-VAL-001 (mw-checkout's schema check)" co_schema_400
+co_nonce_replay() { # ticket 99 (FRS PLT-008): a correctly signed request replayed with its nonce
+  if [ "$(admin GET consumers/merchant_demo -o /dev/null -w '%{http_code}')" != 200 ]; then
+    echo "skipped: consumer merchant_demo exists only after scripts/api-test.sh (MW_E2E_ROUTES=1)"; return 0
+  fi
+  local nonce body
+  nonce="$(uniq_id nonce)"
+  body="${co_body/EDGE-1/$(uniq_id order)}"
+  co_signed "$body" "$nonce" || return 1
+  case "$status" in 200|201) ;; *) echo "first signed create got HTTP $status"; return 1 ;; esac
+  co_signed "$body" "$nonce" && envelope 401 MW-AUTH-006
+}
+check "signed checkout create replayed with the same nonce -> 401 MW-AUTH-006 (mw-checkout)" co_nonce_replay
 
 # ---- MNO USSD gateways (spec 8.2, M3 gate): one basic-auth consumer per MNO, bound to its path ----
 ussd_step() { # ussd_step MNO CREDENTIAL_MNO|none MSISDN TYPE

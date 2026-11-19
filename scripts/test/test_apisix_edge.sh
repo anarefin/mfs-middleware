@@ -480,6 +480,29 @@ test_a_global_rule_turns_edge_errors_into_the_error_envelope() {
   done
 }
 
+# Ticket 99 (FRS PLT-004): every 429 carries Retry-After, set in the edge's header filter.
+test_every_429_carries_retry_after() {
+  render || fail "dry run failed"
+  cat out/global_rules/*.json | jq -r '.. | objects | select(.phase == "header_filter") | .functions[]' \
+    | grep -q 'Retry-After' || fail "no Retry-After in the edge header filter"
+}
+
+# Ticket 99 (FRS PLT-004): a bucket is per client and API: each limited route counts in its own
+# group (the API), keyed by a per-client variable, never one shared counter.
+test_every_rate_limit_is_per_route_and_keyed_per_client() {
+  render || fail "dry run failed"
+  local f groups n
+  groups="$(for f in out/routes/*.json; do jq -r '.plugins["limit-count"].group // empty' "$f"; done)"
+  n="$(printf '%s\n' "$groups" | grep -c . || true)"
+  [ "$n" -gt 0 ] || fail "no limit-count route"
+  [ "$(printf '%s\n' "$groups" | sort -u | grep -c .)" = "$n" ] || fail "a limit-count group is shared: $(printf '%s\n' "$groups" | sort | uniq -d)"
+  for f in out/routes/*.json; do
+    jq -e '(.plugins["limit-count"] // .plugins["limit-req"]) as $l | $l == null
+      or ($l.key_type == "var" and ($l.key | IN("consumer_name", "mw_consumer", "mw_auth_key", "mw_ussd_msisdn", "remote_addr")))' "$f" >/dev/null \
+      || fail "$(basename "$f"): limit not keyed per client: $(jq -c '.plugins["limit-count"] // .plugins["limit-req"]' "$f")"
+  done
+}
+
 test_app_route_limits_each_consumer_with_counters_in_valkey() {
   render || fail "dry run failed"
   obj routes app-v1 | jq -e '.plugins["limit-count"] | .policy == "redis" and .redis_host == "valkey"

@@ -48,17 +48,25 @@ describe("checkout merchant hmac-auth", () => {
 
   it("signs request target, date and digest for a body", () => {
     const body = '{"orderId":"o1"}';
-    const h = checkoutHeaders("POST", "/checkout/v1/sessions", body, "fake-secret", "merchant-demo", date);
+    const h = checkoutHeaders("POST", "/checkout/v1/sessions", body, "fake-secret", "merchant-demo", date, "nonce-0001-aaaaaaaaaaaa");
     const digest = "SHA-256=" + createHash("sha256").update(body).digest("base64");
-    const signing = `merchant-demo\nPOST /checkout/v1/sessions\ndate: ${h.Date}\ndigest: ${digest}\n`;
+    const signing = `merchant-demo\nPOST /checkout/v1/sessions\ndate: ${h.Date}\ndigest: ${digest}\nx-nonce: nonce-0001-aaaaaaaaaaaa\n`;
     const sig = createHmac("sha256", "fake-secret").update(signing).digest("base64");
     expect(h.Digest).toBe(digest);
-    expect(h.Authorization).toBe(`Signature keyId="merchant-demo",algorithm="hmac-sha256",headers="@request-target date digest",signature="${sig}"`);
+    expect(h["X-Nonce"]).toBe("nonce-0001-aaaaaaaaaaaa");
+    expect(h.Authorization).toBe(`Signature keyId="merchant-demo",algorithm="hmac-sha256",headers="@request-target date digest x-nonce",signature="${sig}"`);
+  });
+
+  it("signs a fresh nonce into every request with a body (ticket 99)", () => {
+    const a = checkoutHeaders("POST", "/checkout/v1/sessions", "{}", "fake-secret", "merchant-demo", date);
+    const b = checkoutHeaders("POST", "/checkout/v1/sessions", "{}", "fake-secret", "merchant-demo", date);
+    expect(a["X-Nonce"]).not.toBe(b["X-Nonce"]);
   });
 
   it("leaves the digest out of a GET", () => {
     const h = checkoutHeaders("GET", "/checkout/v1/sessions/s1", null, "fake-secret", "merchant-demo", date);
     expect(h.Digest).toBeUndefined();
+    expect(h["X-Nonce"]).toBeUndefined();
     expect(h.Authorization).toContain('headers="@request-target date"');
   });
 

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.6.0
+  version: 1.7.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -125,14 +125,22 @@ paths:
         MW-AUTH-041 PIN locked for now (`details` retryAfter) or MW-AUTH-042 until a reset, 403
         MW-AUTH-043 wallet locked, 403 MW-AUTH-045 no PIN set, 401 MW-AUTH-047 device not the
         wallet's bound one, 409 MW-IDEM-001 the key already authorised another transaction;
-        mw-auth unreachable 503 MW-SYS-012 (retryable).
+        mw-auth unreachable 503 MW-SYS-012 (retryable). Business duplicate (FRS PLT-013, ticket 99):
+        the same txnType, counterparty and amount sent under another Idempotency-Key within the window
+        (default 60 s) is 400 MW-VAL-024 (`retryable` false), nothing recorded or moved; show the user
+        a confirmation and, on yes, resend the same body with `confirmDuplicate: true` (the same
+        Idempotency-Key may be used: the refused request did not consume it).
       parameters:
         - name: Idempotency-Key
           in: header
           required: true
           description: >-
             1 to 64 visible ASCII characters. Same key (per wallet) and same content returns the
-            stored transaction; same key and other content is 409 MW-IDEM-001 (spec 7.3).
+            stored transaction; same key and other content is 409 MW-IDEM-001 (spec 7.3). Once a
+            request under the key was answered 200, a repeat with the same content gets that very
+            response body again, byte for byte, for the key's lifetime (72 h; FRS PLT-011), even
+            when the transaction changed since (e.g. reversed); `encryptedPin` and
+            `confirmDuplicate` are not part of the content compared.
           schema: { type: string, pattern: "^[\\x21-\\x7E]{1,64}$" }
         - { $ref: "#/components/parameters/DeviceId" }
         - { $ref: "#/components/parameters/Timestamp" }
@@ -563,6 +571,11 @@ components:
             keyId: { type: string, minLength: 1, maxLength: 128 }
             ciphertext: { type: string, minLength: 1, maxLength: 4096 }
         locale: { type: string, enum: [bn, en] }
+        confirmDuplicate:
+          type: boolean
+          description: >-
+            The user confirmed a suspected business duplicate (after 400 MW-VAL-024, ticket 99,
+            FRS PLT-013): the request goes through although the same payment was sent moments ago.
         attributes:
           type: object
           description: Allow-listed keys only (`reference`); any other key is 400 MW-VAL-001.

@@ -106,7 +106,8 @@ public class RequestMapper {
         body.locale(),
         null,
         forwardable(body.attributes()),
-        now);
+        now,
+        Boolean.TRUE.equals(body.confirmDuplicate()) ? Boolean.TRUE : null);
   }
 
   /**

@@ -5,6 +5,8 @@ public final class ErrorCodes {
 
   /** Bean Validation failed on a body, parameter or path variable. */
   public static final String VAL_INVALID = "MW-VAL-001";
+  /** Same idempotency key, other request content (spec 7.3; the stored response, ticket 99). */
+  public static final String IDEM_CONFLICT = "MW-IDEM-001";
   /** Body missing or not parseable. */
   public static final String VAL_MALFORMED = "MW-VAL-002";
   /** No such endpoint or resource. */

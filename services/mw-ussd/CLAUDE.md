@@ -163,6 +163,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   processed", the result by SMS once mw-notify sends it); publish failure -> `unavailable`.
   Flows: P2P, CASH_OUT, TOPUP, BILL_PAY, BALANCE (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
   app, not over USSD.
+- Business duplicate (ticket 99, FRS PLT-013): a FAILED `MW-VAL-024` from the orchestrator is the confirm
+  node: the engine goes back to the PIN input with the menu's `duplicateSuspected` text (optional, built-in
+  `UssdEngine.DUPLICATE_TEXT`) and the session input `_confirmDuplicate` (`FlowRequest.CONFIRM_DUPLICATE`);
+  the PIN entered there is the yes (the PIN is never stored, so it is asked again) and that submit, same
+  menu path and key, carries `confirmDuplicate: true`. Hanging up is the no. Asked once per session step.
 - Balance inquiry (ADR D26): flow BALANCE is authorised and published like a transfer (amount 0 BDT,
   debitParty = creditParty = the CUSTOMER wallet, mw-auth txn `{BALANCE, 0, BDT, payer = payee}`, assertion).
   COMPLETED carries `balance {available, asOf}` (`dto/Balance` on `dto/StatusMessage`, into

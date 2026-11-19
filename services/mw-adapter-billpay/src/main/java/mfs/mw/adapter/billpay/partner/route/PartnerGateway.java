@@ -23,6 +23,7 @@ import mfs.mw.adapter.billpay.partner.PartnerResponse.NotSentReason;
 import mfs.mw.adapter.billpay.partner.AuthScheme;
 import mfs.mw.adapter.billpay.partner.CredentialRef;
 import mfs.mw.adapter.billpay.partner.auth.AuthSchemes;
+import mfs.mw.adapter.billpay.partner.auth.CallbackNonces;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfig;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfigStore;
 import mfs.mw.adapter.billpay.partner.kamelet.MwAuditStep;
@@ -60,6 +61,7 @@ public class PartnerGateway {
   private final MeterRegistry meters;
   private final CircuitBreakerRegistry breakers;
   private final Clock clock;
+  private final CallbackNonces nonces;
 
   public PartnerGateway(
       PartnerConfigStore store,
@@ -68,7 +70,8 @@ public class PartnerGateway {
       MwAuditStep results,
       MeterRegistry meters,
       CircuitBreakerRegistry breakers,
-      Clock clock) {
+      Clock clock,
+      CallbackNonces nonces) {
     this.store = store;
     this.producer = producer;
     this.json = json;
@@ -76,6 +79,7 @@ public class PartnerGateway {
     this.meters = meters;
     this.breakers = breakers;
     this.clock = clock;
+    this.nonces = nonces;
   }
 
   /** Sends {@code call}; an outcome is always returned, never thrown. */
@@ -169,7 +173,7 @@ public class PartnerGateway {
    * over {@code {headers, body}}.
    *
    * @throws PartnerInstanceNotFoundException no record of its own, or no callback mapping
-   * @throws PartnerAuthenticationException the signature does not verify
+   * @throws PartnerAuthenticationException the signature does not verify, or the nonce was used
    * @throws CompiledMapping.MappingException the body is not understood
    */
   public InboundResult inbound(InboundCall call) {
@@ -183,6 +187,12 @@ public class PartnerGateway {
     AuthScheme scheme = AuthSchemes.create(config.auth(), ref -> runtime.secret(config.auth().credentialsRef()), clock);
     if (!scheme.verify(call, new CredentialRef(config.auth().credentialsRef()))) {
       throw new PartnerAuthenticationException("callback of " + call.partnerId() + " is not authentic");
+    }
+    // ticket 99 (FRS PLT-008): a verified nonce is let through once; a replayed callback is refused
+    // like a forged one (checked after the signature, so nobody without the secret can burn nonces)
+    java.util.Optional<String> nonce = scheme.replayNonce(call);
+    if (nonce.isPresent() && !nonces.firstUse(call.partnerId(), nonce.get(), scheme.replayWindow())) {
+      throw new PartnerAuthenticationException("callback of " + call.partnerId() + " replays a nonce");
     }
     Map<String, Object> input = new HashMap<>();
     input.put("headers", call.headers());

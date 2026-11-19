@@ -12,7 +12,9 @@ import mfs.mw.orchestrator.util.SensitiveType;
  * service). Unknown fields are ignored. {@code assertion} is mw-auth's transaction authorisation
  * (spec 18.7, D22): no PIN material, so it is stored with the request (PostTransfer and HoldFunds
  * carry it after ValidateTransaction). Since ticket 72 no PIN ciphertext reaches this service; an
- * old channel's {@code encryptedPin} would be ignored as an unknown field.
+ * old channel's {@code encryptedPin} would be ignored as an unknown field. {@code confirmDuplicate}
+ * (ticket 99, FRS PLT-013) is the app or USSD user's yes to the {@code MW-VAL-024} prompt; it is not
+ * part of the idempotency request hash.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -33,7 +35,36 @@ public record TxnRequest(
     String locale,
     Map<String, String> metadata,
     Map<String, String> attributes,
-    Instant requestedAt) {
+    Instant requestedAt,
+    Boolean confirmDuplicate) {
+
+  /** A request without the duplicate confirmation. */
+  public TxnRequest(
+      int schemaVersion,
+      String txnId,
+      String idempotencyKey,
+      String correlationId,
+      String channel,
+      String txnType,
+      Party initiator,
+      Party debitParty,
+      Party creditParty,
+      Amount amount,
+      PartnerRef partner,
+      String originalTxnId,
+      String assertion,
+      String locale,
+      Map<String, String> metadata,
+      Map<String, String> attributes,
+      Instant requestedAt) {
+    this(schemaVersion, txnId, idempotencyKey, correlationId, channel, txnType, initiator, debitParty,
+        creditParty, amount, partner, originalTxnId, assertion, locale, metadata, attributes, requestedAt, null);
+  }
+
+  /** True when the user confirmed a suspected duplicate. */
+  public boolean duplicateConfirmed() {
+    return Boolean.TRUE.equals(confirmDuplicate);
+  }
 
   /** A request without an assertion (bulk children, reversals). */
   public TxnRequest(

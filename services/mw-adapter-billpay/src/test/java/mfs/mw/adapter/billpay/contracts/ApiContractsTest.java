@@ -39,7 +39,7 @@ class ApiContractsTest {
 
   static BillFetchService service(PartnerResponse answer) {
     PartnerGateway gateway =
-        new PartnerGateway(null, null, null, null, null, null, null) {
+        new PartnerGateway(null, null, null, null, null, null, null, null) {
           @Override
           public PartnerResponse call(PartnerCall call) {
             return answer;

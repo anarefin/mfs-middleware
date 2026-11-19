@@ -5,7 +5,7 @@
 //   - the checkout merchant's APISIX hmac-auth headers, and its checks of the signed result / IPN
 // Pure functions only (no I/O): src/lib/server/* calls them.
 
-import { createHash, createHmac, createPublicKey, generateKeyPairSync, publicEncrypt, sign, constants } from "node:crypto";
+import { createHash, createHmac, randomUUID, createPublicKey, generateKeyPairSync, publicEncrypt, sign, constants } from "node:crypto";
 
 export const sha256Hex = (s: string): string => createHash("sha256").update(s, "utf8").digest("hex");
 const hmacHex = (secret: string, s: string): string => createHmac("sha256", secret).update(s, "utf8").digest("hex");
@@ -60,10 +60,13 @@ export function encryptPin(pin: string, publicKeyPem: string, keyId: string): En
 export const httpDate = (d: Date): string => d.toUTCString();
 
 /**
- * APISIX hmac-auth headers of the checkout merchant (deploy/apisix/README.md): Date, Digest when
- * there is a body, Authorization Signature over "keyId\nMETHOD path\ndate: …\n[digest: …\n]".
+ * APISIX hmac-auth headers of the checkout merchant (deploy/apisix/README.md): Date, Digest and
+ * X-Nonce (ticket 99, replay protection: once per merchant) when there is a body, Authorization
+ * Signature over "keyId\nMETHOD path\ndate: …\n[digest: …\nx-nonce: …\n]".
  */
-export function checkoutHeaders(method: string, path: string, body: string | null, secret: string, keyId: string, date: Date): Record<string, string> {
+export function checkoutHeaders(
+  method: string, path: string, body: string | null, secret: string, keyId: string, date: Date, nonce: string = randomUUID(),
+): Record<string, string> {
   const d = httpDate(date);
   const h: Record<string, string> = { Date: d };
   let signing = `${keyId}\n${method} ${path}\ndate: ${d}\n`;
@@ -71,8 +74,9 @@ export function checkoutHeaders(method: string, path: string, body: string | nul
   if (body !== null) {
     const digest = "SHA-256=" + createHash("sha256").update(body, "utf8").digest("base64");
     h.Digest = digest;
-    signing += `digest: ${digest}\n`;
-    names += " digest";
+    h["X-Nonce"] = nonce;
+    signing += `digest: ${digest}\nx-nonce: ${nonce}\n`;
+    names += " digest x-nonce";
   }
   h.Authorization = `Signature keyId="${keyId}",algorithm="hmac-sha256",headers="${names}",signature="${hmacB64(secret, signing)}"`;
   return h;

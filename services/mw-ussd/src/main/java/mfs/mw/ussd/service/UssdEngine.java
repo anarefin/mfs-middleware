@@ -65,6 +65,17 @@ public class UssdEngine {
               "Your PIN is locked. Reset it in the app or call customer care."),
           Menu.WALLET_LOCKED,
           new Text("আপনার অ্যাকাউন্ট লক। কাস্টমার কেয়ারে কল করুন।", "Your account is locked. Please call customer care."));
+  /**
+   * Session input set by the confirm step of a suspected business duplicate (ticket 99, FRS
+   * PLT-013): the next submit of the ACTION carries {@code confirmDuplicate}.
+   */
+  public static final String CONFIRM_DUPLICATE = FlowRequest.CONFIRM_DUPLICATE;
+  /** The orchestrator's confirmable business-duplicate code. */
+  static final String DUPLICATE_SUSPECTED = "MW-VAL-024";
+  /** The {@code duplicateSuspected} text when a menu carries none. */
+  static final Text DUPLICATE_TEXT =
+      new Text("কিছুক্ষণ আগে একই লেনদেন করেছেন। আবার পাঠাতে পিন দিন।",
+          "You sent the same payment moments ago. Enter your PIN to send it again.");
   /** The {@code balanceUnavailable} text when a menu carries none. */
   static final Text BALANCE_UNAVAILABLE_TEXT =
       new Text("ব্যালেন্স জানা যায়নি। আবার চেষ্টা করুন।", "Could not get your balance. Please try again.");
@@ -292,6 +303,12 @@ public class UssdEngine {
     return switch (outcome.kind()) {
       case COMPLETED -> enter(menu, s.at(node.onSuccess(), s.path(), s.inputs(), s.language()), vars, null);
       case FAILED -> {
+        if (isDuplicatePrompt(outcome.error(), s)) {
+          UssdResponse confirm = askToConfirmDuplicate(menu, s);
+          if (confirm != null) {
+            yield confirm;
+          }
+        }
         vars.put("error", errorText(outcome.error(), s.language()));
         yield enter(menu, s.at(node.onFailure(), s.path(), s.inputs(), s.language()), vars, null);
       }
@@ -317,6 +334,32 @@ public class UssdEngine {
     Map<String, String> vars = Map.of("triesLeft", triesLeft == null ? "" : triesLeft);
     String prefix = pinText(menu, Menu.WRONG_PIN, s.language(), vars);
     return show(menu, back, prefix + "\n" + render(pin, back, Map.of()), false);
+  }
+
+  private static boolean isDuplicatePrompt(ErrorInfo error, UssdSession s) {
+    return error != null && DUPLICATE_SUSPECTED.equals(error.code()) && !s.inputs().containsKey(CONFIRM_DUPLICATE);
+  }
+
+  /**
+   * The confirm node of a suspected business duplicate (ticket 99): back to the PIN input with the
+   * duplicate text above it; the PIN entered there is the user's yes, and that submit carries
+   * {@code confirmDuplicate} (the PIN is never stored, so it is asked again). Hanging up is the no.
+   * Null when the ACTION did not come from a PIN input (then the error is shown as any other).
+   */
+  private UssdResponse askToConfirmDuplicate(Menu menu, UssdSession s) {
+    List<String> path = s.path();
+    MenuNode pin = path.isEmpty() ? null : menu.nodes().get(path.getLast());
+    if (pin == null || pin.type() != NodeType.INPUT || pin.validator() == null || !pin.validator().isPin()) {
+      return null;
+    }
+    Map<String, String> inputs = new HashMap<>(s.inputs());
+    inputs.put(CONFIRM_DUPLICATE, "true");
+    UssdSession back = s.at(path.getLast(), path.subList(0, path.size() - 1), inputs, s.language());
+    String t = menu.message(Menu.DUPLICATE_SUSPECTED, s.language());
+    if (t.isEmpty()) {
+      t = DUPLICATE_TEXT.in(s.language());
+    }
+    return show(menu, back, t + "\n" + render(pin, back, Map.of()), false);
   }
 
   private static String lockMessage(ErrorInfo error) {

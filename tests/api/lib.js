@@ -555,16 +555,18 @@
   }
   const IPN_URL = 'http://mw-simulators:8080/merchant/ipn/e2e';
   const checkout = {
-    signed(method, path, body, secret) {
-      const date = httpDate(new Date());
+    // ticket 99 (PLT-008): a body request also signs X-Nonce (once per merchant); pass one to replay
+    signed(method, path, body, secret, nonce, at) {
+      const date = httpDate(at || new Date());
       const h = { Date: date };
       let signing = 'merchant-demo\n' + method + ' ' + path + '\ndate: ' + date + '\n';
       let names = '@request-target date';
       if (body !== null && body !== undefined) {
         const digest = 'SHA-256=' + CJS.SHA256(CJS.enc.Utf8.parse(body)).toString(CJS.enc.Base64);
         h.Digest = digest;
-        signing += 'digest: ' + digest + '\n';
-        names += ' digest';
+        h['X-Nonce'] = nonce || uuid();
+        signing += 'digest: ' + digest + '\n' + 'x-nonce: ' + h['X-Nonce'] + '\n';
+        names += ' digest x-nonce';
       }
       h.Authorization = 'Signature keyId="merchant-demo",algorithm="hmac-sha256",headers="' + names + '",signature="' + hmacB64(secret, signing) + '"';
       return h;
@@ -603,11 +605,13 @@
   const callbacks = {
     reference: txnId => 'BITS' + txnId.replace(/-/g, '').toUpperCase(),
     body: (ref, status, code) => JSON.stringify({ transactionId: ref, status, code, message: 'api callback' }),
-    send(body, secret) {
+    // ticket 99 (PLT-008): the nonce is signed as its own line; pass one to replay a callback
+    send(body, secret, nonce, tsSeconds) {
       const path = '/partner/billagg/callback/payments';
-      const ts = String(Math.floor(Date.now() / 1000));
-      const sig = hmacB64(secret, 'POST\n' + path + '\n' + ts + '\n' + sha256Hex(body));
-      return http('POST', path, { headers: { 'X-Signature': sig, 'X-Timestamp': ts }, raw: body });
+      const ts = String(tsSeconds || Math.floor(Date.now() / 1000));
+      const n = nonce || uuid();
+      const sig = hmacB64(secret, 'POST\n' + path + '\n' + ts + '\n' + n + '\n' + sha256Hex(body));
+      return http('POST', path, { headers: { 'X-Signature': sig, 'X-Timestamp': ts, 'X-Nonce': n }, raw: body });
     },
     billaggCallbacks: (mode, delayMs) => sim.scenario('billagg', { latencyMs: 0, errorRate: 0.0, outage: false, callbackOnly: true, callbackMode: mode,
       callbackUrl: 'http://apisix:9080/partner/billagg/callback/payments', callbackDelayMs: delayMs || 0 }),
@@ -623,6 +627,8 @@
     dlqRecord: txnId => http('GET', '/test/orchestrator/v1/dlq-records/' + encodeURIComponent(txnId), { apikey: true }),
     auditEvents: query => must('GET', '/test/audit-dw/v1/audit/events?' + query, { apikey: true }),
     chain: month => must('GET', '/test/audit-dw/v1/audit/chains/' + month, { apikey: true }),
+    // ticket 99: the business-duplicate window (0 = off, the dev stack's default)
+    duplicateWindow: seconds => must('POST', '/test/orchestrator/v1/duplicate-guard', { apikey: true, json: { windowSeconds: seconds } }, [200]),
   };
 
   /** The seeded time limit of partner ocs (manifest, passed by run.sh): 20 s, or 4 s with the test timers of deploy/.env. */

@@ -48,6 +48,14 @@ public final class ErrorCodes {
    * not allow (force commit of a P2P, release of a COMPLETED one): nothing changes, audited FAILURE.
    */
   public static final String VAL_ACTION_NOT_ALLOWED = "MW-VAL-023";
+  /**
+   * Business duplicate (FRS PLT-013, ticket 99): the same initiator, type, parties and amount under
+   * another key within the window, from an app or USSD channel; the user may resend with
+   * {@code confirmDuplicate}. Nothing was recorded, the key was not consumed.
+   */
+  public static final String VAL_DUPLICATE_SUSPECTED = "MW-VAL-024";
+  /** Business duplicate from an API client (checkout, portal, partner): refused, not confirmable. */
+  public static final String VAL_DUPLICATE_REJECTED = "MW-VAL-025";
   /** REVERSAL from a channel outside {@code mw.orchestrator.reversal-channels}. */
   public static final String AUTH_REVERSAL_CHANNEL = "MW-AUTH-020";
   /** BULK_DISBURSE from a channel outside {@code mw.orchestrator.bulk-channels} (ticket 34). */

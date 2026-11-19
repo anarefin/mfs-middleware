@@ -308,6 +308,11 @@ mw:
     # comes from a device bound to the token's wallet (X-Device-Id, its key from mw-auth, cached) with
     # a live mw-auth session; a submit is signed (ECDSA P-256) and its nonce used once. Binding, the
     # OTP and sessions are mw-auth's (/auth/v1/*). See config/DeviceBindingProperties.
+    # Stored first 200 response per idempotency key (FRS PLT-011, ticket 99; service/IdempotentReplay):
+    # Valkey/Redis idemresp:<sha256(channel, wallet, key)>, kept as long as the orchestrator's key.
+    idempotent-replay:
+      enabled: true
+      ttl: 72h
     device-binding:
       enabled: true
       clock-skew: 5m

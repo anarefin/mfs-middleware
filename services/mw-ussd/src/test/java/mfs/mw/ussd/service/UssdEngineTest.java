@@ -377,6 +377,28 @@ class UssdEngineTest {
     assertThat(r.text()).isEqualTo("Service temporarily unavailable. Please try later.");
   }
 
+  /** Ticket 99 (FRS PLT-013): the confirm node of a suspected business duplicate. */
+  @Test
+  void aSuspectedDuplicateAsksForThePinAgainAndTheConfirmedResendCarriesTheFlag() {
+    flow.next = new FlowOutcome(FlowOutcome.Kind.FAILED, "019a0000-0000-7000-8000-000000000009",
+        new ErrorInfo("MW-VAL-024", "Duplicate suspected", null, false));
+    toPinPrompt("d1");
+
+    UssdResponse prompt = send("d1", "48261");
+    assertThat(prompt.end()).isFalse();
+    assertThat(prompt.text())
+        .isEqualTo("You sent the same payment moments ago. Enter your PIN to send it again.\nEnter your PIN");
+    assertThat(flow.requests.getLast().session().inputs()).doesNotContainKey(UssdEngine.CONFIRM_DUPLICATE);
+
+    flow.next = new FlowOutcome(FlowOutcome.Kind.COMPLETED, "019a0000-0000-7000-8000-000000000010", null);
+    UssdResponse done = send("d1", "48261");
+    assertThat(done.end()).isTrue();
+    assertThat(done.text()).startsWith("Tk 500.00 sent to 01812345678.");
+    assertThat(flow.requests).hasSize(2).extracting(FlowRequest::menuPath).containsOnly(
+        "main:9>main:1>p2p.recipient>p2p.amount>p2p.confirm:1>p2p.pin");
+    assertThat(flow.requests.getLast().session().inputs()).containsEntry(UssdEngine.CONFIRM_DUPLICATE, "true");
+  }
+
   @Test
   void aMenuWithoutThePinTextsUsesTheBuiltInOnes() {
     assertThat(UssdEngine.PIN_TEXTS.keySet())

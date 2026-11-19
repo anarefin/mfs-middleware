@@ -35,6 +35,11 @@ public record Menu(
    * follows a balance check, so the {@code processing} text does not fit. Optional: built-in default.
    */
   public static final String BALANCE_UNAVAILABLE = "balanceUnavailable";
+  /**
+   * A suspected business duplicate (ticket 99, MW-VAL-024): shown above the PIN input that asks
+   * for the confirmation. Optional: built-in default.
+   */
+  public static final String DUPLICATE_SUSPECTED = "duplicateSuspected";
 
   public Menu {
     messages = messages == null ? Map.of() : Map.copyOf(messages);

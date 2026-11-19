@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits orchestrator test API v1 (mw-orchestrator, test-only)
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Test-only API of mw-orchestrator (ticket 58), never part of the product. The host API suite
     (`tests/api`, Newman) plays operations' REVERSAL producer with it, checks that a request
@@ -82,6 +82,29 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PoisonAccepted" }
+  /test/v1/duplicate-guard:
+    post:
+      operationId: setTestDuplicateWindow
+      summary: Set the business-duplicate window (ticket 99, FRS PLT-013); 0 switches the check off
+      description: >-
+        The dev stack runs with the window off (`MW_DUPLICATE_WINDOW=0s` in `deploy/dev.env.defaults`)
+        so the API suite may repeat a payment under new keys; folder `36-duplicates-replay` switches
+        it on for its scenarios and off again. Held in memory by the running instance (back to the
+        configured value on restart). 400 MW-VAL-001 outside 0..3600.
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DuplicateGuardWindow" }
+      responses:
+        "200":
+          description: The window now in force
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DuplicateGuardWindow" }
+        "400": { $ref: "#/components/responses/Error" }
   /test/v1/dlq-records/{txnId}:
     get:
       operationId: getTestDlqRecord
@@ -109,6 +132,12 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   schemas:
+    DuplicateGuardWindow:
+      type: object
+      required: [windowSeconds]
+      additionalProperties: false
+      properties:
+        windowSeconds: { type: integer, minimum: 0, maximum: 3600 }
     ReversalAccepted:
       type: object
       required: [txnId, idempotencyKey]
