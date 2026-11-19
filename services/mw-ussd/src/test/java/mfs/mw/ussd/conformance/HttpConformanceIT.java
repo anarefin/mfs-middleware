@@ -118,7 +118,7 @@ class HttpConformanceIT {
 
     assertThat(res.statusCode()).isEqualTo(422);
     assertThat(json(res.body()))
-        .containsOnlyKeys("code", "message", "txnId", "correlationId", "retryable", "details")
+        .containsOnlyKeys("code", "message", "txnId", "correlationId", "retryable", "details", "timestamp")
         .containsEntry("code", "MW-CORE-INSUFFICIENT-BAL")
         .containsEntry("message", "Insufficient balance")
         .containsEntry("txnId", "TXN-HTTP-2")

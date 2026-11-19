@@ -64,7 +64,7 @@
 89-frs-decisions-adr-spec                   —                 done     11m      16 files +812 −26      48641b1c
 90-redis-swap                               89                open
 91-vault-swap                               89                open
-92-contracts-canonical-additions            89                open
+92-contracts-canonical-additions            89                done     50m      103 files +1336 −133   a27c953a
 93-core-mock-rest-api                       92                open
 94-core-mock-model                          93                open
 95-orchestrator-core-rest-client            93                open

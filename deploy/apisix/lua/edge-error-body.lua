@@ -30,12 +30,16 @@ return function(conf, ctx)
       details[1] = { issue = string.sub(text, 1, 300) }
     end
   end
+  -- timestamp (FRS 3.7, ticket 92): when the envelope was built, UTC ISO-8601 to the millisecond
+  local now = ngx.now()
+  local sec = math.floor(now)
   ngx.arg[1] = cjson.encode({
     code = e.code,
     message = e.message,
     correlationId = e.correlationId,
     retryable = e.retryable,
     details = details,
+    timestamp = os.date("!%Y-%m-%dT%H:%M:%S", sec) .. string.format(".%03dZ", math.floor((now - sec) * 1000)),
   })
   ctx.mw_edge_error = nil
 end

@@ -274,6 +274,24 @@ class SagaServiceIT {
     assertAllValid(txn);
   }
 
+  /** FRS 2.2 types added to the contract by ticket 92: valid on the wire, refused until their flows exist. */
+  @org.junit.jupiter.params.ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(strings = {"NPSB_OUT", "NPSB_IN", "B2B_TRANSFER"})
+  void anFrsTypeWithoutItsFlowYetIsRejectedAsUnsupported(String txnType) {
+    TxnRequest p2p = TestData.p2p(TestData.txnId(), "k-" + txnType, 5_000);
+    TxnRequest frs =
+        new TxnRequest(1, p2p.txnId(), "k-" + txnType, p2p.correlationId(), p2p.channel(), txnType,
+            p2p.initiator(), p2p.debitParty(), p2p.creditParty(), p2p.amount(), null, null,
+            p2p.assertion(), null, null, null, p2p.requestedAt());
+    transactions.accept(frs, null);
+
+    assertThat(statuses(p2p.txnId())).containsExactly("RECEIVED", "REJECTED");
+    assertThat(lastStatus(p2p.txnId()).path("error").path("code").asString()).isEqualTo("MW-VAL-010");
+    assertThat(lastStatus(p2p.txnId()).path("txnType").asString()).isEqualTo(txnType);
+    assertThat(commands(p2p.txnId())).isEmpty();
+    assertAllValid(p2p.txnId());
+  }
+
   @Test
   void aTypeWithoutAFlowIsRejectedAtOnce() {
     TxnRequest p2p = TestData.p2p(TestData.txnId(), "k-topup", 5_000);

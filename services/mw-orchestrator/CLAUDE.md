@@ -274,7 +274,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   answers on the event topic paired with the command topic.
 - Core reason -> error: `MW-CORE-<reasonCode>` (same pattern as the status contract), message
   English + Bengali for the reasons mw-core-mock emits (`mapper/CoreEventMapper`), not retryable.
-  Other codes used: `MW-VAL-010` unsupported txn type, `MW-VAL-011` amount <= 0, `MW-VAL-012`
+  Other codes used: `MW-VAL-010` unsupported txn type (a contract type without a flow, e.g. NPSB_OUT, NPSB_IN, B2B_TRANSFER until their tickets; `SagaServiceIT`), `MW-VAL-011` amount <= 0, `MW-VAL-012`
   partner missing for a flow with a partner leg, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`,
   `MW-TMO-003` (not found by inquiry, retryable), `MW-TMO-004` (inquiry exhausted),
   `MW-TMO-005` (conflicting inquiry answer), reversal `MW-VAL-020..022`, operator action not allowed `MW-VAL-023`, `MW-AUTH-020`, `MW-TMO-020`, bulk channel `MW-AUTH-021`;
