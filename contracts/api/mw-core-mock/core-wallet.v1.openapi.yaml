@@ -1,0 +1,498 @@
+openapi: 3.1.0
+info:
+  title: Bits core wallet API v1 (mw-core-mock)
+  version: 1.0.0
+  description: |
+    The core wallet over REST (FRS 7.2, ADR D31): accounts, balances, charges, limits, holds,
+    transfers, credits, reversals, statements and transaction status. mw-core-mock serves it as the
+    proposal for the real core's contract (the vendor has not published one, FRS 10.6); the
+    orchestrator's client (ticket 95) is written against this file. WAL-02 (`POST /pin/verify`) is
+    not part of it: the middleware owns the PIN (D20), mw-auth checks it and the core verifies
+    mw-auth's transaction assertion instead (D22, D31).
+
+    Amounts are integer poisha (`valueMinor`, currency BDT), never decimals (spec 5.1).
+
+    Idempotency (FRS 7.3): every money operation is idempotent by `txnId` and the operation (holds,
+    transfers, credits, reversals: the body's `txnId`; commit and release: the hold's `txnId`). A
+    repeat with the same body answers the first response again and moves no money twice; the same
+    `txnId` and operation with a different body is `409 MW-IDEM-001`. A refusal is stored like a
+    success: its repeat gets the same `422`.
+
+    Authorisation: a Keycloak realm `services` client-credentials JWT (spec 18.2) whose `aud`
+    contains `mw-core-mock` and whose client (`azp`) is allowed (mw-orchestrator, mw-auth,
+    mw-admin-api); no or bad token `401 MW-AUTH-001`, another client `403 MW-AUTH-002`. Holds and
+    transfers also carry the customer's authorisation: mw-auth's transaction assertion (a compact
+    JWS, D22) in `X-Txn-Assertion`, with the request's `idempotencyKey` (part of the assertion's
+    `txnHash`). Missing or refused (signature, `aud` core, `exp`, `sub` the payer, `txnHash`, a
+    `jti` another transaction used): `401 MW-AUTH-046`. A `BULK_DISBURSE` row needs none (the org
+    authorised the batch by maker-checker). Credits need none (money in from a settlement wallet).
+
+    Rejections by the core are `422 MW-CORE-<reason>` with the core reason (`INSUFFICIENT_BALANCE`,
+    `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `WALLET_NOT_FOUND`, `CREDIT_WALLET_NOT_FOUND`,
+    `ACCOUNT_LOCKED`, `ACCOUNT_BLOCKED`, `CREDIT_ACCOUNT_BLOCKED`, `INVALID_COUNTERPARTY`,
+    `SAME_WALLET`, `INVALID_AMOUNT`, `HOLD_NOT_FOUND`, `HOLD_RELEASED`, `HOLD_ALREADY_COMMITTED`,
+    `ORIGINAL_NOT_FOUND`, `ORIGINAL_NOT_REVERSIBLE`, `ALREADY_REVERSED`, `AMOUNT_MISMATCH`, or an
+    injected fault's reason).
+
+    Events stay on Kafka (D31): every money operation still writes its `core.event.v1` result
+    (`FundsHeld`, `HoldCommitted`, `TransferPosted`, ...) through the outbox in the transaction of
+    the ledger change, holds on `core.payment.event.v1`, the rest on `core.wallet.event.v1`.
+servers:
+  - url: http://mw-core-mock:8080
+security:
+  - internalClientCredentials: []
+paths:
+  /core/v1/accounts/{msisdn}:
+    parameters:
+      - { name: msisdn, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+      - $ref: "#/components/parameters/CorrelationId"
+    get:
+      operationId: getAccount
+      summary: "WAL-01: account info, type, status and holder name (wallet id or MSISDN)"
+      responses:
+        "200":
+          description: The account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /core/v1/balance/{walletId}:
+    parameters:
+      - { name: walletId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+      - $ref: "#/components/parameters/CorrelationId"
+    get:
+      operationId: getBalance
+      summary: "WAL-03: available, held and total balance"
+      responses:
+        "200":
+          description: The balance
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Balance" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /core/v1/charges/calculate:
+    parameters:
+      - $ref: "#/components/parameters/CorrelationId"
+    post:
+      operationId: calculateCharges
+      summary: "WAL-04: fee, VAT and commission of a transaction type and amount"
+      description: The fee is flat per txnType today; VAT and commission are 0 until the tariff sheet (ticket 94).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChargesRequest" }
+      responses:
+        "200":
+          description: The charges
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Charges" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /core/v1/limits/check:
+    parameters:
+      - $ref: "#/components/parameters/CorrelationId"
+    post:
+      operationId: checkLimits
+      summary: "WAL-05: whether the wallet may pay the amount, with what is left"
+      description: Per transaction and per UTC day today; monthly amounts and counts come with ticket 94.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LimitsRequest" }
+      responses:
+        "200":
+          description: Pass or fail (`allowed`, with the reason when false)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Limits" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /core/v1/holds:
+    parameters:
+      - $ref: "#/components/parameters/CorrelationId"
+      - $ref: "#/components/parameters/TxnAssertion"
+    post:
+      operationId: holdFunds
+      summary: "WAL-06: reserve amount + fee on the payer (available shrinks, balance unchanged)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferRequest" }
+      responses:
+        "200":
+          description: Held (status HELD, with the holdId)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /core/v1/holds/{holdId}/commit:
+    parameters:
+      - $ref: "#/components/parameters/HoldId"
+      - $ref: "#/components/parameters/CorrelationId"
+    post:
+      operationId: commitHold
+      summary: "WAL-07: debit the held amount to the settlement wallet and the fee to the fee wallet (double entries)"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HoldActionRequest" }
+      responses:
+        "200":
+          description: Committed (a committed hold is answered COMMITTED without effect)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /core/v1/holds/{holdId}/release:
+    parameters:
+      - $ref: "#/components/parameters/HoldId"
+      - $ref: "#/components/parameters/CorrelationId"
+    post:
+      operationId: releaseHold
+      summary: "WAL-08: return the held amount to available"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HoldActionRequest" }
+      responses:
+        "200":
+          description: Released (a released hold is answered RELEASED without effect)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /core/v1/transfers:
+    parameters:
+      - $ref: "#/components/parameters/CorrelationId"
+      - $ref: "#/components/parameters/TxnAssertion"
+    post:
+      operationId: transfer
+      summary: "WAL-09: direct debit and credit between two wallets of the core (P2P, cash-in, cash-out, B2B, disbursement row)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferRequest" }
+      responses:
+        "200":
+          description: Posted (status POSTED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /core/v1/credits:
+    parameters:
+      - $ref: "#/components/parameters/CorrelationId"
+    post:
+      operationId: credit
+      summary: "WAL-10: credit a wallet from the settlement wallet (add money, remittance, NPSB in, ATM cash-in)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreditRequest" }
+      responses:
+        "200":
+          description: Credited (status CREDITED; a txn is credited once)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /core/v1/reversals:
+    parameters:
+      - $ref: "#/components/parameters/CorrelationId"
+    post:
+      operationId: reverse
+      summary: "WAL-11: reverse a posted transfer or credit by its txnId, fee included, once"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReversalRequest" }
+      responses:
+        "200":
+          description: Reversed (status REVERSED); a second reversal of the same original is 422 MW-CORE-ALREADY_REVERSED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OperationResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /core/v1/statements:
+    parameters:
+      - $ref: "#/components/parameters/CorrelationId"
+    get:
+      operationId: getStatement
+      summary: "WAL-12: ledger entries of a wallet in a time range, oldest first"
+      description: At most `limit` entries (default 100, at most 500). The balance after each entry comes with ticket 94.
+      parameters:
+        - { name: walletId, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        "200":
+          description: The entries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Statement" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /core/v1/transactions/{txnId}:
+    parameters:
+      - { name: txnId, in: path, required: true, schema: { $ref: "#/components/schemas/TxnId" } }
+      - $ref: "#/components/parameters/CorrelationId"
+    get:
+      operationId: getTransaction
+      summary: "WAL-13: the core's true status of a transaction and its ledger entries (status inquiry, reconciliation)"
+      description: >-
+        Read from the ledger, the holds and the operation log, never from the event outbox, so a
+        lost answer is still told. `REVERSED` when reversed, else the hold's state (`HELD`,
+        `COMMITTED`, `RELEASED`), else the latest operation's outcome (`VALIDATED`, `POSTED`,
+        `CREDITED`, `REJECTED`), else `NOT_FOUND` (200, nothing happened). Changes nothing.
+      responses:
+        "200":
+          description: The status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TransactionStatus" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    internalClientCredentials:
+      type: oauth2
+      description: >-
+        Keycloak realm `services` client-credentials JWT (spec 18.2): signature, expiry, exact
+        issuer, `aud` contains `mw-core-mock`, `azp` one of mw-orchestrator, mw-auth, mw-admin-api.
+      flows:
+        clientCredentials:
+          tokenUrl: http://keycloak:8080/realms/services/protocol/openid-connect/token
+          scopes: {}
+  parameters:
+    CorrelationId: { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+    TxnAssertion:
+      name: X-Txn-Assertion
+      in: header
+      required: false
+      description: mw-auth's transaction assertion (compact JWS, D22); required unless txnType is BULK_DISBURSE
+      schema: { type: string, minLength: 1, maxLength: 4096 }
+    HoldId: { name: holdId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+  responses:
+    Error:
+      description: The error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    TxnId:
+      type: string
+      pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+      description: UUIDv7, lower case, minted by the middleware (spec 5.1)
+    Amount:
+      type: object
+      required: [valueMinor, currency]
+      additionalProperties: false
+      properties:
+        valueMinor: { type: integer, minimum: 0, description: Poisha }
+        currency: { const: BDT }
+    TxnType: { type: string, minLength: 1, maxLength: 32, pattern: "^[A-Z][A-Z0-9_]*$" }
+    Party:
+      type: object
+      required: [type, id]
+      properties:
+        type: { enum: [WALLET, BANK_ACCOUNT, CARD_TOKEN, BILLER_ACCOUNT, MSISDN, MERCHANT, ORG] }
+        id: { type: string, minLength: 1, maxLength: 64 }
+        name: { type: string }
+        walletType: { enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, DSO] }
+    Account:
+      type: object
+      required: [walletId, type, status]
+      properties:
+        walletId: { type: string }
+        msisdn: { type: [string, "null"], description: null for system wallets }
+        type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, ORG, SYSTEM] }
+        status: { type: string, enum: [ACTIVE, BLOCKED, HOLD, LOCKED] }
+        holderName: { type: [string, "null"], maxLength: 120, description: "Holder's display name; personal data" }
+    Balance:
+      type: object
+      required: [walletId, available, held, total]
+      properties:
+        walletId: { type: string }
+        available: { $ref: "#/components/schemas/Amount" }
+        held: { $ref: "#/components/schemas/Amount" }
+        total: { $ref: "#/components/schemas/Amount" }
+    ChargesRequest:
+      type: object
+      required: [txnType, amount]
+      properties:
+        txnType: { $ref: "#/components/schemas/TxnType" }
+        amount: { $ref: "#/components/schemas/Amount" }
+        channel: { type: string, maxLength: 32 }
+    Charges:
+      type: object
+      required: [txnType, amount, fee, vat, commission, total]
+      properties:
+        txnType: { type: string }
+        amount: { $ref: "#/components/schemas/Amount" }
+        fee: { $ref: "#/components/schemas/Amount" }
+        vat: { $ref: "#/components/schemas/Amount" }
+        commission: { $ref: "#/components/schemas/Amount" }
+        total: { $ref: "#/components/schemas/Amount", description: amount + fee + vat (what the payer is debited) }
+    LimitsRequest:
+      type: object
+      required: [walletId, txnType, amount]
+      properties:
+        walletId: { type: string, minLength: 1, maxLength: 64 }
+        txnType: { $ref: "#/components/schemas/TxnType" }
+        amount: { $ref: "#/components/schemas/Amount" }
+    Limits:
+      type: object
+      required: [walletId, allowed, remaining]
+      properties:
+        walletId: { type: string }
+        allowed: { type: boolean }
+        reasonCode: { type: string, enum: [LIMIT_EXCEEDED_PER_TXN, LIMIT_EXCEEDED_DAILY], description: Only when not allowed }
+        remaining:
+          type: object
+          required: [perTxn, daily]
+          properties:
+            perTxn: { $ref: "#/components/schemas/Amount" }
+            daily: { $ref: "#/components/schemas/Amount", description: What the wallet may still pay today (UTC) before this amount }
+    TransferRequest:
+      type: object
+      required: [txnId, txnType, debitParty, creditParty, amount]
+      properties:
+        txnId: { $ref: "#/components/schemas/TxnId" }
+        txnType: { $ref: "#/components/schemas/TxnType" }
+        debitParty: { $ref: "#/components/schemas/Party" }
+        creditParty: { $ref: "#/components/schemas/Party" }
+        amount: { $ref: "#/components/schemas/Amount" }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 64, description: "The channel's key; required with X-Txn-Assertion (part of its txnHash)" }
+    HoldActionRequest:
+      type: object
+      properties:
+        reason: { type: string, maxLength: 200 }
+    CreditRequest:
+      type: object
+      required: [txnId, txnType, creditParty, amount]
+      properties:
+        txnId: { $ref: "#/components/schemas/TxnId" }
+        txnType: { $ref: "#/components/schemas/TxnType" }
+        creditParty: { $ref: "#/components/schemas/Party" }
+        amount: { $ref: "#/components/schemas/Amount" }
+    ReversalRequest:
+      type: object
+      required: [txnId, originalTxnId]
+      properties:
+        txnId: { $ref: "#/components/schemas/TxnId", description: The reversal's own txnId }
+        originalTxnId: { $ref: "#/components/schemas/TxnId" }
+        amount:
+          $ref: "#/components/schemas/Amount"
+          description: Optional; absent = the whole original. A partial amount is refused AMOUNT_MISMATCH until ticket 116
+        reason: { type: string, maxLength: 200 }
+    BalanceAfter:
+      type: object
+      required: [walletId, balance]
+      properties:
+        walletId: { type: string }
+        balance: { $ref: "#/components/schemas/Amount" }
+    OperationResult:
+      type: object
+      required: [txnId, status, coreRef]
+      properties:
+        txnId: { $ref: "#/components/schemas/TxnId" }
+        status: { enum: [HELD, COMMITTED, RELEASED, POSTED, CREDITED, REVERSED] }
+        coreRef: { type: string }
+        holdId: { type: string, description: Holds, commits and releases }
+        originalTxnId: { $ref: "#/components/schemas/TxnId", description: Reversals }
+        balancesAfter:
+          type: array
+          items: { $ref: "#/components/schemas/BalanceAfter" }
+    Entry:
+      type: object
+      required: [txnId, walletId, direction, kind, amount, at]
+      properties:
+        txnId: { type: string }
+        walletId: { type: string }
+        direction: { enum: [DEBIT, CREDIT] }
+        kind: { enum: [TRANSFER, FEE, REVERSAL, ADJUSTMENT] }
+        amount: { $ref: "#/components/schemas/Amount" }
+        at: { type: string, format: date-time }
+    Statement:
+      type: object
+      required: [walletId, from, to, entries]
+      properties:
+        walletId: { type: string }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/Entry" }
+    TransactionStatus:
+      type: object
+      required: [txnId, status, entries]
+      properties:
+        txnId: { $ref: "#/components/schemas/TxnId" }
+        status: { enum: [NOT_FOUND, VALIDATED, HELD, COMMITTED, RELEASED, POSTED, CREDITED, REVERSED, REJECTED] }
+        holdId: { type: string }
+        entries:
+          type: array
+          description: Every ledger entry under this txnId (debits equal credits)
+          items: { $ref: "#/components/schemas/Entry" }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        timestamp: { type: string, format: date-time }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }
