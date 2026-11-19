@@ -103,7 +103,8 @@ envelope() {
   [ "$status" = "$1" ] || { echo "HTTP $status, want $1: $(head -c 400 "$tmp/b")"; return 1; }
   jq -e --arg c "$2" '.code == $c and (.message | type == "string" and length > 0)
     and (.correlationId | type == "string" and length > 0) and (.retryable | type == "boolean")
-    and (.details | type == "array")' "$tmp/b" >/dev/null \
+    and (.details | type == "array")
+    and (.timestamp | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$"))' "$tmp/b" >/dev/null \
     || { echo "not the 5.3 envelope with $2: $(head -c 400 "$tmp/b")"; return 1; }
   [ "$(resp_header Content-Type)" = "application/json" ] || { echo "content type: $(resp_header Content-Type)"; return 1; }
   [ "$(jq -r .correlationId "$tmp/b")" = "$(resp_header X-Correlation-Id)" ] \

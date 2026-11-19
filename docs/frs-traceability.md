@@ -8,8 +8,8 @@ the order of its `DEPENDENCIES.md`.
 
 **Principle.** The repo keeps its own names (transaction types, states, channels, `MW-*` error codes,
 UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the repo lacks is added
-(ticket 92: `NPSB_OUT`, `NPSB_IN`, `B2B_TRANSFER`, `vat`, `commission`, `completedAt`, the partner
-status code, `timestamp` in the error envelope).
+(ticket 92, in the contracts: `NPSB_OUT`, `NPSB_IN`, `B2B_TRANSFER`, `vat`, `commission`, `completedAt`,
+`partnerStatusCode`, `timestamp` in the error envelope).
 
 **Status** (one per id, checked by `scripts/test/test_frs_traceability.sh`):
 
@@ -72,11 +72,11 @@ status code, `timestamp` in the error envelope).
 | `txnType` | `txnType` (2.3 below) | mapped |
 | `channel` | `channel` (2.4 below) | mapped |
 | `initiator / debitParty / creditParty` | `initiator`, `payer`, `payee` Party `{type, id, name?, walletType?}` | `BILLER` = `BILLER_ACCOUNT`; repo adds `ORG` |
-| `amount, fee, vat, commission` Decimal(18,2) | `{valueMinor, currency}` integer poisha | deviation: minor units avoid rounding; `vat` and `commission` added by ticket 92 |
-| `externalRef` | `partnerRef`, partner id; partner status code added by ticket 92 | |
+| `amount, fee, vat, commission` Decimal(18,2) | `{valueMinor, currency}` integer poisha | deviation: minor units avoid rounding; optional `vat` and `commission` (`$defs/Charge`) on `mw.txn.status.v1` since ticket 92 (filled once the core reports them) |
+| `externalRef` | `partnerRef`, partner id; optional `partnerStatusCode` on `mw.txn.status.v1` since ticket 92 | |
 | `status` | state (2.5 below) | mapped |
-| `metadata` | `metadata` | MNO, biller account, bill month and so on |
-| `timestamps` created, lastUpdated, completed | `requestedAt`, `updatedAt`; `completedAt` added by ticket 92 | |
+| `metadata` | `metadata` | MNO (`metadata.mno`, documented on `mw.txn.request.v1` by ticket 92), biller account, bill month and so on |
+| `timestamps` created, lastUpdated, completed | `requestedAt`, `updatedAt`; optional `completedAt` on `mw.txn.status.v1` since ticket 92 | |
 
 ### 2.3 Transaction types (FRS 2.2 txnType)
 
@@ -90,10 +90,10 @@ status code, `timestamp` in the error envelope).
 | `REMITTANCE_IN` | `REMIT_IN` |
 | `ATM_CASH_OUT`, `ATM_CASH_IN` | `ATM_CASH_OUT`, `ATM_CASH_IN` |
 | `QR_PAY` | `QR_PAY_INTEROP` (off-us); an on-us QR is `MERCHANT_PAY` (ticket 122) |
-| `NPSB_OUT`, `NPSB_IN` | added by ticket 92 |
+| `NPSB_OUT`, `NPSB_IN` | `NPSB_OUT`, `NPSB_IN` (in `TxnType` since ticket 92; refused `MW-VAL-010` until their flows exist) |
 | `DISBURSEMENT` | `BULK_DISBURSE` |
 | `REVERSAL` | `REVERSAL` |
-| (UC-07 B2B float) | `B2B_TRANSFER`, added by ticket 92 |
+| (UC-07 B2B float) | `B2B_TRANSFER` (in `TxnType` since ticket 92; refused `MW-VAL-010` until its flow exists) |
 | (none) | `BALANCE` (D26), repo only |
 
 ### 2.4 Channels (FRS 2.2 channel)
@@ -102,7 +102,7 @@ status code, `timestamp` in the error envelope).
 | --- | --- |
 | `APP_CUSTOMER`, `APP_AGENT`, `APP_MERCHANT` | `CUSTOMER_APP`, `AGENT_APP`, `MERCHANT_APP` |
 | `APP_DISTRIBUTOR`, `APP_DSO`, `APP_PARTNER` | `DISTRIBUTOR_APP`, `DSO_APP`, `PARTNER_APP` |
-| `USSD_GP`, `USSD_ROBI`, `USSD_TELETALK`, `USSD_BL` | `USSD` plus `metadata.mno` (`gp`, `robi`, `teletalk`, `banglalink`) |
+| `USSD_GP`, `USSD_ROBI`, `USSD_TELETALK`, `USSD_BL` | `USSD` plus `metadata.mno` (`gp`, `robi`, `teletalk`, `bl`: mw-ussd's MNO keys) |
 | `WEB_CHECKOUT`, `ORG_PORTAL`, `SP_PORTAL`, `PARTNER_API` | same names |
 | (none) | `SYSTEM` (operator actions, reversals), repo only |
 
@@ -130,7 +130,7 @@ status code, `timestamp` in the error envelope).
 | `EXT-503` | `MW-SYS-PARTNER_CIRCUIT_OPEN` / `MW-SYS-PARTNER_UNAVAILABLE` |
 | `EXT-504` | `MW-TMO-*` |
 | `SYS-500` | `MW-SYS-*` |
-| envelope `code, message, messageBn, txnId, correlationId, timestamp` | `{code, message, messageBn?, txnId?, correlationId, retryable, details[]}`; `timestamp` added by ticket 92 |
+| envelope `code, message, messageBn, txnId, correlationId, timestamp` | `{code, message, messageBn?, txnId?, correlationId, retryable, details[], timestamp}` (`timestamp` since ticket 92, UTC ISO-8601, every service) |
 
 ### 2.7 Use cases (FRS 5.1)
 

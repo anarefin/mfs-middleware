@@ -193,6 +193,7 @@ components:
         txnId: { type: string }
         correlationId: { type: string }
         retryable: { type: boolean }
+        timestamp: { type: string, format: date-time, description: "When the error was built, UTC ISO-8601 to the millisecond (FRS 3.7, ticket 92). Set by every service; optional for older senders." }
         details:
           type: array
           items:
