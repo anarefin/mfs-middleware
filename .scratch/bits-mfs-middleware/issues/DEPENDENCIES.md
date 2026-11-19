@@ -61,7 +61,7 @@
 # --- Run 77-87 gate DONE (2026-11-18, 375bee59): review fix pass ccb8a6a5 (incl. 84 security S1/S2); gate fixes e74c2cfa (partner HttpClient auto-retry resent a PAY after 503) and c17e72f6 (admin-ui forms lost input on a refused submit). clean build (no slow-wait, user) green 3m53s; smoke 50/50; edge-test 53/53; API suite 717 assertions, 1 fail fixed by e74c2cfa (re-run 05/06/08 green); ui-e2e 18/18 after fix; tester-e2e 12/12 (after rebuilding the stale test-console image); log-scan clean. NOT RUN: slow-wait tests, perf, chaos. Open: partner audit dropped when txnId is null (bill fetch, dry-run; also on main); Next 16.4.1 security check fails local pnpm build.
 # --- Run 89-138 (planned 2026-11-19): FRS gap closure, spec/FRS-Upay-Middleware.md (plan we-have-to-implement-harmonic-puzzle). Mocks only. Decisions: Redis, HashiCorp Vault, mw-auth keeps app tokens, repo names + FRS map, core wallet over REST (+assertion, events on Kafka), one service per party (12 GB budget), unified /mock-control. Row order = run order. Tickets written only; no implementation started (user).
 # --- M7 Foundation (FRS phase 1)
-89-frs-decisions-adr-spec                   —                 open
+89-frs-decisions-adr-spec                   —                 done     11m      16 files +812 −26      48641b1c
 90-redis-swap                               89                open
 91-vault-swap                               89                open
 92-contracts-canonical-additions            89                open
