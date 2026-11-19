@@ -124,10 +124,10 @@
       transaction as the app does.</p>
   </div>
   <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
-    actors: Phone | Operator USSD gateway | mw-ussd | Valkey | mw-orchestrator | mw-notify
+    actors: Phone | Operator USSD gateway | mw-ussd | Redis | mw-orchestrator | mw-notify
     Phone -> Operator USSD gateway : dials *268#
     Operator USSD gateway -> mw-ussd : session start (SMPP, or HTTP POST /ussd/{mno})
-    mw-ussd -> Valkey : create session ussd:{mno}:{sessionId}
+    mw-ussd -> Redis : create session ussd:{mno}:{sessionId}
     mw-ussd --> Operator USSD gateway : main menu text
     note Phone, Operator USSD gateway, mw-ussd : one round trip per screen: 1 (Send money), number, amount, 1 (confirm)
     Operator USSD gateway -> mw-ussd : PIN (encrypted at once, never stored)
@@ -144,7 +144,7 @@
       package turns both into the same call to the menu engine.</li>
     <li><strong>Menus are data,</strong> not code: a JSON file, stored in versions in the database and editable in the ops console
       (with maker-checker). A menu node of type ACTION starts a transaction.</li>
-    <li><strong>The session lives in Valkey,</strong> so any <code>mw-ussd</code> instance can serve the next screen.</li>
+    <li><strong>The session lives in Redis,</strong> so any <code>mw-ussd</code> instance can serve the next screen.</li>
     <li>USSD supports P2P, cash out, top-up, bill pay and the balance check (option 5). There is no cash in over USSD.</li>
   </ul>
   <div class="box where"><div class="tag">Where it lives</div><ul>

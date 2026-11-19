@@ -25,7 +25,7 @@ import org.springframework.stereotype.Service;
  * ({@link Decision#PROMPT}) the user answers by resending with {@code confirmDuplicate}; API
  * clients (checkout, portal, partner) are refused ({@link Decision#REJECT}) and cannot confirm.
  * Operations channels, BALANCE (moves no money) and REVERSAL (its own rules) are never checked. As
- * with the idempotency lock, Valkey/Redis trouble never fails a request: it passes and is counted
+ * with the idempotency lock, Redis trouble never fails a request: it passes and is counted
  * ({@code mw.txn.duplicate.guard.unavailable}). No MSISDN or key text is stored.
  */
 @Service
@@ -63,7 +63,7 @@ public class DuplicateGuard {
     this.window = settings.window();
     this.unavailable =
         Counter.builder("mw.txn.duplicate.guard.unavailable")
-            .description("Requests let through without the business-duplicate check because Valkey/Redis was unavailable")
+            .description("Requests let through without the business-duplicate check because Redis was unavailable")
             .register(meters);
   }
 

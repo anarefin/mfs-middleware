@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import java.util.UUID;
-import mfs.mw.orchestrator.config.ValkeyConfig;
+import mfs.mw.orchestrator.config.RedisConfig;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -16,33 +16,33 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * The lock against a real Valkey (spec 7.3 rule 4, ticket 50): {@code SET NX PX} takes it once,
+ * The lock against a real Redis (spec 7.3 rule 4, ticket 50): {@code SET NX PX} takes it once,
  * a repeat sees the holder's value, and the key frees itself after the TTL.
  */
-class ValkeyIdempotencyLockIT {
+class RedisIdempotencyLockIT {
 
-  private static final GenericContainer<?> VALKEY =
-      new GenericContainer<>(DockerImageName.parse("valkey/valkey:8.1.11-alpine")).withExposedPorts(6379);
+  private static final GenericContainer<?> REDIS =
+      new GenericContainer<>(DockerImageName.parse("redis:8.10.3-alpine")).withExposedPorts(6379);
 
   private static LettuceConnectionFactory factory;
   private static StringRedisTemplate template;
-  private static ValkeyIdempotencyLock lock;
+  private static RedisIdempotencyLock lock;
 
   @BeforeAll
   static void start() {
-    VALKEY.start();
+    REDIS.start();
     var clientConfig =
         LettuceClientConfiguration.builder()
             .commandTimeout(Duration.ofSeconds(2))
-            .clientOptions(ValkeyConfig.failFast(Duration.ofSeconds(2)).build())
+            .clientOptions(RedisConfig.failFast(Duration.ofSeconds(2)).build())
             .build();
     factory =
         new LettuceConnectionFactory(
-            new RedisStandaloneConfiguration(VALKEY.getHost(), VALKEY.getMappedPort(6379)), clientConfig);
+            new RedisStandaloneConfiguration(REDIS.getHost(), REDIS.getMappedPort(6379)), clientConfig);
     factory.afterPropertiesSet();
     factory.start();
     template = new StringRedisTemplate(factory);
-    lock = new ValkeyIdempotencyLock(template);
+    lock = new RedisIdempotencyLock(template);
   }
 
   @AfterAll
@@ -50,7 +50,7 @@ class ValkeyIdempotencyLockIT {
     if (factory != null) {
       factory.destroy();
     }
-    VALKEY.stop();
+    REDIS.stop();
   }
 
   private static String key() {

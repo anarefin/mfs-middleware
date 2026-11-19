@@ -24,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import mfs.mw.auth.TestInfrastructure;
-import mfs.mw.auth.ValkeyInfrastructure;
+import mfs.mw.auth.RedisInfrastructure;
 import mfs.mw.auth.client.CryptoClient;
 import mfs.mw.auth.contracts.ContractSchemas;
 import mfs.mw.auth.dto.CryptoPinDerived;
@@ -54,14 +54,14 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The PIN lifecycle of ticket 70 against real PostgreSQL and Valkey (mw-crypto a behaving mock, as in
+ * The PIN lifecycle of ticket 70 against real PostgreSQL and Redis (mw-crypto a behaving mock, as in
  * {@link LoginIT}): the lockout levels through login and device binding (the lock checked before
  * mw-crypto is asked), the decay of the level history, PIN change with step-up and the reuse rule,
  * the self-service reset with the core's answer, and the care reset of mw-admin-api.
  */
 @SpringBootTest(properties = {"mw.outbox.relay.enabled=false", "spring.data.redis.timeout=3s"})
 @AutoConfigureMockMvc
-@Import({TestInfrastructure.class, ValkeyInfrastructure.class})
+@Import({TestInfrastructure.class, RedisInfrastructure.class})
 class PinLifecycleIT {
 
   static final String PIN = "13579";
@@ -69,7 +69,7 @@ class PinLifecycleIT {
 
   private final MockMvcTester mvc;
   private final JdbcTemplate jdbc;
-  private final StringRedisTemplate valkey;
+  private final StringRedisTemplate redis;
   private final CoreWalletEventListener coreEvents;
   private final JsonMapper json;
 
@@ -80,11 +80,11 @@ class PinLifecycleIT {
   Device device;
 
   @Autowired
-  PinLifecycleIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate valkey, CoreWalletEventListener coreEvents,
+  PinLifecycleIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate redis, CoreWalletEventListener coreEvents,
       JsonMapper json) {
     this.mvc = mvc;
     this.jdbc = jdbc;
-    this.valkey = valkey;
+    this.redis = redis;
     this.coreEvents = coreEvents;
     this.json = json;
   }

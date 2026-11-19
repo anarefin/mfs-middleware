@@ -46,7 +46,7 @@ public final class ErrorCodes {
   public static final String VAL_OTP_LIMIT = "MW-VAL-022";
   /** Kafka did not take the OTP SMS in time; nothing was sent, the app may retry: 503. */
   public static final String SYS_UNAVAILABLE = "MW-SYS-010";
-  /** Valkey (sessions, nonce cache) could not be asked; nothing was done, retryable: 503. */
+  /** Redis (sessions, nonce cache) could not be asked; nothing was done, retryable: 503. */
   public static final String SYS_SESSION_STORE_UNAVAILABLE = "MW-SYS-012";
 
   // Login and tokens (spec 18.7, ticket 69); the lockout levels of 041/042 (ticket 70, service/PinVerifier).

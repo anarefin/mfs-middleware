@@ -1,6 +1,6 @@
 {
   "name": "portal-org-v1",
-  "desc": "Org portal API v1 (spec 8.2, 9.4): portals realm bearer JWT checked via JWKS (mw-portal-api checks it again), body cap sized for a bulk file (the service itself refuses >10,000 rows or >2 MiB, MW-VAL-030), quota per token subject in Valkey",
+  "desc": "Org portal API v1 (spec 8.2, 9.4): portals realm bearer JWT checked via JWKS (mw-portal-api checks it again), body cap sized for a bulk file (the service itself refuses >10,000 rows or >2 MiB, MW-VAL-030), quota per token subject in Redis",
   "uri": "/portal/org/v1/*",
   "methods": ["GET", "POST"],
   "plugins": {
@@ -31,9 +31,9 @@
       "rejected_code": 429,
       "show_limit_quota_header": true,
       "policy": "redis",
-      "redis_host": "valkey",
+      "redis_host": "redis",
       "redis_port": 6379,
-      "redis_password": "$env://VALKEY_PASSWORD",
+      "redis_password": "$env://REDIS_PASSWORD",
       "redis_database": 0,
       "redis_timeout": 1000,
       "allow_degradation": true

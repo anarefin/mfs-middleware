@@ -5,7 +5,7 @@
 
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
-PROVISION_ENV="VALKEY_PASSWORD=valkey-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t
+PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t
   CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
@@ -142,10 +142,10 @@ test_provision_creates_every_secret_role_and_approle() {
 test_provision_writes_the_service_specific_keys() {
   provision_fixture
   assert_ok run_provision
-  [ "$(kv mw-orchestrator spring.data.redis.password)" = valkey-t ] || fail "orchestrator valkey"
+  [ "$(kv mw-orchestrator spring.data.redis.password)" = redis-t ] || fail "orchestrator redis"
   [ "$(wc -c <.kv/secret/mw-orchestrator/mw.orchestrator.search.hash-key | tr -d ' ')" = 48 ] || fail "hash key"
-  [ "$(kv mw-app-gateway spring.data.redis.password)" = valkey-t ] || fail "app-gateway valkey"
-  [ "$(kv mw-ussd spring.data.redis.password)" = valkey-t ] || fail "ussd valkey"
+  [ "$(kv mw-app-gateway spring.data.redis.password)" = redis-t ] || fail "app-gateway redis"
+  [ "$(kv mw-ussd spring.data.redis.password)" = redis-t ] || fail "ussd redis"
   [ "$(kv mw-adapter-billpay/billagg hmac-secret)" = billagg-t ] || fail "billpay hmac"
   [ "$(kv mw-adapter-bank/c2wbank hmac-secret)" = c2w-t ] || fail "bank hmac"
   [ "$(kv mw-simulators sim.callback-secrets.billagg)" = billagg-t ] || fail "sim billagg"
@@ -183,9 +183,9 @@ test_provision_writes_the_service_specific_keys() {
   # mw-auth (ticket 67): its realm services client secret for mw-crypto, its role and schema
   [ "$(kv mw-auth mw.auth.crypto.client-secret)" = auth-t ] || fail "mw-auth client secret"
   grep -q 'role=auth_rw .*schema=auth' .psql-calls || fail "mw-auth role/schema"
-  # ticket 68: mw-auth keeps device sessions and nonces in Valkey; mw-app-gateway calls mw-auth's
+  # ticket 68: mw-auth keeps device sessions and nonces in Redis; mw-app-gateway calls mw-auth's
   # internal API with its own realm services client
-  [ "$(kv mw-auth spring.data.redis.password)" = valkey-t ] || fail "mw-auth valkey"
+  [ "$(kv mw-auth spring.data.redis.password)" = redis-t ] || fail "mw-auth redis"
   [ "$(kv mw-app-gateway mw.app-gateway.auth.client-secret)" = app-gateway-t ] || fail "app-gateway mw-auth client secret"
   # one role + schema per plain service
   grep -q 'role=orchestrator_rw .*schema=txn' .psql-calls || fail "orchestrator role/schema"
@@ -267,11 +267,11 @@ test_a_second_run_keeps_generated_secrets_and_resyncs_env_ones() {
   pw="$(kv mw-orchestrator spring.datasource.password)"
   hk="$(kv mw-orchestrator mw.orchestrator.search.hash-key)"
   : >.openssl-calls
-  assert_ok run_provision VALKEY_PASSWORD=valkey-new
+  assert_ok run_provision REDIS_PASSWORD=redis-new
   [ "$(kv mw-orchestrator spring.datasource.password)" = "$pw" ] || fail "database password regenerated"
   [ "$(kv mw-orchestrator mw.orchestrator.search.hash-key)" = "$hk" ] || fail "hash key regenerated"
   [ ! -s .openssl-calls ] || fail "openssl ran again: $(cat .openssl-calls)"
-  [ "$(kv mw-orchestrator spring.data.redis.password)" = valkey-new ] || fail "valkey not resynced"
+  [ "$(kv mw-orchestrator spring.data.redis.password)" = redis-new ] || fail "redis not resynced"
 }
 
 test_provision_fails_fast_without_an_vault_token() {
@@ -284,8 +284,8 @@ test_provision_fails_fast_without_an_vault_token() {
 
 test_provision_fails_when_a_required_env_secret_is_missing() {
   provision_fixture
-  assert_fails run_provision VALKEY_PASSWORD=
-  assert_out_contains "VALKEY_PASSWORD"
+  assert_fails run_provision REDIS_PASSWORD=
+  assert_out_contains "REDIS_PASSWORD"
   assert_fails run_provision SOFTHSM_MWCRYPTO_USER_PIN=
   assert_out_contains "SOFTHSM_MWCRYPTO_USER_PIN"
 }

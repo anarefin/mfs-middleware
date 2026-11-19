@@ -7,8 +7,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Device binding (spec 9.1, 18.7, ticket 68): its settings and Valkey (sessions, nonces) failing fast while
- * disconnected, so the device API answers 503 MW-SYS-012 instead of waiting; Valkey is kept out of
+ * Device binding (spec 9.1, 18.7, ticket 68): its settings and Redis (sessions, nonces) failing fast while
+ * disconnected, so the device API answers 503 MW-SYS-012 instead of waiting; Redis is kept out of
  * the health groups ({@code application.yml}) so the internal API is not taken out of readiness
  * with it.
  */
@@ -17,7 +17,7 @@ import org.springframework.context.annotation.Configuration;
 public class DeviceBindingConfig {
 
   @Bean
-  LettuceClientOptionsBuilderCustomizer valkeyFailFast() {
+  LettuceClientOptionsBuilderCustomizer redisFailFast() {
     return b -> b.disconnectedBehavior(ClientOptions.DisconnectedBehavior.REJECT_COMMANDS);
   }
 }

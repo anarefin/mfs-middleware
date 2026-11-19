@@ -31,7 +31,7 @@ import org.springframework.test.web.servlet.assertj.MockMvcTester;
 /**
  * The dev-only account test API ({@code auth-test.v1}) with {@code mw.auth.seed-api.enabled=true}: no
  * token needed, the wallet id checked, the PIN body validated, the service's errors as the envelope.
- * The service is a mock here; {@code security/TestAccountIT} runs it against PostgreSQL and Valkey.
+ * The service is a mock here; {@code security/TestAccountIT} runs it against PostgreSQL and Redis.
  */
 @WebMvcTest(controllers = TestAccountController.class, properties = "mw.auth.seed-api.enabled=true")
 @Import({SecurityConfig.class, PublicConnectorConfig.class, DeviceBindingConfig.class})

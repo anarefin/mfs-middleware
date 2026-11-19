@@ -40,12 +40,12 @@ spring:
       maximum-pool-size: 5
   flyway:
     schemas: ussd
-  # Valkey (Lettuce) holds the USSD sessions ussd:{mno}:{sessionId} (spec 9.2). The password comes
+  # Redis (Lettuce) holds the USSD sessions ussd:{mno}:{sessionId} (spec 9.2). The password comes
   # from Vault (secret/mw-ussd, spring.data.redis.password), never written here.
   data:
     redis:
-      host: ${VALKEY_HOST:valkey}
-      port: ${VALKEY_PORT:6379}
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
       timeout: 500ms
       connect-timeout: 500ms
       repositories:
@@ -184,7 +184,7 @@ management:
         enabled: true
       show-details: never
   health:
-    # Valkey is checked per step (fail fast, "service unavailable"), not by readiness.
+    # Redis is checked per step (fail fast, "service unavailable"), not by readiness.
     redis:
       enabled: false
     livenessstate:
@@ -248,7 +248,7 @@ mw:
   ussd:
     # Final status awaited this long before the menu ends with "being processed" (spec 9.2).
     sync-budget: ${MW_USSD_SYNC_BUDGET:8s}
-    # Session TTL in Valkey = MNO session timeout + this grace (spec 9.2).
+    # Session TTL in Redis = MNO session timeout + this grace (spec 9.2).
     session-grace: 30s
     default-language: bn
     max-invalid-attempts: 3

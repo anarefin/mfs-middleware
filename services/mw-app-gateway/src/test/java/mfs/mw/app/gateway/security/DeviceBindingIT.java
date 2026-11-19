@@ -23,7 +23,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import mfs.mw.app.gateway.TestInfrastructure;
-import mfs.mw.app.gateway.ValkeyInfrastructure;
+import mfs.mw.app.gateway.RedisInfrastructure;
 import mfs.mw.app.gateway.client.AuthClient;
 import mfs.mw.app.gateway.dto.BoundDevice;
 import mfs.mw.app.gateway.dto.LiveSession;
@@ -46,7 +46,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 /**
  * The device gate as a verifier (spec 9.1, 18.6; ticket 29, slimmed in ticket 68) against real
- * Valkey (device key cache, session confirmations, nonces): signed submits, replays, tampered or
+ * Redis (device key cache, session confirmations, nonces): signed submits, replays, tampered or
  * re-encoded bodies, unbound devices, devices of another wallet and missing sessions. mw-auth (the
  * owner of bindings and sessions, {@link AuthClient}) is a stub holding the bound devices and live
  * sessions of each test; the binding itself is tested in mw-auth. The transaction service is a stub
@@ -57,11 +57,11 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
       "mw.app-gateway.device-binding.enabled=true",
       "mw.app-gateway.consumers.enabled=false",
       "mw.outbox.relay.enabled=false",
-      // the shared Testcontainers Valkey; the shipped 500 ms is for production
+      // the shared Testcontainers Redis; the shipped 500 ms is for production
       "spring.data.redis.timeout=3s"
     })
 @AutoConfigureMockMvc
-@Import({TestInfrastructure.class, ValkeyInfrastructure.class})
+@Import({TestInfrastructure.class, RedisInfrastructure.class})
 class DeviceBindingIT {
 
   static final String TXN_ID = "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d";

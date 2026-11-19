@@ -22,7 +22,7 @@ import org.springframework.stereotype.Service;
  * while the lock is held is answered from the lock, without a claim attempt: same content is a
  * duplicate of the holder's txnId, other content a conflict. The primary key of
  * {@code txn.idempotency} stays the final guarantee: a redelivered record (same txnId), an
- * unreadable lock value and an unavailable Valkey all proceed to the claim. Valkey trouble never
+ * unreadable lock value and an unavailable Redis all proceed to the claim. Redis trouble never
  * blocks or fails a request; it is logged {@code txn.idempotency.lock_unavailable} and counted
  * ({@code mw.txn.idempotency.lock.unavailable}).
  */
@@ -60,7 +60,7 @@ public class IdempotencyGate {
     this.ttl = ttl;
     this.unavailable =
         Counter.builder("mw.txn.idempotency.lock.unavailable")
-            .description("Requests that fell back to the PostgreSQL primary key because the Valkey lock was unavailable")
+            .description("Requests that fell back to the PostgreSQL primary key because the Redis lock was unavailable")
             .register(meters);
   }
 
@@ -107,7 +107,7 @@ public class IdempotencyGate {
     return new Decision.Proceed();
   }
 
-  /** The Valkey key of a scope: a SHA-256 of it, so no MSISDN or key text lands in Valkey. */
+  /** The Redis key of a scope: a SHA-256 of it, so no MSISDN or key text lands in Redis. */
   String key(String channel, String initiatorId, String idempotencyKey) {
     try {
       MessageDigest sha = MessageDigest.getInstance("SHA-256");

@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
  *       /internal/v1/devices/{id}}, cached {@code devkey:{deviceId}} 5 min); the device must be
  *       bound to the token's wallet (MW-AUTH-003).
  *   <li>Signed request (submit): timestamp within the skew (MW-AUTH-005), signature by the bound key
- *       (MW-AUTH-004), nonce never seen for this device (Valkey, MW-AUTH-006).
+ *       (MW-AUTH-004), nonce never seen for this device (Redis, MW-AUTH-006).
  *   <li>Session: mw-auth's {@code sess:{walletId}:{deviceId}} must be live (MW-AUTH-007); asking
  *       ({@code GET /internal/v1/sessions/{walletId}/{deviceId}}) extends it and answers the
  *       fingerprint of the device's current key. A confirmation (with that fingerprint) is reused for
@@ -41,7 +41,7 @@ import org.springframework.stereotype.Service;
  *       key replacement stops the old key within the confirmation TTL, not the 5 min key cache.
  * </ul>
  *
- * mw-auth or Valkey unreachable: 503 MW-SYS-012 (fail closed).
+ * mw-auth or Redis unreachable: 503 MW-SYS-012 (fail closed).
  */
 @Service
 public class DeviceVerifier {

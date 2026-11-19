@@ -27,7 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Intake of {@code mw.txn.request.v1} (spec 7.3): takes the Valkey idempotency lock
+ * Intake of {@code mw.txn.request.v1} (spec 7.3): takes the Redis idempotency lock
  * ({@link IdempotencyGate}, rule 4), records the idempotency key, creates the transaction in
  * RECEIVED and starts its flow. Everything happens in one database transaction
  * together with the outbox rows, so a request is either fully accepted or not at all.
@@ -107,7 +107,7 @@ public class TransactionService {
       }
     }
 
-    // 7.3 rule 4: the Valkey lock absorbs a concurrent double-tap before the claim.
+    // 7.3 rule 4: the Redis lock absorbs a concurrent double-tap before the claim.
     switch (gate.enter(req.channel(), req.initiator().id(), req.idempotencyKey(), txnId, hash)) {
       case IdempotencyGate.Decision.Duplicate d -> {
         answerDuplicate(req, d.holderTxnId(), replyTo, now, "lock");
@@ -157,7 +157,7 @@ public class TransactionService {
 
   /**
    * Same key and content as {@code storedTxnId}: its current status, or RECEIVED while the first
-   * request (holding the Valkey lock) has not committed its row yet.
+   * request (holding the Redis lock) has not committed its row yet.
    */
   private void answerDuplicate(TxnRequest req, UUID storedTxnId, String replyTo, Instant now, String source) {
     StatusMessage status =

@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 /**
  * A device-signed request (spec 9.1, 18.6): the device id's form (MW-AUTH-003), the timestamp within
  * the skew (MW-AUTH-005), the signature by {@code key} (MW-AUTH-004) and a nonce never seen for the
- * device (MW-AUTH-006, Valkey {@code nonce:{deviceId}:{nonce}}, shared with mw-app-gateway).
+ * device (MW-AUTH-006, Redis {@code nonce:{deviceId}:{nonce}}, shared with mw-app-gateway).
  */
 @Service
 public class SignedRequestCheck {

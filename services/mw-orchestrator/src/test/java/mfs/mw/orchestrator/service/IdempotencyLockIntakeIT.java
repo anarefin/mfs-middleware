@@ -25,8 +25,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Intake with the Valkey idempotency lock (spec 7.3 rule 4, ticket 50) against real PostgreSQL;
- * the lock itself is an in-memory stand-in that can be switched off like an unreachable Valkey.
+ * Intake with the Redis idempotency lock (spec 7.3 rule 4, ticket 50) against real PostgreSQL;
+ * the lock itself is an in-memory stand-in that can be switched off like an unreachable Redis.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Import({TestInfrastructure.class, IdempotencyLockIntakeIT.Lock.class})
@@ -151,7 +151,7 @@ class IdempotencyLockIntakeIT {
   }
 
   @Test
-  void withValkeyDownRequestsStillSucceedOnThePrimaryKey() {
+  void withRedisDownRequestsStillSucceedOnThePrimaryKey() {
     lock.down = true;
     TxnRequest first = TestData.p2p(TestData.txnId(), "key-lock-4", 5_000);
     TxnRequest second = TestData.p2p(TestData.txnId(), "key-lock-4", 5_000);

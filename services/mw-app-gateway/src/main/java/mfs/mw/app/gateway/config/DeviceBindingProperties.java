@@ -24,7 +24,7 @@ import org.springframework.validation.annotation.Validated;
 public record DeviceBindingProperties(
     boolean enabled, @NotNull Duration clockSkew, @NotNull Duration deviceKeyTtl, @NotNull Duration sessionCacheTtl) {
 
-  /** Kept on top of the 2x skew window: clock steps between instances and Valkey expiry jitter. */
+  /** Kept on top of the 2x skew window: clock steps between instances and Redis expiry jitter. */
   public static final Duration NONCE_TTL_MARGIN = Duration.ofSeconds(30);
 
   /**

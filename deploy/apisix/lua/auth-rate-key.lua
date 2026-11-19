@@ -2,7 +2,7 @@
 -- access phase. These requests carry no verified token (they prove the wallet themselves with the
 -- device signature, OTP and PIN), so the counter is keyed on the wallet the request names: the
 -- msisdn of the JSON body (OTP, binding, login), canonicalised 8801X... / +8801X... to 01X... and
--- hashed: ctx.var.mw_auth_key = "msisdn:<sha256 hex>", so the Valkey key never holds the MSISDN.
+-- hashed: ctx.var.mw_auth_key = "msisdn:<sha256 hex>", so the Redis key never holds the MSISDN.
 -- Without one (refresh, logout, first PIN) the key is "sub:<sub>" of a bearer token when there is
 -- one (not verified here: mw-auth verifies it; a forged sub only moves the caller to another
 -- counter, and the per-address limit-req still holds), else unset and limit-count counts per source

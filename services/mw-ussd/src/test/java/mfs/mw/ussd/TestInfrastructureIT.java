@@ -10,7 +10,7 @@ import java.sql.Statement;
 import org.junit.jupiter.api.Test;
 
 /**
- * The test containers (TestInfrastructure): one PostgreSQL, one Kafka and one Valkey per test
+ * The test containers (TestInfrastructure): one PostgreSQL, one Kafka and one Redis per test
  * JVM, never reused, and an empty database of its own for every Spring context. No Spring context
  * here: the database a context would get is created directly.
  */
@@ -23,8 +23,8 @@ class TestInfrastructureIT {
     assertThat(TestInfrastructure.KAFKA.isShouldBeReused()).isFalse();
     assertThat(TestInfrastructure.POSTGRES.isRunning()).isTrue();
     assertThat(TestInfrastructure.KAFKA.isRunning()).isTrue();
-    assertThat(TestInfrastructure.VALKEY.isShouldBeReused()).isFalse();
-    assertThat(TestInfrastructure.VALKEY.isRunning()).isTrue();
+    assertThat(TestInfrastructure.REDIS.isShouldBeReused()).isFalse();
+    assertThat(TestInfrastructure.REDIS.isRunning()).isTrue();
   }
 
   @Test

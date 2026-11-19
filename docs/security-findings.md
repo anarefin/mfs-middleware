@@ -100,7 +100,7 @@ Decisions for the rest:
   the MVP; production provisions roles and AppRoles outside Compose.
 - Third-party platform images keep their image user: APISIX `apisix`, Kafka `appuser`,
   Keycloak `1000`, Vault `vault`, GreenMail `greenmail` (all non-root) with a writable root
-  FS, because they write state or generated config into it at start; PostgreSQL and Valkey start
+  FS, because they write state or generated config into it at start; PostgreSQL and Redis start
   as root and drop to their own user in the entrypoint, etcd runs as root (internal `etcd`
   network only); those three and the platform one-shots already run read-only. Accepted for the
   MVP; read-only roots for APISIX, Kafka, Keycloak, Vault and GreenMail (tmpfs for their

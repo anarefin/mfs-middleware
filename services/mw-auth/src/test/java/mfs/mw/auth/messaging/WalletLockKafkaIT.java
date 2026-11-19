@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import mfs.mw.auth.TestInfrastructure;
-import mfs.mw.auth.ValkeyInfrastructure;
+import mfs.mw.auth.RedisInfrastructure;
 import mfs.mw.auth.client.CryptoClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {"mw.auth.consumer.enabled=true", "mw.kafka.retry.delays=1s,1s,1s"})
-@Import({TestInfrastructure.class, ValkeyInfrastructure.class, AuthConsumedTopics.class})
+@Import({TestInfrastructure.class, RedisInfrastructure.class, AuthConsumedTopics.class})
 @DirtiesContext
 class WalletLockKafkaIT {
 
@@ -39,7 +39,7 @@ class WalletLockKafkaIT {
 
   private final EventPublisher publisher;
   private final JdbcTemplate jdbc;
-  private final StringRedisTemplate valkey;
+  private final StringRedisTemplate redis;
 
   @MockitoBean CryptoClient crypto;
 
@@ -47,10 +47,10 @@ class WalletLockKafkaIT {
   String deviceId;
 
   @Autowired
-  WalletLockKafkaIT(EventPublisher publisher, JdbcTemplate jdbc, StringRedisTemplate valkey) {
+  WalletLockKafkaIT(EventPublisher publisher, JdbcTemplate jdbc, StringRedisTemplate redis) {
     this.publisher = publisher;
     this.jdbc = jdbc;
-    this.valkey = valkey;
+    this.redis = redis;
   }
 
   @BeforeEach
@@ -63,7 +63,7 @@ class WalletLockKafkaIT {
         deviceId, wallet);
     jdbc.update("insert into refresh_token (token_hash, family, wallet_id, device_id, expires_at)"
         + " values (?, ?, ?, ?, now() + interval '1 day')", "rt-" + wallet, UUID.randomUUID(), wallet, deviceId);
-    valkey.opsForValue().set("sess:" + wallet + ":" + deviceId, "300", Duration.ofMinutes(5));
+    redis.opsForValue().set("sess:" + wallet + ":" + deviceId, "300", Duration.ofMinutes(5));
   }
 
   private String command(String action, String walletId) {
@@ -119,7 +119,7 @@ class WalletLockKafkaIT {
     await(() -> processed("mw-auth.wallet-lock", lock));
     assertThat(locks("ADMIN")).isEqualTo(1);
     assertThat(revoked()).isTrue();
-    assertThat(valkey.hasKey("sess:" + wallet + ":" + deviceId)).isFalse();
+    assertThat(redis.hasKey("sess:" + wallet + ":" + deviceId)).isFalse();
     assertThat(jdbc.queryForObject("select count(*) from outbox where topic = 'mw.audit.event.v1'"
         + " and payload->>'action' = 'auth.wallet.locked' and payload->'actor'->>'id' = 'ops-checker01'", Integer.class))
         .isPositive();

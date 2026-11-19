@@ -10,7 +10,7 @@ import org.springframework.validation.annotation.Validated;
  * {@code mw.app-gateway.idempotent-replay.*}: the stored first 200 response per idempotency key
  * (FRS PLT-011, ticket 99; {@code service/IdempotentReplay}).
  *
- * @param enabled keeps and replays responses in Valkey/Redis; off in tests that are not about it
+ * @param enabled keeps and replays responses in Redis; off in tests that are not about it
  * @param ttl how long a response is kept: the orchestrator's idempotency TTL (72 h)
  */
 @Validated

@@ -30,7 +30,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `repository/MerchantNonceRepository`, table `checkout.merchant_nonce` V8): the signed `Date` must be less
   than 5 min away (`401 MW-AUTH-005`) and the signed `X-Nonce` (16-128 of `A-Z a-z 0-9 . _ -`) unused by the
   merchant within 10.5 min (`401 MW-AUTH-006`); APISIX requires `x-nonce` among the hmac-auth signed headers.
-  PostgreSQL, not Valkey/Redis (this service has none). `mw.checkout.replay-protection.enabled` (off in the
+  PostgreSQL, not Redis (this service has none). `mw.checkout.replay-protection.enabled` (off in the
   test config); `security/HmacReplayTest`, `repository/MerchantNonceRepositoryIT`. The session GET is not checked.
 - Hosted page API (`controller/HostedPageController`, `service/CheckoutPayService`), APISIX route
   `checkout-pay` (no login; the pay token, 32 random bytes base64url, is the bearer):

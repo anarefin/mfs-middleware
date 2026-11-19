@@ -3,7 +3,7 @@ package mfs.mw.orchestrator.client;
 import java.time.Duration;
 
 /**
- * A short-lived lock on an idempotency key (spec 7.3 rule 4): Valkey {@code SET key value NX PX
+ * A short-lived lock on an idempotency key (spec 7.3 rule 4): Redis {@code SET key value NX PX
  * ttl}. Never throws for an unreachable or slow server: that is {@link Result.Unavailable}.
  */
 public interface IdempotencyLock {
