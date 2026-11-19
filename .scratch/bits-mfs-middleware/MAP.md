@@ -69,3 +69,12 @@ Tickets: `.scratch/bits-mfs-middleware/issues/<NN>-<slug>.md`; run order + statu
 - Keycloak realms: `ops` (operators, MFA; admin API/UI), `services` (client-credentials for internal APIs), plus app/portal realms in `deploy/`.
 - Error envelope `{code,message,messageBn?,txnId?,correlationId,retryable,details[]}`, codes `MW-VAL/AUTH/IDEM/CORE/PTR/TMO/SYS-*`,
   built by each service's `exception/GlobalExceptionHandler`.
+
+## FRS run 89-138 (planned 2026-11-19; tickets written, nothing built)
+- Source: `spec/FRS-Upay-Middleware.md`; plan `~/.claude/plans/we-have-to-implement-harmonic-puzzle.md`; order in `issues/DEPENDENCIES.md`.
+- Decisions: Redis (not Valkey), HashiCorp Vault (not OpenBao), mw-auth keeps app tokens (D21), repo names kept and mapped
+  to FRS in `docs/frs-traceability.md` (ticket 89), core wallet over REST (WAL-01..13, assertion header, events still on
+  Kafka), one service per party, compose budget 12 GB, unified `/mock-control` API in mw-simulators and mw-core-mock.
+- New services: `mw-adapter-card`, `-remit`, `-atm`, `-interop`, `-merchant` (Camel + copied `partner/` engine);
+  `mw-compliance`, `mw-recon`, `mw-data-export` (no Camel; sshj/RestClient in `client/`). Routing is a module in mw-orchestrator.
+- Ticket 88 is superseded by 126/127 (FRS recon class names).

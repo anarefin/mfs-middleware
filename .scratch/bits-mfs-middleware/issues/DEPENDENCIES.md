@@ -57,5 +57,64 @@
 85-soap-partner-kamelet                     84                done     ~49m     see 0926e161,0fd772a6
 86-sftp-batch-partner-kamelets              84                done     ~28m     see 1ef30ff6
 87-auth-scheme-kamelets                     84                done     ~40m     see b4d2b1c1,7677e0fa
-88-mw-recon-matching                        86                open     (written in run 77-87, not built: user 2026-11-18)
+88-mw-recon-matching                        86                superseded by 126,127 (FRS run, 2026-11-19)
 # --- Run 77-87 gate DONE (2026-11-18, 375bee59): review fix pass ccb8a6a5 (incl. 84 security S1/S2); gate fixes e74c2cfa (partner HttpClient auto-retry resent a PAY after 503) and c17e72f6 (admin-ui forms lost input on a refused submit). clean build (no slow-wait, user) green 3m53s; smoke 50/50; edge-test 53/53; API suite 717 assertions, 1 fail fixed by e74c2cfa (re-run 05/06/08 green); ui-e2e 18/18 after fix; tester-e2e 12/12 (after rebuilding the stale test-console image); log-scan clean. NOT RUN: slow-wait tests, perf, chaos. Open: partner audit dropped when txnId is null (bill fetch, dry-run; also on main); Next 16.4.1 security check fails local pnpm build.
+# --- Run 89-138 (planned 2026-11-19): FRS gap closure, spec/FRS-Upay-Middleware.md (plan we-have-to-implement-harmonic-puzzle). Mocks only. Decisions: Redis, HashiCorp Vault, mw-auth keeps app tokens, repo names + FRS map, core wallet over REST (+assertion, events on Kafka), one service per party (12 GB budget), unified /mock-control. Row order = run order. Tickets written only; no implementation started (user).
+# --- M7 Foundation (FRS phase 1)
+89-frs-decisions-adr-spec                   —                 open
+90-redis-swap                               89                open
+91-vault-swap                               89                open
+92-contracts-canonical-additions            89                open
+93-core-mock-rest-api                       92                open
+94-core-mock-model                          93                open
+95-orchestrator-core-rest-client            93                open
+97-adapter-reverse-health                   89                open
+96-orchestrator-saga-frs                    95,97             open
+98-routing-module                           96,97             open
+99-idempotency-duplicates-replay            89                open
+100-edge-client-registry                    90,91,99          open
+101-openapi-swagger-wsdl                    89                open
+102-mock-control-engine                     89                open
+103-mock-control-core-and-reset             102,94            open
+104-frs-e2e-harness                         96,98,103         open
+# --- M7 gate: P2P T1-T12 via the app API; clean build; fresh-stack API suite
+105-app-preview-confirm                     95                open
+106-app-types-b2b                           94,105            open
+107-app-nonfinancial                        94,105            open
+108-app-soap-facade                         105               open
+109-ussd-frs                                94,105            open
+110-notify-push                             102               open
+111-notify-campaign-optout-log              110               open
+# --- M8 gate: UC-02..07 on app and USSD
+112-telco-four-ocs                          97,98,102         open
+113-biller-catalogue                        98                open
+114-bill-aggregators                        113,97,102        open
+115-mw-adapter-merchant                     97,102            open
+116-checkout-refund-list                    95,96             open
+# --- M9 gate: UC-08..12
+117-bank-avl-w2b                            97,98,102         open
+118-mw-adapter-card                         95,97,102         open
+119-mw-adapter-remit                        95,97,102         open
+120-mw-adapter-atm                          95,97,102         open
+# --- M10 gate: UC-13..17
+121-mw-adapter-interop                      92,97,102         open
+122-banglaqr                                121               open
+# --- M11 gate: UC-18, UC-19
+123-file-mocks                              102,94            open
+124-mw-compliance-ekyc                      94,102,106        open
+125-aml-feed-actions                        124,123,96        open
+126-mw-recon-matching                       123,95            open
+127-mw-recon-reports                        126               open
+128-mw-data-export                          123               open
+129-portal-bulk-sp                          95,116            open
+130-audit-frs                               97                open
+# --- M12 gate: UC-01, UC-20..22
+131-admin-partner-credentials               91,97             open
+132-admin-routing-billers-clients-ui        98,100,113        open
+133-admin-ussd-editor-templates             109,111           open
+134-admin-actions-compliance-recon-ui       125,127,111       open
+135-admin-monitoring-users-audit-mock       103,130           open
+136-developer-guide-sample-connector        114,131           open
+137-frs-e2e-completion                      104-129(flows)    open
+138-frs-acceptance-gate                     137               open
+# --- M13 gate: FRS 10.4 acceptance criteria 1-7

@@ -34,7 +34,7 @@ the core's ledger events. User decision 2026-11-18: adapters own the SFTP ingest
 
 **Blocked by:** 86
 
-**Status:** open
+**Status:** superseded by 126 and 127 (FRS run, 2026-11-19)
 
 - [ ] `ReconMatchingIT` (Testcontainers): a file with matched, partner-only, mw-only, status-mismatch and amount-mismatch lines gives the expected exceptions and one `mw.recon.result.v1`
 - [ ] A redelivered recon line or a re-sent file creates no duplicate exception (inbox)
