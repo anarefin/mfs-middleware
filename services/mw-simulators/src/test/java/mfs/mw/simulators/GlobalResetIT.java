@@ -97,6 +97,14 @@ class GlobalResetIT {
     assertThat(send("POST", "/mock-control/ocs/scenarios", "{\"behaviour\":\"TIMEOUT\"}").statusCode()).isEqualTo(201);
     assertThat(send("POST", "/mock-control/billagg/scenarios", "{\"behaviour\":\"HTTP_5XX\"}").statusCode()).isEqualTo(201);
     assertThat(send("PUT", "/mock-control/c2wbank/switch", "{\"state\":\"DOWN\"}").statusCode()).isEqualTo(200);
+    // the SMPP and HSM parties of ticket 102b are reset too
+    assertThat(send("POST", "/mock-control/smsc/scenarios",
+        "{\"operation\":\"submit\",\"behaviour\":\"BUSINESS_ERROR\",\"code\":\"0x58\"}").statusCode()).isEqualTo(201);
+    assertThat(send("POST", "/mock-control/ussdgw/scenarios",
+        "{\"operation\":\"enquire_link\",\"behaviour\":\"TIMEOUT\"}").statusCode()).isEqualTo(201);
+    assertThat(send("POST", "/mock-control/payshield/scenarios",
+        "{\"operation\":\"command\",\"behaviour\":\"BUSINESS_ERROR\",\"code\":\"15\"}").statusCode()).isEqualTo(201);
+    assertThat(send("PUT", "/mock-control/ussdgw/switch", "{\"state\":\"MAINTENANCE\"}").statusCode()).isEqualTo(200);
     assertThat(json.readTree(send("GET", "/mock-control/ocs/journal", null).body())).isNotEmpty();
 
     HttpResponse<String> res = send("POST", "/mock-control/reset", "{\"seedVersion\":\"v1\"}");
