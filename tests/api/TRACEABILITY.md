@@ -221,5 +221,11 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 29 | [balance assertion] a wrong PIN on the app balance check is refused by mw-auth with MW-AUTH-040 | - |  | SEC-09 |
 | 29 | [balance] a core refusal of the balance check is 422 MW-CORE-WALLET_NOT_ACTIVE | - |  |
 | 29 | [balance history] a balance check is not in the wallet history | - |  | SEC-10 |
+| 36 | [p2p] the same payment under a new key within the window asks to confirm (MW-VAL-024); the confirmed resend completes | - |  | FR-05 |
+| 36 | [p2p] another amount within the window is no duplicate | - |  | FR-05 |
+| 36 | [p2p reversal] a key answered 200 replays that very body after a reversal; other content is 409 MW-IDEM-001 | - |  | FR-05 |
+| 36 | [checkout edge] a signed session create replayed with its nonce is refused (MW-AUTH-006) | - |  |
+| 36 | [checkout edge] a signed session create dated 6 minutes ago is refused | - |  |
+| 36 | [callback edge] a partner callback replayed with its nonce or a stale timestamp is refused | - |  |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

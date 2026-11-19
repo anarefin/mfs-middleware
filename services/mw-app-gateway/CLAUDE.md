@@ -180,6 +180,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `MW-IDEM-001` 409, `MW-VAL-*` 400, `MW-TMO-*` 504) and txnId; duplicate still running or no
   answer in time `202 {txnId, status: PROCESSING}` + `Location`. A duplicate answer carries the
   STORED txnId.
+- Stored response (ticket 99, FRS PLT-011; `service/IdempotentReplay`, `repository/IdempotentResponseStore`,
+  `config/IdempotentReplayProperties` `mw.app-gateway.idempotent-replay.{enabled, ttl 72h}`): the first 200
+  answer under a key is kept in Valkey `idemresp:<sha256(channel, wallet, key)>` (`SET NX EX`, value request
+  hash + the view's JSON); a repeat with the same content (type, parties, amount, partner, attributes; not
+  the PIN ciphertext, locale or `confirmDuplicate`) gets that body again byte for byte before mw-auth or
+  the orchestrator is asked, even after a reversal; other content `409 MW-IDEM-001`. 202 / FAILED /
+  REJECTED answers are not stored (the orchestrator answers them). Valkey trouble: logged
+  `txn.idempotent.store_unavailable`, the orchestrator answers. Off in the test config;
+  `service/IdempotentReplayIT` (Kafka + Valkey). The body field `confirmDuplicate` (app.v1 1.7.0) is the user's
+  yes to `400 MW-VAL-024` (orchestrator business duplicate) and is forwarded on `mw.txn.request.v1`.
 - Status view (`GET`): table `app_transaction` (own schema `app_gateway`), the latest status of
   every app-channel transaction, kept by `messaging/StatusProjectionListener` (shared group
   `mw-app-gateway`, retry topics + DLQ) and seeded with RECEIVED at submit. A duplicate answer is

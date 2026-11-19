@@ -41,6 +41,7 @@ class TransactionServiceTest {
   final BillerService billers = mock(BillerService.class);
   static final String ASSERTION = "eyJhbGciOiJFUzI1NiJ9.eyJqdGkiOiJ4In0.c2ln";
   final mfs.mw.app.gateway.client.AuthClient auth = mock(mfs.mw.app.gateway.client.AuthClient.class);
+  final IdempotentReplay replay = mock(IdempotentReplay.class);
 
   {
     org.mockito.Mockito.when(auth.authorise(any()))
@@ -59,7 +60,7 @@ class TransactionServiceTest {
                   "CASH_OUT", List.of("CUSTOMER"),
                   "MERCHANT_PAY", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth);
+          billers, auth, replay);
 
   static TransactionRequest body(String txnType) {
     return body(txnType, null);
@@ -94,7 +95,7 @@ class TransactionServiceTest {
               List.of("P2P", "TOPUP"), List.of("reference"), new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "TOPUP", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth);
+          billers, auth, replay);
 
   static TransactionRequest flow(String txnType, String creditType, TransactionRequest.Partner partner) {
     return new TransactionRequest(
@@ -145,7 +146,7 @@ class TransactionServiceTest {
               new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "BILL_PAY", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth);
+          billers, auth, replay);
 
   static TransactionRequest bill(String creditType, String id, TransactionRequest.Partner partner) {
     return new TransactionRequest(
@@ -207,7 +208,7 @@ class TransactionServiceTest {
               new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "ADD_MONEY_BANK", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth);
+          billers, auth, replay);
 
   static TransactionRequest addMoney(
       TransactionRequest.CounterParty credit, TransactionRequest.BankAccount debit, TransactionRequest.Partner partner) {
@@ -264,7 +265,7 @@ class TransactionServiceTest {
                 new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
                 Map.of("TOPUP", List.of("CUSTOMER"))),
             Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-            billers, auth);
+            billers, auth, replay);
     TransactionRequest topup =
         new TransactionRequest(
             "TOPUP", new TransactionRequest.CounterParty("MSISDN", "01711000002"), new Amount(100L, "BDT"),

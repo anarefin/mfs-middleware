@@ -68,6 +68,24 @@ class TxnRequestMapperTest {
     return tree;
   }
 
+  /** Ticket 99: the confirmed resend of a suspected duplicate says so; nothing else carries it. */
+  @Test
+  void aConfirmedDuplicateCarriesTheFlag() {
+    UssdSession s =
+        new UssdSession("robi", "sess-9", "01712345678", "main", 1, "en", "p2p.send", List.of("main:1"),
+            Map.of(FlowRequest.CONFIRM_DUPLICATE, "true"), 0, List.of(), false, NOW);
+    FlowRequest f =
+        new FlowRequest("P2P", s, "main:1", Map.of("creditParty", "01812345678", "amount", "500.50"),
+            new EncryptedPin("PIN_TRANSPORT.v1", "Y2lwaGVy"));
+
+    JsonNode tree = JSON.valueToTree(
+        new TxnRequestMapper().toRequest(f, "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d", "k".repeat(64), "corr-1", NOW));
+
+    assertThat(tree.path("confirmDuplicate").asBoolean()).isTrue();
+    assertThat(valid("CASH_OUT", Map.of("creditParty", "01812345678", "amount", "500.00")).has("confirmDuplicate"))
+        .isFalse();
+  }
+
   @Test
   void cashOutPaysTheAgentsWallet() {
     JsonNode tree = valid("CASH_OUT", Map.of("creditParty", "01812345678", "amount", "500.00"));

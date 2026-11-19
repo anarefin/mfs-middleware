@@ -1,6 +1,9 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
 mw:
   checkout:
+    # Off in tests not about it (they send no Date/X-Nonce); HmacReplayTest and MerchantNonceRepositoryIT cover it.
+    replay-protection:
+      enabled: false
     # Off by default in tests: reply and projection consumers left running in a cached context
     # are not needed by most tests. CheckoutFlowIT switches them on.
     consumers:

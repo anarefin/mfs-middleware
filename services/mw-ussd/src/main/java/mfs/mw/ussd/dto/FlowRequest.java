@@ -22,6 +22,11 @@ public record FlowRequest(
   public static final String PARTNER_ID = "partnerId";
   /** TOPUP: the operator's product ({@code PREPAID}). */
   public static final String PRODUCT_CODE = "productCode";
+  /**
+   * Session input (not a mapping field): the user confirmed a suspected business duplicate
+   * (ticket 99), so the request carries {@code confirmDuplicate}.
+   */
+  public static final String CONFIRM_DUPLICATE = "_confirmDuplicate";
   /** BILL_PAY: the biller. */
   public static final String BILLER_CODE = "billerCode";
 

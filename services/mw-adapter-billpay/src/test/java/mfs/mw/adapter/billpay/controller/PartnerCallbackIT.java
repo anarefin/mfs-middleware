@@ -57,13 +57,15 @@ class PartnerCallbackIT {
 
   Answer post(String path, String body, String secret, long epochSeconds) throws Exception {
     String ts = Long.toString(epochSeconds);
-    String sig = HmacSha256AuthScheme.sign(secret, "POST", path, ts, body.getBytes(StandardCharsets.UTF_8));
+    String nonce = java.util.UUID.randomUUID().toString();
+    String sig = HmacSha256AuthScheme.sign(secret, "POST", path, ts, nonce, body.getBytes(StandardCharsets.UTF_8));
     HttpResponse<String> r =
         http.send(
             HttpRequest.newBuilder(URI.create(base + path))
                 .header("Content-Type", "application/json")
                 .header("X-Signature", sig)
                 .header("X-Timestamp", ts)
+                .header("X-Nonce", nonce)
                 .header("X-Correlation-Id", "corr-cb-1")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build(),

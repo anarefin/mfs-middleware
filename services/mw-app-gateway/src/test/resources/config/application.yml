@@ -9,6 +9,9 @@ mw:
     # DeviceBindingIT switches it on with real Valkey.
     device-binding:
       enabled: false
+    # Off by default in tests that are not about it (no Valkey); IdempotentReplayIT switches it on.
+    idempotent-replay:
+      enabled: false
   outbox:
     relay:
       # Off by default in tests: Spring caches test contexts, and a relay left running in one

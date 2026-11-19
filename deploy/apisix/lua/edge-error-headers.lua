@@ -21,6 +21,12 @@ return function(conf, ctx)
   if status < 400 then
     return
   end
+  -- FRS PLT-004 (ticket 99): every 429 says when to come back, the edge's own (limit-count's
+  -- window reset, else 1 s for limit-req) and an upstream's that set none.
+  if status == 429 and ngx.header["Retry-After"] == nil then
+    local reset = tonumber(ngx.header["X-RateLimit-Reset"])
+    ngx.header["Retry-After"] = tostring((reset and reset > 0) and math.ceil(reset) or 1)
+  end
   local upstream = ngx.var.upstream_status
   local ctype = ngx.header["Content-Type"]
   if upstream and upstream ~= "" and type(ctype) == "string"

@@ -211,6 +211,14 @@ mw:
     idempotency-lock:
       enabled: ${MW_IDEMPOTENCY_LOCK_ENABLED:true}
       ttl: 60s
+    # Business-duplicate window (FRS PLT-013, ticket 99; service/DuplicateGuard): the same initiator,
+    # txnType, parties and amount under another key within the window; app/USSD channels get the
+    # confirmable MW-VAL-024, API clients MW-VAL-025. Same Valkey/Redis as the lock (off with it).
+    duplicate-guard:
+      enabled: ${MW_DUPLICATE_GUARD_ENABLED:true}
+      window: ${MW_DUPLICATE_WINDOW:60s}
+      prompt-channels: CUSTOMER_APP,AGENT_APP,MERCHANT_APP,DISTRIBUTOR_APP,DSO_APP,USSD
+      exempt-channels: SYSTEM
     # Reversal (ticket 19, 7.2): REVERSING resends every retry-timeout, MANUAL_REVIEW after this.
     reversing-timeout: 60s
     # Channels that may send a REVERSAL request (operations; mw-admin-api publishes as SYSTEM).

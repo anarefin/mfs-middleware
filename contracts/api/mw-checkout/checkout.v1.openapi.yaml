@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits web checkout (mw-checkout)
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Web checkout (spec 9.3, ticket 31). Two APIs:
 
@@ -70,8 +70,24 @@ paths:
     post:
       operationId: createSession
       summary: Create a checkout session for one merchant order
+      description: >-
+        Replay protection (ticket 99, FRS PLT-008): the request signs `Date` and `X-Nonce` (APISIX
+        hmac-auth, `headers="@request-target date digest x-nonce"`); a `Date` 5 minutes or more away
+        is 401 MW-AUTH-005, a nonce this merchant already used (within 10.5 minutes) 401 MW-AUTH-006.
+        A resend of a lost request takes a fresh nonce; the order's idempotency (one session per
+        orderId) answers it.
       parameters:
         - $ref: "#/components/parameters/MerchantId"
+        - name: Date
+          in: header
+          required: true
+          description: RFC 7231 GMT date, signed; less than 5 minutes from the middleware's clock.
+          schema: { type: string }
+        - name: X-Nonce
+          in: header
+          required: true
+          description: Used once per merchant, signed (ticket 99).
+          schema: { type: string, pattern: "^[A-Za-z0-9._-]{16,128}$" }
       requestBody:
         required: true
         content:

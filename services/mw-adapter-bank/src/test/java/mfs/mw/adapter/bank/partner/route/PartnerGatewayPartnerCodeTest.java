@@ -67,7 +67,7 @@ class PartnerGatewayPartnerCodeTest {
           .thenReturn(new PartnerResponse.NotSent(PartnerResponse.NotSentReason.DISABLED));
       PartnerGateway gateway = new PartnerGateway(
           mock(PartnerConfigStore.class), producer, JsonMapper.builder().build(), results, new SimpleMeterRegistry(),
-          CircuitBreakerRegistry.ofDefaults(), Clock.systemUTC());
+          CircuitBreakerRegistry.ofDefaults(), Clock.systemUTC(), null);
 
       gateway.dryRun(RUNTIME, new PartnerCall("billagg", "INQUIRY", "BILL_PAY", null, null, "BITS1", input));
 

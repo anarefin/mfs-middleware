@@ -70,10 +70,19 @@ Edge error codes:
 | 403 | `MW-AUTH-002` | no | `openid-connect` scope/audience checks, `consumer-restriction` (another MNO's credential), `ip-restriction` |
 | 404 | `MW-VAL-003` | no | no route |
 | 413 | `MW-VAL-BODY_TOO_LARGE` | no | `client-control` `max_body_size` |
-| 429 | `MW-SYS-RATE_LIMITED` | yes | `limit-count` |
+| 429 | `MW-SYS-RATE_LIMITED` | yes | `limit-count`, `limit-req`; always with `Retry-After` (below) |
 | 502, 503 | `MW-SYS-UPSTREAM_UNAVAILABLE` | yes | upstream unreachable |
 | 504 | `MW-TMO-UPSTREAM_TIMEOUT` | yes | upstream timeout: outcome unknown, check the status first |
 | other 5xx / 4xx | `MW-SYS-001` / `MW-VAL-002` | yes / no | anything else |
+
+Rate limits (ticket 99, FRS PLT-004): every 429 carries `Retry-After` in whole seconds, set by the
+edge header filter (`lua/edge-error-headers.lua`): limit-count's `X-RateLimit-Reset` (seconds to the
+window's end), else 1 (limit-req), also on an upstream's own 429 that set none. A bucket is per
+client and API: every limited route counts in its own `group` (the API) and keys the counter by a
+per-client variable (`consumer_name`, `mw_consumer`, `mw_auth_key`, `mw_ussd_msisdn`, or
+`remote_addr` where there is no consumer); `scripts/test/test_apisix_edge.sh` refuses a shared group or
+another key. The window is fixed per group (limit-count); token-bucket quotas per registered client are
+ticket 100.
 
 Route `app-v1` (`/app/v1/*`), in plugin order:
 
@@ -148,6 +157,8 @@ Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, tick
 4. No `hmac-auth`: the adapter verifies the partner's `hmac-sha256` signature with the secret in
    Vault and answers 401 `MW-AUTH-001` itself (decision in `services/mw-adapter-billpay/CLAUDE.md`).
    No `request-validation`: the aggregator's wire format is partner-specific, not a contract.
+   Replay protection (ticket 99, FRS PLT-008) is the adapter's too: a callback signs `X-Nonce`
+   besides `X-Timestamp` (within 300 s); a reused nonce is 401 like a bad signature.
 
 Route `partner-c2wbank-callback` (`/partner/c2wbank/callback/*`, POST only, ticket 23) ->
 `mw-adapter-bank:8080`: the same four rules (own `limit-count` group
@@ -213,10 +224,15 @@ secret `CHECKOUT_DEMO_MERCHANT_SECRET`, wallet 01911000001 Karim Traders), `merc
 Fashion House) take their secrets from the generated `.env` (each also synced to `secret/mw-checkout` as
 that merchant's signing secret) and exist only with `MW_E2E_ROUTES=1`. A signed request
 (APISIX 3.x `hmac-auth`): `Date: <RFC 7231 GMT>`, `Digest: SHA-256=<base64(sha256(body))>`,
-`Authorization: Signature keyId="merchant-demo",algorithm="hmac-sha256",headers="@request-target
-date digest",signature="<base64(hmac-sha256(secret, signing string))>"`, signing string =
-`keyId\n<METHOD> <path?query>\ndate: <Date>\ndigest: <Digest>\n` (each header line `name: value`
-in the order of `headers`, every line ending in `\n`). `tests/api/lib.js` (`checkout.signed`) signs this way.
+`X-Nonce: <16-128 of A-Z a-z 0-9 . _ ->` (POST only, ticket 99), `Authorization: Signature
+keyId="merchant-demo",algorithm="hmac-sha256",headers="@request-target date digest x-nonce",
+signature="<base64(hmac-sha256(secret, signing string))>"`, signing string =
+`keyId\n<METHOD> <path?query>\ndate: <Date>\ndigest: <Digest>\nx-nonce: <X-Nonce>\n` (each header
+line `name: value` in the order of `headers`, every line ending in `\n`; a GET signs only
+`@request-target date`). `checkout-v1-sessions` requires `x-nonce` among the signed headers
+(`signed_headers`), and mw-checkout (`service/RequestReplayGuard`) refuses a `Date` 5 minutes or more
+away (401 `MW-AUTH-005`) and a nonce the merchant already used (401 `MW-AUTH-006`; FRS PLT-008).
+`tests/api/lib.js` (`checkout.signed`) and the test console (`crypto.ts` `checkoutHeaders`) sign this way.
 
 A new partner gets its own `partner-<id>-callback.json` (upstream: the owning adapter);
 `scripts/edge-test.sh` has the cases to copy (billagg and c2wbank both covered).

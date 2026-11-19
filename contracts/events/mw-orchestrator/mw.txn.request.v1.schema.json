@@ -26,6 +26,10 @@
       "description": "mw-auth's transaction authorisation assertion for this request (spec 18.7, D22), obtained by the channel with exactly this request's txnType, amount, debitParty, creditParty, idempotencyKey and channel (its txnHash); the orchestrator copies it with the idempotencyKey into ValidateTransaction, HoldFunds and PostTransfer. Every customer-authorised request carries one (the core refuses a transfer without it); bulk children and reversals carry none. No PIN or PIN ciphertext ever travels on this topic (the core PIN scheme M11 was removed in ticket 72)."
     },
     "requestedAt": { "type": "string", "format": "date-time" },
+    "confirmDuplicate": {
+      "type": "boolean",
+      "description": "Ticket 99 (FRS PLT-013): the app or USSD user confirmed a suspected business duplicate (MW-VAL-024: same initiator, txnType, parties and amount under another idempotency key within the window). Honoured for app and USSD channels only; an API client's duplicate is refused MW-VAL-025 whatever this says. Not part of the idempotency request hash."
+    },
     "locale": { "$ref": "../../common/defs.v1.schema.json#/$defs/Locale" },
     "metadata": {
       "$ref": "../../common/defs.v1.schema.json#/$defs/StringMap",

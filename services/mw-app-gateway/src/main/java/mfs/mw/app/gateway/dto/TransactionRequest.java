@@ -27,7 +27,21 @@ public record TransactionRequest(
     @Pattern(regexp = "bn|en") String locale,
     @Size(max = 20) Map<@Size(max = 64) String, @Size(max = 256) String> attributes,
     @Valid Partner partner,
-    @Valid BankAccount debitParty) {
+    @Valid BankAccount debitParty,
+    Boolean confirmDuplicate) {
+
+  /** A request without the duplicate confirmation (ticket 99). */
+  public TransactionRequest(
+      String txnType,
+      CounterParty creditParty,
+      Amount amount,
+      EncryptedPin encryptedPin,
+      String locale,
+      Map<String, String> attributes,
+      Partner partner,
+      BankAccount debitParty) {
+    this(txnType, creditParty, amount, encryptedPin, locale, attributes, partner, debitParty, null);
+  }
 
   /** A biller code (upper case, digits, underscore). */
   public static final String BILLER_CODE = "[A-Z0-9_]{1,32}";

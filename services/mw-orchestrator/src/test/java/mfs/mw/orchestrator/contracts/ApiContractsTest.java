@@ -119,6 +119,8 @@ class ApiContractsTest {
         .validate(body(new mfs.mw.orchestrator.dto.DlqRecord(TestData.txnId(), "mw.txn.request.v1.mw-orchestrator.dlq", true)))).isEmpty();
     assertThat(OpenApiSchemas.component(TEST_API, "TxnRequestHandled")
         .validate(body(new mfs.mw.orchestrator.dto.TxnRequestHandled("k", false)))).isNotEmpty();
+    assertThat(OpenApiSchemas.component(TEST_API, "DuplicateGuardWindow")
+        .validate(body(new mfs.mw.orchestrator.dto.DuplicateGuardWindow(60)))).isEmpty();
   }
 
   /** Guards the helper: a body that breaks the schema is reported. */

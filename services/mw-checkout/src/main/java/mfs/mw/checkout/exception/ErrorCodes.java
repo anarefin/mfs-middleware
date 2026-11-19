@@ -22,6 +22,10 @@ public final class ErrorCodes {
 
   /** No authenticated merchant on a merchant API call (APISIX hmac-auth did not run): 401. */
   public static final String AUTH_NO_MERCHANT = "MW-AUTH-001";
+  /** Ticket 99: the signed Date is missing or 5 minutes or more away: 401. */
+  public static final String AUTH_STALE_REQUEST = "MW-AUTH-005";
+  /** Ticket 99: the signed X-Nonce is missing, malformed or was used by this merchant: 401. */
+  public static final String AUTH_NONCE_REUSED = "MW-AUTH-006";
   /** The APISIX consumer is not a configured checkout merchant: 403. */
   public static final String AUTH_UNKNOWN_MERCHANT = "MW-AUTH-002";
   /**

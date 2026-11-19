@@ -81,7 +81,8 @@ public class TxnRequestMapper {
         s.language(),
         Map.of("ussdSessionId", s.sessionId(), "mno", s.mno()),
         null,
-        now);
+        now,
+        "true".equals(s.inputs().get(FlowRequest.CONFIRM_DUPLICATE)) ? Boolean.TRUE : null);
   }
 
   /**

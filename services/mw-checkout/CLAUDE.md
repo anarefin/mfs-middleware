@@ -25,6 +25,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   per (merchant, orderId): a repeat with the same amount returns it (200), another amount
   `409 MW-IDEM-002`. `GET /checkout/v1/sessions/{id}` -> `{status, amount, txnId, payer (masked),
   errorCode, ...}`; another merchant's session 404.
+- Replay protection (ticket 99, FRS PLT-008; `security/MerchantReplayInterceptor` registered by
+  `config/ReplayProtectionConfig` on `POST /checkout/v1/sessions`, `service/RequestReplayGuard`,
+  `repository/MerchantNonceRepository`, table `checkout.merchant_nonce` V8): the signed `Date` must be less
+  than 5 min away (`401 MW-AUTH-005`) and the signed `X-Nonce` (16-128 of `A-Z a-z 0-9 . _ -`) unused by the
+  merchant within 10.5 min (`401 MW-AUTH-006`); APISIX requires `x-nonce` among the hmac-auth signed headers.
+  PostgreSQL, not Valkey/Redis (this service has none). `mw.checkout.replay-protection.enabled` (off in the
+  test config); `security/HmacReplayTest`, `repository/MerchantNonceRepositoryIT`. The session GET is not checked.
 - Hosted page API (`controller/HostedPageController`, `service/CheckoutPayService`), APISIX route
   `checkout-pay` (no login; the pay token, 32 random bytes base64url, is the bearer):
   `GET /checkout/pay/v1/{token}` (merchant name, amount, status, masked wallet, `pinKey {keyId,

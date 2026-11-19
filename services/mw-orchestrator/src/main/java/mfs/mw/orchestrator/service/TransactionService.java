@@ -47,6 +47,7 @@ public class TransactionService {
   private final FlowRegistry flows;
   private final SagaEngine engine;
   private final IdempotencyGate gate;
+  private final DuplicateGuard duplicates;
   private final OrchestratorProperties properties;
   private final Clock clock;
 
@@ -58,6 +59,7 @@ public class TransactionService {
       FlowRegistry flows,
       SagaEngine engine,
       IdempotencyGate gate,
+      DuplicateGuard duplicates,
       OrchestratorProperties properties,
       Clock clock) {
     this.idempotency = idempotency;
@@ -67,6 +69,7 @@ public class TransactionService {
     this.flows = flows;
     this.engine = engine;
     this.gate = gate;
+    this.duplicates = duplicates;
     this.properties = properties;
     this.clock = clock;
   }
@@ -84,6 +87,25 @@ public class TransactionService {
     Instant now = clock.instant();
     UUID txnId = UUID.fromString(req.txnId());
     byte[] hash = requestMapper.requestHash(req);
+
+    // FRS PLT-013: the same payment under another key within the window. Before the lock and the
+    // claim, so a refused request records nothing and its key stays free for the confirmed resend.
+    switch (duplicates.check(req)) {
+      case PROMPT -> {
+        refuseDuplicate(req, replyTo, now, ErrorCodes.VAL_DUPLICATE_SUSPECTED,
+            "The same transaction was sent moments ago; confirm to send it again",
+            "একই লেনদেন কিছুক্ষণ আগে পাঠানো হয়েছে; আবার পাঠাতে নিশ্চিত করুন");
+        return;
+      }
+      case REJECT -> {
+        refuseDuplicate(req, replyTo, now, ErrorCodes.VAL_DUPLICATE_REJECTED,
+            "The same transaction was sent moments ago under another idempotency key", null);
+        return;
+      }
+      case PASS -> {
+        // on to the idempotency lock
+      }
+    }
 
     // 7.3 rule 4: the Valkey lock absorbs a concurrent double-tap before the claim.
     switch (gate.enter(req.channel(), req.initiator().id(), req.idempotencyKey(), txnId, hash)) {
@@ -169,6 +191,18 @@ public class TransactionService {
         .addKeyValue("correlationId", req.correlationId())
         .addKeyValue("errorCode", ErrorCodes.IDEM_CONFLICT)
         .log("idempotency key reused with a different request");
+  }
+
+  private void refuseDuplicate(
+      TxnRequest req, String replyTo, Instant now, String code, String message, String messageBn) {
+    engine.publishStatus(statusMapper.toRefusedStatus(req, new ErrorInfo(code, message, messageBn, false), now), replyTo);
+    log.atWarn()
+        .addKeyValue("event", "txn.duplicate.suspected")
+        .addKeyValue("txnId", req.txnId())
+        .addKeyValue("correlationId", req.correlationId())
+        .addKeyValue("channel", req.channel())
+        .addKeyValue("errorCode", code)
+        .log("business duplicate within the window; refused without a record");
   }
 
   // --- REVERSAL (ticket 19, spec 7.2) ---------------------------------------------------------

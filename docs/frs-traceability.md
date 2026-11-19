@@ -163,16 +163,16 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-001 | done | APISIX is the only port beyond loopback (D3 amendment); production is edge-only |
 | PLT-002 | ticket 100 | app JWTs (mw-auth) and merchant API key + HMAC built; partner client credentials and inbound mTLS in 100 |
 | PLT-003 | tickets 100, 132 | client registry (APISIX consumers) API in 100, console in 132 |
-| PLT-004 | tickets 90, 99, 100 | `limit-count` 429 at the edge built (Valkey); Redis 90, Retry-After and per-client bucket 99, quotas 100 |
+| PLT-004 | tickets 90, 100 | 429 with `Retry-After` on every route, one bucket per route group keyed per client (ticket 99, `lua/edge-error-headers.lua`, `test_apisix_edge.sh`, `scripts/edge-test.sh`); Redis 90, token-bucket quotas per registered client 100 |
 | PLT-005 | done | `CorrelationIdFilter` in every service, `MwHeaders` on Kafka, propagated on outbound calls (root `CLAUDE.md`) |
 | PLT-006 | ticket 108 | Bean Validation and body JSON Schema (`MW-VAL-001`) built; XSD with the SOAP facade |
 | PLT-007 | done | `MaskingPolicy` and `@Sensitive` in every service, `scripts/log-scan.sh`; mask shape `0171****789` (repo rule) |
-| PLT-008 | ticket 99 | app request signatures carry timestamp and nonce (`MW-AUTH-005`, `MW-AUTH-006`); checkout HMAC and callbacks in 99 |
+| PLT-008 | done | app signatures (`MW-AUTH-005`/`006`); checkout HMAC signs `X-Nonce`, mw-checkout `service/RequestReplayGuard` (`MW-AUTH-005`/`006`, `HmacReplayTest`); partner callbacks sign `X-Nonce` (`partner/auth/HmacSha256AuthScheme` + `CallbackNonces`, `CallbackReplayIT`); nonces in PostgreSQL in mw-checkout and the adapters (ticket 99); API folder 36 |
 | PLT-010 | done | Idempotency-Key on every financial API, derived for USSD (spec 7.3) |
-| PLT-011 | ticket 99 | key + request hash, `MW-IDEM-001` built; stored original response returned by 99 |
-| PLT-012 | ticket 99 | in-flight duplicate answered 202 with the current status; re-tested in 99 |
-| PLT-013 | ticket 99 | business duplicate window |
-| PLT-014 | tickets 99, 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) built; nonce 99, card, IMT, NPSB in their adapters |
+| PLT-011 | done | key + request hash, `MW-IDEM-001`; mw-app-gateway replays the first 200 body byte for byte (`service/IdempotentReplay`, `IdempotentReplayIT`, ticket 99); API folder 36 |
+| PLT-012 | done | in-flight duplicate answered 202 with the current status (`IdempotencyLockIntakeIT`, re-run in ticket 99) |
+| PLT-013 | done | mw-orchestrator `service/DuplicateGuard` (60 s, `MW_DUPLICATE_WINDOW`): app/USSD `MW-VAL-024` + `confirmDuplicate` (USSD asks the PIN again), API clients `MW-VAL-025` (`DuplicateGuardTest`, `DuplicateGuardIT`, ticket 99); API folder 36 |
+| PLT-014 | tickets 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) and signed nonces (ticket 99) built; card, IMT, NPSB in their adapters |
 | PLT-020 | done | saga steps with compensation (`saga_step`, spec 7.1) |
 | PLT-021 | done | step state persisted per step; resume after restart (`scripts/chaos.sh`) |
 | PLT-022 | ticket 96 | core-side compensation built; the partner leg in reverse order in 96 |

@@ -43,7 +43,7 @@ class BillAggregatorCallbackIT {
   static final String SECRET = "fake-billagg-hmac-secret-for-tests";
   static final String CALLBACK_PATH = "/partner/billagg/callback/payments";
 
-  record Received(String path, String signature, String timestamp, String body) {}
+  record Received(String path, String signature, String timestamp, String nonce, String body) {}
 
   private final HttpClient http = HttpClient.newHttpClient();
   private final JsonMapper json = JsonMapper.builder().build();
@@ -63,6 +63,7 @@ class BillAggregatorCallbackIT {
                   ex.getRequestURI().getRawPath(),
                   ex.getRequestHeaders().getFirst("X-Signature"),
                   ex.getRequestHeaders().getFirst("X-Timestamp"),
+                  ex.getRequestHeaders().getFirst("X-Nonce"),
                   new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
           ex.sendResponseHeaders(200, -1);
           ex.close();
@@ -122,7 +123,8 @@ class BillAggregatorCallbackIT {
         HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(r.body().getBytes(StandardCharsets.UTF_8)));
     Mac mac = Mac.getInstance("HmacSHA256");
     mac.init(new SecretKeySpec(SECRET.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-    String toSign = "POST\n" + r.path() + "\n" + r.timestamp() + "\n" + bodyHash;
+    // ticket 99: the nonce is signed as its own line (fresh per send, so a resend is no replay)
+    String toSign = "POST\n" + r.path() + "\n" + r.timestamp() + "\n" + r.nonce() + "\n" + bodyHash;
     return Base64.getEncoder().encodeToString(mac.doFinal(toSign.getBytes(StandardCharsets.UTF_8)));
   }
 
@@ -188,6 +190,8 @@ class BillAggregatorCallbackIT {
     assertThat(got).extracting(r -> json.readTree(r.body()).get("status").asString())
         .containsExactly("SUCCESS", "PENDING");
     assertThat(got.get(1).signature()).isEqualTo(expectedSignature(got.get(1)));
+    // ticket 99: every send has its own nonce, so the adapter never refuses a resend as a replay
+    assertThat(got.get(0).nonce()).isNotBlank().isNotEqualTo(got.get(1).nonce());
   }
 
   @Test

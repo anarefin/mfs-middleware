@@ -26,6 +26,7 @@ import org.springframework.validation.annotation.Validated;
  * @param reversalChannels the channels that may send a REVERSAL request (operations: SYSTEM)
  * @param bulkChannels the channels that may send a BULK_DISBURSE child (the org portal, ticket 34)
  * @param idempotencyLock the Valkey double-tap lock in front of the idempotency claim (7.3 rule 4)
+ * @param duplicateGuard the business-duplicate window (FRS PLT-013, ticket 99)
  */
 @Validated
 @ConfigurationProperties("mw.orchestrator")
@@ -41,7 +42,26 @@ public record OrchestratorProperties(
     @NotNull @DefaultValue("60s") Duration reversingTimeout,
     @NotNull @DefaultValue("SYSTEM") Set<String> reversalChannels,
     @NotNull @DefaultValue("ORG_PORTAL") Set<String> bulkChannels,
-    @NotNull @DefaultValue IdempotencyLock idempotencyLock) {
+    @NotNull @DefaultValue IdempotencyLock idempotencyLock,
+    @NotNull @DefaultValue DuplicateGuard duplicateGuard) {
+
+  /**
+   * The business-duplicate window (FRS PLT-013): the same initiator, txnType, parties and amount
+   * under another idempotency key within {@code window}.
+   *
+   * @param enabled asks Valkey/Redis (off together with the lock when there is none: the lock
+   *     client answers {@code Off})
+   * @param window how long a tuple counts as a possible duplicate
+   * @param promptChannels channels that get the confirmable prompt {@code MW-VAL-024} and may resend
+   *     with {@code confirmDuplicate}; every other channel (API clients) is refused {@code MW-VAL-025}
+   * @param exemptChannels channels never checked (operations)
+   */
+  public record DuplicateGuard(
+      @DefaultValue("true") boolean enabled,
+      @NotNull @DefaultValue("60s") Duration window,
+      @NotNull @DefaultValue({"CUSTOMER_APP", "AGENT_APP", "MERCHANT_APP", "DISTRIBUTOR_APP", "DSO_APP", "USSD"})
+          Set<String> promptChannels,
+      @NotNull @DefaultValue("SYSTEM") Set<String> exemptChannels) {}
 
   /**
    * @param enabled asks Valkey (tests without Valkey switch it off; the primary key alone then)

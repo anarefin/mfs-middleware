@@ -1,0 +1,4 @@
+{
+  "name": "36 Business duplicates, stored responses and replay protection",
+  "description": "Ticket 99 (FRS PLT-008, PLT-011, PLT-012, PLT-013, PLT-014): the same payment under a new key within the window asks the app user to confirm (MW-VAL-024); a key answered 200 replays that very body even after the transaction changed; a replayed checkout request or partner callback (same nonce) is refused."
+}
