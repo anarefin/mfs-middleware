@@ -21,7 +21,7 @@ import org.springframework.stereotype.Component;
  * The steps of the {@code mw-auth-*} Kamelets (bean {@code mwAuth}): the shipped auth schemes
  * ({@code partner/auth}) applied to the request {@code mw-http-call} prepared, so the wire format
  * is exactly the former framework's ({@code AuthSchemesTest}). The secret is the field {@code
- * secretField} of this partner's own OpenBao secret, read when its route loaded ({@link
+ * secretField} of this partner's own Vault secret, read when its route loaded ({@link
  * PartnerRuntime#secret}); it is only ever written into the request headers, never logged, never
  * put in a URI or an audited header.
  */

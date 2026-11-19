@@ -10,12 +10,12 @@ import org.springframework.validation.annotation.Validated;
 /**
  * {@code mw.app-gateway.auth}: mw-auth's internal API (ticket 68; spec 18.7, D24), asked by the
  * device gate for a device's public key and the wallet's session: over mTLS with this service's
- * OpenBao certificate and a Keycloak realm {@code services} client-credentials JWT.
+ * Vault certificate and a Keycloak realm {@code services} client-credentials JWT.
  *
  * @param baseUrl mw-auth's internal port ({@code https://mw-auth:8443})
  * @param tokenUri the realm's token endpoint (plain HTTP inside the network in dev)
  * @param clientId this service's client ({@code mw-app-gateway}, equal to its certificate CN)
- * @param clientSecret from OpenBao {@code secret/mw-app-gateway} only, never in a file
+ * @param clientSecret from Vault {@code secret/mw-app-gateway} only, never in a file
  * @param timeout per call (2 s; a slower answer fails closed)
  * @param connectTimeout TCP and TLS connect
  * @param pinKeyTtl how long the PIN transport key (mw-auth {@code GET /internal/v1/pin-key} on {@code

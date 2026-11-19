@@ -34,7 +34,7 @@
     <dt>Adapter</dt><dd>A service that talks to one family of outside partners (<code>mw-adapter-telco</code>, <code>-billpay</code>, <code>-bank</code>). See <a href="05-partner-flows.html#framework">chapter 5</a>.</dd>
     <dt>Agent</dt><dd>A shop that exchanges cash for wallet money (cash in, cash out).</dd>
     <dt>APISIX</dt><dd>The API gateway at the edge: the only way in from outside.</dd>
-    <dt>AppRole</dt><dd>An OpenBao login method for machines: each service has its own and can read only its own secrets.</dd>
+    <dt>AppRole</dt><dd>A Vault login method for machines: each service has its own and can read only its own secrets.</dd>
     <dt>Audit trail</dt><dd>The append-only, hash-chained record of everything that happened (<code>mw-audit-dw</code>).</dd>
     <dt>BDT, Tk, poisha</dt><dd>Bangladeshi taka. Tk 1 = 100 poisha. Amounts are stored as whole poisha in <code>valueMinor</code>.</dd>
     <dt>Bulk disbursement</dt><dd>An organisation paying many wallets from one CSV file, with maker-checker.</dd>
@@ -70,7 +70,7 @@
     <dt>MSISDN</dt><dd>A mobile phone number, for example <code>01711000001</code>.</dd>
     <dt>MVP</dt><dd>Minimum viable product: the first version this repository builds.</dd>
     <dt>OCS</dt><dd>Online charging system: the operator system that adds airtime.</dd>
-    <dt>OpenBao</dt><dd>The secrets vault (an open-source fork of HashiCorp Vault).</dd>
+    <dt>Vault</dt><dd>The secrets vault (HashiCorp Vault, ADR D30).</dd>
     <dt>Orchestrator</dt><dd><code>mw-orchestrator</code>: runs every transaction's saga and is the only service that commands the core.</dd>
     <dt>OTP</dt><dd>One-time password sent by SMS (device binding, checkout).</dd>
     <dt>Outbox</dt><dd>A table where a service writes outgoing messages in the same database transaction as its business change; a relay publishes them.</dd>

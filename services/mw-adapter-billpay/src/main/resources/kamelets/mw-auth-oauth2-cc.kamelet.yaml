@@ -16,7 +16,7 @@ spec:
       Sets Authorization: Bearer <token>. The token comes from tokenUrl (a POST of
       grant_type=client_credentials with scope and audience when set, the client authenticated with
       HTTP Basic), sent through the partner http component, so tokenUrl's host must be in the record's
-      allowedHosts. The client secret is a field of this partner's own OpenBao secret, read when the
+      allowedHosts. The client secret is a field of this partner's own Vault secret, read when the
       route loaded. The token is cached per partner client until expires_in minus the skew; a partner
       401 drops it and mw-http-call sends once more with a fresh one. Neither token nor secret is ever
       logged, audited or put in a URI. Input and output: the prepared request; only headers change.
@@ -25,7 +25,7 @@ spec:
     properties:
       secretField:
         title: Client secret field
-        description: Field of this partner's own OpenBao secret holding the OAuth2 client secret; a reference, never the value.
+        description: Field of this partner's own Vault secret holding the OAuth2 client secret; a reference, never the value.
         type: string
         format: password
         x-descriptors:

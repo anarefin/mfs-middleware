@@ -2,8 +2,8 @@
 # Prints every login and key a tester needs on the dev/test stack, grouped by where it is used
 # (docs/testing-guide.html section 1): scripts/creds.sh
 # Values come from deploy/.env (a copy of deploy/dev.env.defaults: the tester logins are fixed,
-# documented values, the rest random) and, while the stack is up, the OpenBao token from the
-# openbao-data volume (the fixed dev-root-token; a volume created before it: the init root token).
+# documented values, the rest random) and, while the stack is up, the Vault token from the
+# vault-data volume (the fixed dev-root-token; a volume created before it: the init root token).
 # Dev/test stack only: never a real secret.
 set -eu
 . "$(dirname "$0")/lib/common.sh"
@@ -15,14 +15,14 @@ v() { local x; x="$(env_val "$1")"; printf '%s' "${x:-<not set: see deploy/dev.e
 port="${MW_HTTPS_PORT:-}"
 base="https://localhost${port:+:$port}"
 
-bao="start the stack, then run scripts/creds.sh again"
+vault="start the stack, then run scripts/creds.sh again"
 if [ -f "$STACK_FILE" ] && command -v docker >/dev/null 2>&1; then
   stack_compose core
-  if tok="$(docker compose "${DC_F[@]}" exec -T openbao cat /openbao/file/dev-token 2>/dev/null)" && [ -n "$tok" ]; then
-    bao="$tok"
-  elif init="$(docker compose "${DC_F[@]}" exec -T openbao cat /openbao/file/dev-init.json 2>/dev/null)"; then
+  if tok="$(docker compose "${DC_F[@]}" exec -T vault cat /vault/file/dev-token 2>/dev/null)" && [ -n "$tok" ]; then
+    vault="$tok"
+  elif init="$(docker compose "${DC_F[@]}" exec -T vault cat /vault/file/dev-init.json 2>/dev/null)"; then
     tok="$(printf '%s' "$init" | sed -n 's/.*"root_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-    [ -n "$tok" ] && bao="$tok"
+    [ -n "$tok" ] && vault="$tok"
   fi
 fi
 
@@ -64,8 +64,8 @@ Dev/test stack only, never real secrets. The logins testers type are fixed, docu
 == Keycloak admin (no browser console at the edge; use kcadm.sh in the container)
    user kc-admin   password $(v KC_BOOTSTRAP_ADMIN_PASSWORD)
 
-== OpenBao (internal only; docker compose exec openbao ...)
-   root token  $bao
+== Vault (internal only; docker compose exec vault ...)
+   root token  $vault
 
 == APISIX
    test routes  header  apikey: $(v MW_E2E_API_KEY)      (consumer mw_e2e, /test/*)

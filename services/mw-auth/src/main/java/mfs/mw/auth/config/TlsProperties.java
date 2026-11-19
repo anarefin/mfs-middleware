@@ -8,11 +8,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 /**
- * {@code mw.tls}: this service's certificate from OpenBao PKI (spec 18.2, 18.4, D24;
+ * {@code mw.tls}: this service's certificate from Vault PKI (spec 18.2, 18.4, D24;
  * {@link ServiceCertificateManager}).
  *
  * @param enabled issue a certificate at start and keep it renewed (needs Spring Cloud Vault)
- * @param pkiMount the OpenBao PKI mount that issues service certificates ({@code pki_int})
+ * @param pkiMount the Vault PKI mount that issues service certificates ({@code pki_int})
  * @param role the PKI role, named after the service (its policy may issue from this role only)
  * @param commonName the certificate CN: the service name, which callees compare with the JWT azp
  * @param altNames DNS SANs: the compose DNS name (= service name)

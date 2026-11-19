@@ -16,7 +16,7 @@ mw:
   portal-api:
     orchestrator:
       auth:
-        # Obviously fake; the real one comes from OpenBao. ITs with a stub orchestrator serve a token.
+        # Obviously fake; the real one comes from Vault. ITs with a stub orchestrator serve a token.
         client-secret: test-only-client-secret-not-a-secret
     # Off by default in tests: they call BulkExecutionService directly (dispatch, apply).
     consumers:

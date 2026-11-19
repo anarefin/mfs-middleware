@@ -72,13 +72,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   sent) and goes after; other priorities are not affected.
 - Email (`client/SmtpEmailSender`, Spring `JavaMailSender`, `spring.mail.*`: `SMTP_HOST` /
   `SMTP_PORT`, default GreenMail `greenmail:3025`; STARTTLS required and server identity checked by default (`config/MailTlsDefaultsTest`), off only by the explicit dev override `SMTP_STARTTLS_REQUIRED=false` (service `mw-notify` in `deploy/docker-compose.yml`) and the test config;
-  From `mw.notify.email.from` / `MAIL_FROM`; SMTP credentials, if any, from OpenBao): one
+  From `mw.notify.email.from` / `MAIL_FROM`; SMTP credentials, if any, from Vault): one
   multipart/alternative message, SENT is final (no bounce handling yet), providerMessageId = the
   Message-ID. Same retries as SMS (2/10/30 s, `MW-SYS-104` / `MW-SYS-102`); a 5xx reply fails at
   once `MW-SYS-101`. `mw.notify.email.enabled=false` -> `client/DisabledEmailSender`.
 - SMPP (`client/SmppSmsSender`, `client/SmppBind`, jSMPP direct): transceiver binds per priority
   (`mw.notify.smpp.binds`), enquire_link 30 s, reconnect 1-60 s exponential, events
-  `smpp.bind.up` / `smpp.bind.down`; submit_sm asks for DLRs. Password from OpenBao
+  `smpp.bind.up` / `smpp.bind.down`; submit_sm asks for DLRs. Password from Vault
   (`secret/mw-notify`, `mw.notify.smpp.password`, created by `deploy/provision/services.sh`).
   `mw.notify.smpp.enabled=false` -> `client/DisabledSmsSender` (every send transient).
 - DLRs (`messaging/SmppReceiptListener` -> `service/ReceiptService`): matched on the part's
@@ -132,7 +132,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 - `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field.
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers, idempotent `acks=all` producer.
 - Kafka through Spring Kafka (ADR D27, from the template, ticket 81; no Camel): `config/KafkaConfig`
   (`config/KafkaRetryProperties`, `config/MwKafkaProperties`), `messaging/RetryTopicNaming`,

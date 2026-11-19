@@ -47,7 +47,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * {@link AuthClient} against a WireMock mw-auth internal port over HTTPS that needs a client
- * certificate (ticket 72, D24): this service's certificate comes from the OpenBao intermediate
+ * certificate (ticket 72, D24): this service's certificate comes from the Vault intermediate
  * ({@link PkiTestAuthority}, CN {@code mw-ussd}), the WireMock server's from the same intermediate
  * (SAN localhost) and it trusts only that intermediate. The token endpoint and the public pin-key
  * endpoint are a plain-HTTP WireMock. It proves the bearer token and the body of the transaction

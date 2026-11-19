@@ -18,9 +18,9 @@ names, so services change only host names and config keys; the dev unseal and pr
 
 **Blocked by:** 89
 
-**Status:** open
+**Status:** done (stack checks left to the milestone gate)
 
-- [ ] A repo grep test fails while `openbao`/`bao ` appears outside ADRs/history, then passes
-- [ ] Provision shell test (`scripts/test/`) runs `provision.sh` against a Vault dev container: policies, PKI role and every service secret path exist
+- [x] A repo grep test fails while `openbao`/`bao ` appears outside ADRs/history, then passes
+- [x] Provision shell test (`scripts/test/`) runs `provision.sh` against a Vault dev container: policies, PKI role and every service secret path exist
 - [ ] `./gradlew build` green with Docker for every module whose config changed; `./gradlew :composeCheck :scriptTests` green
 - [ ] Fresh stack: `scripts/smoke.sh`, `scripts/api-test.sh "08, 24, 26, 27"` (bank secret, auth, assertion, payShield) and `scripts/log-scan.sh` pass

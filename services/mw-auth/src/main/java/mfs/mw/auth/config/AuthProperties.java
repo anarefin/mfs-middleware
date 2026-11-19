@@ -24,7 +24,7 @@ public record AuthProperties(@Valid @NotNull Crypto crypto) {
    * @param baseUrl mw-crypto's API ({@code https://mw-crypto:8080})
    * @param tokenUri the realm's token endpoint (plain HTTP inside the network in dev)
    * @param clientId this service's client ({@code mw-auth}, equal to its certificate CN)
-   * @param clientSecret from OpenBao {@code secret/mw-auth} only, never in a file
+   * @param clientSecret from Vault {@code secret/mw-auth} only, never in a file
    * @param timeout per call (spec 18.7: 2 s; a slower answer fails closed)
    * @param connectTimeout TCP and TLS connect
    */

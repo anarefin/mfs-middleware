@@ -29,7 +29,7 @@ public record OrchestratorClientProperties(
    *
    * @param tokenUri the realm's token endpoint
    * @param clientId the client id ({@code azp} of the token)
-   * @param clientSecret from OpenBao ({@code secret/mw-portal-api}), never in config files
+   * @param clientSecret from Vault ({@code secret/mw-portal-api}), never in config files
    */
   public record Auth(@NotNull URI tokenUri, @NotBlank String clientId, @NotBlank String clientSecret) {
 

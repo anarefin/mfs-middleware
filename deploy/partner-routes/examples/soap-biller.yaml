@@ -8,7 +8,7 @@
 # subcode reason><detail/></fault>, into JSON for the JSONata response mapping (status 200 for both).
 # A stylesheet is a mapping whose name ends in .xsl (or a classpath:partner/xslt/*.xsl resource); it
 # may not reach outside itself (no document(), doc(), unparsed-text(), xsl:include/import, entities,
-# DOCTYPE: refused by mw-admin-api and the loader). The password is read from OpenBao
+# DOCTYPE: refused by mw-admin-api and the loader). The password is read from Vault
 # secret/mw-adapter-billpay/soapbill, field ws-password, when the route loads. The wire format is the
 # one of mw-simulators' SOAP stub biller (POST /soapbill/v1, namespace urn:soapbill:v1); in the dev
 # stack point the address at http://mw-simulators:8080/soapbill/v1 and allow host mw-simulators.

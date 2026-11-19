@@ -9,7 +9,7 @@
 # AppRole), <service>:<function>, run after SERVICES. Empty while every service is in SERVICES.
 SECRETS_AHEAD=""
 
-# PKI_SERVICES: the services with a certificate from OpenBao PKI (mTLS phase 1, spec 18.2, D24, ticket
+# PKI_SERVICES: the services with a certificate from Vault PKI (mTLS phase 1, spec 18.2, D24, ticket
 # 66): the two mTLS servers (mw-crypto; mw-auth's internal API, ticket 67) and every caller of them.
 # Each gets a pki_int role named after it (CN and SAN = its compose DNS name, 72 h) and its AppRole
 # policy may issue from that role only. A role may exist before its service is in SERVICES.
@@ -28,7 +28,7 @@ provision_mw_core_mock() {
 }
 
 # The HSM gateway (ticket 62, spec 18.8, D23): the user PIN of the softhsm mw-crypto token it logs in
-# with (deploy/softhsm; spec 18.4: OpenBao keeps the PKCS#11 token PIN), synced from deploy/.env.
+# with (deploy/softhsm; spec 18.4: Vault keeps the PKCS#11 token PIN), synced from deploy/.env.
 provision_mw_crypto() {
   gen_once spring.datasource.password 40
   sync_env mw.crypto.pkcs11.user-pin SOFTHSM_MWCRYPTO_USER_PIN

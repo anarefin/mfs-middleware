@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenBao secrets</title>
+<title>Vault secrets</title>
 <link rel="stylesheet" href="../tutorial/tutorial.css">
 <script src="../tutorial/diagrams.js" defer></script>
 </head>
@@ -14,7 +14,7 @@
     <a href="index.html">Start</a>
     <a href="apisix.html">APISIX</a>
     <a href="keycloak.html">Keycloak</a>
-    <a href="openbao.html" aria-current="page">OpenBao</a>
+    <a href="vault.html" aria-current="page">Vault</a>
     <a href="hsm.html">HSM</a>
     <a href="greenmail.html">GreenMail</a>
     <a href="core-mock.html">Core mock</a>
@@ -30,9 +30,9 @@
 
 <main>
   <div class="chapter-no">Secrets</div>
-  <h1>OpenBao: where the secrets live</h1>
+  <h1>Vault: where the secrets live</h1>
   <p class="lead">No password, client secret or key is ever written in code, a config file or a test. Every service reads its
-    secrets from OpenBao when it starts, using a login that lets it read its own secrets and nothing else. OpenBao also
+    secrets from Vault when it starts, using a login that lets it read its own secrets and nothing else. Vault also
     hands out the short-lived certificates that some services use for mTLS.</p>
 
   <div class="toc"><strong>On this page</strong><ol>
@@ -50,30 +50,32 @@
   <h2 id="plain">In plain English</h2>
   <div class="box plain"><div class="tag">In plain English</div>
     <p>Think of a bank's safe-deposit room. Each customer has their own box and their own key. The key opens that one box and no
-      other, and the guard writes down every visit. OpenBao is that room for secrets. Each service has its own "box" (a path such as
+      other, and the guard writes down every visit. Vault is that room for secrets. Each service has its own "box" (a path such as
       <code>secret/mw-app-gateway</code>) and its own login that opens only that box.</p>
-    <p>OpenBao is an open-source fork of HashiCorp Vault with the same API. Spring Cloud Vault, the Spring library we use to talk to it,
-      works with both. So when you read "Vault" in a property name or in the spec, it means OpenBao here.</p>
+    <p>The product is HashiCorp Vault (<a href="../adr/D30-hashicorp-vault.md">ADR D30</a>, FRS 1.4). Spring Cloud Vault, the Spring library we
+      use to talk to it, and Camel's HashiCorp Vault component in the adapters are plain Vault clients, so nothing in the code is tied to
+      the server beyond its address.</p>
   </div>
-  <p>A few OpenBao words you will see everywhere:</p>
+  <p>A few Vault words you will see everywhere:</p>
   <div class="table-wrap"><table>
     <tr><th>Word</th><th>Meaning</th><th>Example here</th></tr>
     <tr><td><strong>Secrets engine</strong></td><td>A plug-in at a path that stores or makes secrets.</td><td><code>secret/</code> (key-value), <code>pki_int/</code> (certificates)</td></tr>
     <tr><td><strong>KV v2</strong></td><td>The key-value engine, version 2 (keeps old versions). The API puts <code>data/</code> into the path.</td><td>read <code>secret/mw-app-gateway</code>, policy path <code>secret/data/mw-app-gateway</code></td></tr>
     <tr><td><strong>Policy</strong></td><td>A list of paths and what a token may do on them.</td><td>mw-app-gateway may <em>read</em> its own secret and <em>update</em> (issue) its own certificate role</td></tr>
     <tr><td><strong>AppRole</strong></td><td>A login method for machines: a <strong>role-id</strong> (like a user name) plus a <strong>secret-id</strong> (like a password).</td><td>one AppRole per service, named after it</td></tr>
-    <tr><td><strong>Seal / unseal</strong></td><td>OpenBao starts locked ("sealed") and cannot read its own data until it gets the unseal key.</td><td>the dev entrypoint unseals it on every start</td></tr>
+    <tr><td><strong>Seal / unseal</strong></td><td>Vault starts locked ("sealed") and cannot read its own data until it gets the unseal key.</td><td>the dev entrypoint unseals it on every start</td></tr>
     <tr><td><strong>PKI</strong></td><td>"Public key infrastructure": the engine that acts as a certificate authority (CA) and issues certificates.</td><td>72-hour certificates for mw-auth, mw-crypto and their callers</td></tr>
   </table></div>
 
   <h2 id="why">Why we use it here</h2>
-  <p>The same decision record as Keycloak, <a href="../adr/D9-platform-services.md">D9</a>, picks <em>"OpenBao for secrets (KV, per-service
-    AppRole, config binding at start)"</em>. The spec (section 18.4) is short about it: <em>"Vault/OpenBao is the only secret store."</em>
-    A secret in a YAML file ends up in Git, in images and in logs. A secret in OpenBao is read at start-up into memory and nowhere else.</p>
-  <p><a href="../adr/D24-service-mtls-phase-1.md">D24</a> added a second job: <em>"OpenBao PKI issues service certificates (an intermediate CA,
+  <p>The same decision record as Keycloak, <a href="../adr/D9-platform-services.md">D9</a>, picks a secret store with KV, per-service
+    AppRole and config binding at start; <a href="../adr/D30-hashicorp-vault.md">D30</a> makes it HashiCorp Vault (its Business Source
+    Licence is accepted for internal use). The spec (section 18.4) is short about it: <em>"Vault is the only secret store."</em>
+    A secret in a YAML file ends up in Git, in images and in logs. A secret in Vault is read at start-up into memory and nowhere else.</p>
+  <p><a href="../adr/D24-service-mtls-phase-1.md">D24</a> added a second job: <em>"Vault PKI issues service certificates (an intermediate CA,
     one role per service, 72 h, renewed at two thirds of their life)."</em> mTLS is mandatory on mw-crypto (it fronts the HSM) and on mw-auth's
     internal API (PINs and assertions). mTLS ("mutual TLS") means both sides of a connection show a certificate, not only the server.</p>
-  <p>What OpenBao does <strong>not</strong> do here, even though the engines are switched on:</p>
+  <p>What Vault does <strong>not</strong> do here, even though the engines are switched on:</p>
   <ul>
     <li><strong>No encryption keys in the transit engine.</strong> The keys for PINs, token signing and envelope encryption live in the HSM behind
       <a href="hsm.html">mw-crypto</a> (spec 18.4, decision 2026-11-14). <code>transit</code> is enabled but unused.</li>
@@ -85,27 +87,27 @@
   <p>Two containers in <code>deploy/docker-compose.yml</code> do the work, plus one small volume per service:</p>
   <div class="table-wrap"><table>
     <tr><th>Container</th><th>Kind</th><th>What it does</th></tr>
-    <tr><td><code>openbao</code></td><td>long-running, no profile</td><td>OpenBao 2.7 on port 8200, published on 127.0.0.1:8200 (knob <code>MW_PORT_OPENBAO</code>). Data on the
-      <code>openbao-data</code> volume. Its entrypoint is <code>deploy/openbao/dev-unseal.sh</code>. Healthy only once it is unsealed and the
+    <tr><td><code>vault</code></td><td>long-running, no profile</td><td>HashiCorp Vault 2.2 on port 8200, published on 127.0.0.1:8200 (knob <code>MW_PORT_VAULT</code>). Data on the
+      <code>vault-data</code> volume. Its entrypoint is <code>deploy/vault/dev-unseal.sh</code>. Healthy only once it is unsealed and the
       engines exist (the script writes a <code>dev-ready</code> file).</td></tr>
-    <tr><td><code>provision</code></td><td>one-shot, profiles <code>minimal</code> and <code>core</code></td><td>Starts once PostgreSQL, OpenBao and Keycloak are healthy. Writes every service's secrets,
+    <tr><td><code>provision</code></td><td>one-shot, profiles <code>minimal</code> and <code>core</code></td><td>Starts once PostgreSQL, Vault and Keycloak are healthy. Writes every service's secrets,
       database role, certificate role, policy and AppRole, then exits 0. Every <code>mw-*</code> service waits for it.</td></tr>
   </table></div>
-  <p>Three files configure OpenBao itself:</p>
+  <p>Three files configure Vault itself:</p>
   <ul>
-    <li><code>deploy/openbao/config.hcl</code>: Raft storage on the data volume and a plain-HTTP listener on 8200 (<code>tls_disable</code>; the stack's internal
+    <li><code>deploy/vault/config.hcl</code>: Raft storage on the data volume and a plain-HTTP listener on 8200 (<code>tls_disable</code>; the stack's internal
       network only).</li>
-    <li><code>deploy/openbao/dev-unseal.sh</code>: starts the server, and on the <strong>first</strong> start initialises it with one key share, then enables
+    <li><code>deploy/vault/dev-unseal.sh</code>: starts the server, and on the <strong>first</strong> start initialises it with one key share, then enables
       <code>secret/</code> (KV v2), <code>transit</code>, <code>pki</code>, <code>database</code> and the <code>approle</code> login. It also creates the fixed tester token
       (<code>scripts/creds.sh</code> prints it). On <strong>every</strong> start it unseals the server with the key it saved.</li>
     <li><code>deploy/provision/</code>: the one-shot's image and scripts, described next.</li>
   </ul>
   <p>Every <code>mw-*</code> service gets two shared settings from the <code>x-jvm-env</code> block: <code>VAULT_ENABLED</code> (true) and
-    <code>VAULT_ADDR</code> (<code>http://openbao:8200</code>). Each one also mounts its own AppRole volume read-only at <code>/run/mw/approle</code>,
+    <code>VAULT_ADDR</code> (<code>http://vault:8200</code>). Each one also mounts its own AppRole volume read-only at <code>/run/mw/approle</code>,
     for example <code>app-gateway-approle</code> for mw-app-gateway. Services that need a certificate also get <code>MW_TLS_ENABLED</code> set to true.</p>
 
   <h2 id="provision">The provision one-shot</h2>
-  <p><code>deploy/provision/provision.sh</code> is the only thing in the stack that holds the OpenBao root token (read from the data volume, which it
+  <p><code>deploy/provision/provision.sh</code> is the only thing in the stack that holds the Vault root token (read from the data volume, which it
     mounts read-only) and the PostgreSQL admin password. It runs on every <code>up</code> and is <strong>idempotent</strong>: running it twice leaves the
     same result. In order, it does this:</p>
   <ol class="steps">
@@ -134,7 +136,7 @@
   cloud:
     vault:
       enabled: ${VAULT_ENABLED:false}
-      uri: ${VAULT_ADDR:http://openbao:8200}
+      uri: ${VAULT_ADDR:http://vault:8200}
       authentication: APPROLE
       kv:
         enabled: true
@@ -145,7 +147,7 @@
       files provision wrote become <code>spring.cloud.vault.app-role.role-id</code> and <code>...secret-id</code>. No secret goes through an environment variable.</li>
     <li><strong><code>vault://</code></strong> tells Spring Cloud Vault to log in with that AppRole and load <code>secret/&lt;application name&gt;</code> as properties.
       The keys in the secret are plain Spring property names, such as <code>spring.datasource.password</code>, so they simply fill in the config.</li>
-    <li>Both are <code>optional:</code> and <code>VAULT_ENABLED</code> defaults to false, so unit tests and <code>*IT</code> tests run without OpenBao.</li>
+    <li>Both are <code>optional:</code> and <code>VAULT_ENABLED</code> defaults to false, so unit tests and <code>*IT</code> tests run without Vault.</li>
   </ul>
   <p>For example, <code>secret/mw-app-gateway</code> holds <code>spring.datasource.password</code>, <code>spring.data.redis.password</code> (Valkey) and
     <code>mw.app-gateway.auth.client-secret</code> (its Keycloak client secret, synced from <code>KC_MW_APP_GATEWAY_SECRET</code>).</p>
@@ -159,18 +161,18 @@
   <h2 id="example">Worked example: mw-app-gateway starts</h2>
   <p>Here is everything that happens between <code>docker compose up</code> and mw-app-gateway's first mTLS call to mw-auth:</p>
   <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
-actors: provision | OpenBao | approle volume | mw-app-gateway | Keycloak | mw-auth
-provision -> OpenBao : root token from openbao-data (read-only)
-provision -> OpenBao : pki_int role mw-app-gateway (CN = name, 72 h)
-provision -> OpenBao : secret/mw-app-gateway (gen_once, sync_env)
-provision -> OpenBao : policy + AppRole mw-app-gateway
+actors: provision | Vault | approle volume | mw-app-gateway | Keycloak | mw-auth
+provision -> Vault : root token from vault-data (read-only)
+provision -> Vault : pki_int role mw-app-gateway (CN = name, 72 h)
+provision -> Vault : secret/mw-app-gateway (gen_once, sync_env)
+provision -> Vault : policy + AppRole mw-app-gateway
 provision -> approle volume : role-id and secret-id files
 mw-app-gateway -> approle volume : configtree: read the two files
-mw-app-gateway -> OpenBao : AppRole login
-OpenBao --> mw-app-gateway : token with policy mw-app-gateway
-mw-app-gateway -> OpenBao : read secret/mw-app-gateway
-mw-app-gateway -> OpenBao : pki_int/issue/mw-app-gateway
-OpenBao --> mw-app-gateway : certificate + key, 72 h
+mw-app-gateway -> Vault : AppRole login
+Vault --> mw-app-gateway : token with policy mw-app-gateway
+mw-app-gateway -> Vault : read secret/mw-app-gateway
+mw-app-gateway -> Vault : pki_int/issue/mw-app-gateway
+Vault --> mw-app-gateway : certificate + key, 72 h
 mw-app-gateway -> Keycloak : client credentials, realm services
 mw-app-gateway -> mw-auth : https://mw-auth:8443 (client cert + JWT)
 mw-auth -> mw-auth : cert from pki_int? azp = cert CN?
@@ -180,7 +182,7 @@ mw-auth -> mw-auth : cert from pki_int? azp = cert CN?
       policy and the AppRole, and drops the role-id and secret-id into the <code>app-gateway-approle</code> volume. Then it exits 0.</li>
     <li><strong>The service reads its login.</strong> Compose starts mw-app-gateway only after provision succeeded. Spring's <code>configtree</code> import turns the
       two files under <code>/run/mw/approle</code> into properties.</li>
-    <li><strong>It logs in.</strong> Spring Cloud Vault sends the role-id and secret-id to <code>http://openbao:8200</code> and gets back a token whose policy is
+    <li><strong>It logs in.</strong> Spring Cloud Vault sends the role-id and secret-id to <code>http://vault:8200</code> and gets back a token whose policy is
       <code>mw-app-gateway</code>. That token can read one secret and issue one kind of certificate. Nothing else.</li>
     <li><strong>It reads its secrets.</strong> The fields of <code>secret/mw-app-gateway</code> become properties: the datasource connects, Valkey connects, and the
       Keycloak client secret is ready.</li>
@@ -192,15 +194,15 @@ mw-auth -> mw-auth : cert from pki_int? azp = cert CN?
   </ol>
 
   <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
-    <li><a href="../../deploy/openbao/dev-unseal.sh">deploy/openbao/dev-unseal.sh</a> (start, unseal, engines; its header explains the dev-only shortcuts) and
-      <a href="../../deploy/openbao/config.hcl">deploy/openbao/config.hcl</a>.</li>
+    <li><a href="../../deploy/vault/dev-unseal.sh">deploy/vault/dev-unseal.sh</a> (start, unseal, engines; its header explains the dev-only shortcuts) and
+      <a href="../../deploy/vault/config.hcl">deploy/vault/config.hcl</a>.</li>
     <li><a href="../../deploy/provision/provision.sh">deploy/provision/provision.sh</a> (the order of steps),
       <a href="../../deploy/provision/lib.sh">lib.sh</a> (each step), <a href="../../deploy/provision/services.sh">services.sh</a> (what each service's secret holds). Read <code>services.sh</code> next.</li>
     <li>The Spring binding: <a href="../../services/mw-admin-api/src/main/resources/application.yml">mw-admin-api application.yml</a> (<code>spring.config.import</code>,
       <code>spring.cloud.vault</code>, the <code>mw.tls</code> block).</li>
     <li>Certificates: <a href="../../services/mw-app-gateway/src/main/java/mfs/mw/app/gateway/config/ServiceCertificateManager.java">mw-app-gateway config/ServiceCertificateManager.java</a>
       (the same copy sits in each PKI service).</li>
-    <li>Decisions: <a href="../adr/D9-platform-services.md">D9</a>, <a href="../adr/D24-service-mtls-phase-1.md">D24</a>.</li>
+    <li>Decisions: <a href="../adr/D9-platform-services.md">D9</a>, <a href="../adr/D24-service-mtls-phase-1.md">D24</a>, <a href="../adr/D30-hashicorp-vault.md">D30</a>.</li>
   </ul></div>
 
   <h2 id="wrong">What can go wrong</h2>
@@ -214,9 +216,9 @@ mw-auth -> mw-auth : cert from pki_int? azp = cert CN?
     <li><strong>A service fails at start with a Vault or 403 error.</strong> Its policy does not allow the path it asked for. Check that its function in
       <code>deploy/provision/services.sh</code> writes the key it needs, and for a certificate that the service is listed in <code>PKI_SERVICES</code>.</li>
     <li><strong>WARN <code>tls.certificate.renew_failed</code>, then ERROR <code>tls.certificate.expiring</code>.</strong> The renewal at two thirds failed (it is retried every
-      minute) and less than a third of the life is left. Check that <code>openbao</code> is healthy and not sealed. Once the certificate expires, calls to
+      minute) and less than a third of the life is left. Check that <code>vault</code> is healthy and not sealed. Once the certificate expires, calls to
       mw-auth and mw-crypto fail the TLS handshake. The steps are in <a href="../runbook.md">docs/runbook.md</a> ("Health and alerts").</li>
-    <li><strong>"I need a secret value to debug."</strong> Do not paste it anywhere. <code>scripts/creds.sh</code> prints the dev token and logins; the OpenBao UI is on
+    <li><strong>"I need a secret value to debug."</strong> Do not paste it anywhere. <code>scripts/creds.sh</code> prints the dev token and logins; the Vault UI is on
       <code>http://127.0.0.1:8200</code> while the stack is up.</li>
   </ul></div>
 
@@ -225,7 +227,7 @@ mw-auth -> mw-auth : cert from pki_int? azp = cert CN?
     <li><a href="../adr/D9-platform-services.md">ADR D9</a> and <a href="../adr/D24-service-mtls-phase-1.md">ADR D24</a> (service mTLS, phase 1).</li>
     <li>Spec section 18.4 (<a href="../../spec/bits-mfs-middleware-spec.md">spec/bits-mfs-middleware-spec.md</a>): secrets and keys.</li>
     <li><a href="../tutorial/07-ops-platform.html#secrets">Tutorial chapter 7</a> for the short version; <a href="hsm.html">HSM</a> for the keys that are deliberately
-      <em>not</em> in OpenBao.</li>
+      <em>not</em> in Vault.</li>
   </ul>
 
   <nav class="pager">

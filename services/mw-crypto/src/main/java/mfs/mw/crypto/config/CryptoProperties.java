@@ -42,7 +42,7 @@ public record CryptoProperties(
    *
    * @param library absolute path of the PKCS#11 library
    * @param slotListIndex the token's slot in the library's slot list
-   * @param userPin the token's user PIN, from OpenBao {@code secret/mw-crypto} (key {@code
+   * @param userPin the token's user PIN, from Vault {@code secret/mw-crypto} (key {@code
    *     mw.crypto.pkcs11.user-pin}); never logged, never in a config file
    * @param maxSessions at most this many HSM operations at once (the session pool)
    * @param acquireTimeout how long a request waits for a free session before it fails closed

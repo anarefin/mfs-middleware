@@ -32,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * mw-auth's internal API on its own port with mTLS (ticket 67, spec 18.7, D24), the server setup of
- * mw-crypto: {@code server.ssl.client-auth: need} on this service's OpenBao certificate (SAN
+ * mw-crypto: {@code server.ssl.client-auth: need} on this service's Vault certificate (SAN
  * localhost here), plus the JWT allow-list (mw-app-gateway, mw-ussd, mw-checkout, mw-admin-api)
  * with {@code azp} equal to the client certificate's CN. The public port never serves {@code
  * /internal/**}; actuator stays on the plain management port. A test-only {@code GET

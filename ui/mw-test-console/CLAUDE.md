@@ -74,7 +74,7 @@ D9 amendment), can unlock and reset accounts, and has no sign-in.
   secret, `components/no-preset-code.tsx` shows only for a stale manifest; usernames copyable,
   `components/copyable-text.tsx` `Username`, test ids `user-<u>` / `copy-user-<u>`), the app PIN `MW_SEED_APP_PIN`, the wrong PIN 9999, a
   PIN -> ciphertext helper (mw-auth's PIN key), the latest BIND / LOGIN / RESET OTP of an MSISDN
-  (`lib/otp-lookup.ts` over the SMSC simulator) and the platform secrets (Keycloak admin, OpenBao
+  (`lib/otp-lookup.ts` over the SMSC simulator) and the platform secrets (Keycloak admin, Vault
   tester token, APISIX keys, partner HMAC, USSD gateway passwords, SoftHSM labels and PINs).
 - `/seed-data` ("Seed data"): mw-seeder's manifest (`lib/seed-manifest.ts`, pure and defensive;
   `lib/server/seed.ts` reads `SEED_MANIFEST`, resolves the `passwordEnv` / `totpSecretEnv` / PIN env
@@ -130,7 +130,7 @@ kept.
   `KC_OPS_TEST_PASSWORD`, `KC_OPS_TEST_TOTP_SECRET`, `KC_BOOTSTRAP_ADMIN_USERNAME`,
   `KC_BOOTSTRAP_ADMIN_PASSWORD`, `APISIX_ADMIN_KEY`, `BILLAGG_HMAC_SECRET`, `C2WBANK_HMAC_SECRET`,
   `USSD_{GP,ROBI,BL,TELETALK}_GATEWAY_SECRET`, `SOFTHSM_{MWCRYPTO,PAYSIM}_{LABEL,SO_PIN,USER_PIN}`,
-  `OPENBAO_DEV_ROOT_TOKEN`, and `SEED_MANIFEST=/run/mw/seed/manifest.json`.
+  `VAULT_DEV_ROOT_TOKEN`, and `SEED_MANIFEST=/run/mw/seed/manifest.json`.
 - Volume: mw-seeder's `seed-manifest` volume mounted read-only at `/run/mw/seed` (the manifest
   holds no secret; it is empty until the seed profile ran).
 - APISIX `deploy/apisix/routes-test/test-console.json`: `/tester`, `/tester/*` to

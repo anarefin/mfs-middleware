@@ -1,5 +1,5 @@
 # Static configuration baked into the image (spec 20.4). Per-environment overrides are
-# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from OpenBao/Vault
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from Vault
 # only (18.4) and are never written here.
 spring:
   application:
@@ -14,7 +14,7 @@ spring:
   cloud:
     vault:
       enabled: ${VAULT_ENABLED:false}
-      uri: ${VAULT_ADDR:http://openbao:8200}
+      uri: ${VAULT_ADDR:http://vault:8200}
       authentication: APPROLE
       app-role:
         role-id: ${VAULT_ROLE_ID:}
@@ -29,7 +29,7 @@ spring:
   # This service's own schema `audit` (16.2), migrated by Flyway on start-up from
   # db/migration/V<n>__*.sql (16.4). Two roles (14.3, 16.4): the service runs as audit_writer
   # (INSERT only on audit.event); Flyway runs as the schema owner audit_dw_rw, set in the stack
-  # with SPRING_FLYWAY_USER and spring.flyway.password from OpenBao. Without them (tests, a single
+  # with SPRING_FLYWAY_USER and spring.flyway.password from Vault. Without them (tests, a single
   # local role) Flyway uses the datasource credentials. Passwords are never written here.
   datasource:
     url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
@@ -168,7 +168,7 @@ management:
       type: w3c
 
 mw:
-  # This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; config/TlsProperties,
+  # This service's certificate from Vault PKI (spec 18.2, 18.4, D24; config/TlsProperties,
   # config/ServiceCertificateManager): the mTLS client certificate of the audit anchor calls to
   # mw-crypto (ticket 74; mandatory there). The stack sets MW_TLS_ENABLED=true; tests run without
   # it (plain-HTTP stand-in). On, it issues pki_int/issue/mw-audit-dw at start (role and policy from
@@ -227,7 +227,7 @@ mw:
       enabled: true
     # Scheduled hash-chain verification (ticket 50, scheduler/AuditChainVerifyJob, ShedLock) as the
     # read-only role audit_reader; its password is mw.audit-dw.chain-verify.reader-password in
-    # OpenBao (secret/mw-audit-dw), never written here. A broken chain logs audit.chain.broken
+    # Vault (secret/mw-audit-dw), never written here. A broken chain logs audit.chain.broken
     # (ERROR) and sets the gauge mw_audit_chain_broken.
     # Test-only API (ticket 58, controller/AuditTestController, contract audit-dw-test.v1):
     # GET /test/v1/audit/events and /test/v1/audit/chains/{month} without a token, for the Newman
@@ -253,7 +253,7 @@ mw:
       grace: 3h
       # mw-crypto over mTLS (mw.tls) plus a Keycloak realm services client-credentials token (client
       # mw-audit-dw, audience mw-crypto); the client secret is mw.audit-dw.anchor.crypto.client-secret in
-      # OpenBao (secret/mw-audit-dw), never written here.
+      # Vault (secret/mw-audit-dw), never written here.
       crypto:
         base-url: ${MW_CRYPTO_BASE_URL:https://mw-crypto:8080}
         token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}

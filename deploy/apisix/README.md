@@ -146,7 +146,7 @@ Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, tick
 2. `client-control` `max_body_size` 16 KiB (413).
 3. `limit-count` 600 / 60 s per `remote_addr`, Valkey as on `app-v1`.
 4. No `hmac-auth`: the adapter verifies the partner's `hmac-sha256` signature with the secret in
-   OpenBao and answers 401 `MW-AUTH-001` itself (decision in `services/mw-adapter-billpay/CLAUDE.md`).
+   Vault and answers 401 `MW-AUTH-001` itself (decision in `services/mw-adapter-billpay/CLAUDE.md`).
    No `request-validation`: the aggregator's wire format is partner-specific, not a contract.
 
 Route `partner-c2wbank-callback` (`/partner/c2wbank/callback/*`, POST only, ticket 23) ->
@@ -168,7 +168,7 @@ contract `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml`). One route and one c
 2. `client-control` 4 KiB (413). The step body's schema is checked by mw-ussd (`UssdStep`), not here.
 3. `basic-auth` (`hide_credentials`: mw-ussd never sees it) against consumer `consumers/ussd_<mno>.json`,
    user `ussd-<mno>`, password `"@env:USSD_<MNO>_GATEWAY_SECRET"`: a fixed fake dev value
-   from `deploy/dev.env.defaults` (in `deploy/.env`), also written to OpenBao `secret/mw-simulators` as
+   from `deploy/dev.env.defaults` (in `deploy/.env`), also written to Vault `secret/mw-simulators` as
    `sim.ussd-gateway.credentials.<mno>` by the one-shot `provision` (the simulator plays the MNO). No
    credential 401 `MW-AUTH-001`.
 4. `consumer-restriction` whitelist `[ussd_<mno>]`, 403: the consumer is bound to the `{mno}` path

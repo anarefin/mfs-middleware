@@ -14,7 +14,7 @@
     <a href="index.html">Start</a>
     <a href="apisix.html">APISIX</a>
     <a href="keycloak.html">Keycloak</a>
-    <a href="openbao.html">OpenBao</a>
+    <a href="vault.html">Vault</a>
     <a href="hsm.html">HSM</a>
     <a href="greenmail.html">GreenMail</a>
     <a href="core-mock.html">Core mock</a>
@@ -87,7 +87,7 @@
       mw-notify (SMPP to the SMSC), mw-ussd (bound to the USSD SMPP port), mw-checkout (IPNs) and mw-crypto (payShield).</li>
     <li><strong>Who controls them.</strong> Tests and testers, through the test-only edge route <code>/test/sim/*</code> (<code>deploy/apisix/routes-test/test-simulators.json</code>,
       test API key from <code>scripts/creds.sh</code>), which reaches only the <code>/sim/...</code> control API. On the laptop the direct port 8085 works too.</li>
-    <li><strong>Callback secrets.</strong> The bill aggregator and bank sign their callbacks with HMAC-SHA256, using secrets the <code>provision</code> one-shot writes to OpenBao.</li>
+    <li><strong>Callback secrets.</strong> The bill aggregator and bank sign their callbacks with HMAC-SHA256, using secrets the <code>provision</code> one-shot writes to Vault.</li>
     <li><strong>One timer knob.</strong> How long a simulated timeout holds its reply: <code>MW_SIM_TIMEOUT_DELAY</code> (30 s by default, shorter in <code>deploy/dev.env.defaults</code>).</li>
   </ul>
 

@@ -102,7 +102,7 @@ The MVP proves every core pattern of the middleware on one Docker Compose host: 
 | Gateway | APISIX with JWT (Keycloak), HMAC for checkout merchants, rate limits, request validation | mTLS partner callbacks, separate internal gateway |
 | Ops | Health checks, structured JSON logs, `/actuator/prometheus` metrics | Alert rules, runbooks per alert, backup restore drill |
 | Security | TLS on the APISIX edge, Vault for all secrets, Keycloak MFA for admin, non-root containers | mTLS between services, HSM, pen test (before production); Kafka ACLs and quotas; image digest pinning |
-| Dev secrets | OpenBao root token kept in its data volume (dev only) | Production unseal and root-token handling |
+| Dev secrets | Vault root token kept in its data volume (dev only) | Production unseal and root-token handling |
 
 ### Single-host topology
 
@@ -115,7 +115,7 @@ One Compose project (`deploy/docker-compose.yml`, one hand-written file with pro
 | Core flow | `mw-orchestrator`, `mw-core-mock` |
 | Partners | `mw-adapter-telco`, `mw-adapter-billpay`, `mw-adapter-bank` |
 | Support | `mw-notify`, `mw-audit-dw` (audit only), `mw-admin-api`, `mw-admin-ui` |
-| Platform | `kafka` (single KRaft node, RF 1), `postgres` (18), `valkey`, `keycloak`, `openbao`, `kafka-init` (one-shot topic creation); no migration container, each service runs its own Flyway migrations on start (16.4) |
+| Platform | `kafka` (single KRaft node, RF 1), `postgres` (18), `valkey`, `keycloak`, `vault`, `kafka-init` (one-shot topic creation); no migration container, each service runs its own Flyway migrations on start (16.4) |
 | Test | `mw-simulators` (OCS, aggregator, bank, SMSC, USSD gateway in SMPP and HTTP mode), `greenmail` |
 
 ### Core mock (`mw-core-mock`)
@@ -371,7 +371,7 @@ Every runtime component is open source under a permissive licence, which satisfi
 | SWIFT MT | Prowide Core (WIFE) | latest | Apache 2.0 | MT940 / MT942 parsing |
 | IAM | Keycloak | 26.x | Apache 2.0 | OAuth2/OIDC for admin users and partners |
 | Config / secrets binding | Spring Cloud (Spring Cloud Vault) | 2025.1.4 | Apache 2.0 | Loads Vault/OpenBao secrets at start, renews leases |
-| Secrets / PKI | HashiCorp Vault (OpenBao until ticket 91) | 2.2.2 | BUSL 1.1 | Secrets, dynamic DB creds, certificate issue (**Decision 2026-11-19**, D30; OpenBao the drop-in fallback) |
+| Secrets / PKI | HashiCorp Vault (built by ticket 91) | 2.2.2 | BUSL 1.1 | Secrets, dynamic DB creds, certificate issue (**Decision 2026-11-19**, D30; OpenBao the drop-in fallback) |
 | Admin UI | Next.js + React + TypeScript | 16.4.1 | MIT | Admin console |
 | Testing | JUnit 6, Testcontainers, WireMock, Pact, Gatling | current | EPL/Apache/MIT | Unit, integration, contract, load |
 
@@ -439,7 +439,7 @@ bits-middleware/
 ├─ deploy/
 │  ├─ docker-compose.yml        # the whole stack, hand-written, profiles (none = platform, minimal, core, seed); D16
 │  ├─ dev.env.defaults          # committed fake dev values + short test timers (cp to .env)
-│  ├─ env/ etcd/ keycloak/ openbao/ postgres/   # platform settings, realms, init scripts (no secrets)
+│  ├─ env/ etcd/ keycloak/ vault/ postgres/   # platform settings, realms, init scripts (no secrets)
 │  ├─ apisix/                   # routes, global rules, consumers as JSON, applied through the Admin API
 │  ├─ kafka/                    # topic definitions as code, applied by kafka-init
 │  └─ ansible/                  # host provisioning (TBC)

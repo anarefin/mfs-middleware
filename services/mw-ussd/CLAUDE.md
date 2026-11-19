@@ -26,7 +26,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   Each step runs on a virtual thread, never on jSMPP's PDU threads. Text GSM-7 unpacked or UCS-2
   (`util/UssdText`). Dev: gp binds 2 to `mw-simulators:2776`; robi, bl, teletalk
   endpoints config-ready. `mw.ussd.smpp.enabled=false` binds nothing (tests). SMPP password key
-  `mw.ussd.smpp.mno.<mno>.password` in OpenBao (empty in dev: the simulator accepts any bind).
+  `mw.ussd.smpp.mno.<mno>.password` in Vault (empty in dev: the simulator accepts any bind).
 - HTTP transport: `POST /ussd/{mno}` (`controller/UssdHttpController`, contract
   `api/mw-ussd/ussd-http.v1.openapi.yaml`), JSON `{sessionId, msisdn, serviceCode?, input?,
   type: BEGIN|CONTINUE|END|ABORT}` -> `{sessionId, message, flag}` with the MNO's flag values
@@ -122,7 +122,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   up (a failure is only logged `ussd.pin_key.unavailable`: mw-auth may start later; the first PIN asks again),
   keeps it `pin-key-ttl` (10 m) and drops it when mw-auth answers `MW-SYS-051` (mw-crypto refused the PIN
   block, e.g. a rotated key; that step ends `unavailable`, the next PIN uses the new key). No key can be had:
-  the step ends `unavailable`. The core's PIN key (M11: `mw.ussd.pin.*`, its OpenBao copy) is gone.
+  the step ends `unavailable`. The core's PIN key (M11: `mw.ussd.pin.*`, its Vault copy) is gone.
 - Transaction authorisation (ticket 72, D22; `client/AuthClient`, `config/AuthClientProperties`
   `mw.ussd.auth.*`, contract `api/mw-auth/auth-internal.v1.openapi.yaml`): before publishing,
   `KafkaTransactionFlow` sends `POST /internal/v1/txn-authorisations {msisdn, channel USSD, encryptedPin, txn
@@ -130,7 +130,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   idempotencyKey}}` built by `TxnRequestMapper.authorisation` from the very request it then publishes (mw-auth
   hashes these values into the assertion's `txnHash`; the core recomputes it from the request, so they must
   be identical: `TxnRequestMapperTest`), and publishes the request with `assertion` only. Over mTLS with this
-  service's OpenBao certificate (`config/ServiceCertificateManager` + `TlsProperties` from the template,
+  service's Vault certificate (`config/ServiceCertificateManager` + `TlsProperties` from the template,
   `mw.tls.enabled`: off in the image default and tests, `MW_TLS_ENABLED=true` in compose; PKI role `mw-ussd`)
   and a Keycloak realm `services` client-credentials JWT of client `mw-ussd` (`client/ServiceTokenClient`,
   audience mapper `aud-mw-auth`; secret `mw.ussd.auth.client-secret` in `secret/mw-ussd`, synced from
@@ -202,7 +202,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 
 ## Tests (ticket 72)
 
-- `client/AuthClientIT` (WireMock mw-auth over mTLS with an OpenBao PKI certificate, `PkiTestAuthority`):
+- `client/AuthClientIT` (WireMock mw-auth over mTLS with a Vault PKI certificate, `PkiTestAuthority`):
   body and token, refusals as answers (a wrong PIN sent once, never opening the breaker), 401 MW-AUTH-001
   refresh, transport key, fail closed; `client/MtlsClientIT` (template copy). `service/KafkaTransactionFlowTest`
   (authorisation = published values, assertion published, refusals publish nothing, MW-SYS-051 drops the key),
@@ -230,7 +230,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   the PIN block and the assertion are `SECRET`.
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - `messaging/EventPublisher`: Kafka records with the 6.1 headers (+ extra headers such as `mw-reply-to`)
   through Spring Kafka's `KafkaTemplate` (ADR D27), idempotent `acks=all` producer; `publish` waits at most
   `mw.kafka.send-timeout`. The admin client (asked for the cluster id by the observed template's first

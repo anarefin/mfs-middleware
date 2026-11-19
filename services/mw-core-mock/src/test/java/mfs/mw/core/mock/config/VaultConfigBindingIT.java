@@ -17,7 +17,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * Secrets bind from OpenBao at start-up through Spring Cloud Vault (spec 18.4): a value written
+ * Secrets bind from Vault at start-up through Spring Cloud Vault (spec 18.4): a value written
  * to {@code secret/<service>} shows up in the {@code mw.service} properties.
  */
 @Testcontainers(disabledWithoutDocker = true)
@@ -26,18 +26,18 @@ class VaultConfigBindingIT {
   static final String TOKEN = "test-root-token";
 
   @Container
-  static final GenericContainer<?> OPENBAO =
-      new GenericContainer<>("openbao/openbao:2.7.2")
+  static final GenericContainer<?> VAULT =
+      new GenericContainer<>("hashicorp/vault:2.2.2")
           .withCommand("server", "-dev", "-dev-root-token-id=" + TOKEN, "-dev-listen-address=0.0.0.0:8200")
           .withExposedPorts(8200)
           .waitingFor(Wait.forHttp("/v1/sys/health").forStatusCode(200));
 
   String vaultUri() {
-    return "http://" + OPENBAO.getHost() + ":" + OPENBAO.getMappedPort(8200);
+    return "http://" + VAULT.getHost() + ":" + VAULT.getMappedPort(8200);
   }
 
   @Test
-  void secretFromOpenBaoBindsToServiceProperties() throws Exception {
+  void secretFromVaultBindsToServiceProperties() throws Exception {
     HttpResponse<String> put =
         HttpClient.newHttpClient()
             .send(
@@ -45,7 +45,7 @@ class VaultConfigBindingIT {
                     .header("X-Vault-Token", TOKEN)
                     .POST(
                         HttpRequest.BodyPublishers.ofString(
-                            "{\"data\":{\"mw.service.env\":\"from-openbao\"}}"))
+                            "{\"data\":{\"mw.service.env\":\"from-vault\"}}"))
                     .build(),
                 HttpResponse.BodyHandlers.ofString());
     assertThat(put.statusCode()).isEqualTo(200);
@@ -61,7 +61,7 @@ class VaultConfigBindingIT {
                 "--spring.cloud.vault.uri=" + vaultUri(),
                 "--spring.cloud.vault.authentication=TOKEN",
                 "--spring.cloud.vault.token=" + TOKEN)) {
-      assertThat(ctx.getBean(MwServiceProperties.class).env()).isEqualTo("from-openbao");
+      assertThat(ctx.getBean(MwServiceProperties.class).env()).isEqualTo("from-vault");
     }
   }
 }

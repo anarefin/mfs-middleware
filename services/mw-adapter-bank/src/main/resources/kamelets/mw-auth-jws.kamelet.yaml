@@ -16,14 +16,14 @@ spec:
       Signs the request body (empty when there is none) as a detached JWS, header.''.signature with
       the protected header {"alg", "kid"?}, and puts it in one header (default X-JWS-Signature). The
       private key (PKCS#8 PEM; RSA for RS256, P-256 for ES256) is a field of this partner's own
-      OpenBao secret, read when the route loaded (no mw-crypto key purpose fits; ticket 87). Input and
+      Vault secret, read when the route loaded (no mw-crypto key purpose fits; ticket 87). Input and
       output: the prepared request; only headers change.
     type: object
     required: [secretField, alg]
     properties:
       secretField:
         title: Key secret field
-        description: Field of this partner's own OpenBao secret holding the PKCS#8 PEM private key; a reference, never the value.
+        description: Field of this partner's own Vault secret holding the PKCS#8 PEM private key; a reference, never the value.
         type: string
         format: password
         x-descriptors:

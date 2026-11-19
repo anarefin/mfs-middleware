@@ -83,7 +83,7 @@
     <ul>
       <li><strong>Docker Desktop</strong> (or Docker Engine with Compose v2.20+). Give it <strong>8 GB of RAM</strong>:
         the memory limits of the full profile add up to 8,176 of the 8,192 MiB budget (15 JVMs, Kafka, PostgreSQL 18, Keycloak,
-        OpenBao, Valkey, APISIX, etcd, GreenMail, softhsm). Measured use is about 6 GB. 4 CPU cores or more.</li>
+        Vault, Valkey, APISIX, etcd, GreenMail, softhsm). Measured use is about 6 GB. 4 CPU cores or more.</li>
       <li><strong>JDK 25</strong> on the host, to build the jars. You don't need to install Gradle: the repo ships <code>./gradlew</code>.</li>
       <li>For the test suites in step 11: <strong>Node.js 22+</strong> with <code>npx</code>, and <code>bash</code>, <code>curl</code>, <code>jq</code>.</li>
       <li>These host ports must be free: <code>443</code> (the edge), <code>8081</code>–<code>8095</code>,
@@ -140,7 +140,7 @@ cp dev.env.defaults .env</pre></div>
     <p>Run every <code>docker compose</code> command below from inside <code>deploy/</code>. Compose reads <code>.env</code> there
       on its own, so no <code>--env-file</code> flag is needed.</p>
     <p>The logins a tester types: ops <code>ops-test-pass</code>, app PIN <code>13579</code>, portal <code>portal-test-pass</code>,
-      Keycloak admin <code>kc-admin-test-pass</code>, OpenBao token <code>dev-root-token</code> (<code>OPENBAO_DEV_ROOT_TOKEN</code>),
+      Keycloak admin <code>kc-admin-test-pass</code>, Vault token <code>dev-root-token</code> (<code>VAULT_DEV_ROOT_TOKEN</code>),
       test-route apikey <code>e2e-test-apikey</code>. Once the stack runs (step 4), the test console pages
       <a href="https://localhost/tester/credentials">/tester/credentials</a> (every login with a live one-time code) and
       <a href="https://localhost/tester/seed-data">/tester/seed-data</a> (everything the seeder created) show them all; in a terminal
@@ -152,15 +152,15 @@ cp dev.env.defaults .env</pre></div>
   <section id="s4">
     <h2><span class="num">4</span>Start the full platform</h2>
     <div class="cmd"><pre>docker compose --profile core --profile seed --profile tester up -d --build --wait</pre></div>
-    <p>One command for everything: the platform (PostgreSQL, Kafka, Valkey, Keycloak, OpenBao, APISIX, SoftHSM, GreenMail),
+    <p>One command for everything: the platform (PostgreSQL, Kafka, Valkey, Keycloak, Vault, APISIX, SoftHSM, GreenMail),
       every <code>mw-*</code> service, the admin console, the test console, the seed and the test-only gateway routes.
       Compose builds the images (<code>mfs-mw/&lt;service&gt;:local</code>, both consoles included), then starts everything in
       dependency order, and <code>--wait</code> returns only once every container is healthy and the seeder has exited 0
       (a non-zero exit: step 12). Each service waits until what it needs is healthy or has finished:</p>
     <div class="flow">
-      <span>postgres · valkey · openbao · keycloak · softhsm</span><b>·</b><span>kafka</span><b>→</b><span>kafka-init (topics)</span><b>·</b>
+      <span>postgres · valkey · vault · keycloak · softhsm</span><b>·</b><span>kafka</span><b>→</b><span>kafka-init (topics)</span><b>·</b>
       <span>etcd</span><b>→</b><span>etcd-init</span><b>→</b><span>apisix</span><b>→</b><span>apisix-init (routes)</span><b>·</b>
-      <span>provision (schemas, OpenBao secrets, AppRoles, service certificate CA)</span><b>→</b><span>mw-crypto</span><b>→</b>
+      <span>provision (schemas, Vault secrets, AppRoles, service certificate CA)</span><b>→</b><span>mw-crypto</span><b>→</b>
       <span>mw-auth</span><b>·</b><span>the other 13 services + admin console</span><b>→</b><span>mw-seeder (one-shot)</span><b>·</b>
       <span>apisix-init-tester (test-only routes)</span><b>→</b><span>mw-test-console</span>
     </div>
@@ -178,8 +178,8 @@ cp dev.env.defaults .env</pre></div>
         API suite in step 11 needs them. For the production timers, delete the "Test timers" block from <code>.env</code> and
         run <code>docker compose --profile core up -d</code>.</li>
       <li>The <code>provision</code> one-shot runs on every <code>up</code> and creates missing database roles, schemas and
-        OpenBao secrets, so a new service's schema appears without wiping the volumes. On the first run it also creates the
-        dev certificate authority for service mTLS (OpenBao <code>pki</code> and <code>pki_int</code>), copies the softhsm token
+        Vault secrets, so a new service's schema appears without wiping the volumes. On the first run it also creates the
+        dev certificate authority for service mTLS (Vault <code>pki</code> and <code>pki_int</code>), copies the softhsm token
         PINs into the secrets of mw-crypto and mw-simulators, and registers the partner simulator's
         <code>private_key_jwt</code> key in Keycloak.</li>
       <li>Memory limits are knobs (<code>APP_MEM_LIMIT</code>, <code>APP_XMX</code>, <code>KAFKA_MEM</code>, …; the table is the
@@ -274,7 +274,7 @@ docker compose logs -f mw-orchestrator</pre></div>
       <tr><td>9094</td><td>kafka (KRaft)</td><td>host listener <code>localhost:9094</code> (containers use <code>kafka:9092</code>); 1 partition per topic</td></tr>
       <tr><td>6379</td><td>valkey</td><td>sessions and rate limits; password <code>VALKEY_PASSWORD</code></td></tr>
       <tr><td>8180</td><td>keycloak</td><td>realms ops, portals (TOTP required), services, partners (<code>private_key_jwt</code>); the console login goes through 443</td></tr>
-      <tr><td>8200</td><td>openbao</td><td>service secrets and the dev CA (<code>pki_int</code>) that issues every service's mTLS certificate</td></tr>
+      <tr><td>8200</td><td>vault</td><td>service secrets and the dev CA (<code>pki_int</code>) that issues every service's mTLS certificate</td></tr>
       <tr><td>8025 / 3025</td><td>greenmail</td><td>test mailbox: API / SMTP</td></tr>
       <tr><td>—</td><td>etcd</td><td>APISIX configuration; never published</td></tr>
     </table></div>
@@ -292,7 +292,7 @@ docker compose logs -f mw-orchestrator</pre></div>
         checks them against mw-auth's JWKS), PIN set, change and reset, lockout levels (short in dev) and the ES256
         transaction assertion the core trusts. A PIN only ever arrives as RSA-OAEP ciphertext under the PIN transport key
         (<code>GET /auth/v1/pin-key</code>).</li>
-      <li><strong>mTLS</strong>: at start, mw-crypto, mw-auth and their callers each issue their own certificate from OpenBao
+      <li><strong>mTLS</strong>: at start, mw-crypto, mw-auth and their callers each issue their own certificate from Vault
         <code>pki_int</code>. That is why port 8094 and mw-auth's internal API refuse a plain <code>curl</code>.</li>
       <li>The design decisions: <code>docs/adr/</code> D20 (PIN custody) to D24 (service mTLS).</li>
     </ul>
@@ -325,14 +325,14 @@ docker compose --profile core --profile seed --profile tester down
 <span class="c"># wipe ALL state together (every volume of every profile), then start again and re-seed</span>
 ./reset.sh
 docker compose --profile core --profile seed --profile tester up -d --build --wait</pre></div>
-    <div class="warn">Never reset a single store. PostgreSQL, Kafka, Valkey, OpenBao, Keycloak and the core-mock ledger describe
+    <div class="warn">Never reset a single store. PostgreSQL, Kafka, Valkey, Vault, Keycloak and the core-mock ledger describe
       the same state, so they are always reset together with <code>./reset.sh</code>.</div>
   </section>
 
   <section id="s11">
     <h2><span class="num">11</span>Test the running platform</h2>
     <p>Run these from the repository root (<code>cd ..</code>) against the seeded stack from step 4.</p>
-    <div class="cmd"><pre>scripts/smoke.sh                  <span class="c"># containers, published ports, topics, Kafka, PostgreSQL, Valkey, Keycloak tokens, OpenBao, APISIX</span>
+    <div class="cmd"><pre>scripts/smoke.sh                  <span class="c"># containers, published ports, topics, Kafka, PostgreSQL, Valkey, Keycloak tokens, Vault, APISIX</span>
 scripts/edge-test.sh              <span class="c"># APISIX policies: 401/400/413/429 envelopes, header stripping, correlation ID</span>
 scripts/api-test.sh "00, 01"      <span class="c"># Newman API suite: health and seed baseline, P2P</span>
 scripts/api-test.sh               <span class="c"># every folder but 90 Slow (about 10 minutes)</span>
@@ -371,7 +371,7 @@ scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / 
       changed through maker-checker on the console's <strong>Partners</strong> page. It goes live only after its dry-run against
       mw-simulators passes. Examples to start from are in <code>deploy/partner-routes/examples/</code> (REST with an API key,
       OAuth2 or an async callback, SOAP, an SFTP reconciliation file, an SFTP payment file). The steps, with the
-      OpenBao secrets, are in <code>docs/runbook.md</code> ("Onboard a biller", "Batch partner over SFTP"). The console's partner
+      Vault secrets, are in <code>docs/runbook.md</code> ("Onboard a biller", "Batch partner over SFTP"). The console's partner
       checks run with <code>scripts/ui-e2e.sh @partners</code>.</p>
     <div class="note">No load tests on a laptop: <code>scripts/suite.sh perf</code> and <code>scripts/chaos.sh</code> need a bigger
       host and a fresh stack.</div>
@@ -399,7 +399,7 @@ scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / 
         other credentials (an <code>.env</code> from before <code>dev.env.defaults</code>, or an edited value): run
         <code>./reset.sh</code> and start again.</li>
       <li><strong>A service stays "starting"</strong>: <code>docker compose logs &lt;service&gt;</code>. It is usually waiting on
-        postgres, kafka, keycloak, openbao or provision.</li>
+        postgres, kafka, keycloak, vault or provision.</li>
       <li><strong>mw-crypto or mw-auth stays "starting"</strong>: mw-auth waits for mw-crypto, and mw-app-gateway, mw-ussd,
         mw-checkout and the seeder wait for mw-auth. Check <code>docker compose --profile core ps softhsm</code> (must be healthy) and
         <code>docker compose --profile core logs mw-crypto</code>. A certificate error from <code>pki_int</code>, or a token login
@@ -417,7 +417,7 @@ scripts/log-scan.sh               <span class="c"># no PIN or unmasked MSISDN / 
         page lists the problems (for example <code>HTTP_5XX</code> from the simulator); the adapter's log has the rest
         (<code>docker compose --profile core logs mw-adapter-billpay</code>). The last LIVE version keeps serving.</li>
       <li><strong>An SFTP batch route stops logging in after <code>partner-sftp</code> was recreated</strong>: the container
-        made new host keys. Write the known_hosts lines into the partner's OpenBao secret again (<code>docs/runbook.md</code>,
+        made new host keys. Write the known_hosts lines into the partner's Vault secret again (<code>docs/runbook.md</code>,
         "Batch partner over SFTP").</li>
       <li><strong>404 on <code>/test/...</code> or <code>/tester</code></strong>: the stack was started without
         <code>--profile tester</code>. Run the step 4 command again (or <code>scripts/tester.sh</code>);

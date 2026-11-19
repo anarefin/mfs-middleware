@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
  * (ticket 22): string to sign = method, path and query of the callback URL, epoch-seconds
  * timestamp, lower-case hex SHA-256 of the body, one per line; Base64 HMAC-SHA256 in {@code
  * X-Signature}, the timestamp in {@code X-Timestamp}. The secret is the property {@code
- * sim.callback-secrets.<partner>} (OpenBao {@code secret/mw-simulators} in the stack); a partner
+ * sim.callback-secrets.<partner>} (Vault {@code secret/mw-simulators} in the stack); a partner
  * without one sends unsigned callbacks (the OCS). Values are never logged.
  */
 @Component

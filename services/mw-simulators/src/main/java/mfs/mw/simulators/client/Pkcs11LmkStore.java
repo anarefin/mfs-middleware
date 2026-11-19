@@ -20,7 +20,7 @@ import org.slf4j.LoggerFactory;
 /**
  * The payShield simulator's LMK in the SoftHSM {@code paysim} token (ticket 64, spec 18.8, ticket 61):
  * JDK SunPKCS11 against the image's p11-kit proxy, whose one module dials {@code softhsm:5658}
- * (deploy/softhsm/README.md). On first use it logs in with the user PIN from OpenBao ({@code
+ * (deploy/softhsm/README.md). On first use it logs in with the user PIN from Vault ({@code
  * sim.payshield.pkcs11.user-pin}, never logged; the char copy is zeroed) and finds the AES-256 key
  * labelled {@code lmk}, or generates it as a sensitive, non-extractable token object. Over the p11-kit
  * RPC the token only encrypts ({@code AES/ECB/NoPadding}; an ECB or CBC decrypt fails with {@code

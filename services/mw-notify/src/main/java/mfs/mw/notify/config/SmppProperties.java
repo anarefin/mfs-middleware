@@ -7,7 +7,7 @@ import mfs.mw.notify.dto.Priority;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /**
- * SMPP 3.4 connection to the SMSC (spec 10.2, 9.2.1). {@code password} comes from OpenBao
+ * SMPP 3.4 connection to the SMSC (spec 10.2, 9.2.1). {@code password} comes from Vault
  * ({@code secret/mw-notify}, key {@code mw.notify.smpp.password}), never from a file here.
  *
  * @param enabled false switches the SMSC client off (tests); the dispatcher then fails every send

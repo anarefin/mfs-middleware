@@ -7,7 +7,7 @@
 # planned partition count; Kafka produce/consume; a PostgreSQL connection; a Valkey ping;
 # Keycloak in production mode with its realms in PostgreSQL; a Keycloak token for every test user and service client (ops and
 # portals users: refused until TOTP is enrolled or without the code, and the ops and portals browser flows require OTP),
-# partner-sim by private_key_jwt (its key from OpenBao) and refused without an assertion; an OpenBao KV read; the OpenBao PKI
+# partner-sim by private_key_jwt (its key from Vault) and refused without an assertion; a Vault KV read; the Vault PKI
 # roles of mTLS phase 1 and, when mw-crypto runs, its certificate metric, a refused handshake without
 # a client certificate and a 200 with one plus the JWT; the APISIX /healthz route over HTTPS on the
 # published port; no rate-limiter degradation logged.
@@ -20,7 +20,7 @@ ensure_env
 stack_compose
 
 CURL_IMAGE="curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93"
-LONG_RUNNING="kafka postgres valkey keycloak openbao etcd apisix greenmail"
+LONG_RUNNING="kafka postgres valkey keycloak vault etcd apisix greenmail"
 ONE_SHOT="kafka-init etcd-init apisix-init"
 
 # Generated credentials (gitignored deploy/.env, a copy of deploy/dev.env.defaults)
@@ -101,39 +101,39 @@ kafka_roundtrip() {
 }
 check "kafka produce/consume round trip" kafka_roundtrip
 
-# ---- PostgreSQL, Valkey, OpenBao ----
+# ---- PostgreSQL, Valkey, Vault ----
 check "postgres connection (TCP, password auth, PG 18)" \
   dc exec -T postgres sh -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tAc "show server_version" | grep -q "^18\."'
 check "valkey ping (auth required)" \
   dc exec -T valkey sh -c 'valkey-cli ping | grep -qx PONG && env -u REDISCLI_AUTH valkey-cli ping 2>&1 | grep -q NOAUTH'
-check "openbao KV read secret/mw/smoke" \
-  dc exec -T openbao sh -c 'BAO_TOKEN="$(sed -n "s/.*\"root_token\": *\"\([^\"]*\)\".*/\1/p" /openbao/file/dev-init.json)" bao kv get -field=value secret/mw/smoke | grep -qx ok'
+check "vault KV read secret/mw/smoke" \
+  dc exec -T vault sh -c 'VAULT_TOKEN="$(sed -n "s/.*\"root_token\": *\"\([^\"]*\)\".*/\1/p" /vault/file/dev-init.json)" vault kv get -field=value secret/mw/smoke | grep -qx ok'
 
-# ---- OpenBao PKI and mw-crypto mTLS (ticket 66, D24) ----
-# bao_sh CMD: a bao command in the openbao container as the dev root token
-bao_sh() { dc exec -T openbao sh -c 'export BAO_TOKEN="$(sed -n "s/.*\"root_token\": *\"\([^\"]*\)\".*/\1/p" /openbao/file/dev-init.json)"; '"$1"; }
+# ---- Vault PKI and mw-crypto mTLS (ticket 66, D24) ----
+# vault_sh CMD: a vault command in the vault container as the dev root token
+vault_sh() { dc exec -T vault sh -c 'export VAULT_TOKEN="$(sed -n "s/.*\"root_token\": *\"\([^\"]*\)\".*/\1/p" /vault/file/dev-init.json)"; '"$1"; }
 pki_roles() {
   local out r
-  out="$(bao_sh 'bao list -format=json pki_int/roles')" || { echo "$out"; return 1; }
+  out="$(vault_sh 'vault list -format=json pki_int/roles')" || { echo "$out"; return 1; }
   for r in mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api; do
     printf '%s' "$out" | jq -e --arg r "$r" 'index($r) != null' >/dev/null || { echo "no PKI role $r in $out"; return 1; }
   done
 }
-check "openbao PKI: intermediate pki_int with a role per mTLS service" pki_roles
+check "vault PKI: intermediate pki_int with a role per mTLS service" pki_roles
 if dc ps --status running --services | grep -qx mw-crypto; then
   crypto_url="https://127.0.0.1:${MW_PORT_CRYPTO:-8094}/internal/v1/keys"
   crypto_cert_metric() {
     dc exec -T mw-crypto bash -c 'exec 3<>/dev/tcp/127.0.0.1/8081 && printf "GET /actuator/prometheus HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && cat <&3' \
       | grep -q '^tls_certificate_expiry_seconds{.*service="mw-crypto"'
   }
-  check "mw-crypto serves its OpenBao certificate (tls_certificate_expiry_seconds on 8081)" crypto_cert_metric
+  check "mw-crypto serves its Vault certificate (tls_certificate_expiry_seconds on 8081)" crypto_cert_metric
   crypto_no_cert() { ! curl -sk --max-time 5 -o /dev/null "$crypto_url"; }
   check "mw-crypto fails the TLS handshake without a client certificate" crypto_no_cert
   # a 5-minute mw-admin-api certificate from pki_int plus its client-credentials JWT: 200
   crypto_mtls() {
     local d issued tok code
     d="$(mktemp -d)"
-    issued="$(bao_sh 'bao write -format=json pki_int/issue/mw-admin-api common_name=mw-admin-api ttl=5m')" || { rm -rf "$d"; return 1; }
+    issued="$(vault_sh 'vault write -format=json pki_int/issue/mw-admin-api common_name=mw-admin-api ttl=5m')" || { rm -rf "$d"; return 1; }
     printf '%s' "$issued" | jq -r .data.certificate >"$d/cert.pem"
     (umask 077; printf '%s' "$issued" | jq -r .data.private_key >"$d/key.pem")
     tok="$(docker run --rm --network "$ops_net" "$CURL_IMAGE" -sf --data-urlencode grant_type=client_credentials \
@@ -188,12 +188,12 @@ no_token() {
 }
 b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 # client_jwt_token REALM CLIENT: client credentials with private_key_jwt (RFC 7523): a JWT signed RS256
-# with the client's private key, which the provision one-shot keeps in OpenBao (secret/mw-simulators,
+# with the client's private key, which the provision one-shot keeps in Vault (secret/mw-simulators,
 # sim.partner-sim.private-key; ticket 73)
 client_jwt_token() {
   local realm="$1" cid="$2" d now head body sig
   d="$(mktemp -d)"
-  (umask 077; bao_sh 'bao kv get -field=sim.partner-sim.private-key secret/mw-simulators' >"$d/key.pem") || { rm -rf "$d"; echo "no partner-sim key in OpenBao"; return 1; }
+  (umask 077; vault_sh 'vault kv get -field=sim.partner-sim.private-key secret/mw-simulators' >"$d/key.pem") || { rm -rf "$d"; echo "no partner-sim key in Vault"; return 1; }
   now="$(date +%s)"
   head="$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)"
   body="$(jq -cn --arg c "$cid" --arg a "http://keycloak:8080/realms/$realm" --arg j "smoke-$now-$$" --argjson n "$now" \
@@ -227,7 +227,7 @@ for realm_file in "$MW_ROOT"/deploy/keycloak/realms/*-realm.json; do
     check "keycloak $realm/$cid: no token without a client assertion" no_token "$realm" grant_type=client_credentials "client_id=$cid"
   done < <(jq -r '.clients[] | select(.serviceAccountsEnabled and .clientAuthenticatorType == "client-jwt") | .clientId' "$realm_file")
 done
-# needs ops_net (above); defined with the OpenBao PKI checks when mw-crypto runs
+# needs ops_net (above); defined with the Vault PKI checks when mw-crypto runs
 if declare -F crypto_mtls >/dev/null; then
   check "mw-crypto answers an mw-admin-api client certificate plus its JWT (mTLS)" crypto_mtls
 fi

@@ -12,7 +12,7 @@ in dev and test. It is never used outside dev and test.
 The SO and user PINs are `SOFTHSM_MWCRYPTO_SO_PIN`, `SOFTHSM_MWCRYPTO_USER_PIN`, `SOFTHSM_PAYSIM_SO_PIN`
 and `SOFTHSM_PAYSIM_USER_PIN`. They are fake, documented values in `deploy/dev.env.defaults`
 (`dev-mwcrypto-user-pin` and so on). `scripts/creds.sh` prints them and `docs/testing-guide.html`
-section 1 lists them. The `provision` one-shot copies the mw-crypto user PIN into OpenBao
+section 1 lists them. The `provision` one-shot copies the mw-crypto user PIN into Vault
 `secret/mw-crypto` under the key `mw.crypto.pkcs11.user-pin`. That is the PIN mw-crypto logs in with
 (spec 18.4). The SO PINs are only used to initialise the tokens.
 
@@ -71,7 +71,7 @@ library = /usr/lib/libp11-kit.so.0
 slotListIndex = 0
 ```
 
-Log in with the user PIN from OpenBao (`mw.crypto.pkcs11.user-pin`) and never log it. Remove any
+Log in with the user PIN from Vault (`mw.crypto.pkcs11.user-pin`) and never log it. Remove any
 other module files under `/usr/share/p11-kit/modules/` and `/etc/pkcs11/modules/` in the client image.
 Otherwise the proxy shows their slots too and `slotListIndex = 0` may pick the wrong token.
 

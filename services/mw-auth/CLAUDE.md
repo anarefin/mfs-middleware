@@ -43,7 +43,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   parses `txnId` as a UUID on every event of the topic, finds no transaction and drops it
   (`txn.unknown`), as it already does with `WalletUnlocked`; nothing changes there.
 - mw-crypto client (`client/CryptoClient`, `client/ServiceTokenClient`, `config/AuthProperties`
-  `mw.auth.crypto.*`): `https://mw-crypto:8080` over mTLS with this service's OpenBao certificate
+  `mw.auth.crypto.*`): `https://mw-crypto:8080` over mTLS with this service's Vault certificate
   (`config/ServiceCertificateManager.clientSslContext()`, CN `mw-auth`) and a Keycloak realm `services`
   client-credentials JWT of client `mw-auth` (audience mapper `aud-mw-crypto`; secret
   `mw.auth.crypto.client-secret` in `secret/mw-auth`, synced from `KC_MW_AUTH_SECRET`; cached until 30 s
@@ -330,7 +330,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 - `client/CryptoClientIT`: WireMock mw-crypto over HTTPS with `needClientAuth` (stores issued by
   `PkiTestAuthority.writeLocalhostStores`), WireMock token endpoint: bearer + body, token reuse, 401
   refresh, 5xx / timeout / open breaker / no client certificate = `MW-SYS-050`, 403 = `MW-SYS-051`.
-- `controller/InternalApiMtlsIT` (`mw.tls.enabled=true`, OpenBao container as the Vault): the allow-list
+- `controller/InternalApiMtlsIT` (`mw.tls.enabled=true`, Vault container as the Vault): the allow-list
   with matching certificates, cert/token mismatch, a client off the list, bad tokens, no client
   certificate (handshake), the public port refuses `/internal/**`, health on the management port.
 - `contracts/ConsumedContractsTest`, `ProducedContractsTest`, `ApiContractsTest` (no Spring, no Docker).
@@ -377,7 +377,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 - `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3; mark every personal field.
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - `config/ServiceCertificateManager` + `TlsProperties` (ticket 66, from the template).
 - `messaging/OutboxWriter` + `OutboxRelay`, `Inbox` (used by the projection and the wallet lock topic).
 - Kafka through Spring Kafka (ADR D27; no Camel in this module, copied from the template):

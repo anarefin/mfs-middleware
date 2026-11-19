@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * {@code sslContextRef}) but never add one or supply key material.
  *
  * @param contexts name ({@code [a-z0-9-]}) -> the partner that may use it; its client keystore is
- *     read once at startup from that partner's own OpenBao secret ({@code <name>-keystore}, base64
+ *     read once at startup from that partner's own Vault secret ({@code <name>-keystore}, base64
  *     PKCS#12, {@code <name>-keystore-password}, and with {@code truststore: true} {@code <name>-truststore} and {@code
  *     <name>-truststore-password}) and registered as the {@code SSLContextParameters} bean {@code
  *     mwTls-<name>}

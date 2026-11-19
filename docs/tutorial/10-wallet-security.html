@@ -148,7 +148,7 @@
   <p>In depth: <a href="../concepts/hsm.html">Concepts: SoftHSM, payShield and mw-crypto</a>.</p>
 
   <h2 id="mtls">Service to service: mTLS</h2>
-  <p>mw-crypto's API and mw-auth's internal API take only callers with a client certificate from OpenBao's <code>pki_int</code>
+  <p>mw-crypto's API and mw-auth's internal API take only callers with a client certificate from Vault's <code>pki_int</code>
     (72 h, renewed by each service at two thirds of its life) <em>and</em> a Keycloak service token whose <code>azp</code> equals the
     certificate's name (D24). A token stolen from one service is useless from another.</p>
 

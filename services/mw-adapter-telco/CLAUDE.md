@@ -137,7 +137,7 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
   other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - Spring Kafka (ADR D27, the billpay copy): `config/KafkaConfig` (retry topics `<topic>.<group>.retry.1..3`
   10 s / 1 min / 10 min then `.dlq`), `messaging/EventPublisher`, outbox/inbox, `scheduler/OutboxRelayScheduler`,
   the request listener acknowledges after the hand-over, `partner/config/PartnerConfigKafkaListener` replays

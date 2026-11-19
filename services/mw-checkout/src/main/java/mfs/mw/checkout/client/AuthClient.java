@@ -41,7 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * mw-auth for the hosted page (ticket 72; contract {@code api/mw-auth/auth-internal.v1.openapi.yaml};
  * spec 9.3, 18.7, D22, D24). The internal API (the checkout OTP, the transaction assertion, the PIN
- * transport key) over mTLS with this service's OpenBao certificate ({@link
+ * transport key) over mTLS with this service's Vault certificate ({@link
  * ServiceCertificateManager#clientSslContext()}, CN {@code mw-checkout}) and a client-credentials JWT
  * of the same client ({@link ServiceTokenClient}); 2 s timeout, circuit breaker {@code mw-auth}
  * (4xx ignored). mw-auth's refusals (its 4xx error envelope) pass through with their code, status,

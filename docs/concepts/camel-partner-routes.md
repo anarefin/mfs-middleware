@@ -53,7 +53,7 @@ First implemented in mw-adapter-billpay (ticket 82); its `CLAUDE.md` holds the d
 | --- | --- |
 | `mw-map` | the request body from the canonical call, by a named JSONata mapping of the record (compiled once per version) |
 | `mw-http-call` | one call to `url` + `path` (`{reference}` = our reference), signed by `mw-auth-<auth>`, inside the partner's circuit breaker with its time limit and bulkhead; a PAY is never sent again, an INQUIRY / STATUS_QUERY at most `inquiryRetries` times |
-| `mw-auth-none`, `mw-auth-apikey`, `mw-auth-hmac-sha256` | the auth schemes; the secret is a field of the partner's own OpenBao secret, never in the route |
+| `mw-auth-none`, `mw-auth-apikey`, `mw-auth-hmac-sha256` | the auth schemes; the secret is a field of the partner's own Vault secret, never in the route |
 | `mw-auth-basic`, `mw-auth-oauth2-cc`, `mw-auth-jws` | more auth schemes (ticket 87, below) |
 | `mw-classify` | the answer to the route output, with the fail-closed rules no mapping can override; `json-validator` on the output |
 | `mw-audit` | the masked audit (`mw.audit.event.v1`) |
@@ -71,7 +71,7 @@ LIVE route uses it.
 ## Auth options (ticket 87)
 
 `mw-http-call` names the scheme with `auth=` and passes its parameters to the `mw-auth-<auth>` Kamelet,
-again before every attempt. Every secret is a *field name* of the partner's own OpenBao secret
+again before every attempt. Every secret is a *field name* of the partner's own Vault secret
 `secret/<adapter>/<partnerId>`, read through Camel's HashiCorp Vault function when the route loads (static,
 D28); a value never appears in the route, a URI, a log or the audit.
 

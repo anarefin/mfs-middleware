@@ -29,7 +29,7 @@ mw:
         inquiry-retries: 1
         # hmac-sha256 both ways (spec 11.1 "signature"; mTLS per bank is TBC): every call is signed
         # (mw-http-call auth), and a callback is believed only with a valid signature over method,
-        # path, timestamp and body (300 s skew). The shared secret is the field hmac-secret of OpenBao
+        # path, timestamp and body (300 s skew). The shared secret is the field hmac-secret of Vault
         # secret/mw-adapter-bank/c2wbank (dev value C2WBANK_HMAC_SECRET, deploy/provision/services.sh);
         # never here.
         auth:

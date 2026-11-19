@@ -21,7 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * <p>Each MNO authenticates at the APISIX route {@code ussd-http-<mno>} with HTTP basic auth as
  * user {@code ussd-<mno>}; the password is the property {@code sim.ussd-gateway.credentials.<mno>}
- * (OpenBao {@code secret/mw-simulators} in the stack, from the generated {@code
+ * (Vault {@code secret/mw-simulators} in the stack, from the generated {@code
  * USSD_<MNO>_GATEWAY_SECRET}). An MNO without one posts without credentials. Never logged.
  */
 @Component

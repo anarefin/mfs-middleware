@@ -63,7 +63,7 @@ test_spec_records_the_m0_review_decisions() {
   spec_has '^\| Testing \| JUnit 6,'
   spec_has '^\| .*Kafka ACLs.*quotas'
   spec_has '^\| .*image digest pinning'
-  spec_has '^\| .*OpenBao root token.*data volume.*dev only'
+  spec_has '^\| .*Vault root token.*data volume.*dev only'
   spec_has 'effectively-once \(idempotent producer \+ outbox \+ inbox\)'
   spec_has 'minimum log field set; extra structured fields are allowed when masked'
   spec_has '^\| Circuit breaker \| 60 s time-based window, minimum 50 calls'

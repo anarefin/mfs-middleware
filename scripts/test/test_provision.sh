@@ -1,6 +1,6 @@
 # deploy/provision (the compose one-shot `provision`, the one dev provisioning one-shot that replaced the 13 mw-*-init
-# containers): every service of the central manifest gets its OpenBao secret, database role/schema and
-# AppRole, in manifest order, idempotently. bao, psql and openssl are stubbed: the stub bao keeps a KV
+# containers): every service of the central manifest gets its Vault secret, database role/schema and
+# AppRole, in manifest order, idempotently. vault, psql and openssl are stubbed: the stub vault keeps a KV
 # store under .kv/<path>/<field> and logs every call.
 
 PROVISION_DIR="$REPO_DIR/deploy/provision"
@@ -14,12 +14,12 @@ PROVISION_ENV="VALKEY_PASSWORD=valkey-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS
 provision_fixture() {
   mkdir -p .bin .kv out
   printf '{"root_token": "root-t"}\n' >dev-init.json
-  cat >.bin/bao <<'EOF'
+  cat >.bin/vault <<'EOF'
 #!/bin/sh
-# stub OpenBao CLI: kv get/put/patch on files, policy/approle calls only logged
+# stub Vault CLI: kv get/put/patch on files, policy/approle calls only logged
 root="$(cd "$(dirname "$0")/.." && pwd)"
-echo "bao $*" >>"$root/.bao-calls"
-[ "${BAO_TOKEN:-}" = root-t ] || { echo "no token" >&2; exit 2; }
+echo "vault $*" >>"$root/.vault-calls"
+[ "${VAULT_TOKEN:-}" = root-t ] || { echo "no token" >&2; exit 2; }
 field=""
 case "$1 $2" in
   "kv get")
@@ -96,13 +96,13 @@ case "$*" in
   *) exit 22 ;;
 esac
 EOF
-  chmod +x .bin/bao .bin/psql .bin/openssl .bin/curl
+  chmod +x .bin/vault .bin/psql .bin/openssl .bin/curl
 }
 
 run_provision() {
   # shellcheck disable=SC2086
   OUT="$(env PATH="$PWD/.bin:$PATH" PGHOST=pg PGUSER=admin PGDATABASE=mw PGPASSWORD=pg-t \
-    BAO_ADDR=http://bao:8200 INIT_FILE="$PWD/dev-init.json" OUT_ROOT="$PWD/out" $PROVISION_ENV "$@" \
+    VAULT_ADDR=http://vault:8200 INIT_FILE="$PWD/dev-init.json" OUT_ROOT="$PWD/out" $PROVISION_ENV "$@" \
     sh "$PROVISION_DIR/provision.sh" 2>&1)"
 }
 
@@ -133,8 +133,8 @@ test_provision_creates_every_secret_role_and_approle() {
     [ -s "out/$d/spring.cloud.vault.app-role.secret-id" ] || fail "$s: no secret-id"
     [ "$(stat -f %Lp "out/$d/spring.cloud.vault.app-role.role-id" 2>/dev/null || stat -c %a "out/$d/spring.cloud.vault.app-role.role-id")" = 400 ] \
       || fail "$s: approle files not 0400"
-    grep -q "^bao policy write $s -$" .bao-calls || fail "$s: no policy"
-    grep -q "^bao write auth/approle/role/$s token_policies=$s " .bao-calls || fail "$s: no AppRole"
+    grep -q "^vault policy write $s -$" .vault-calls || fail "$s: no policy"
+    grep -q "^vault write auth/approle/role/$s token_policies=$s " .vault-calls || fail "$s: no AppRole"
   done
   assert_out_contains "provision: 15 services provisioned"
 }
@@ -231,21 +231,21 @@ test_provision_fails_when_keycloak_refuses_the_partner_sim_certificate() {
 test_provision_sets_up_the_pki_once_and_a_role_per_pki_service() {
   provision_fixture
   assert_ok run_provision
-  [ "$(grep -c 'pki/root/generate/internal' .bao-calls)" = 1 ] || fail "root CA not generated once"
-  grep -q '^bao secrets enable -path=pki_int pki$' .bao-calls || fail "pki_int not mounted"
-  grep -q '^bao secrets tune -max-lease-ttl=720h pki_int$' .bao-calls || fail "pki_int not tuned"
-  grep -q '^bao write -field=certificate pki/root/sign-intermediate csr=@' .bao-calls || fail "intermediate not signed by the root"
-  grep -q '^bao write pki_int/intermediate/set-signed certificate=@' .bao-calls || fail "intermediate not set"
+  [ "$(grep -c 'pki/root/generate/internal' .vault-calls)" = 1 ] || fail "root CA not generated once"
+  grep -q '^vault secrets enable -path=pki_int pki$' .vault-calls || fail "pki_int not mounted"
+  grep -q '^vault secrets tune -max-lease-ttl=720h pki_int$' .vault-calls || fail "pki_int not tuned"
+  grep -q '^vault write -field=certificate pki/root/sign-intermediate csr=@' .vault-calls || fail "intermediate not signed by the root"
+  grep -q '^vault write pki_int/intermediate/set-signed certificate=@' .vault-calls || fail "intermediate not set"
   local s
   for s in mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api; do
-    grep -q "^bao write pki_int/roles/$s allowed_domains=$s allow_bare_domains=true allow_subdomains=false .*allow_localhost=false .*max_ttl=72h" .bao-calls \
+    grep -q "^vault write pki_int/roles/$s allowed_domains=$s allow_bare_domains=true allow_subdomains=false .*allow_localhost=false .*max_ttl=72h" .vault-calls \
       || fail "no PKI role $s"
   done
   assert_out_contains "pki: role mw-auth ready"
-  : >.bao-calls
+  : >.vault-calls
   assert_ok run_provision
-  grep -qE 'root/generate|intermediate/generate|set-signed|secrets enable' .bao-calls && fail "PKI set up again"
-  grep -q '^bao write pki_int/roles/mw-crypto ' .bao-calls || fail "roles not rewritten on the second run"
+  grep -qE 'root/generate|intermediate/generate|set-signed|secrets enable' .vault-calls && fail "PKI set up again"
+  grep -q '^vault write pki_int/roles/mw-crypto ' .vault-calls || fail "roles not rewritten on the second run"
 }
 
 test_pki_services_may_issue_from_their_own_role_only() {
@@ -274,11 +274,11 @@ test_a_second_run_keeps_generated_secrets_and_resyncs_env_ones() {
   [ "$(kv mw-orchestrator spring.data.redis.password)" = valkey-new ] || fail "valkey not resynced"
 }
 
-test_provision_fails_fast_without_an_openbao_token() {
+test_provision_fails_fast_without_an_vault_token() {
   provision_fixture
   : >dev-init.json
   assert_fails run_provision
-  assert_out_contains "no OpenBao token"
+  assert_out_contains "no Vault token"
   [ ! -e .psql-calls ] || fail "database touched without a token"
 }
 
@@ -293,7 +293,7 @@ test_provision_fails_when_a_required_env_secret_is_missing() {
 test_provision_never_polls_or_sleeps() {
   local f
   for f in "$PROVISION_DIR"/*.sh; do
-    grep -qE 'sleep|wait_for|pg_isready|until .*bao status' "$f" && fail "$f polls or sleeps"
+    grep -qE 'sleep|wait_for|pg_isready|until .*vault status' "$f" && fail "$f polls or sleeps"
   done
   return 0
 }

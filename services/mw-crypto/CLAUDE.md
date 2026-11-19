@@ -65,7 +65,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 - `client/Pkcs11Provider`: JDK SunPKCS11 against `mw.crypto.pkcs11.library` (`/usr/lib/libp11-kit.so.0`,
   the p11-kit proxy) and `slot-list-index` 0. The image's only p11-kit module is
   `remote: |socat - TCP:softhsm:5657,...` (the softhsm `mw-crypto` token, `deploy/softhsm/README.md`).
-  Logs in with `mw.crypto.pkcs11.user-pin` (OpenBao `secret/mw-crypto`, `provision_mw_crypto`); the PIN is
+  Logs in with `mw.crypto.pkcs11.user-pin` (Vault `secret/mw-crypto`, `provision_mw_crypto`); the PIN is
   never logged and its char copy is zeroed after the login. Keys are token objects, sensitive and never
   extractable (`attributes` lines of the provider config). A key pair is stored with a self-signed
   placeholder certificate signed inside the HSM (BouncyCastle `bcpkix`): SunPKCS11 keeps a private key
@@ -312,7 +312,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 ## mTLS (ticket 66, D24)
 
 - `config/ServiceCertificateManager` (`mw.tls.*`, `config/TlsProperties`; on by default here,
-  `MW_TLS_ENABLED`) issues this service's certificate from OpenBao PKI at start
+  `MW_TLS_ENABLED`) issues this service's certificate from Vault PKI at start
   (`pki_int/issue/mw-crypto` through Spring Cloud Vault, AppRole policy allows only that role; CN
   `mw-crypto`, SAN `mw.tls.alt-names`), keeps it in memory, registers it as SSL bundle `mw-service`
   and renews it at two thirds of its life (`updateBundle`: Tomcat reloads without a restart). The
@@ -332,7 +332,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   renewals; open connections keep the old, still valid certificate. Their role and policy come from
   `PKI_SERVICES` in `deploy/provision/services.sh` (mw-auth, mw-app-gateway, mw-ussd, mw-checkout,
   mw-audit-dw, mw-admin-api are already there). Template `CLAUDE.md`, "Service certificate and mTLS".
-- Tests: `config/ServiceCertificateManagerIT` (OpenBao container: issue, gauge, renewal by a moved
+- Tests: `config/ServiceCertificateManagerIT` (Vault container: issue, gauge, renewal by a moved
   clock, bundle update, client context after renewal, failed renewal), `config/ServiceMtlsIT` (the
   image on `HsmStack`: no client certificate, a role not allowed, a token of another client, the
   metric), `security/InternalCallerPolicyTest`, `controller/KeyControllerMtlsTest` (`x509()`).
@@ -346,7 +346,7 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
   (a copy of `deploy/softhsm`, alias `softhsm`, fake PINs, `Wait.forHealthcheck()`), a PostgreSQL
   (alias `postgres`) and this service's own image built from the module `Dockerfile` and
   `build/libs/mw-crypto.jar` (the `test` task depends on `bootJar`; jar and Dockerfile are test inputs).
-  An OpenBao dev container (`PkiTestAuthority`, alias `openbao`, root + `pki_int` + a role per client
+  A Vault dev container (`PkiTestAuthority`, alias `vault`, root + `pki_int` + a role per client
   id, created on first use) issues the service certificate (token auth, SAN `mw-crypto,localhost`).
   The user PIN comes in as `MW_CRYPTO_PKCS11_USER_PIN`; Kafka points nowhere (relay off).
   The container validates internal JWTs against `security/InternalTokens`' JWKS on the host through
@@ -407,7 +407,7 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
 - None (the payShield simulator's host commands are simulator-owned, not in `contracts/`). Callers: `mw-admin-api` (Keycloak realm `services` client, audience mapper `aud-mw-crypto` added
   here), `mw-auth` (ticket 67) and `mw-audit-dw` (ticket 74) add their own clients; all three are on
   `mw.internal-auth.allowed-clients`, only `mw-admin-api` on `key-admin-clients`. Each also needs its
-  OpenBao certificate (see "mTLS").
+  Vault certificate (see "mTLS").
 - `contracts.yml` is the machine-readable list, checked by `./gradlew :contractsLint`.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)

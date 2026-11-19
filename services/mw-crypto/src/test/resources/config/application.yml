@@ -22,7 +22,7 @@ mw:
     hsm-probe-period: 1h
   internal-auth:
     issuer: http://keycloak.test/realms/services
-  # The host test JVM has no OpenBao: plain HTTP. The mTLS path runs in the container stack
+  # The host test JVM has no Vault: plain HTTP. The mTLS path runs in the container stack
   # (HsmStack, config/ServiceMtlsIT) and config/ServiceCertificateManagerIT.
   tls:
     enabled: false

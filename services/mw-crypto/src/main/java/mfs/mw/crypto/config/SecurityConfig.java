@@ -29,7 +29,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  * {@code /internal/v1/**} needs a Keycloak client-credentials JWT (spec 18.2, 18.8;
  * {@link InternalAuthProperties}, {@link InternalCallerPolicy}) and, with {@code mw.tls.enabled}
  * (D24, ticket 66), a client certificate whose CN equals the token's {@code azp}: the connector
- * itself needs a certificate from the OpenBao intermediate ({@code server.ssl.client-auth: need},
+ * itself needs a certificate from the Vault intermediate ({@code server.ssl.client-auth: need},
  * {@link ServiceCertificateManager}). Generating ({@code POST /internal/v1/keys}, only with {@code
  * mw.crypto.bootstrap-keys}) and rotating keys need a key-admin client. Everything else (actuator
  * on the management port) stays open inside the app network. Failures are the 5.3 envelope from the global handler: no or

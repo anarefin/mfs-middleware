@@ -1,5 +1,5 @@
 # Static configuration baked into the image (spec 20.4). Per-environment overrides are
-# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from OpenBao/Vault
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from Vault
 # only (18.4) and are never written here.
 spring:
   application:
@@ -14,7 +14,7 @@ spring:
   cloud:
     vault:
       enabled: ${VAULT_ENABLED:false}
-      uri: ${VAULT_ADDR:http://openbao:8200}
+      uri: ${VAULT_ADDR:http://vault:8200}
       authentication: APPROLE
       app-role:
         role-id: ${VAULT_ROLE_ID:}
@@ -27,7 +27,7 @@ spring:
     problemdetails:
       enabled: false
   # This service's own schema (16.2), migrated by Flyway on start-up from
-  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from OpenBao's database engine
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from Vault's database engine
   # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
   datasource:
     url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
@@ -41,7 +41,7 @@ spring:
   flyway:
     schemas: auth
   # Valkey (Lettuce) for device sessions and the signed-request nonce cache (spec 9.1, 18.7,
-  # ticket 68). The password comes from OpenBao (secret/mw-auth, spring.data.redis.password), never
+  # ticket 68). The password comes from Vault (secret/mw-auth, spring.data.redis.password), never
   # written here. Short timeouts; the device API fails closed (503 MW-SYS-012).
   data:
     redis:
@@ -163,7 +163,7 @@ logging:
 
 server:
   # Internal API /internal/v1/** (spec 18.7, D24, ticket 67): mTLS as on mw-crypto, a client
-  # certificate of the OpenBao intermediate is needed (handshake fails without one); the bundle is
+  # certificate of the Vault intermediate is needed (handshake fails without one); the bundle is
   # this service's own certificate, issued and renewed in memory by config/ServiceCertificateManager.
   # The public plain-HTTP port for /auth/v1/** is mw.auth.public-port (config/PublicConnectorConfig).
   port: 8443
@@ -208,7 +208,7 @@ management:
       type: w3c
 
 mw:
-  # This service's certificate from OpenBao PKI (spec 18.2, 18.4, D24; config/TlsProperties,
+  # This service's certificate from Vault PKI (spec 18.2, 18.4, D24; config/TlsProperties,
   # config/ServiceCertificateManager): on, mw-auth serves its internal API with mTLS and calls
   # mw-crypto with it. Issued at start from pki_int/issue/mw-auth through Spring Cloud Vault
   # (AppRole policy: that role only; PKI_SERVICES in deploy/provision/services.sh), renewed at two
@@ -303,7 +303,7 @@ mw:
       base-url: ${MW_CRYPTO_URL:https://mw-crypto:8080}
       token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
       client-id: mw-auth
-      # client-secret: from OpenBao secret/mw-auth (key mw.auth.crypto.client-secret), never here
+      # client-secret: from Vault secret/mw-auth (key mw.auth.crypto.client-secret), never here
       client-secret: ""
       timeout: 2s
       connect-timeout: 1s

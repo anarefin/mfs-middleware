@@ -61,7 +61,7 @@ import org.springframework.stereotype.Component;
 /**
  * The PKCS#11 provider (spec 18.8, D23): the JDK SunPKCS11 provider against one token, in dev and
  * test the softhsm container's {@code mw-crypto} token through the p11-kit proxy (the image's
- * module file, deploy/softhsm/README.md). It logs in with the user PIN from OpenBao ({@code
+ * module file, deploy/softhsm/README.md). It logs in with the user PIN from Vault ({@code
  * mw.crypto.pkcs11.user-pin}) and never logs it; the PIN's char copy is zeroed after the login.
  *
  * <p>Connecting is lazy (first use or probe), so the service starts while the HSM is still coming

@@ -11,7 +11,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * Mandatory mTLS on mw-crypto (spec 18.2, D24, ticket 66) in its own image ({@link HsmStack}): the
- * service issued its certificate from the OpenBao intermediate at start; its API port refuses a
+ * service issued its certificate from the Vault intermediate at start; its API port refuses a
  * handshake without a client certificate, refuses a certificate of a role not on the allow-list and
  * a token of another client than the certificate, and answers the service certificate plus its own
  * JWT. The expiry metric is on the plain management port.

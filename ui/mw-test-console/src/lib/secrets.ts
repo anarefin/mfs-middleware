@@ -13,7 +13,7 @@ export const PLATFORM_SECRETS: readonly SecretGroup[] = [
       { env: "KC_BOOTSTRAP_ADMIN_PASSWORD", label: "Password" },
     ],
   },
-  { title: "OpenBao", entries: [{ env: "OPENBAO_DEV_ROOT_TOKEN", label: "Root token", hint: "internal only: docker compose exec openbao ..." }] },
+  { title: "Vault", entries: [{ env: "VAULT_DEV_ROOT_TOKEN", label: "Root token", hint: "internal only: docker compose exec vault ..." }] },
   {
     title: "APISIX",
     entries: [

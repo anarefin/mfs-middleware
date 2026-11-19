@@ -159,7 +159,7 @@ for mod in $modules; do
     fi
   fi
 done
-# The dev provisioning one-shot (deploy/provision): our own script on the pinned postgres + bao
+# The dev provisioning one-shot (deploy/provision): our own script on the pinned postgres + vault
 # images, scanned with the repo's ignore file like a module image; one not built fails.
 if [ -z "$m" ] && [ -f "$MW_ROOT/deploy/provision/Dockerfile" ]; then
   img="mfs-mw/provision:$IMAGE_TAG"

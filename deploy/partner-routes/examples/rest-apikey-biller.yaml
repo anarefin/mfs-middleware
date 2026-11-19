@@ -2,7 +2,7 @@
 # mw.config.changed.v1 PARTNER record (configKey partner/waterco), shown as YAML. mw-adapter-billpay
 # loads it without a restart and without Java: the route is built from the shipped mw-* Kamelets
 # (services/mw-adapter-billpay/src/main/resources/kamelets), checked by the route loader (allowlist,
-# allowedHosts, mw-classify then mw-audit), and the key is read from OpenBao
+# allowedHosts, mw-classify then mw-audit), and the key is read from Vault
 # secret/mw-adapter-billpay/waterco, field api-key, when the route loads. The biller catalogue entry
 # (mw.billers.WATERCO.partner-id: waterco) is static config, on purpose.
 #

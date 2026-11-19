@@ -89,7 +89,7 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
   `deploy/partner-routes/examples/rest-async-callback.yaml`): PAY `POST /c2wbank/v1/debits
   {transactionId, accountNumber, amount:"500.00"}` (202 PENDING `{status, code: "100", debitRef}`; 200
   SUCCESS and 422 FAILED understood; `pending=true`), STATUS_QUERY `GET /c2wbank/v1/debits/{reference}`,
-  hmac-sha256 both ways with the field `hmac-secret` of OpenBao `secret/mw-adapter-bank/c2wbank` (dev
+  hmac-sha256 both ways with the field `hmac-secret` of Vault `secret/mw-adapter-bank/c2wbank` (dev
   value `C2WBANK_HMAC_SECRET`, `deploy/provision/services.sh`; tests: the fake vault function's
   `fake-c2wbank-hmac-secret-for-tests`), base URL `C2WBANK_BASE_URL`, hosts `MW_C2WBANK_ALLOWED_HOSTS`,
   timeout 25 s (below the orchestrator's 30 s deadline), resilience4j instance `c2wbank`, error map
@@ -146,7 +146,7 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
   templates, never raw URIs.
 - `util/MaskingPolicy` + `@Sensitive`: masking rules of 18.3 (+ `PARTY_ID`, above).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - Spring Kafka (ADR D27, the billpay copy): `config/KafkaConfig` (retry topics `<topic>.<group>.retry.1..3`
   10 s / 1 min / 10 min then `.dlq`), `messaging/EventPublisher`, outbox/inbox, `scheduler/OutboxRelayScheduler`,
   `partner/config/PartnerConfigKafkaListener` (replays `mw.config.changed.v1` on every start).

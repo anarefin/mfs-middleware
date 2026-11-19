@@ -34,7 +34,7 @@ import tools.jackson.databind.json.JsonMapper;
  * the {@code test} task depends on) on a private Docker network next to the SoftHSM container (built
  * from {@code src/test/resources/softhsm/}, a checked copy of {@code deploy/softhsm}, network alias
  * {@code softhsm}, the name the image's p11-kit module file dials) and a PostgreSQL (alias {@code
- * postgres}) and an OpenBao PKI ({@link PkiTestAuthority}, alias {@code openbao}): the service issues
+ * postgres}) and a Vault PKI ({@link PkiTestAuthority}, alias {@code vault}): the service issues
  * its own certificate there at start (token auth, SAN {@code mw-crypto,localhost}) and its API port
  * needs a client certificate (mTLS, D24). The token user PIN comes in as an environment variable.
  * The test talks to the API port over HTTPS with tokens of {@link InternalTokens}, whose JWKS the
@@ -120,13 +120,13 @@ public final class HsmStack {
                     + "\"HTTP_SIGN_RSA\":[\"mw-auth\"],\"HTTP_SIGN_EC\":[\"mw-auth\"]}}}}}")
             // mTLS: its certificate from the test PKI (token auth; the stack uses AppRole)
             .withEnv("VAULT_ENABLED", "true")
-            .withEnv("VAULT_ADDR", "http://openbao:8200")
+            .withEnv("VAULT_ADDR", "http://vault:8200")
             .withEnv("SPRING_CLOUD_VAULT_AUTHENTICATION", "TOKEN")
             .withEnv("SPRING_CLOUD_VAULT_TOKEN", PkiTestAuthority.TOKEN)
             .withEnv("MW_TLS_ALT_NAMES", "mw-crypto,localhost")
             .withEnv("JAVA_TOOL_OPTIONS", "-XX:+UseSerialGC -Xmx256m")
             .withLogConsumer(new Slf4jLogConsumer(log).withPrefix("mw-crypto"))
-            .dependsOn(SOFTHSM, POSTGRES, PkiTestAuthority.OPENBAO)
+            .dependsOn(SOFTHSM, POSTGRES, PkiTestAuthority.VAULT)
             .waitingFor(Wait.forHttp("/actuator/health/readiness").forPort(8081).forStatusCode(200)
                 .withStartupTimeout(Duration.ofMinutes(3)));
     Startables.deepStart(crypto).join();

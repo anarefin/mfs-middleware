@@ -46,7 +46,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * {@code mw-http-call}, the auth Kamelet, the partner http component and host guard) against
  * WireMock partners: basic, OAuth2 client credentials (one token for many calls, one refresh after
  * a partner 401), a detached JWS over the body, and mTLS with a named client keystore from
- * OpenBao at startup (fails closed with the wrong one). Secrets come from the fake vault function
+ * Vault at startup (fails closed with the wrong one). Secrets come from the fake vault function
  * (identical in the three adapters).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
@@ -239,7 +239,7 @@ class PartnerAuthKameletsIT {
     assertThat(jws.verify(new RSASSAVerifier((RSAPublicKey) keys.getPublic()))).isTrue();
   }
 
-  /** The client keystore named by the route, read from OpenBao at startup; the wrong one fails closed. */
+  /** The client keystore named by the route, read from Vault at startup; the wrong one fails closed. */
   @Test
   void mtlsSucceedsWithTheNamedKeystoreAndFailsClosedWithAWrongOne() {
     String url = "https://localhost:" + TLS_PARTNER.httpsPort();

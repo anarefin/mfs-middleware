@@ -14,7 +14,7 @@
     <a href="index.html">Start</a>
     <a href="apisix.html">APISIX</a>
     <a href="keycloak.html">Keycloak</a>
-    <a href="openbao.html">OpenBao</a>
+    <a href="vault.html">Vault</a>
     <a href="hsm.html">HSM</a>
     <a href="greenmail.html">GreenMail</a>
     <a href="core-mock.html">Core mock</a>
@@ -95,7 +95,7 @@
       time limit and bulkhead (<a href="resilience4j.html">Resilience4j</a>). A PAY is never sent twice; an INQUIRY / STATUS_QUERY at most <code>inquiryRetries</code> times.</td></tr>
     <tr><td><code>mw-soap-call</code></td><td>The SOAP case: XSLT request and response stylesheets, SOAP 1.1 / 1.2, optional WS-Security.</td></tr>
     <tr><td><code>mw-auth-none</code>, <code>-apikey</code>, <code>-hmac-sha256</code>, <code>-basic</code>, <code>-oauth2-cc</code>, <code>-jws</code></td>
-      <td>The auth schemes. A secret is a <em>field name</em> of the partner's own OpenBao secret <code>secret/&lt;adapter&gt;/&lt;partnerId&gt;</code>, never a value in the route.</td></tr>
+      <td>The auth schemes. A secret is a <em>field name</em> of the partner's own Vault secret <code>secret/&lt;adapter&gt;/&lt;partnerId&gt;</code>, never a value in the route.</td></tr>
     <tr><td><code>mw-classify</code></td><td>The partner's answer to the route output, with fail-closed rules no mapping can override.</td></tr>
     <tr><td><code>mw-audit</code></td><td>The masked audit record (<code>mw.audit.event.v1</code>).</td></tr>
     <tr><td><code>mw-sftp-source</code>, <code>mw-sftp-sink</code>, <code>mw-recon</code></td><td>Batch files over SFTP: strict host keys, each file once, never deleted;

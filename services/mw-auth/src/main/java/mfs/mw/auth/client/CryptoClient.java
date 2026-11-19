@@ -38,7 +38,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /**
- * mw-crypto, the HSM gateway (spec 18.7, 18.8, D23, D24): over mTLS with this service's OpenBao
+ * mw-crypto, the HSM gateway (spec 18.7, 18.8, D23, D24): over mTLS with this service's Vault
  * certificate ({@link ServiceCertificateManager#clientSslContext()}, CN {@code mw-auth}) and a
  * client-credentials JWT of the same client ({@link ServiceTokenClient}). Every call has a 2 s
  * timeout ({@code mw.auth.crypto.timeout}) and goes through the circuit breaker {@code mw-crypto}.

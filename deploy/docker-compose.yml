@@ -26,17 +26,17 @@
 #
 # Credentials (18.4): this file holds no secret value. deploy/.env (gitignored, a copy of the
 # committed dev.env.defaults with fixed, obviously fake dev values; ADR D9) holds every one, and Compose reads it to interpolate ${VAR} placeholders (it is not
-# passed into the containers: services get their secrets from OpenBao). env/*.env hold only
+# passed into the containers: services get their secrets from Vault). env/*.env hold only
 # identities and settings. The Keycloak realm files reference their credentials as ${VAR}
 # placeholders, which Keycloak resolves from its environment on import.
 #
 # Zones (18.1): dmz = internet-facing edge, app = services + Kafka + Valkey, data = PostgreSQL,
-# ops = Keycloak, OpenBao, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
+# ops = Keycloak, Vault, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
 # amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8095), the
 # two consoles (3000, 3001) and the platform (postgres 5432, valkey 6379, kafka 9094, keycloak 8180,
-# openbao 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
+# vault 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
 # (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
 # service; the console login still needs https://localhost on 443. etcd and the APISIX Admin API
 # stay unpublished. Production publishes the edge only (18.1).
@@ -80,7 +80,7 @@
 #   APISIX_MEM (384M)           apisix               290, 368*
 #   POSTGRES_MEM (320M)         postgres             140, 274*  (shared_buffers 64MB, max_connections 100; pools total 39)
 #   GREENMAIL_MEM (160M)        greenmail            125  (heap 96m)
-#   OPENBAO_MEM (128M)          openbao               95
+#   VAULT_MEM (128M)            vault                 95
 #   SOFTHSM_MEM (48M)           softhsm               new (ticket 61): socat + one p11-kit remote per client
 #   ETCD_MEM (64M)              etcd                  34
 #   VALKEY_MEM (64M)            valkey                 8
@@ -131,23 +131,23 @@ x-app: &app
     retries: 3
 
 # Every mw-* JVM service starts once the platform is ready: PostgreSQL, Kafka, Keycloak and
-# OpenBao healthy, the topics created (kafka-init) and every service provisioned (provision).
+# Vault healthy, the topics created (kafka-init) and every service provisioned (provision).
 x-infra-deps: &infra-deps
   postgres: { condition: service_healthy }
   kafka: { condition: service_healthy }
   keycloak: { condition: service_healthy }
-  openbao: { condition: service_healthy }
+  vault: { condition: service_healthy }
   kafka-init: { condition: service_completed_successfully }
   provision: { condition: service_completed_successfully }
 
-# Environment every mw-* JVM service shares. Secrets come from OpenBao via Spring Cloud Vault
+# Environment every mw-* JVM service shares. Secrets come from Vault via Spring Cloud Vault
 # (18.4): the DB password and the service's other secrets from secret/<svc>, the AppRole
 # credentials from the configtree at /run/mw/approle (application.yml). Each service owns its
 # schema in the shared PostgreSQL (16.2).
 x-jvm-env: &jvm-env
   MW_ENV: ${MW_ENV:-local}
   VAULT_ENABLED: ${VAULT_ENABLED:-true}
-  VAULT_ADDR: ${VAULT_ADDR:-http://openbao:8200}
+  VAULT_ADDR: ${VAULT_ADDR:-http://vault:8200}
   DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/mw}
   KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:9092}
   # Sizes only, on top of the image's JAVA_TOOL_OPTIONS (the GC flags, see x-jvm-build-args):
@@ -182,7 +182,7 @@ volumes:
   kafka-data:
   postgres-data:
   valkey-data:
-  openbao-data:
+  vault-data:
   etcd-data:
   apisix-tls:
   # kafka-init's done marker (apply-topics.sh: checksum of the applied plan)
@@ -416,28 +416,30 @@ services:
         limits: { cpus: "2", memory: "${KEYCLOAK_MEM:-608M}" }
     logging: *logging
 
-  openbao:
-    image: openbao/openbao:2.7.2@sha256:5046911075e137e154ce49ab051502f4ec7cf367d484ae4a4dce665d9b90561f
+  vault:
+    image: hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6
     restart: unless-stopped
     networks: [app, ops]
     ports:
-      - "127.0.0.1:${MW_PORT_OPENBAO:-8200}:8200"
+      - "127.0.0.1:${MW_PORT_VAULT:-8200}:8200"
     # dev-unseal.sh starts the server, initialises on first start and unseals on every
-    # start (dev only; see the script header)
-    entrypoint: ["/bin/sh", "/openbao/dev/dev-unseal.sh"]
+    # start (dev only; see the script header; ADR D30)
+    entrypoint: ["/bin/sh", "/vault/dev/dev-unseal.sh"]
     environment:
-      BAO_ADDR: http://127.0.0.1:8200
-      # the fixed tester token dev-unseal.sh creates on first start (a new openbao-data volume)
-      OPENBAO_DEV_ROOT_TOKEN: ${OPENBAO_DEV_ROOT_TOKEN:-dev-root-token}
+      VAULT_ADDR: http://127.0.0.1:8200
+      # mlock is off (config.hcl disable_mlock), so the image's entrypoint needs no IPC_LOCK capability
+      SKIP_SETCAP: "true"
+      # the fixed tester token dev-unseal.sh creates on first start (a new vault-data volume)
+      VAULT_DEV_ROOT_TOKEN: ${VAULT_DEV_ROOT_TOKEN:-dev-root-token}
     volumes:
-      - ./openbao/config.hcl:/openbao/config/config.hcl:ro
-      - ./openbao/dev-unseal.sh:/openbao/dev/dev-unseal.sh:ro
-      - openbao-data:/openbao/file
+      - ./vault/config.hcl:/vault/config/config.hcl:ro
+      - ./vault/dev-unseal.sh:/vault/dev/dev-unseal.sh:ro
+      - vault-data:/vault/file
     tmpfs: [/tmp]
     # Healthy once unsealed and the dev engines exist (dev-unseal.sh writes dev-ready after them):
     # provision reads the root token and writes every service's secrets as soon as this is healthy.
     healthcheck:
-      test: ["CMD-SHELL", "bao status >/dev/null && test -f /openbao/file/dev-ready"]
+      test: ["CMD-SHELL", "vault status >/dev/null && test -f /vault/file/dev-ready"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -445,7 +447,7 @@ services:
       start_interval: 1s
     deploy:
       resources:
-        limits: { cpus: "0.5", memory: "${OPENBAO_MEM:-128M}" }
+        limits: { cpus: "0.5", memory: "${VAULT_MEM:-128M}" }
     logging: *logging
 
   etcd:
@@ -558,7 +560,7 @@ services:
       CHECKOUT_PHARMACY_MERCHANT_SECRET: ${CHECKOUT_PHARMACY_MERCHANT_SECRET:?cp dev.env.defaults .env}
       CHECKOUT_FASHION_MERCHANT_SECRET: ${CHECKOUT_FASHION_MERCHANT_SECRET:?cp dev.env.defaults .env}
       # MNO USSD gateways (consumers ussd_<mno>, routes ussd-http-<mno>): basic-auth passwords from
-      # deploy/.env (dev.env.defaults) (the simulator gets the same values via OpenBao), and each MNO's
+      # deploy/.env (dev.env.defaults) (the simulator gets the same values via Vault), and each MNO's
       # source allow-list (comma-separated CIDRs, required: no fallback, so a missing list stops the
       # stack instead of opening the route). Dev values: dev.env.defaults; production lists
       # each MNO's gateway addresses.
@@ -662,9 +664,9 @@ services:
 
   # ------------------------------------------------------------ provisioning (minimal and core)
   # The dev stack's one provisioning one-shot (deploy/provision; ADR D16): for every service of
-  # deploy/provision/services.sh, in order, its secret/<svc> in OpenBao, its database role(s) and
+  # deploy/provision/services.sh, in order, its secret/<svc> in Vault, its database role(s) and
   # schema and the AppRole it logs in with, written to that service's own <dir>-approle volume.
-  # Idempotent on every `up`; only this one-shot holds the OpenBao root token and the
+  # Idempotent on every `up`; only this one-shot holds the Vault root token and the
   # PostgreSQL admin password. Starts once both are healthy, so provision.sh never polls. Dev/MVP only.
   provision:
     profiles: *minimal
@@ -676,7 +678,7 @@ services:
     security_opt: [no-new-privileges:true]
     depends_on:
       postgres: { condition: service_healthy }
-      openbao: { condition: service_healthy }
+      vault: { condition: service_healthy }
       # registers partner-sim's private_key_jwt certificate in realm partners (ticket 73)
       keycloak: { condition: service_healthy }
     environment:
@@ -684,8 +686,8 @@ services:
       PGUSER: ${POSTGRES_USER:-mw_admin}
       PGDATABASE: ${POSTGRES_DB:-mw}
       PGPASSWORD: ${POSTGRES_PASSWORD:?cp dev.env.defaults .env}
-      BAO_ADDR: ${VAULT_ADDR:-http://openbao:8200}
-      INIT_FILE: /openbao/file/dev-init.json
+      VAULT_ADDR: ${VAULT_ADDR:-http://vault:8200}
+      INIT_FILE: /vault/file/dev-init.json
       # Keycloak admin REST on the data network (lib.sh partner_sim_client_key, ticket 73)
       KC_URL: http://keycloak:8080
       KC_BOOTSTRAP_ADMIN_USERNAME: kc-admin
@@ -716,7 +718,7 @@ services:
       # the softhsm paysim token's user PIN, into secret/mw-simulators (payShield simulator, ticket 64)
       SOFTHSM_PAYSIM_USER_PIN: ${SOFTHSM_PAYSIM_USER_PIN:?cp dev.env.defaults .env}
     volumes:
-      - openbao-data:/openbao/file:ro
+      - vault-data:/vault/file:ro
       # one volume per service, at /out/<dir> as listed in services.sh
       - core-mock-approle:/out/core-mock
       - crypto-approle:/out/crypto
@@ -739,7 +741,7 @@ services:
     logging: *logging
 
   # ------------------------------------------------------------ minimal (and core): P2P and cash path
-  # Ledger and PIN check stand-in for the core (spec 13); the PIN private key in OpenBao.
+  # Ledger and PIN check stand-in for the core (spec 13); the PIN private key in Vault.
   mw-core-mock:
     <<: *app
     profiles: *minimal
@@ -764,7 +766,7 @@ services:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # The HSM gateway (ticket 62, spec 18.8, ADR D23): the only HSM client. Logs in to the softhsm
-  # mw-crypto token (user PIN from OpenBao secret/mw-crypto) over the p11-kit proxy of its image and
+  # mw-crypto token (user PIN from Vault secret/mw-crypto) over the p11-kit proxy of its image and
   # serves key management by keyId on /internal/v1/keys (realm services JWT). Dev stack: the missing
   # key of every purpose is created on start (MW_CRYPTO_BOOTSTRAP_KEYS; production keys come only from
   # the key ceremony, ticket 75).
@@ -797,7 +799,7 @@ services:
       MW_CRYPTO_TEST_API_ENABLED: ${MW_CRYPTO_TEST_API_ENABLED:-false}
       MW_CRYPTO_AUTHZ_PURPOSES_TPK: ${MW_CRYPTO_AUTHZ_PURPOSES_TPK:-}
       MW_CRYPTO_AUTHZ_PURPOSES_PVK: ${MW_CRYPTO_AUTHZ_PURPOSES_PVK:-}
-    # mTLS (D24, ticket 66): 8080 (and the published 8094) needs a client certificate of the OpenBao
+    # mTLS (D24, ticket 66): 8080 (and the published 8094) needs a client certificate of the Vault
     # intermediate pki_int; the service issues its own at start (pki_int/issue/mw-crypto, provision).
     # Probes and metrics are on the plain management port 8081, inside the network only.
     healthcheck:
@@ -844,7 +846,7 @@ services:
         -Xms${AUTH_XMX:-112m} -Xmx${AUTH_XMX:-112m} -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=64m -Xss512k
         -XX:MaxDirectMemorySize=64m
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
-      # Valkey for device sessions and the nonce cache (ticket 68, 18.7); its password comes from OpenBao.
+      # Valkey for device sessions and the nonce cache (ticket 68, 18.7); its password comes from Vault.
       VALKEY_HOST: ${VALKEY_HOST:-valkey}
       # DEV ONLY: POST /internal/v1/seed/pins, the seeder's first app PINs (ticket 69); dev.env.defaults
       # switches it on, the default is off.
@@ -919,7 +921,7 @@ services:
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
-      # Valkey for the idempotency lock (7.3 rule 4); its password comes from OpenBao.
+      # Valkey for the idempotency lock (7.3 rule 4); its password comes from Vault.
       VALKEY_HOST: ${VALKEY_HOST:-valkey}
       # Dev only (A3): org ORG002 of realm portals collects for biller DESCO and merchant
       # 01911000001 (the core mock's merchant01), so the SP query shows those payments as PAYEE.
@@ -990,7 +992,7 @@ services:
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "4"
-      # Valkey for device sessions and the nonce cache (9.1, 18.6); its password comes from OpenBao.
+      # Valkey for device sessions and the nonce cache (9.1, 18.6); its password comes from Vault.
       VALKEY_HOST: ${VALKEY_HOST:-valkey}
       # The app tokens' signing keys: mw-auth's JWK Set on its public port (ticket 69, D21; RS256).
       MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://mw-auth:8080/auth/v1/.well-known/jwks.json}
@@ -1050,7 +1052,7 @@ services:
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
-      # Valkey holds the USSD sessions (spec 9.2); its password comes from OpenBao.
+      # Valkey holds the USSD sessions (spec 9.2); its password comes from Vault.
       VALKEY_HOST: ${VALKEY_HOST:-valkey}
       # Final status awaited this long before the menu ends with "being processed" (9.2).
       MW_USSD_SYNC_BUDGET: ${MW_USSD_SYNC_BUDGET:-8s}
@@ -1309,7 +1311,7 @@ services:
       # actions: the ops e2e operators (password + TOTP), the Keycloak bootstrap admin (master token through
       # the test route test-kc-admin-token; user from env/keycloak.env), the APISIX Admin API key, the
       # partner-simulator HMAC secrets, the MNO USSD gateway passwords, the SoftHSM token labels and PINs
-      # and the OpenBao tester token. Dev/test stack only: fixed fake values of dev.env.defaults (ADR D9).
+      # and the Vault tester token. Dev/test stack only: fixed fake values of dev.env.defaults (ADR D9).
       KC_OPS_TEST_PASSWORD: ${KC_OPS_TEST_PASSWORD:?cp dev.env.defaults .env}
       KC_OPS_TEST_TOTP_SECRET: ${KC_OPS_TEST_TOTP_SECRET:?cp dev.env.defaults .env}
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-kc-admin}
@@ -1327,7 +1329,7 @@ services:
       SOFTHSM_PAYSIM_LABEL: ${SOFTHSM_PAYSIM_LABEL:-paysim}
       SOFTHSM_PAYSIM_SO_PIN: ${SOFTHSM_PAYSIM_SO_PIN:?cp dev.env.defaults .env}
       SOFTHSM_PAYSIM_USER_PIN: ${SOFTHSM_PAYSIM_USER_PIN:?cp dev.env.defaults .env}
-      OPENBAO_DEV_ROOT_TOKEN: ${OPENBAO_DEV_ROOT_TOKEN:-dev-root-token}
+      VAULT_DEV_ROOT_TOKEN: ${VAULT_DEV_ROOT_TOKEN:-dev-root-token}
       # mw-seeder's manifest (personas, wallets, partners): the seed-data page reads it
       SEED_MANIFEST: /run/mw/seed/manifest.json
     volumes:

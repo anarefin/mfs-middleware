@@ -16,7 +16,7 @@ spec:
       with mapping the text (CSV or fixed-width lines) that JSONata mapping of the record makes of the
       JSON body (request routes only). Uploaded under a temporary name, then renamed, never over an
       existing file. The host key is checked strictly against the partner's known hosts (a field of
-      its own OpenBao secret); the password or private key is a field of the same secret. In a request
+      its own Vault secret); the password or private key is a field of the same secret. In a request
       route the put is the partner call: mw-classify sees status 200 and the body {"fileName": ...}
       (a failed put after the upload started is UNKNOWN). Output: the body unchanged.
     type: object

@@ -7,6 +7,8 @@ the platform (PostgreSQL 5432, Valkey 6379, Kafka 9094, Keycloak 8180, OpenBao 8
 8025/3025), each a `MW_PORT_<NAME>` knob in `deploy/docker-compose.yml`, for local debugging. A
 direct port skips every edge policy. APISIX 443 stays the edge and the only port reachable beyond
 loopback; etcd and the APISIX Admin API stay unpublished. Production stays edge-only.
+Amended 2026-11-19 by [D30](D30-hashicorp-vault.md): HashiCorp Vault replaces OpenBao (ticket 91); the
+OpenBao names below describe the stack before it.
 
 ## Context
 

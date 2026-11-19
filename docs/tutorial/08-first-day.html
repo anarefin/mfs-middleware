@@ -76,7 +76,7 @@ scripts/creds.sh           <span class="c"># print every test login and password
       <code>deploy/.env</code> shortens the timeouts and the status-inquiry schedule so failures resolve in seconds, not hours.
       Delete that block (and recreate the services) for the production values.</li>
     <li>The first start also ran one-shot jobs: <code>kafka-init</code> created the topics, <code>provision</code> created each
-      service's database schema and OpenBao secrets, <code>apisix-init</code> loaded the gateway routes.</li>
+      service's database schema and Vault secrets, <code>apisix-init</code> loaded the gateway routes.</li>
   </ul>
   <p>Your browser will warn about the certificate: it is self-signed for localhost; accept it.</p>
   <div class="box note"><div class="tag">If something fails</div>

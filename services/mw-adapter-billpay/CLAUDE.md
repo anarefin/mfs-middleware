@@ -114,7 +114,7 @@ already has a per-partner `hmac-sha256` auth scheme. Chosen: **the adapter verif
 signature**; APISIX does ip allow-list, body cap and quota only. Why: the partner's wire scheme
 (header names, string to sign, key id, skew) is partner config here and changes with a
 config-changed record, whereas APISIX `hmac-auth` has its own fixed scheme (`Authorization:
-Signature keyId=...`) that real aggregators do not speak; the secret stays in OpenBao
+Signature keyId=...`) that real aggregators do not speak; the secret stays in Vault
 (`secret/mw-adapter-billpay/<partner>`) instead of a consumer credential in etcd; the 401 is the
 service's 5.3 envelope. Cost: an unsigned flood reaches the adapter (bounded by the quota and the
 allow-list). A partner that speaks APISIX `hmac-auth`/`jwt-auth`/mTLS can get that plugin on its
@@ -298,13 +298,13 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   `CamelHttpUri`, `CamelHttpQuery`, `CamelHttpPath` are reset by `mw-http-call` only; `mw-soap-call` has
   its own filter (`mwSoapHeaderFilter`, above).
 - **Secrets**: `{{hashicorp:secret:mw-adapter-billpay/<id>#<field>}}`, Camel's HashiCorp Vault
-  properties function against OpenBao KV v2 `secret/mw-adapter-billpay/<id>`, read when a route loads,
+  properties function against Vault KV v2 `secret/mw-adapter-billpay/<id>`, read when a route loads,
   never refreshed (D28), never logged, never in a URI or audited header (`partner/auth/PartnerCredentials`;
   the path is built from the partner's own id). The function only knows a static token, so it runs on
   Spring Cloud Vault's `VaultTemplate` (AppRole) when `VAULT_ENABLED=true`
   (`partner/auth/SpringVaultPropertiesFunction`; Camel 4.22 rebuilds its client in `doStart`, which this
   skips). Tests use a fake `hashicorp` function (`src/test/.../partner/FakeVaultFunction`, found first
-  through `META-INF/services`; `fake-<partner>-<field>-for-tests` unless a test sets one) and `NewBillerRouteIT` the real one against OpenBao in Testcontainers.
+  through `META-INF/services`; `fake-<partner>-<field>-for-tests` unless a test sets one) and `NewBillerRouteIT` the real one against Vault in Testcontainers.
 - **Aliases** (D28, user decision 2026-11-18): `mw.partners.partner-aliases` replaces `default-partner`.
   The channels and seeds send the catalogue's `partnerId` (`billagg`) itself, so the map is empty; any
   other id is refused `MW-PTR-UNKNOWN-PARTNER` (502 on the bill fetch). The reply contract's partner
@@ -357,7 +357,7 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   the host guard), as Camel reads them. It rebuilds the call with `partnerId` and the registry
   references `password=` / `privateKey=#bean:mw-sftp-<routeId>-<field>` and
   `knownHosts=#bean:mw-sftp-<routeId>-<field>`: the credential and the host's known_hosts lines are fields
-  of the partner's own OpenBao secret, read at load, bound by `PartnerRoutes` before the route starts
+  of the partner's own Vault secret, read at load, bound by `PartnerRoutes` before the route starts
   (`Loaded.beans()`) and unbound with it; never in a URI. A batch route has no `routeConfiguration` (a
   failure must reach the file consumer) and no dry-run (refused). `enabled: false`: the route is not
   added, so nothing polls (health DISABLED). `mw-sftp-source` (camel-sftp 4.22.2, options checked in
@@ -376,7 +376,7 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   `MW_PARTNER_RECON_MAX_LINES`, default 1000000) publishes nothing and the file goes to `.error`
   (`partner.recon.file_refused` logs the reason, never content); `split().streaming()` is
   not used because it would publish the lines before the bad one. Choices that differ from the ticket
-  text: the known hosts come from OpenBao (`knownHosts` bytes), not a `knownHostsUri` file of the
+  text: the known hosts come from Vault (`knownHosts` bytes), not a `knownHostsUri` file of the
   adapter host; the sftp host is checked at load only (the `http*` interceptor does not see sftp). Tests:
   `PartnerBatchRouteLoaderTest`, `MwReconStepTest`, `KameletCatalogueTest`, `SftpReconRouteIT` (atmoz/sftp
   Testcontainer: read once, `.done`, `.error`, disabled, the sink, an unknown host key refused). Example:
@@ -385,7 +385,7 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
 - **Auth options** (ticket 87; `partner/kamelet/MwAuthStep`, `partner/auth/OAuth2ClientCredentials`,
   `DetachedJws`, `PartnerTlsContexts`; tests `AuthKameletsTest` (AdviceWith/MockEndpoint, RFC 7617
   vector, JWS checked by nimbus-jose-jwt), `AuthRouteLoaderTest`, `PartnerAuthKameletsIT` (WireMock),
-  `NewBillerRouteIT` (OAuth2 biller by config, OpenBao)). `mw-http-call` passes every auth parameter to
+  `NewBillerRouteIT` (OAuth2 biller by config, Vault)). `mw-http-call` passes every auth parameter to
   `mw-auth-<auth>` (Camel ignores the ones a Kamelet does not declare) and calls it inside its loop, before
   each attempt. `basic`: `Authorization: Basic` from two secret fields. `oauth2-cc`: a client-credentials
   token from `tokenUrl` (POST, client authenticated with HTTP Basic, `scope`/`audience` when set) sent with
@@ -399,7 +399,7 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   endpoint option (in the URI) and a refused token is not dropped. `jws`: detached JWS (RFC 7515 F) over
   the request body, RS256 or ES256 (JOSE R||S), PKCS#8 PEM key in a secret field, `kid` = `keyId`, header
   `authHeader` (default `X-JWS-Signature`); `services/mw-crypto` has no source on this branch, so no key
-  purpose there (user decision): the key is an OpenBao field (fake in dev only). mTLS: `sslContextRef`
+  purpose there (user decision): the key is a Vault field (fake in dev only). mTLS: `sslContextRef`
   names a context of static config `mw.partners.tls.contexts.<name>.partner-id` (`config/PartnerTlsProperties`),
   read once when Camel starts (before the routes) from that partner's secret fields `<name>-keystore`
   (base64 PKCS#12), `<name>-keystore-password`, with `truststore: true` `<name>-truststore`/`-password` (a failed read leaves the context unregistered, never the JVM trust store), and bound as the
@@ -499,7 +499,7 @@ adapter-minted txnId) are still dropped and belong to the REMIT_IN / NPSB ticket
   numbers as ACCOUNT, last 4 only). Party ids are `PARTY_ID` (ticket 23): masked by the party's
   `type` (wallet/MSISDN as an MSISDN, a bank account or any other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - Spring Kafka (ADR D27, copied from the template, ticket 78): `config/KafkaConfig` (retry topics
   `<topic>.<group>.retry.1..3` 10 s / 1 min / 10 min then `.dlq`, `messaging/RetryTopicNaming`,
   `RetryTopicRecoverer`, `RetryDueTimeCap`, `ConsumerContextInterceptor`), `messaging/EventPublisher`

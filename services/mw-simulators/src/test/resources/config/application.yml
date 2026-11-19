@@ -18,7 +18,7 @@ mw:
     cron: "-"
 sim:
   billagg:
-    # The billagg SOAP front end's WS-Security password (stack: OpenBao secret/mw-simulators, never in the
+    # The billagg SOAP front end's WS-Security password (stack: Vault secret/mw-simulators, never in the
     # main config); an obviously fake test value.
     ws-password: fake-billagg-ws-password-for-tests
   smsc:

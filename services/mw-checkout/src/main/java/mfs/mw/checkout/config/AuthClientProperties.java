@@ -9,14 +9,14 @@ import org.springframework.validation.annotation.Validated;
 
 /**
  * {@code mw.checkout.auth}: mw-auth (ticket 72; spec 9.3, 18.7, D22, D24). Its internal API (the
- * checkout OTP and the transaction assertion) over mTLS with this service's OpenBao certificate and
+ * checkout OTP and the transaction assertion) over mTLS with this service's Vault certificate and
  * a Keycloak realm {@code services} client-credentials JWT; its public PIN transport key on the
  * plain public port.
  *
  * @param baseUrl mw-auth's internal port ({@code https://mw-auth:8443})
  * @param tokenUri the realm's token endpoint (plain HTTP inside the network in dev)
  * @param clientId this service's client ({@code mw-checkout}, equal to its certificate CN)
- * @param clientSecret from OpenBao {@code secret/mw-checkout} only, never in a file
+ * @param clientSecret from Vault {@code secret/mw-checkout} only, never in a file
  * @param timeout per call (2 s; a slower answer fails closed)
  * @param connectTimeout TCP and TLS connect
  * @param pinKeyTtl how long a fetched transport key (mw-auth {@code GET /internal/v1/pin-key} on

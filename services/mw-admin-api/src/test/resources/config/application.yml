@@ -15,7 +15,7 @@ mw:
       period: 50ms
   admin-api:
     internal-auth:
-      # Obviously fake; the real one comes from OpenBao. ITs with a stub upstream serve a token.
+      # Obviously fake; the real one comes from Vault. ITs with a stub upstream serve a token.
       client-secret: test-only-client-secret-not-a-secret
   retention:
     # The purge job's schedule is off in tests; OutboxInboxPurgeConformanceIT calls it directly.

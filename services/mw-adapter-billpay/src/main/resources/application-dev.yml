@@ -29,7 +29,7 @@ mw:
         inquiry-retries: 1
         # Every call is signed hmac-sha256 (mw-http-call auth), and a callback is believed only with a
         # valid signature over method, path, timestamp and body (300 s skew). The shared secret is the
-        # field hmac-secret of OpenBao secret/mw-adapter-billpay/billagg (dev value BILLAGG_HMAC_SECRET,
+        # field hmac-secret of Vault secret/mw-adapter-billpay/billagg (dev value BILLAGG_HMAC_SECRET,
         # deploy/provision/services.sh); never here.
         auth:
           scheme: hmac-sha256
@@ -48,7 +48,7 @@ mw:
         # The route: one branch per operation, then mw-audit. The SOAP billers (KGDCL, JGTDSL, BTCL,
         # LINK3; header mwPartnerCode = the call's billerCode) go to the aggregator's SOAP 1.1 front end
         # POST /billagg/v1/soap (namespace urn:billagg:v1, FetchBill / PayBill with billerCode, WS-Security
-        # UsernameToken user bits, password field ws-password of the same OpenBao secret, dev value
+        # UsernameToken user bits, password field ws-password of the same Vault secret, dev value
         # BILLAGG_WS_PASSWORD), mapped by the soap.*.xsl stylesheets; their faults carry the same codes
         # 3001-3004 as REST (a soap:Server fault or anything unexpected is UNKNOWN). Every other biller,
         # every STATUS_QUERY (only our reference: the aggregator's REST status finds SOAP payments too) and

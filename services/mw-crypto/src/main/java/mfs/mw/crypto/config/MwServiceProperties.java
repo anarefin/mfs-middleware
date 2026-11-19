@@ -6,7 +6,7 @@ import org.springframework.validation.annotation.Validated;
 
 /**
  * Service identity, bound from {@code application.yml}, mounted overrides and, when {@code
- * VAULT_ENABLED=true}, secrets in OpenBao at {@code secret/<spring.application.name>} (spec
+ * VAULT_ENABLED=true}, secrets in Vault at {@code secret/<spring.application.name>} (spec
  * 18.4, 20.4). Add secret-backed settings (partner credentials, keys) as further properties
  * classes in this package; never put their values in config files.
  */

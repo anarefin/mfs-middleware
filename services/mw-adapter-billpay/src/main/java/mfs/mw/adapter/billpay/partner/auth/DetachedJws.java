@@ -15,7 +15,7 @@ import java.util.Map;
  * {@code BASE64URL(header) + "." + BASE64URL(body)}. The protected header is {@code {"alg":...}},
  * with {@code "kid"} when a key id is set. RS256 is RSASSA-PKCS1-v1_5 with SHA-256; ES256 is
  * ECDSA P-256 with SHA-256 in the JOSE form R || S (64 bytes, RFC 7518 3.4), not DER. The key is a
- * PKCS#8 PEM read from the partner's own OpenBao secret; it is never logged and a failure never
+ * PKCS#8 PEM read from the partner's own Vault secret; it is never logged and a failure never
  * shows it.
  */
 public final class DetachedJws {

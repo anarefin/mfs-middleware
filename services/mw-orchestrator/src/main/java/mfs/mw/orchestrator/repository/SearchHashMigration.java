@@ -16,7 +16,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Flyway migration 10 (A2/A3), in Java because it needs the search hash key from OpenBao: every
+ * Flyway migration 10 (A2/A3), in Java because it needs the search hash key from Vault: every
  * row written before V9 is re-hashed as {@code HMAC(<type>:<id>)} from its raw {@code
  * initiator_id} and stored request, and gets its {@code initiator_type} and {@code payee_hash}.
  * Spring Boot hands this bean to Flyway, which runs it after V9 and once only.

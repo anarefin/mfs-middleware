@@ -32,7 +32,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PostgreSQL with Flyway | PostgreSQL 18, Flyway 12 | as FRS (D4) |
 | Redis | Valkey until ticket 90, then Redis (D29) | ticket 90 |
 | Keycloak; JWT for apps | Keycloak for console, portals, partners and services; app JWTs issued by mw-auth (D21) | FRS only asks for "JWT for apps" |
-| HashiCorp Vault dev mode | OpenBao until ticket 91, then HashiCorp Vault (D30) | ticket 91 |
+| HashiCorp Vault dev mode | HashiCorp Vault 2.2.2 (D30), file-backed and unsealed by `deploy/vault/dev-unseal.sh` instead of `-dev` in-memory mode | done (ticket 91) |
 | Prowide Core, Prowide ISO 20022 | Prowide (tickets 121, 126) | as FRS |
 | WireMock plus custom mock apps | mw-simulators and mw-core-mock (M5, D33) | deviation: one stateful simulator app with one mock control API instead of WireMock stubs |
 | React or Angular console | Next.js (D6) | the FRS leaves the choice to the team |
@@ -345,7 +345,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
 | ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); maintenance window and mock/real switch in 131 |
-| ADM-02 | tickets 91, 131 | credential upload into Vault, expiry dashboard |
+| ADM-02 | ticket 131 | partner credentials already live in Vault (`secret/mw-adapter-*/<partner>`, ticket 91); the upload and expiry dashboard are ticket 131 |
 | ADM-03 | tickets 100, 132 | channel clients |
 | ADM-04 | tickets 98, 132 | routing rules |
 | ADM-05 | tickets 113, 132 | billers |

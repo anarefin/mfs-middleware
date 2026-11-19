@@ -1053,7 +1053,7 @@ components:
         The full config of one partner, in the field names of the adapters' partner record (spec
         12.1, ADR D28): a route + mappings + allowedHosts (+ dryRun for UPSERT_ROUTE); published
         unchanged as the `value` of `mw.config.changed.v1`. Never a secret: `auth.credentialsRef`
-        names one of the partner's secrets in OpenBao (callback verification). The adapters check
+        names one of the partner's secrets in Vault (callback verification). The adapters check
         it again (host allowlist, https, JSONata compiles, dry-run) and keep the previous version
         when they refuse it. The old template shape (template, baseUrl, operations) went with
         ticket 84.

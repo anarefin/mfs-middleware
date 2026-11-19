@@ -31,7 +31,7 @@ public record PayShieldProperties(
    *
    * @param library the PKCS#11 library ({@code /usr/lib/libp11-kit.so.0})
    * @param slotListIndex the token's slot (0: the proxy shows only that token)
-   * @param userPin the token's user PIN, from OpenBao {@code secret/mw-simulators} (key {@code
+   * @param userPin the token's user PIN, from Vault {@code secret/mw-simulators} (key {@code
    *     sim.payshield.pkcs11.user-pin}); never logged, never in a config file
    * @param lmkLabel the LMK's label in the token ({@code lmk})
    */

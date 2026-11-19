@@ -79,7 +79,7 @@
         <text x="550" y="214" text-anchor="middle" class="t-md">notify · audit · admin</text>
         <rect x="445" y="262" width="210" height="34" rx="6" class="n-kafka"/>
         <text x="550" y="284" text-anchor="middle" class="t-md">Kafka underneath</text>
-        <text x="550" y="326" text-anchor="middle" class="t-sm">PostgreSQL · Valkey · Keycloak · OpenBao</text>
+        <text x="550" y="326" text-anchor="middle" class="t-sm">PostgreSQL · Valkey · Keycloak · Vault</text>
         <rect x="780" y="20" width="170" height="110" rx="10" class="n-ext"/>
         <text x="865" y="56" text-anchor="middle" class="t-lg">The core</text>
         <text x="865" y="78" text-anchor="middle" class="t-sm">balances, ledger, fees, PIN</text>
@@ -172,7 +172,7 @@
           <rect x="50" y="480" width="210" height="58" rx="8" class="n"/><text x="155" y="504" text-anchor="middle" class="t-md" font-weight="600">PostgreSQL 18</text><text x="155" y="523" text-anchor="middle" class="t-sm">one schema per service</text>
           <rect x="285" y="480" width="210" height="58" rx="8" class="n"/><text x="390" y="504" text-anchor="middle" class="t-md" font-weight="600">Valkey</text><text x="390" y="523" text-anchor="middle" class="t-sm">sessions, locks, counters</text>
           <rect x="520" y="480" width="210" height="58" rx="8" class="n"/><text x="625" y="504" text-anchor="middle" class="t-md" font-weight="600">Keycloak</text><text x="625" y="523" text-anchor="middle" class="t-sm">logins and tokens</text>
-          <rect x="755" y="480" width="210" height="58" rx="8" class="n"/><text x="860" y="504" text-anchor="middle" class="t-md" font-weight="600">OpenBao</text><text x="860" y="523" text-anchor="middle" class="t-sm">secrets and keys</text>
+          <rect x="755" y="480" width="210" height="58" rx="8" class="n"/><text x="860" y="504" text-anchor="middle" class="t-md" font-weight="600">Vault</text><text x="860" y="523" text-anchor="middle" class="t-sm">secrets and keys</text>
         </g>
       </svg>
     </div>
@@ -218,7 +218,7 @@
     <tr><td><strong>PostgreSQL 18</strong></td><td>The relational database.</td><td>One database server; every service has its own schema and never reads another's.</td></tr>
     <tr><td><strong>Valkey</strong></td><td>An in-memory key-value store (an open-source Redis).</td><td>USSD sessions, device-binding sessions, short locks (the double-tap guard), rate counters.</td></tr>
     <tr><td><strong>Keycloak</strong></td><td>An identity server (OpenID Connect).</td><td>Logins for ops staff and portal users, and tokens for service-to-service and partner calls (app users log in at mw-auth). One <em>realm</em> per group (chapter 7).</td></tr>
-    <tr><td><strong>OpenBao</strong></td><td>A secrets vault (an open-source fork of HashiCorp Vault).</td><td>Database passwords, partner keys, signing secrets. Services read them at start-up; none are in code or config files.</td></tr>
+    <tr><td><strong>Vault</strong></td><td>A secrets vault (HashiCorp Vault, ADR D30).</td><td>Database passwords, partner keys, signing secrets. Services read them at start-up; none are in code or config files.</td></tr>
     <tr><td><strong>Apache Camel</strong></td><td>An integration library inside the services (not a container).</td><td>Kafka consumers, the outbox relay, the partner call routes. <em>Superseded 2026-11-18 by <a href="../adr/D27-kafka-client.md">ADR D27</a>: Kafka moves to Spring Kafka and Camel stays only in the partner adapters (<a href="../adr/D28-partner-routes-as-config.md">ADR D28</a>); this page is updated as the code changes (tickets 78–81).</em></td></tr>
   </table></div>
 
@@ -236,7 +236,7 @@
     after <code>cp dev.env.defaults .env</code> (the committed dev settings; Compose reads <code>deploy/.env</code> by itself):</p>
   <div class="table-wrap"><table>
     <tr><th>Profile</th><th>Starts</th><th>Command</th></tr>
-    <tr><td>(none)</td><td>The platform: Kafka, PostgreSQL, Valkey, Keycloak, OpenBao, etcd, APISIX, a test mail server, and one-shot setup jobs.</td><td>always</td></tr>
+    <tr><td>(none)</td><td>The platform: Kafka, PostgreSQL, Valkey, Keycloak, Vault, etcd, APISIX, a test mail server, and one-shot setup jobs.</td><td>always</td></tr>
     <tr><td><code>minimal</code></td><td>Platform plus the services for send money and cash.</td><td><code>docker compose --profile minimal up -d</code></td></tr>
     <tr><td><code>core</code></td><td>Everything.</td><td><code>docker compose --profile core up -d</code></td></tr>
     <tr><td><code>seed</code></td><td>The seeder (test data).</td><td><code>docker compose --profile core --profile seed up -d</code></td></tr>

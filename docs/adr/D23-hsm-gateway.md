@@ -1,6 +1,8 @@
 # D23: mw-crypto is the only HSM client, with PKCS#11 and payShield providers
 
 Status: Accepted, 2026-11-14 (spec revision 6). Production HSM vendor still open (spec open point 22).
+Amended 2026-11-19 by [D30](D30-hashicorp-vault.md): HashiCorp Vault replaces OpenBao (ticket 91); the
+OpenBao names below describe the stack before it.
 
 ## Context
 

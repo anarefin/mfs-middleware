@@ -1,5 +1,5 @@
 # Static configuration baked into the image (spec 20.4). Per-environment overrides are
-# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from OpenBao/Vault
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from Vault
 # only (18.4) and are never written here.
 spring:
   application:
@@ -14,7 +14,7 @@ spring:
   cloud:
     vault:
       enabled: ${VAULT_ENABLED:false}
-      uri: ${VAULT_ADDR:http://openbao:8200}
+      uri: ${VAULT_ADDR:http://vault:8200}
       authentication: APPROLE
       app-role:
         role-id: ${VAULT_ROLE_ID:}
@@ -27,7 +27,7 @@ spring:
     problemdetails:
       enabled: false
   # This service's own schema (16.2), migrated by Flyway on start-up from
-  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from OpenBao's database engine
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from Vault's database engine
   # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
   datasource:
     url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
@@ -189,7 +189,7 @@ sim:
       screen-timeout: 15s
   # payShield 10K simulator (ticket 64, spec 18.8, D23): host commands over TCP for mw-crypto's
   # payShield provider (internal network only). The LMK is a token object of the SoftHSM paysim
-  # token (softhsm:5658 through the image's p11-kit proxy; user PIN from OpenBao secret/mw-simulators
+  # token (softhsm:5658 through the image's p11-kit proxy; user PIN from Vault secret/mw-simulators
   # sim.payshield.pkcs11.user-pin); host tests use lmk-store: memory.
   payshield:
     enabled: true

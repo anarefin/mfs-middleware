@@ -32,8 +32,8 @@ SOFTHSM_PAYSIM_USER_PIN=fake-paysim-user
 EOF
 }
 
-# docker_stub up|old|down: a docker on PATH whose compose exec answers like a running OpenBao with the
-# fixed tester token (up), a running OpenBao on a volume from before it (old: only dev-init.json), or a
+# docker_stub up|old|down: a docker on PATH whose compose exec answers like a running Vault with the
+# fixed tester token (up), a running Vault on a volume from before it (old: only dev-init.json), or a
 # stopped one (down).
 docker_stub() {
   mkdir -p .bin deploy
@@ -143,7 +143,7 @@ test_creds_works_when_the_stack_is_down() {
   assert_out_lacks "s.fake-root"
 }
 
-test_creds_falls_back_to_the_init_root_token_on_an_old_openbao_volume() {
+test_creds_falls_back_to_the_init_root_token_on_an_old_vault_volume() {
   dev_env; docker_stub old
   assert_ok mw_run "$PWD" creds.sh
   assert_out_contains "s.fake-root"

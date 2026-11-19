@@ -14,14 +14,14 @@ spec:
     title: MW auth API key
     description: >-
       Puts the partner's static API key in one header (default X-Api-Key). The key is a field of this
-      partner's own OpenBao secret, read when the route loaded. Input and output: the prepared request;
+      partner's own Vault secret, read when the route loaded. Input and output: the prepared request;
       only headers change.
     type: object
     required: [secretField]
     properties:
       secretField:
         title: Secret field
-        description: Field of this partner's own OpenBao secret holding the API key; a reference, never the value.
+        description: Field of this partner's own Vault secret holding the API key; a reference, never the value.
         type: string
         format: password
         x-descriptors:

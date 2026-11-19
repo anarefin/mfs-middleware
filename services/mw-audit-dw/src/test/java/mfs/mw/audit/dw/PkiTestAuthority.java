@@ -23,7 +23,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Test-only OpenBao PKI (spec 18.2, D24; copied from mw-crypto, D14): an OpenBao dev server in a
+ * Test-only Vault PKI (spec 18.2, D24; copied from mw-crypto, D14): a Vault dev server in a
  * container set up like {@code deploy/provision} does on the stack: a root CA at {@code pki/}, an
  * intermediate at {@code pki_int/} signed by it, one role per service (CN and SAN = the service
  * name, 72 h max, EC P-256), created on first use. Started once per JVM, removed by Ryuk.
@@ -34,8 +34,8 @@ public final class PkiTestAuthority {
   private static final JsonMapper JSON = JsonMapper.builder().build();
   private static final HttpClient HTTP = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
-  static final GenericContainer<?> OPENBAO =
-      new GenericContainer<>("openbao/openbao:2.7.2")
+  static final GenericContainer<?> VAULT =
+      new GenericContainer<>("hashicorp/vault:2.2.2")
           .withCommand("server", "-dev", "-dev-root-token-id=" + TOKEN, "-dev-listen-address=0.0.0.0:8200")
           .withExposedPorts(8200)
           .waitingFor(Wait.forHttp("/v1/sys/health").forStatusCode(200));
@@ -45,12 +45,12 @@ public final class PkiTestAuthority {
 
   private PkiTestAuthority() {}
 
-  /** Starts OpenBao and sets up the root and the intermediate (idempotent). */
+  /** Starts Vault and sets up the root and the intermediate (idempotent). */
   public static synchronized void start() {
     if (ready) {
       return;
     }
-    OPENBAO.start();
+    VAULT.start();
     post("/v1/sys/mounts/pki", Map.of("type", "pki", "config", Map.of("max_lease_ttl", "87600h")));
     post("/v1/sys/mounts/pki_int", Map.of("type", "pki", "config", Map.of("max_lease_ttl", "720h")));
     post("/v1/pki/root/generate/internal",
@@ -68,7 +68,7 @@ public final class PkiTestAuthority {
   public static VaultTemplate vault() {
     start();
     return new VaultTemplate(
-        VaultEndpoint.from(URI.create("http://" + OPENBAO.getHost() + ":" + OPENBAO.getMappedPort(8200))),
+        VaultEndpoint.from(URI.create("http://" + VAULT.getHost() + ":" + VAULT.getMappedPort(8200))),
         new TokenAuthentication(TOKEN));
   }
 
@@ -113,12 +113,12 @@ public final class PkiTestAuthority {
   private static JsonNode post(String path, Object body) {
     try {
       HttpResponse<String> r = HTTP.send(
-          HttpRequest.newBuilder(URI.create("http://" + OPENBAO.getHost() + ":" + OPENBAO.getMappedPort(8200) + path))
+          HttpRequest.newBuilder(URI.create("http://" + VAULT.getHost() + ":" + VAULT.getMappedPort(8200) + path))
               .header("X-Vault-Token", TOKEN)
               .POST(HttpRequest.BodyPublishers.ofString(JSON.writeValueAsString(body))).build(),
           HttpResponse.BodyHandlers.ofString());
       if (r.statusCode() / 100 != 2) {
-        throw new IllegalStateException("OpenBao " + path + ": " + r.statusCode() + " " + r.body());
+        throw new IllegalStateException("Vault " + path + ": " + r.statusCode() + " " + r.body());
       }
       return r.body().isBlank() ? JSON.createObjectNode() : JSON.readTree(r.body());
     } catch (IOException e) {

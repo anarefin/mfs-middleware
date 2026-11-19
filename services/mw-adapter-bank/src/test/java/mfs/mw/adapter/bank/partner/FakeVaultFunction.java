@@ -7,11 +7,11 @@ import java.util.regex.Pattern;
 import org.apache.camel.spi.PropertiesFunction;
 
 /**
- * The {@code hashicorp} properties function for tests without OpenBao: Camel finds it before the
+ * The {@code hashicorp} properties function for tests without Vault: Camel finds it before the
  * real one ({@code src/test/resources/META-INF/services/org/apache/camel/properties-function/
  * hashicorp}), so {@code {{hashicorp:secret:<service>/<partner>#<field>}}} reads {@link #VALUES}, else
  * the obviously fake {@code fake-<partner>-<field>-for-tests} (the dev seeds' secrets, the same in the
- * three adapters). Billpay's {@code NewBillerRouteIT} uses the real function against OpenBao in
+ * three adapters). Billpay's {@code NewBillerRouteIT} uses the real function against Vault in
  * Testcontainers.
  */
 public class FakeVaultFunction implements PropertiesFunction {

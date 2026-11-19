@@ -1,10 +1,12 @@
 # D24: Service mTLS, phase 1: mw-crypto and the mw-auth internal API
 
 Status: Accepted, 2026-11-14 (spec revision 6).
+Amended 2026-11-19 by [D30](D30-hashicorp-vault.md): HashiCorp Vault replaces OpenBao (ticket 91); the
+OpenBao names below describe the stack before it.
 
 ## Context
 
-Spec 18.2 plans mTLS with Vault-issued certificates of at most 72 h plus a client-credentials JWT for service-to-service calls; only the JWT part is built, and OpenBao's PKI engine is enabled by `deploy/openbao/dev-unseal.sh` but unused. Turning on mTLS for all services, Kafka and PostgreSQL at once is a large change across the whole stack and the laptop footprint.
+Spec 18.2 plans mTLS with Vault-issued certificates of at most 72 h plus a client-credentials JWT for service-to-service calls; only the JWT part is built, and OpenBao's PKI engine is enabled by `deploy/vault/dev-unseal.sh` but unused. Turning on mTLS for all services, Kafka and PostgreSQL at once is a large change across the whole stack and the laptop footprint.
 
 ## Decision
 
@@ -21,5 +23,5 @@ Spec 18.2 plans mTLS with Vault-issued certificates of at most 72 h plus a clien
 ## Where in the repo
 
 - spec sections 18.2, 18.4 and decision D24
-- `deploy/openbao`, `deploy/provision/services.sh`
+- `deploy/vault`, `deploy/provision/services.sh`
 - ticket 66

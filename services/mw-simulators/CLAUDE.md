@@ -27,7 +27,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     signed hmac-sha256 at send time when `sim.callback-secrets.<partner>` is set (string to sign:
     method, path+query, epoch seconds, hex SHA-256 of the body; `X-Signature`, `X-Timestamp`; the
     middleware's `hmac-sha256` scheme). In the stack the billagg secret is the generated
-    `BILLAGG_HMAC_SECRET`, written to OpenBao `secret/mw-simulators` by `deploy/provision/services.sh`; the e2e
+    `BILLAGG_HMAC_SECRET`, written to Vault `secret/mw-simulators` by `deploy/provision/services.sh`; the e2e
     suite points `callbackUrl` at `http://apisix:9080/partner/billagg/callback/payments`.
   - `filter/RecordingFilter` records every request to `/{partner}/**` (raw bodies, test data;
     Authorization and Cookie headers dropped; the text of a WS-Security `Password` element is recorded
@@ -64,7 +64,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   SOAPAction `urn:billagg:v1:FetchBill|PayBill`, the body element decides) for the SOAP billers only.
   Every request carries a WS-Security 1.0 `wsse:Security` header with a UsernameToken (`PasswordText`,
   as the adapters' `mw-soap-call` builds it), user `bits`, password the property `sim.billagg.ws-password`
-  (read from the `Environment` like `sim.callback-secrets.*`; stack: `BILLAGG_WS_PASSWORD` in OpenBao
+  (read from the `Environment` like `sim.callback-secrets.*`; stack: `BILLAGG_WS_PASSWORD` in Vault
   `secret/mw-simulators`; no value in the main config; unset = every call refused); missing or wrong ->
   fault `1002`. `FetchBill {billerCode, billNumber}` -> `FetchBillResponse {billerCode, billNumber,
   amountDue, dueDate, billPeriod}`; `PayBill {billerCode, billNumber, amount, reference}` ->
@@ -182,7 +182,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     `util/PinBlocks`), PINs of 4 to 12 digits.
   - LMK (`client/LmkStore`, `sim.payshield.lmk-store`): `pkcs11` (`client/Pkcs11LmkStore`, the stack)
     = an AES-256 token object `lmk` in the SoftHSM `paysim` token (softhsm:5658 through the image's
-    p11-kit proxy, user PIN `sim.payshield.pkcs11.user-pin` from OpenBao `secret/mw-simulators`,
+    p11-kit proxy, user PIN `sim.payshield.pkcs11.user-pin` from Vault `secret/mw-simulators`,
     `SOFTHSM_PAYSIM_USER_PIN` by `provision_mw_simulators`), generated on first use and kept across
     restarts. Over the p11-kit RPC the token only encrypts (an ECB decrypt fails with
     `CKR_FUNCTION_NOT_SUPPORTED`), so a block under the LMK is a 4-round Feistel network on the token's
@@ -250,7 +250,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   other type last 4 only).
 - `logging/JsonLogFormatter`: JSON log lines with the 21.1 fields, masking before output.
   Add context with `log.atInfo().addKeyValue("event", "...")` or the MDC.
-- `config/MwServiceProperties`: config binding; secrets from OpenBao when `VAULT_ENABLED=true`.
+- `config/MwServiceProperties`: config binding; secrets from Vault when `VAULT_ENABLED=true`.
 - Kafka through Spring Kafka (ADR D27; no Camel in this module, copied from the template, ticket 79):
   `messaging/EventPublisher` sends records with the 6.1 headers through `KafkaTemplate` (idempotent,
   `acks=all`, at most 5 in flight; `publish` waits for the ack, `publishStoredAsync` sends an outbox row

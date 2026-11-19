@@ -65,7 +65,7 @@ spec:
         default: none
       userField:
         title: User secret field
-        description: Field of this partner's own OpenBao secret holding the Basic user name (auth=basic); a reference, never the value.
+        description: Field of this partner's own Vault secret holding the Basic user name (auth=basic); a reference, never the value.
         type: string
         format: password
         default: ""
@@ -74,7 +74,7 @@ spec:
           - urn:alm:descriptor:com.tectonic.ui:password
       secretField:
         title: Password secret field
-        description: Field of this partner's own OpenBao secret holding the Basic password (auth=basic); a reference, never the value.
+        description: Field of this partner's own Vault secret holding the Basic password (auth=basic); a reference, never the value.
         type: string
         format: password
         default: ""
@@ -84,7 +84,7 @@ spec:
       sslContextRef:
         title: TLS client context
         description: >-
-          Name of a client keystore (mTLS) registered at startup from OpenBao for this partner
+          Name of a client keystore (mTLS) registered at startup from Vault for this partner
           (mw.partners.tls.contexts.<name>, bean mwTls-<name>); https only. Empty = no client certificate.
         type: string
         default: ""
@@ -106,7 +106,7 @@ spec:
         default: ""
       wsPasswordSecret:
         title: WS-Security password secret
-        description: Field of this partner's own OpenBao secret (secret/<service>/<partnerId>) holding the UsernameToken password; a reference, never the value.
+        description: Field of this partner's own Vault secret (secret/<service>/<partnerId>) holding the UsernameToken password; a reference, never the value.
         type: string
         format: password
         default: ""

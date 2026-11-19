@@ -17,7 +17,7 @@ info:
     caller bound yet).
 
     mTLS is mandatory (ticket 66, D24): the TLS handshake needs a client certificate issued by the
-    OpenBao services intermediate CA (`pki_int`, one role per service, CN = service name); without
+    Vault services intermediate CA (`pki_int`, one role per service, CN = service name); without
     one the handshake fails. The caller also sends its client-credentials JWT, whose `azp` must
     equal the certificate's CN (else 403 MW-AUTH-002). Generating and rotating keys is narrower than
     reading: only the key-admin clients (`mw.internal-auth.key-admin-clients`, mw-admin-api), and
@@ -795,7 +795,7 @@ components:
     serviceCertificate:
       type: mutualTLS
       description: >-
-        A client certificate of the OpenBao services intermediate CA (`pki_int/issue/<service>`, CN
+        A client certificate of the Vault services intermediate CA (`pki_int/issue/<service>`, CN
         = the calling service, at most 72 h). Required by the handshake (D24).
   parameters:
     KeyId:

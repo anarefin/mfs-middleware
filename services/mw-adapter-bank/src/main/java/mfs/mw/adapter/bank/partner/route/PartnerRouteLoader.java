@@ -95,7 +95,7 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  *       final {@code choice}) and then {@code mw-audit};
  *   <li>every {@code mw-http-call} URL against the record's allowed hosts ({@link
  *       PartnerEndpointPolicy}); every mapping the route names exists and compiles; every secret
- *       field it names is read from OpenBao now ({@link PartnerCredentials}).
+ *       field it names is read from Vault now ({@link PartnerCredentials}).
  * </ol>
  */
 @Component
@@ -721,7 +721,7 @@ public class PartnerRouteLoader {
 
   /**
    * The parameters each auth scheme of ticket 87 needs: {@code basic} a {@code userField} (read
-   * from OpenBao with the password), {@code oauth2-cc} a {@code clientId} and a {@code tokenUrl}
+   * from Vault with the password), {@code oauth2-cc} a {@code clientId} and a {@code tokenUrl}
    * (held to the record's hosts like {@code url}), {@code jws} an {@code alg} it supports.
    */
   private static void authProblems(

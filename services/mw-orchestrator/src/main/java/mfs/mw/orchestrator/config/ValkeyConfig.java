@@ -13,7 +13,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 
 /**
  * Valkey for the idempotency lock (spec 7.3 rule 4, ticket 50). Connection settings are
- * {@code spring.data.redis.*} (password from OpenBao); short timeouts and rejecting commands while
+ * {@code spring.data.redis.*} (password from Vault); short timeouts and rejecting commands while
  * disconnected keep a Valkey outage from slowing intake down: the lock is then unavailable and the
  * PostgreSQL primary key decides alone. Valkey is not part of the health groups
  * ({@code management.health.redis.enabled: false}), so an outage never takes the service out of
