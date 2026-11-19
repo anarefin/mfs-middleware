@@ -77,7 +77,7 @@ class PartnerCallMapperTest {
     PartnerRequest ok = pay(newTxnId(), ACCOUNT, 2000);
     PartnerRequest.Payload p = ok.payload();
 
-    assertThat(mapper.problem(withOperation(ok, "REVERSE"))).contains("unsupported operation");
+    assertThat(mapper.problem(withOperation(ok, "SCREEN"))).contains("unsupported operation");
     assertThat(mapper.problem(withFamily(ok, "billpay"))).contains("unsupported family");
     assertThat(mapper.problem(pay(newTxnId(), ACCOUNT, 0))).contains("amount must be positive");
     assertThat(mapper.problem(pay(newTxnId(), "12-34", 100))).contains("debit party must be a bank account");
@@ -108,6 +108,20 @@ class PartnerCallMapperTest {
     return new PartnerRequest(
         r.schemaVersion(), family, r.requestId(), r.txnId(), r.correlationId(), r.issuedAt(),
         r.deadlineAt(), r.payload());
+  }
+
+  @Test
+  void aReverseNeedsItsPartnerAndAPositiveAmount() {
+    PartnerRequest ok = pay(newTxnId(), ACCOUNT, 2000);
+    PartnerRequest.Payload p = ok.payload();
+    PartnerRequest reverse =
+        withPayload(ok, new PartnerRequest.Payload("REVERSE", p.txnType(), p.partner(), null, p.amount(), null, null, "PTR-1", null));
+    assertThat(mapper.problem(reverse)).isEmpty();
+    assertThat(mapper.toCall(reverse, "BITS-REF").operation()).isEqualTo("REVERSE");
+    assertThat(mapper.toCall(reverse, "BITS-REF").reference()).isEqualTo("BITS-REF");
+    PartnerRequest noAmount =
+        withPayload(ok, new PartnerRequest.Payload("REVERSE", p.txnType(), p.partner(), null, null, null, null, null, null));
+    assertThat(mapper.problem(noAmount)).contains("amount must be positive");
   }
 
   private static PartnerRequest withPayload(PartnerRequest r, PartnerRequest.Payload p) {

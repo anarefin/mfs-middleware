@@ -8,7 +8,8 @@ import java.util.Map;
  * This service's own type for {@code mw.audit.event.v1} (spec 14.3, 17; contract owned by
  * mw-audit-dw). The adapter emits one per partner call ({@code partner.call.completed}); {@code
  * after} carries the call's facts and its request and response bodies, masked before they get here
- * (18.3). Raw bodies are never inlined.
+ * (18.3). Raw bodies are never inlined: since ticket 97 {@code payloadRef} names the full masked
+ * bodies in the adapter's {@code partner_payload} table ({@code partner-payload/<uuid>}).
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record AuditEvent(
@@ -21,6 +22,7 @@ public record AuditEvent(
     String resource,
     Map<String, String> before,
     Map<String, String> after,
+    String payloadRef,
     String outcome,
     Instant at,
     String service) {

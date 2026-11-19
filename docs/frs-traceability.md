@@ -8,8 +8,8 @@ the order of its `DEPENDENCIES.md`.
 
 **Principle.** The repo keeps its own names (transaction types, states, channels, `MW-*` error codes,
 UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the repo lacks is added
-(ticket 92: `NPSB_OUT`, `NPSB_IN`, `B2B_TRANSFER`, `vat`, `commission`, `completedAt`, the partner
-status code, `timestamp` in the error envelope).
+(ticket 92, in the contracts: `NPSB_OUT`, `NPSB_IN`, `B2B_TRANSFER`, `vat`, `commission`, `completedAt`,
+`partnerStatusCode`, `timestamp` in the error envelope).
 
 **Status** (one per id, checked by `scripts/test/test_frs_traceability.sh`):
 
@@ -72,11 +72,11 @@ status code, `timestamp` in the error envelope).
 | `txnType` | `txnType` (2.3 below) | mapped |
 | `channel` | `channel` (2.4 below) | mapped |
 | `initiator / debitParty / creditParty` | `initiator`, `payer`, `payee` Party `{type, id, name?, walletType?}` | `BILLER` = `BILLER_ACCOUNT`; repo adds `ORG` |
-| `amount, fee, vat, commission` Decimal(18,2) | `{valueMinor, currency}` integer poisha | deviation: minor units avoid rounding; `vat` and `commission` added by ticket 92 |
-| `externalRef` | `partnerRef`, partner id; partner status code added by ticket 92 | |
+| `amount, fee, vat, commission` Decimal(18,2) | `{valueMinor, currency}` integer poisha | deviation: minor units avoid rounding; optional `vat` and `commission` (`$defs/Charge`) on `mw.txn.status.v1` since ticket 92 (filled once the core reports them) |
+| `externalRef` | `partnerRef`, partner id; optional `partnerStatusCode` on `mw.txn.status.v1` since ticket 92 | |
 | `status` | state (2.5 below) | mapped |
-| `metadata` | `metadata` | MNO, biller account, bill month and so on |
-| `timestamps` created, lastUpdated, completed | `requestedAt`, `updatedAt`; `completedAt` added by ticket 92 | |
+| `metadata` | `metadata` | MNO (`metadata.mno`, documented on `mw.txn.request.v1` by ticket 92), biller account, bill month and so on |
+| `timestamps` created, lastUpdated, completed | `requestedAt`, `updatedAt`; optional `completedAt` on `mw.txn.status.v1` since ticket 92 | |
 
 ### 2.3 Transaction types (FRS 2.2 txnType)
 
@@ -90,10 +90,10 @@ status code, `timestamp` in the error envelope).
 | `REMITTANCE_IN` | `REMIT_IN` |
 | `ATM_CASH_OUT`, `ATM_CASH_IN` | `ATM_CASH_OUT`, `ATM_CASH_IN` |
 | `QR_PAY` | `QR_PAY_INTEROP` (off-us); an on-us QR is `MERCHANT_PAY` (ticket 122) |
-| `NPSB_OUT`, `NPSB_IN` | added by ticket 92 |
+| `NPSB_OUT`, `NPSB_IN` | `NPSB_OUT`, `NPSB_IN` (in `TxnType` since ticket 92; refused `MW-VAL-010` until their flows exist) |
 | `DISBURSEMENT` | `BULK_DISBURSE` |
 | `REVERSAL` | `REVERSAL` |
-| (UC-07 B2B float) | `B2B_TRANSFER`, added by ticket 92 |
+| (UC-07 B2B float) | `B2B_TRANSFER` (in `TxnType` since ticket 92; refused `MW-VAL-010` until its flow exists) |
 | (none) | `BALANCE` (D26), repo only |
 
 ### 2.4 Channels (FRS 2.2 channel)
@@ -102,7 +102,7 @@ status code, `timestamp` in the error envelope).
 | --- | --- |
 | `APP_CUSTOMER`, `APP_AGENT`, `APP_MERCHANT` | `CUSTOMER_APP`, `AGENT_APP`, `MERCHANT_APP` |
 | `APP_DISTRIBUTOR`, `APP_DSO`, `APP_PARTNER` | `DISTRIBUTOR_APP`, `DSO_APP`, `PARTNER_APP` |
-| `USSD_GP`, `USSD_ROBI`, `USSD_TELETALK`, `USSD_BL` | `USSD` plus `metadata.mno` (`gp`, `robi`, `teletalk`, `banglalink`) |
+| `USSD_GP`, `USSD_ROBI`, `USSD_TELETALK`, `USSD_BL` | `USSD` plus `metadata.mno` (`gp`, `robi`, `teletalk`, `bl`: mw-ussd's MNO keys) |
 | `WEB_CHECKOUT`, `ORG_PORTAL`, `SP_PORTAL`, `PARTNER_API` | same names |
 | (none) | `SYSTEM` (operator actions, reversals), repo only |
 
@@ -130,7 +130,7 @@ status code, `timestamp` in the error envelope).
 | `EXT-503` | `MW-SYS-PARTNER_CIRCUIT_OPEN` / `MW-SYS-PARTNER_UNAVAILABLE` |
 | `EXT-504` | `MW-TMO-*` |
 | `SYS-500` | `MW-SYS-*` |
-| envelope `code, message, messageBn, txnId, correlationId, timestamp` | `{code, message, messageBn?, txnId?, correlationId, retryable, details[]}`; `timestamp` added by ticket 92 |
+| envelope `code, message, messageBn, txnId, correlationId, timestamp` | `{code, message, messageBn?, txnId?, correlationId, retryable, details[], timestamp}` (`timestamp` since ticket 92, UTC ISO-8601, every service) |
 
 ### 2.7 Use cases (FRS 5.1)
 
@@ -252,11 +252,11 @@ status code, `timestamp` in the error envelope).
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| CON-01 | ticket 97 | `PartnerAdapter` SPI with PAY, INQUIRY, STATUS built (D28); REVERSE and health check in 97 |
+| CON-01 | done | partner engine (D28) with PAY, INQUIRY, STATUS_QUERY, REVERSE (`reverse:<txnId>`, sent once) and the optional `HEALTH_CHECK` probe (ticket 97; `PartnerReverseRouteIT`, `PartnerRouteHealthTest`) |
 | CON-02 | tickets 114, 131, 136 | partner routes as config with maker-checker built (D28); proven per family in 114, by console alone in 131, 136 |
 | CON-03 | done | JSONata and XSLT mappings in versioned partner records with maker-checker (D28, mw-admin-api) |
-| CON-04 | tickets 97, 130 | partner audit event built; raw masked payloads 97, audit side 130 |
-| CON-05 | ticket 97 | UP, DEGRADED, DOWN, MAINTENANCE |
+| CON-04 | ticket 130 | partner audit event and raw masked payload store `partner_payload` with latency and `payloadRef` built (ticket 97, `PartnerPayloadIT`); audit side 130 |
+| CON-05 | done | `PartnerRouteHealth`: UP, DEGRADED, DOWN, MAINTENANCE (+ DISABLED, DELETED), changes on `mw.partner.route.status.v1` `health` (ticket 97) |
 | CON-06 | ticket 136 | developer guide and sample connector |
 | EXT-01 | ticket 109 | USSD gateway simulator (GP, SMPP) built; four MNOs in 109 |
 | EXT-02 | done | SMSC simulator in mw-simulators with inbox and delivery receipts |
@@ -277,7 +277,7 @@ status code, `timestamp` in the error envelope).
 | EXT-17 | tickets 123, 128 | DW Kafka and SFTP drop |
 | EXT-18 | tickets 93, 95 | core over REST (D31) |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
-| MCK-02 | tickets 97, 112, 114 | stateful paid bills, reverse once |
+| MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
 | MCK-03 | tickets 102, 136 | magic values built (spec 22.2); documented per mock in 136 |
 | MCK-04 | tickets 102, 103 | the mock control API (D33) |
 | MCK-05 | ticket 102 | latency per operation |

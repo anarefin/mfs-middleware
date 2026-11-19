@@ -6,7 +6,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
 ## Responsibilities
 
 - Telco adapter (spec WP14 part, 7.3 rule 5, 7.4, 11): consumes `mw.partner.request.telco.v1`,
-  checks a `PAY` / `STATUS_QUERY` request (`mapper/PartnerCallMapper`), calls the partner once through
+  checks a `PAY` / `STATUS_QUERY` / `REVERSE` (ticket 97: partner and a positive amount, never refused for `deadlineAt`; engine rules in mw-adapter-billpay CLAUDE.md "REVERSE, health, payload store") request (`mapper/PartnerCallMapper`), calls the partner once through
   the adapter framework (`partner` package, below) with our stable reference, and publishes
   `mw.partner.reply.v1` through the outbox (inbox-deduplicated on `requestId`).
 - Outcomes (`mapper/PartnerReplyMapper`): SUCCESS (`partnerRef` = partner ref, `attributes.partnerTxnRef`
@@ -43,8 +43,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.telco`. Follo
   (REQUIRES_NEW): action `partner.call.completed`, actor `system`/<service>, resource
   `partner/<partnerId>/<operation>`, outcome SUCCESS (partner SUCCESS/PENDING) else FAILURE,
   `after` = `partnerInstance`, `httpMethod`, `path`, `httpStatus`, `partnerOutcome`, `durationMs`
-  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB);
-  raw bodies never, no `payloadRef`. Key txnId (else partnerId). A failing publisher is logged
+  and the `request`/`response` bodies as the framework masked them (`sensitive-fields`, scrub, 4 KB
+  excerpts), `payloadRef` the full masked bodies in `partner_payload` (ticket 97). Key txnId (else partnerId; a call without a txnId is audited too, ticket 97). A failing publisher is logged
   `partner.call.audit_failed` and never fails the call. Identical in telco, billpay and bank.
 - Dev provisioning (`provision_mw_adapter_telco` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `adapter_telco_rw` and schema `partner_ref`, `secret/mw-adapter-telco` (DB password, never

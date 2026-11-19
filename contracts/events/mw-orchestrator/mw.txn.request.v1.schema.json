@@ -29,7 +29,7 @@
     "locale": { "$ref": "../../common/defs.v1.schema.json#/$defs/Locale" },
     "metadata": {
       "$ref": "../../common/defs.v1.schema.json#/$defs/StringMap",
-      "description": "Channel extras (device ID, USSD session, IP); masked by policy."
+      "description": "Channel extras (device ID, USSD session, IP); masked by policy. Keys set by mw-ussd: ussdSessionId and mno, the USSD carrier of the session (FRS channels USSD_GP, USSD_ROBI, USSD_TELETALK, USSD_BL): mw-ussd's MNO key gp, robi, teletalk or bl (lower case, as configured under mw.ussd.mno; GP, ROBI, TELETALK, BL in the FRS). Plain strings: consumers match the value case-insensitively and must accept an MNO they do not know."
     },
     "attributes": {
       "$ref": "../../common/defs.v1.schema.json#/$defs/StringMap",

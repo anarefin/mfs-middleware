@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "partnerId": "billagg",
+  "version": 0,
+  "family": "billpay",
+  "status": "LIVE",
+  "problems": [],
+  "reportedBy": "mw-adapter-billpay",
+  "reportedAt": "2026-11-19T10:00:30Z"
+}

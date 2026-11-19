@@ -49,6 +49,11 @@ import mfs.mw.adapter.billpay.util.SensitiveType;
  * @param ambiguousCodes partner codes that do not say whether the request was applied (UNKNOWN)
  * @param sensitiveFields JSON field name to masking rule for the audit of raw bodies (free-text
  *     scrubbing applies on top)
+ * @param maintenance true: the partner is in a maintenance window (ticket 97; health {@code
+ *     MAINTENANCE}, so routing (98) sends nothing there; calls are not refused by the engine). A flag
+ *     for now; ticket 131 adds the console's window
+ * @param healthCheck true: the route has a {@code HEALTH_CHECK} branch, probed on a schedule
+ *     (ticket 97, {@code PartnerHealthMonitor}); a failing probe makes the partner {@code DOWN}
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PartnerConfig(
@@ -67,7 +72,9 @@ public record PartnerConfig(
     Auth auth,
     Map<String, ErrorMapping> errorMap,
     Set<String> ambiguousCodes,
-    Map<String, SensitiveType> sensitiveFields) {
+    Map<String, SensitiveType> sensitiveFields,
+    Boolean maintenance,
+    Boolean healthCheck) {
 
   private static final Pattern SUFFIX = Pattern.compile("^[A-Z0-9_]+$");
 
@@ -87,6 +94,8 @@ public record PartnerConfig(
    */
   static final Pattern SAFE_PATH = Pattern.compile("^/[A-Za-z0-9._~/{}-]*$");
 
+  /** The canonical constructor, the one config binding uses (the record has a second one). */
+  @org.springframework.boot.context.properties.bind.ConstructorBinding
   public PartnerConfig {
     enabled = enabled == null || enabled;
     route = route == null || route.isBlank() ? null : route;
@@ -101,6 +110,18 @@ public record PartnerConfig(
     errorMap = errorMap == null ? Map.of() : Map.copyOf(errorMap);
     ambiguousCodes = ambiguousCodes == null ? Set.of() : Set.copyOf(ambiguousCodes);
     sensitiveFields = sensitiveFields == null ? Map.of() : Map.copyOf(sensitiveFields);
+    maintenance = Boolean.TRUE.equals(maintenance);
+    healthCheck = Boolean.TRUE.equals(healthCheck);
+  }
+
+  /** A record without the ticket 97 health fields (not in maintenance, no health check). */
+  public PartnerConfig(
+      Boolean enabled, String route, Map<String, String> mappings, List<String> allowedHosts, String family,
+      Integer inquiryRetries, Resilience resilience, DryRun dryRun, Long connectTimeoutMs, Long timeoutMs,
+      Long readTimeoutMs, Map<String, String> headers, Auth auth, Map<String, ErrorMapping> errorMap,
+      Set<String> ambiguousCodes, Map<String, SensitiveType> sensitiveFields) {
+    this(enabled, route, mappings, allowedHosts, family, inquiryRetries, resilience, dryRun, connectTimeoutMs, timeoutMs,
+        readTimeoutMs, headers, auth, errorMap, ambiguousCodes, sensitiveFields, null, null);
   }
 
   public Duration timeout() {
@@ -116,7 +137,7 @@ public record PartnerConfig(
   public PartnerConfig withRoute(String newRoute, Map<String, String> newMappings, List<String> newAllowedHosts) {
     return new PartnerConfig(
         enabled, newRoute, newMappings, newAllowedHosts, family, inquiryRetries, resilience, dryRun, connectTimeoutMs,
-        timeoutMs, readTimeoutMs, headers, auth, errorMap, ambiguousCodes, sensitiveFields);
+        timeoutMs, readTimeoutMs, headers, auth, errorMap, ambiguousCodes, sensitiveFields, maintenance, healthCheck);
   }
 
   /**

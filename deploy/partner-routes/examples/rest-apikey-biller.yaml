@@ -13,6 +13,7 @@ allowedHosts: [api.waterco.example]
 timeoutMs: 20000
 inquiryRetries: 1
 sensitiveFields: { account: ACCOUNT }
+healthCheck: true
 errorMap:
   E1: { suffix: ACCOUNT_CLOSED, retryable: false }
 route: |
@@ -31,6 +32,18 @@ route: |
                   steps:
                     - to: "kamelet:mw-http-call?url=https://api.waterco.example&method=GET&path=/api/pay/{reference}&auth=apikey&secretField=api-key&authHeader=X-Water-Key"
                     - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404"
+                # REVERSE (ticket 97): {reference} is the original payment; the body carries the
+                # idempotent reversal reference reverse:<txnId>. Sent once; the saga resends.
+                - simple: "${header.mwOperation} == 'REVERSE'"
+                  steps:
+                    - to: "kamelet:mw-map?mapping=REVERSE.request"
+                    - to: "kamelet:mw-http-call?url=https://api.waterco.example&method=POST&path=/api/pay/{reference}/reverse&auth=apikey&secretField=api-key&authHeader=X-Water-Key"
+                    - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=404,409"
+                # HEALTH_CHECK (ticket 97): probed on a schedule because healthCheck is true.
+                - simple: "${header.mwOperation} == 'HEALTH_CHECK'"
+                  steps:
+                    - to: "kamelet:mw-http-call?url=https://api.waterco.example&method=GET&path=/api/health&auth=apikey&secretField=api-key&authHeader=X-Water-Key"
+                    - to: "kamelet:mw-classify?mapping=HEALTH_CHECK.response&definiteStatuses=503"
                 - simple: "${header.mwOperation} == 'INQUIRY'"
                   steps:
                     - to: "kamelet:mw-map?mapping=INQUIRY.request"
@@ -48,6 +61,14 @@ mappings:
     : status = 200 and body.result = "REJECTED" ? {"outcome": "FAILED", "code": body.err}
     : status = 404 ? {"outcome": "NOT_FOUND", "code": "404"}
     : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+  REVERSE.request: '{"reversalId": reversalReference, "amt": amount.major}'
+  REVERSE.response: >-
+    status = 200 and body.result = "REVERSED" ? {"outcome": "SUCCESS", "partnerRef": body.receipt}
+    : (status = 404 or status = 409) ? {"outcome": "FAILED", "code": body.err, "message": body.text}
+    : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+  HEALTH_CHECK.response: >-
+    status = 200 ? {"outcome": "SUCCESS", "partnerRef": "health"}
+    : {"outcome": "FAILED", "code": "HTTP_" & $string(status)}
   INQUIRY.request: '{"account": creditParty.id}'
   INQUIRY.response: >-
     status = 200 ? {"outcome": "SUCCESS", "partnerRef": body.account,

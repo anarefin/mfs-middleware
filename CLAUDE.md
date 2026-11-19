@@ -140,11 +140,12 @@ PostgreSQL, as the modules carry no JDBC slice starter.
 One envelope for every API (5.3):
 
 ```
-{ code, message, messageBn?, txnId?, correlationId, retryable, details[] }
+{ code, message, messageBn?, txnId?, correlationId, retryable, details[], timestamp }
 ```
 
-Codes are namespaced: `MW-VAL-*` validation, `MW-AUTH-*`, `MW-IDEM-*`, `MW-CORE-*` (core
-rejection, carries the core reason), `MW-PTR-<partner>-*` (mapped partner error),
+`timestamp` (FRS 3.7) is when the envelope was built, UTC ISO-8601 to the millisecond
+(`ErrorEnvelope.now()`). Codes are namespaced: `MW-VAL-*` validation, `MW-AUTH-*`, `MW-IDEM-*`,
+`MW-CORE-*` (core rejection, carries the core reason), `MW-PTR-<partner>-*` (mapped partner error),
 `MW-TMO-*` (timeout / unknown outcome), `MW-SYS-*`. Throw exceptions from `exception/`;
 the global `@RestControllerAdvice` builds the envelope. Listeners route failures to
 retry topics / DLQ. Partner-code -> canonical-code maps live in adapter config.

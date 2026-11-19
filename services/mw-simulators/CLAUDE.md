@@ -102,6 +102,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `sim.callback-secrets.c2wbank` (stack: `C2WBANK_HMAC_SECRET`, written by `deploy/provision/services.sh`); the
   e2e suite points `callbackUrl` at `http://apisix:9080/partner/c2wbank/callback/debits`; replay
   through the shared `POST /sim/c2wbank/callbacks/{reference}/replay`.
+- Partner reverse (ticket 97, FRS MCK-02; `controller/ReversalController`, `service/ReversalService`):
+  `POST /ocs/v1/topup/{transactionId}/reverse`, `/billagg/v1/payments/{transactionId}/reverse`,
+  `/c2wbank/v1/debits/{transactionId}/reverse`, optional body `{reversalId}` (the adapters send
+  `reverse:<txnId>`): a transaction its ledger holds as `SUCCESS` is reversed once, 200 `{transactionId,
+  status: REVERSED, code: "0000", message, reversalRef: REV-n, reversalId}`, and every later reverse of
+  it answers that first result again; unknown 404 `NOT_FOUND` `4040`; not successful 422 `FAILED` `4091`;
+  the partner's scenario `outage` 503 (nothing applied). In memory; full mock control comes in 102.
 - SMSC (ticket 24, `client/SmscServer` on jSMPP, `service/SmscService`,
   `controller/SmscController`): SMPP 3.4 server on `sim.smsc.port` (2775, internal network only;
   `sim.smsc.enabled`, off in tests except `SmscSimulatorIT`). Accepts any bind (no credential

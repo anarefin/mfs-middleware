@@ -91,7 +91,8 @@ public class BankDebitService {
     if (problem.isPresent()) {
       return replies.invalid(request, problem.get());
     }
-    boolean inquiry = PartnerReplyMapper.isStatusQuery(request);
+    // a STATUS_QUERY and a REVERSE (ticket 97: a compensation, resent by the saga) are never refused for the deadline
+    boolean inquiry = PartnerReplyMapper.isStatusQuery(request) || "REVERSE".equals(request.payload().operation());
     if (!inquiry && request.deadlineAt() != null && clock.instant().isAfter(request.deadlineAt())) {
       return replies.expired(request);
     }
