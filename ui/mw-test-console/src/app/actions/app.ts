@@ -82,12 +82,12 @@ async function balances(wallets: string[]): Promise<Map<string, { b: number | nu
 
 /** The c2wbank simulator answers 202 and reports by callback: make sure a callback is set. */
 async function ensureBankCallback(t: Trace): Promise<void> {
-  const cur = await edge("GET", "/test/sim/c2wbank/scenario", { apikey: true });
+  const cur = await edge("GET", "/test/mock-control/c2wbank/settings", { apikey: true });
   const s = (cur.body ?? {}) as Record<string, unknown>;
-  if (cur.status === 200 && s.callbackMode && s.callbackMode !== "NONE" && s.callbackUrl) return;
-  await t.call("c2wbank had no callback set: set bank callbacks ONCE (Simulators page to change)", "POST", "/test/sim/c2wbank/scenario", {
-    apikey: true, json: { ...s, callbackMode: "ONCE", callbackUrl: "http://apisix:9080/partner/c2wbank/callback/debits", callbackDelayMs: 0 },
-  }, [200, 201, 202, 204]);
+  if (cur.status === 200 && s.callbackUrl) return;
+  await t.call("c2wbank had no callback set: set bank callbacks (Simulators page to change)", "PUT", "/test/mock-control/c2wbank/settings", {
+    apikey: true, json: { ...s, callbackUrl: "http://apisix:9080/partner/c2wbank/callback/debits" },
+  });
 }
 
 async function follow(t: Trace, user: string, r: EdgeResponse, body: string, idem: string, wallets: string[], started: number): Promise<Outcome> {

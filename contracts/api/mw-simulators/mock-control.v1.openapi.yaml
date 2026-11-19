@@ -19,8 +19,18 @@ info:
     it decided and disappears at zero. A DOWN or MAINTENANCE switch is checked first and uses no
     scenario.
 
-    The old `/sim/{partner}/scenario`, `/sim/{partner}/requests` and `/sim/merchant/ipn/scenario`
-    paths remain as deprecated aliases of this engine for one release.
+    The SMPP and TCP parties (ticket 102b, MCT-04) carry out a subset of the behaviours (`behaviours`
+    of the party): `smsc` (operations bind, submit; BUSINESS_ERROR refuses with `code`, an SMPP
+    command_status such as `0x58` ESME_RTHROTTLED, the default on submit, or `0x0D` ESME_RBINDFAIL, the
+    default on bind; the DLR is its callback: NO_CALLBACK = missing DLR, LATE_CALLBACK = late DLR,
+    DUPLICATE_CALLBACK = two DLRs, OUT_OF_ORDER_CALLBACK = a stale ENROUTE after the final one; DOWN
+    closes the connection), `ussdgw` (bind, submit, enquire_link, dial; MALFORMED_RESPONSE answers a
+    generic_nack; enquire_link with anything but SUCCESS goes unanswered) and `payshield` (command,
+    keyed by the command code; `code` a two-character payShield error code, default `15`).
+
+    The old `/sim/{partner}/scenario`, `/sim/{partner}/requests`, `/sim/merchant/ipn/scenario`,
+    `/sim/payshield/scenario` and `/sim/ussdgw/smpp/scenario` paths remain as deprecated aliases of
+    this engine for one release.
 servers:
   - url: http://mw-simulators:8080
 paths:
@@ -251,7 +261,7 @@ components:
       name: party
       in: path
       required: true
-      schema: { type: string, examples: [ocs, billagg, c2wbank, merchant] }
+      schema: { type: string, examples: [ocs, billagg, c2wbank, merchant, smsc, ussdgw, payshield] }
   schemas:
     Behaviour:
       type: string
@@ -284,7 +294,7 @@ components:
       properties:
         operation: { type: [string, "null"], maxLength: 64, description: "one of the party's operations; absent = all" }
         behaviour: { $ref: "#/components/schemas/Behaviour" }
-        code: { type: [string, "null"], maxLength: 16 }
+        code: { type: [string, "null"], maxLength: 16, description: "the refusal code; smsc / ussdgw: an SMPP command_status (0x58 or 88), payshield: a two-character error code" }
         delayMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
         httpStatus: { type: [integer, "null"], minimum: 400, maximum: 599 }
         key: { type: [string, "null"], maxLength: 64, description: "an MSISDN, account number, biller code, bill number, IPN id or transaction id the call carries" }
@@ -310,7 +320,7 @@ components:
       properties:
         callbackUrl: { type: [string, "null"], maxLength: 2048 }
         callbackOnly: { type: [boolean, "null"], description: "billagg: payments answered 202 PENDING, outcome by callback only" }
-        timeoutDelayMs: { type: [integer, "null"], minimum: 0, maximum: 600000 }
+        timeoutDelayMs: { type: [integer, "null"], minimum: 0, maximum: 600000, description: "hold of a TIMEOUT; ussdgw: also how long a played step waits for its screen" }
     Party:
       type: object
       required: [name, operations, keys]
@@ -319,6 +329,7 @@ components:
         description: { type: string }
         operations: { type: array, items: { type: string } }
         keys: { type: array, items: { type: string } }
+        behaviours: { type: array, items: { $ref: "#/components/schemas/Behaviour" }, description: "what the party carries out; a scenario with another behaviour is refused (400)" }
     JournalEntry:
       type: object
       required: [seq, at, method, path, headers]

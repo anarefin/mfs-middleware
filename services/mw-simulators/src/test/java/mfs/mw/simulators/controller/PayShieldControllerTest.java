@@ -8,7 +8,6 @@ import java.util.HexFormat;
 import mfs.mw.simulators.client.InMemoryLmkStore;
 import mfs.mw.simulators.client.LmkStore;
 import mfs.mw.simulators.service.PayShieldKeys;
-import mfs.mw.simulators.service.PayShieldScenarioStore;
 import mfs.mw.simulators.service.PayShieldService;
 import mfs.mw.simulators.util.PinBlocks;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -20,9 +19,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
-/** {@code /sim/payshield/scenario} (ticket 64): set, read, reset; a bad error code is 400. */
+/** {@code /sim/payshield/pinblock} (ticket 64): the PIN block a terminal sharing the key sends. */
 @WebMvcTest(value = PayShieldController.class, properties = "spring.test.mockmvc.print=none")
-@Import({PayShieldScenarioStore.class, PayShieldService.class, PayShieldKeys.class,
+@Import({PayShieldService.class, PayShieldKeys.class,
     PayShieldControllerTest.Lmk.class})
 class PayShieldControllerTest {
 
@@ -35,13 +34,11 @@ class PayShieldControllerTest {
   }
 
   final MockMvcTester mvc;
-  final PayShieldScenarioStore store;
   final PayShieldKeys keys;
 
   @Autowired
-  PayShieldControllerTest(MockMvcTester mvc, PayShieldScenarioStore store, PayShieldKeys keys) {
+  PayShieldControllerTest(MockMvcTester mvc, PayShieldKeys keys) {
     this.mvc = mvc;
-    this.store = store;
     this.keys = keys;
   }
 
@@ -62,22 +59,5 @@ class PayShieldControllerTest {
         .isEqualTo("1234");
     assertThat(mvc.post().uri("/sim/payshield/pinblock").contentType(MediaType.APPLICATION_JSON)
         .content(helper(blob, "ISO4"))).hasStatus(400);
-  }
-
-  @Test
-  void setReadAndReset() {
-    assertThat(mvc.post().uri("/sim/payshield/scenario").contentType(MediaType.APPLICATION_JSON)
-        .content("{\"latencyMs\":50,\"errorCode\":\"68\",\"commands\":[\"DG\"]}")).hasStatusOk();
-    assertThat(store.get().errorFor("DG")).isEqualTo("68");
-    assertThat(store.get().errorFor("NC")).isNull();
-    assertThat(mvc.get().uri("/sim/payshield/scenario")).bodyJson().extractingPath("$.latencyMs").isEqualTo(50);
-    assertThat(mvc.delete().uri("/sim/payshield/scenario")).hasStatus(204);
-    assertThat(store.get().errorFor("DG")).isNull();
-  }
-
-  @Test
-  void aBadErrorCodeIsRefused() {
-    assertThat(mvc.post().uri("/sim/payshield/scenario").contentType(MediaType.APPLICATION_JSON)
-        .content("{\"errorCode\":\"x\"}")).hasStatus(400);
   }
 }

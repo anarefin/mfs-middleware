@@ -109,7 +109,7 @@
     (ADR D33, ticket 102; contract <code>contracts/api/mw-simulators/mock-control.v1.openapi.yaml</code>), which overrides them on demand.
     It exists only in the Spring profile <code>mock-control</code> (the dev stack sets it); the test route is <code>/test/mock-control/*</code>.</p>
   <ul>
-    <li><code>GET /mock-control/parties</code>: the parties (<code>ocs</code>, <code>billagg</code>, <code>c2wbank</code>, <code>merchant</code>), their operations and scope keys.</li>
+    <li><code>GET /mock-control/parties</code>: the parties (<code>ocs</code>, <code>billagg</code>, <code>c2wbank</code>, <code>merchant</code>, <code>smsc</code>, <code>ussdgw</code>, <code>payshield</code>), their operations, scope keys and the behaviours each carries out.</li>
     <li><code>POST /mock-control/{party}/scenarios {operation?, behaviour, code?, delayMs?, httpStatus?, key?, nextN?}</code>: SUCCESS, BUSINESS_ERROR, TIMEOUT, DELAY,
       HTTP_5XX, MALFORMED_RESPONSE, CONNECTION_RESET, PARTIAL_SUCCESS, and the callback behaviours DUPLICATE_CALLBACK, LATE_CALLBACK, OUT_OF_ORDER_CALLBACK, NO_CALLBACK.
       Scoped to one key (an MSISDN, account, biller, bill number or transaction id), to the next N calls, or global. <code>GET</code> lists, <code>DELETE</code> clears.</li>
@@ -130,8 +130,17 @@
     <tr><td><code>billagg</code></td><td>billers, fetch, pay, status, reverse</td><td>biller, billNumber, txnRef</td><td>bill <code>404</code> 3001, <code>000</code> 3002 (fetch), <code>999</code> 3003 (pay); amounts</td><td>200 PARTIAL <code>010</code></td></tr>
     <tr><td><code>c2wbank</code></td><td>debit, status, reverse</td><td>account, txnRef</td><td>account <code>999</code> FAILED <code>4002</code>; amounts</td><td>callback PARTIAL <code>010</code></td></tr>
     <tr><td><code>merchant</code></td><td>ipn</td><td>ipnId, path</td><td>none (200)</td><td>200</td></tr>
+    <tr><td><code>smsc</code></td><td>bind, submit</td><td>systemId, msisdn</td><td>destination <code>997</code> throttled twice, <code>996</code> refused 0x0B, <code>995</code> no DLR, <code>999</code>/<code>998</code> DLR UNDELIV/EXPIRED</td><td>not offered</td></tr>
+    <tr><td><code>ussdgw</code></td><td>bind, submit, enquire_link, dial</td><td>systemId, msisdn, mno</td><td>none</td><td>not offered</td></tr>
+    <tr><td><code>payshield</code></td><td>command</td><td>command (the code, e.g. <code>CA</code>)</td><td>none</td><td>not offered</td></tr>
   </table></div>
-  <p>The SMSC, the USSD gateway and the payShield simulator still have their own switches (below); they move onto the engine in a follow-up of ticket 102.</p>
+  <p>The SMPP and TCP parties (ticket 102b, FRS MCT-04) speak their own wire: a BUSINESS_ERROR <code>code</code> is an SMPP command_status for <code>smsc</code> and
+    <code>ussdgw</code> (<code>0x58</code> ESME_RTHROTTLED, the default on submit; <code>0x0D</code> ESME_RBINDFAIL, the default on bind) and a two-character error code for
+    <code>payshield</code> (default <code>15</code>). The SMSC's DLR is its callback (always on, no URL): NO_CALLBACK = a missing DLR, LATE_CALLBACK = a late one,
+    DUPLICATE_CALLBACK = two, OUT_OF_ORDER_CALLBACK = a stale ENROUTE after the final one. On <code>ussdgw</code> MALFORMED_RESPONSE answers a <code>generic_nack</code>,
+    anything but SUCCESS on <code>enquire_link</code> leaves it unanswered, and <code>dial</code> (a played session) can be delayed or hung up after the first screen.
+    DOWN closes the connection (or refuses the bind) everywhere; MAINTENANCE is ESME_RSYSERR 0x08 / payShield <code>68</code>. A party refuses a behaviour it cannot
+    carry out (400). The old <code>/sim/payshield/scenario</code> and <code>/sim/ussdgw/smpp/scenario</code> are aliases too.</p>
   <p>Every partner simulator also answers a status inquiry (<code>GET /ocs/v1/topup/{transactionId}</code> and the like) with the <em>real</em> outcome. That is what lets the
     orchestrator settle a timed-out transaction correctly.</p>
 
@@ -156,10 +165,11 @@
     <li><strong>HTTP mode</strong> (Robi, Banglalink, Teletalk): it POSTs each step to APISIX's <code>/ussd/&lt;mno&gt;</code> route with that operator's basic-auth login,
       just as the real gateway would.</li>
     <li><strong>SMPP mode</strong> (Grameenphone, <code>gp</code>): mw-ussd holds SMPP binds to port 2776. The simulator sends each key press as a <code>deliver_sm</code> and reads each
-      screen from mw-ussd's <code>submit_sm</code>. <code>/sim/ussdgw/smpp/...</code> can throttle, refuse or drop the binds.</li>
+      screen from mw-ussd's <code>submit_sm</code>. The mock party <code>ussdgw</code> throttles or refuses screens and binds;
+      <code>/sim/ussdgw/smpp/drop</code> drops the binds and <code>/sim/ussdgw/smpp/binds</code> counts them.</li>
   </ul>
   <p>Either way you drive it with one call, <code>POST /sim/ussdgw/sessions {mno, msisdn, serviceCode, inputs[]}</code>, and get every screen back. USSD sessions are
-    deliberately <strong>not</strong> recorded: their inputs carry PINs.</p>
+    deliberately <strong>not</strong> recorded with their inputs (they carry PINs): the <code>ussdgw</code> journal only notes binds and the subscriber of each screen.</p>
   <p>Two more fakes live here: the <strong>merchant IPN receiver</strong> (<code>/merchant/ipn/**</code>, plays a shop's server for mw-checkout's webhooks; it can be told to fail the next ones),
     and the <strong>payShield 10K simulator</strong> on port 1500, described on the <a href="hsm.html#payshield">HSM page</a>.</p>
 

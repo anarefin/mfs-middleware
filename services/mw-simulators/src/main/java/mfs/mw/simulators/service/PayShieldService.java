@@ -30,7 +30,6 @@ public class PayShieldService {
   private static final HexFormat HEX = HexFormat.of().withUpperCase();
 
   private final PayShieldKeys keys;
-  private final PayShieldScenarioStore scenario;
   private final boolean allowNonPanTranslation;
 
   /**
@@ -38,10 +37,9 @@ public class PayShieldService {
    *     formats": off (the default), {@code CA} / {@code CC} from a PAN-bound format (ISO 0, 3, 4)
    *     into ISO 1 answer error {@code 69} (PIN block format not permitted)
    */
-  public PayShieldService(PayShieldKeys keys, PayShieldScenarioStore scenario,
+  public PayShieldService(PayShieldKeys keys,
       @Value("${sim.payshield.allow-non-pan-translation:false}") boolean allowNonPanTranslation) {
     this.keys = keys;
-    this.scenario = scenario;
     this.allowNonPanTranslation = allowNonPanTranslation;
   }
 
@@ -59,10 +57,6 @@ public class PayShieldService {
   public String handle(String body) {
     String command = body.length() >= 2 ? body.substring(0, 2) : body;
     String response = responseCode(command);
-    String forced = scenario.get().errorFor(command);
-    if (forced != null) {
-      return response + forced;
-    }
     Fields f = new Fields(body, 2);
     try {
       String out =
@@ -86,6 +80,16 @@ public class PayShieldService {
     } catch (IllegalArgumentException | IndexOutOfBoundsException e) {
       return response + "15";
     }
+  }
+
+  /** The answer refusing the message body {@code body} with the payShield error {@code code} (mock control). */
+  public String refuse(String body, String code) {
+    return responseCode(body.length() >= 2 ? body.substring(0, 2) : body) + code;
+  }
+
+  /** The response code of {@code body}'s command alone, no error code (a cut-short answer, mock control). */
+  public String cutShort(String body) {
+    return responseCode(body.length() >= 2 ? body.substring(0, 2) : body);
   }
 
   /**

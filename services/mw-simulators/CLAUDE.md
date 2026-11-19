@@ -12,7 +12,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `dto/SimMode` (SUCCESS, BUSINESS_FAILURE, TIMEOUT, SERVER_ERROR_AFTER_SEND, UNKNOWN_CODE,
   MALFORMED, CONNECTION_RESET, PARTIAL_SUCCESS), decided by mock control (below) with the amount magic
   values of `service/MagicAmounts` as the default.
-- Mock control (ticket 102, ADR D33, FRS MCK-03..07, MCT-01..03, MCT-06; `service/mockcontrol/`,
+- Mock control (tickets 102a/b, ADR D33, FRS MCK-03..07, MCT-01..04, MCT-06; `service/mockcontrol/`,
   `controller/MockControlController`, contract `api/mw-simulators/mock-control.v1.openapi.yaml`): one engine
   for every mock party, only in the Spring profile `mock-control` (`MockControl.PROFILE`; the compose block
   sets `SPRING_PROFILES_ACTIVE: mock-control`, the test config too). Without the profile `MagicValuesOnly`
@@ -31,7 +31,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     (`MW_E2E_ROUTES=1`). Test: `GlobalResetIT` (a stub core).
   - Parties (`MockParties`, `GET /mock-control/parties`): `ocs` (topup, status, reverse; keys msisdn,
     txnRef), `billagg` (billers, fetch, pay, status, reverse; biller, billNumber, txnRef; REST and SOAP
-    front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path). A
+    front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path), and the
+    SMPP / TCP parties of ticket 102b (FRS MCT-04): `smsc` (bind, submit; systemId, msisdn), `ussdgw` (bind,
+    submit, enquire_link, dial; systemId, msisdn, mno), `payshield` (command; command). Each party lists the
+    behaviours it carries out (`MockParty.behaviours`; the SMPP / TCP ones a subset) and `MockParties.check`
+    refuses a scenario with another behaviour, an operation it lacks or a `code` not in its form (SMPP
+    command_status `0x58` / `88` for smsc and ussdgw, two characters for payshield): 400 MW-VAL-001. An HTTP
     party's name is the first segment of its wire paths (the journal's key). A new mock adds a line there
     and calls `MockControl.decide(party, operation, keys, magic)` per operation, then carries the
     `Decision` out (`MockCalls.admit` / `MockCalls.answer`).
@@ -79,12 +84,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     scenarios; `callbackUrl`, `callbackOnly`, `timeoutDelayMs` = settings; each POST replaces the party's
     control state), `GET|DELETE /sim/{partner}/requests[?path=]` (the journal), `POST
     /sim/{partner}/callbacks/{reference}/replay`, `POST /sim/merchant/ipn/scenario {failNext, failStatus?,
-    ipnId?}` (a next-N scenario on `merchant`/ipn) and `DELETE /sim/merchant/ipn/received`.
+    ipnId?}` (a next-N scenario on `merchant`/ipn) and `DELETE /sim/merchant/ipn/received`; ticket 102b:
+    `POST|GET|DELETE /sim/payshield/scenario {latencyMs, errorCode, outage, commands[]}` (`errorCode` =
+    BUSINESS_ERROR on `command` keyed per listed command or for all; `outage` = DOWN; `latencyMs` = SLOW fixed)
+    and `POST /sim/ussdgw/smpp/scenario {throttleNext, queueFullNext, genericNackNext, silentEnquireLink,
+    screenTimeoutMs}` (next-N scenarios on `submit`: MALFORMED_RESPONSE, BUSINESS_ERROR `0x58`, `0x14`,
+    refused in that order; TIMEOUT on `enquire_link`; setting `timeoutDelayMs`; `{}` resets).
   - Magic values (OCS): MSISDN ending `999` -> business failure; amount fraction `.13` -> timeout (top-up
     applied, reply held `sim.timeout-delay`, default 30 s), `.77` -> 500 after send (applied), `.99` ->
     unknown code `9876`, `.55` -> malformed body (applied). `dto/SimMode` is the resolved outcome.
-  - Not on the engine yet (follow-up of ticket 102): the SMSC, the USSD gateway (HTTP and SMPP) and the
-    payShield simulator keep their own switches below; the SOAP stub biller and the partner stubs too.
+  - The SMPP / TCP parties (ticket 102b): their own wire carries a `Decision` out (below, per simulator);
+    their journal entries (`method` `SMPP` / `TCP`, `path` = the PDU or command: `bind`, `submit_sm`, the
+    payShield command code) carry addresses only, never SMS text, USSD input or payShield fields. The
+    SMSC's DLR is an in-band callback (`MockParties.callsBackInBand`): always on without a `callbackUrl`,
+    also without the profile (`MagicValuesOnly` answers ONCE). Not on the engine: the SOAP stub biller and
+    the partner stubs.
 - OCS wire format: `POST /ocs/v1/topup {transactionId, msisdn, amount:"100.00"}`; `GET
   /ocs/v1/topup/{transactionId}` returns the real outcome (200, or 404 NOT_FOUND). Replies:
   `{transactionId, status SUCCESS|FAILED|NOT_FOUND|UNAVAILABLE|ERROR, code, message, ocsRef}`;
@@ -170,7 +184,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   decoded, concatenated parts (UDH IE 0x00/0x08) reassembled. A DLR (`deliver_sm`, SMSC delivery
   receipt, `id:... stat:...`) goes back on the same session after `sim.smsc.dlr-delay` (300 ms).
   Destination magic suffixes: `999` DLR UNDELIV, `998` DLR EXPIRED, `997` first two submits
-  refused 0x58 (throttled) then accepted, `996` refused 0x0B, `995` no DLR; else DELIVRD.
+  refused 0x58 (throttled) then accepted, `996` refused 0x0B, `995` no DLR; else DELIVRD. Mock party
+  `smsc` (ticket 102b; magic values the default): `bind` (key systemId) BUSINESS_ERROR rejects the bind
+  (`code`, default 0x0D ESME_RBINDFAIL; MAINTENANCE 0x0D), DOWN / CONNECTION_RESET close the connection
+  unanswered; `submit` (key msisdn = destination) BUSINESS_ERROR refuses (`code`, else the magic value's,
+  else 0x58 ESME_RTHROTTLED), MAINTENANCE 0x08, DOWN closes the session (nothing stored in these);
+  otherwise stored, then TIMEOUT holds the submit_sm_resp, HTTP_5XX answers 0x08 after storing,
+  CONNECTION_RESET closes after storing; the DLR (callback dimension): NO_CALLBACK none, LATE_CALLBACK after
+  `delayMs` more, DUPLICATE_CALLBACK twice, OUT_OF_ORDER_CALLBACK the final one then a stale ENROUTE
+  (`dlrStatus` keeps the final state). The party reset clears the messages.
   Control API: `GET /sim/smsc/messages[?msisdn=]` -> `[{destination, source, text, encoding
   GSM7|UCS2, segments, messageIds, dlrStatus, receivedAt}]`, `DELETE /sim/smsc/messages`.
 - USSD gateway simulator, HTTP mode (ticket 26, `controller/UssdGatewayController`,
@@ -184,8 +206,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   and stops when mw-ussd answers the end flag (`sim.ussd-gateway.end-flag`, END); answers
   `{sessionId, screens: [{status, message, flag}], ended}`. `resume: true` with a `sessionId` and
   inputs (HTTP mode only, ticket 39) continues a session an earlier call left open: no BEGIN, one
-  CONTINUE per input (the e2e suite plays a session that is running when a menu version goes live). Not a mock-control party (no
-  journal: inputs carry PINs).
+  CONTINUE per input (the e2e suite plays a session that is running when a menu version goes live). Each
+  play (HTTP or SMPP) is operation `dial` of the mock party `ussdgw` (keys msisdn, mno): DELAY waits before
+  the first step, CONNECTION_RESET hangs up after the first screen, DOWN sends nothing (one screen status
+  -1), MAINTENANCE neither (status 503). No journal of plays (inputs carry PINs).
 - USSD gateway simulator, SMPP mode (ticket 27, `client/UssdSmppGateway`): SMPP 3.4 server on
   `sim.ussd-gateway.smpp.port` (2776, internal network; `sim.ussd-gateway.smpp.enabled`, off in
   tests except `UssdSmppGatewayIT`) that mw-ussd binds to as transceiver (any bind accepted).
@@ -194,10 +218,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   code) then 18 per input, `its_session_info` session number 1-128 (round robin over the bound
   sessions); each `submit_sm` of that session is a screen `{status: 200, message, flag}` (END when
   op 17 or the end-of-session bit, else CON); no screen within `screen-timeout` (15 s) or no bind
-  -> `{status: -1}` and the play stops. Control: `POST /sim/ussdgw/smpp/scenario {throttleNext,
-  queueFullNext, genericNackNext, silentEnquireLink, screenTimeoutMs}` (replaces; `{}` resets;
-  refused submits answer 0x58 / 0x14 / generic_nack), `POST /sim/ussdgw/smpp/drop` (closes every
-  bind), `GET /sim/ussdgw/smpp/binds` -> `{bound, binds, enquireLinks, refused}`.
+  -> `{status: -1}` and the play stops; the wait is the `ussdgw` setting `timeoutDelayMs`, else
+  `screen-timeout`. Mock party `ussdgw` (ticket 102b): `bind` (key systemId) BUSINESS_ERROR rejects (default
+  0x0D), DOWN / CONNECTION_RESET close; `submit` (key msisdn = the subscriber) BUSINESS_ERROR refuses the
+  screen (default 0x58 ESME_RTHROTTLED), MALFORMED_RESPONSE answers `generic_nack`, MAINTENANCE 0x08, DOWN
+  closes the bind (all counted in `refused`), TIMEOUT takes the screen and holds the submit_sm_resp,
+  CONNECTION_RESET takes it and closes the bind; `enquire_link`: anything but SUCCESS leaves it
+  unanswered (dropped enquire_link). `POST /sim/ussdgw/smpp/drop` (closes every bind), `GET
+  /sim/ussdgw/smpp/binds` -> `{bound, binds, enquireLinks, refused}`; the old `/sim/ussdgw/smpp/scenario`
+  is an alias (above).
 - Merchant IPN receiver (ticket 32, `controller/MerchantIpnController`, `service/MerchantIpnService`):
   plays a checkout merchant's server. `POST /merchant/ipn/**` (stack: mw-checkout sessions' `ipnUrl`
   `http://mw-simulators:8080/merchant/ipn/...`, allowed by mw-checkout's dev-hosts) answers 200 and
@@ -244,16 +273,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     AES encryption. `memory` (`client/InMemoryLmkStore`): a fresh LMK per start, host tests only. The
     working keys are clear in the simulator's memory while it runs a command (a test-only simulator).
     An LMK failure closes the connection unanswered. Message content is never logged.
-  - Control: `POST|GET|DELETE /sim/payshield/scenario {latencyMs, errorCode, outage, commands[]}`
-    (`errorCode` for the listed commands, or all; `outage` closes every connection unanswered). Test
-    helper `POST /sim/payshield/pinblock {keyType TPK|ZPK, key (blob), format ISO0|ISO1|ISO3|ISO4, pin,
-    pan}` -> `{block}`: what the ATM or switch sharing the key sends. Not a mock-control party (no
-    recording).
+  - Mock party `payshield` (ticket 102b), operation `command` (key `command`, the code): DELAY and the SLOW
+    range hold the answer, BUSINESS_ERROR answers its `code` (default `15`) without running the command,
+    TIMEOUT runs it and holds the answer, MALFORMED_RESPONSE answers the response code alone,
+    CONNECTION_RESET runs it and closes the connection unanswered; DOWN closes it unanswered, MAINTENANCE
+    answers `68`. The journal notes the command code only. The old `/sim/payshield/scenario` is an alias
+    (above). Test helper `POST /sim/payshield/pinblock {keyType TPK|ZPK, key (blob), format
+    ISO0|ISO1|ISO3|ISO4, pin, pan}` -> `{block}`: what the ATM or switch sharing the key sends (never
+    recorded).
   - Image: Alpine JRE (as mw-crypto) with `p11-kit=0.26.2-r0` (must match softhsm's), `socat`, `bash`;
     the only p11-kit module is `remote: |socat - TCP:softhsm:5658,...`. Compose waits for a healthy
     `softhsm`. Tests: `util/PayShieldCryptoTest` (DES worked example, KCV, format 0 example, PVV
     decimalisation, round trips of every format), `service/PayShieldServiceTest` (every command,
-    error codes, scenario), `client/PayShieldServerTest` (framing, header, latency, outage),
+    error codes), `client/PayShieldServerTest` (framing, header, the mock party: latency, error code per
+    command, cut short, reset, DOWN, MAINTENANCE),
     `client/Pkcs11LmkStoreTest` (the Feistel construction, fail closed), `controller/PayShieldControllerTest`,
     `PayShieldSimulatorIT` (this image built from the Dockerfile and the boot jar, the `test` task
     depends on `bootJar`, against a SoftHSM built from `src/test/resources/softhsm/`, a checked copy of
@@ -278,7 +311,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 ## Contracts owned
 
 - `api/mw-simulators/mock-control.v1.openapi.yaml` (ticket 102, test-only): the mock-control API;
-  `contracts/MockControlContractTest` validates the served bodies and the behaviour list against it. The
+  `contracts/MockControlContractTest` validates the served bodies and the behaviour list against it;
+  `contracts/ContractDriftTest` (re-enabled in 102b, profiles `test` and `mock-control`) compares the
+  generated document's `/mock-control/` paths with it. Tests of the SMPP parties: `SmppMockControlIT`
+  (bind refusal, ESME_RTHROTTLED, missing / late / duplicate DLR, dropped enquire_link, DOWN, journal),
+  `service/mockcontrol/LegacyScenariosTest` (the old payShield and SMPP bodies). The
   partner wire formats stay simulator-owned and not in `contracts/`.
 
 ## Contracts used

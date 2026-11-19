@@ -160,4 +160,24 @@ class ScenarioEngineTest {
         .isInstanceOf(MwException.class);
     assertThatThrownBy(() -> engine.decide("nope", "x", Map.of(), SimMode.SUCCESS)).isInstanceOf(MwException.class);
   }
+
+  @Test
+  void aWirePartyRefusesABehaviourItCannotDoAndACodeNotInItsForm() {
+    assertThatThrownBy(() -> engine.add("payshield", MockScenario.of(null, MockBehaviour.HTTP_5XX)))
+        .isInstanceOf(MwException.class).hasMessageContaining("cannot do HTTP_5XX");
+    assertThatThrownBy(() -> engine.add("smsc", MockScenario.of("submit", MockBehaviour.BUSINESS_ERROR).withCode("x58")))
+        .isInstanceOf(MwException.class);
+    assertThat(engine.add("smsc", MockScenario.of("submit", MockBehaviour.BUSINESS_ERROR).withCode("0x58")).id())
+        .isNotNull();
+    assertThat(MockParties.smppStatus("0x58")).isEqualTo(88);
+    assertThat(MockParties.smppStatus("88")).isEqualTo(88);
+  }
+
+  @Test
+  void theSmscDlrIsACallbackWithoutAUrl() {
+    Map<String, String> keys = Map.of("msisdn", A);
+    assertThat(engine.decide("smsc", "submit", keys, SimMode.SUCCESS).callback()).isEqualTo(CallbackMode.ONCE);
+    engine.add("smsc", MockScenario.of("submit", MockBehaviour.NO_CALLBACK));
+    assertThat(engine.decide("smsc", "submit", keys, SimMode.SUCCESS).callback()).isEqualTo(CallbackMode.NONE);
+  }
 }

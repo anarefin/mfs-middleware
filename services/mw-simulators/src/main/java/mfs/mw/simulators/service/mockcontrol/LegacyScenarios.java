@@ -8,8 +8,10 @@ import mfs.mw.simulators.dto.MockBehaviour;
 import mfs.mw.simulators.dto.MockScenario;
 import mfs.mw.simulators.dto.MockSettings;
 import mfs.mw.simulators.dto.MockSwitch;
+import mfs.mw.simulators.dto.PayShieldScenario;
 import mfs.mw.simulators.dto.Scenario;
 import mfs.mw.simulators.dto.SimMode;
+import mfs.mw.simulators.dto.UssdSmppScenario;
 import mfs.mw.simulators.exception.ErrorCodes;
 import mfs.mw.simulators.exception.MwException;
 import org.slf4j.Logger;
@@ -26,7 +28,8 @@ import org.springframework.stereotype.Service;
  * {@code outage} = MAINTENANCE, {@code errorRate} = MAINTENANCE for that share; {@code latencyMs} = SLOW
  * with a fixed latency; {@code callbackMode} DUPLICATE / LATE / OUT_OF_ORDER / NONE = the callback scenarios
  * (NONE = NO_CALLBACK, the URL still serves a replay); {@code callbackUrl}, {@code callbackOnly}, {@code timeoutDelayMs} = the
- * settings. The first use logs one deprecation line.
+ * settings. {@code /sim/payshield/scenario} and {@code /sim/ussdgw/smpp/scenario} translate the same way
+ * (ticket 102b, {@link #payShield}, {@link #ussd}). The first use logs one deprecation line.
  */
 @Service
 @Profile(MockControl.PROFILE)
@@ -35,10 +38,13 @@ public class LegacyScenarios {
   private static final Logger log = LoggerFactory.getLogger(LegacyScenarios.class);
   private static final Map<String, String> PAYING_OPERATION = Map.of("ocs", "topup", "billagg", "pay", "c2wbank", "debit");
   private static final String MERCHANT = "merchant";
+  private static final String PAYSHIELD = "payshield";
+  private static final String USSDGW = "ussdgw";
 
   private final ScenarioEngine engine;
   private final PartySwitch switches;
-  private final Map<String, Scenario> last = new ConcurrentHashMap<>();
+  /** The last old body set per party ({@link Scenario}, {@link PayShieldScenario}). */
+  private final Map<String, Object> last = new ConcurrentHashMap<>();
   private final AtomicBoolean warned = new AtomicBoolean();
 
   public LegacyScenarios(ScenarioEngine engine, PartySwitch switches) {
@@ -72,7 +78,7 @@ public class LegacyScenarios {
   /** The old {@code GET /sim/{partner}/scenario}: the last body set, or the default. */
   public Scenario get(String partner) {
     require(partner);
-    return last.getOrDefault(partner, Scenario.DEFAULT);
+    return last.get(partner) instanceof Scenario s ? s : Scenario.DEFAULT;
   }
 
   /** The old {@code DELETE /sim/{partner}/scenario}: scenarios, switch and settings back to the defaults. */
@@ -96,6 +102,62 @@ public class LegacyScenarios {
       int status = s.failStatusOrDefault();
       MockBehaviour b = status >= 500 ? MockBehaviour.HTTP_5XX : MockBehaviour.BUSINESS_ERROR;
       engine.add(MERCHANT, MockScenario.of("ipn", b).withHttpStatus(status).withKey(s.ipnId()).withNextN(s.failNext()));
+    }
+  }
+
+  /**
+   * The old {@code POST /sim/payshield/scenario}: replaces the {@code payshield} party's control state.
+   * {@code errorCode} = BUSINESS_ERROR with that code on each listed command (key) or on every command;
+   * {@code outage} = DOWN; {@code latencyMs} = SLOW with a fixed latency.
+   */
+  public synchronized void payShield(PayShieldScenario s) {
+    if (s.errorCode() != null && !s.errorCode().matches("[0-9A-Z]{2}")) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "errorCode must be two characters");
+    }
+    deprecated();
+    forget(PAYSHIELD);
+    last.put(PAYSHIELD, s);
+    if (s.errorCode() != null) {
+      MockScenario refuse = MockScenario.of("command", MockBehaviour.BUSINESS_ERROR).withCode(s.errorCode());
+      if (s.commands().isEmpty()) {
+        engine.add(PAYSHIELD, refuse);
+      } else {
+        s.commands().forEach(c -> engine.add(PAYSHIELD, refuse.withKey(c)));
+      }
+    }
+    MockSwitch.State state = s.isOutage() ? MockSwitch.State.DOWN : s.latency() > 0 ? MockSwitch.State.SLOW : MockSwitch.State.UP;
+    switches.set(PAYSHIELD, new MockSwitch(state, s.latency(), s.latency(), 1.0));
+  }
+
+  /** The old {@code GET /sim/payshield/scenario}: the last body set, or none. */
+  public PayShieldScenario payShield() {
+    return last.get(PAYSHIELD) instanceof PayShieldScenario p ? p : new PayShieldScenario(null, null, null, null);
+  }
+
+  /**
+   * The old {@code POST /sim/ussdgw/smpp/scenario}: replaces the {@code ussdgw} party's control state.
+   * {@code genericNackNext}, {@code throttleNext}, {@code queueFullNext} = next-N scenarios on {@code
+   * submit} (MALFORMED_RESPONSE, BUSINESS_ERROR 0x58, BUSINESS_ERROR 0x14; refused in that order);
+   * {@code silentEnquireLink} = TIMEOUT on {@code enquire_link}; {@code screenTimeoutMs} = the setting
+   * {@code timeoutDelayMs}.
+   */
+  public synchronized void ussd(UssdSmppScenario s) {
+    deprecated();
+    forget(USSDGW);
+    nextN(MockScenario.of("submit", MockBehaviour.BUSINESS_ERROR).withCode("0x14"), s.queueFullNext());
+    nextN(MockScenario.of("submit", MockBehaviour.BUSINESS_ERROR).withCode("0x58"), s.throttleNext());
+    nextN(MockScenario.of("submit", MockBehaviour.MALFORMED_RESPONSE), s.genericNackNext());
+    if (Boolean.TRUE.equals(s.silentEnquireLink())) {
+      engine.add(USSDGW, MockScenario.of("enquire_link", MockBehaviour.TIMEOUT));
+    }
+    if (s.screenTimeoutMs() != null) {
+      switches.settings(USSDGW, new MockSettings(null, false, s.screenTimeoutMs()));
+    }
+  }
+
+  private void nextN(MockScenario s, Integer n) {
+    if (n != null && n > 0) {
+      engine.add(USSDGW, s.withNextN(n));
     }
   }
 

@@ -2,6 +2,7 @@ package mfs.mw.simulators.service.mockcontrol;
 
 import java.util.Map;
 import mfs.mw.simulators.config.SimulatorProperties;
+import mfs.mw.simulators.dto.CallbackMode;
 import mfs.mw.simulators.dto.MockSettings;
 import mfs.mw.simulators.dto.SimMode;
 import org.springframework.context.annotation.Profile;
@@ -21,7 +22,11 @@ public class MagicValuesOnly implements MockControl {
   @Override
   public Decision decide(String party, String operation, Map<String, String> keys, SimMode magic) {
     MockParties.require(party);
-    return Decision.magic(magic, props.timeoutDelay().toMillis());
+    Decision d = Decision.magic(magic, props.timeoutDelay().toMillis());
+    // a callback on the caller's own connection (the SMSC's DLR) goes once, as without mock control
+    return MockParties.callsBackInBand(party)
+        ? new Decision(d.gate(), d.mode(), null, null, d.holdMs(), 0, CallbackMode.ONCE, 0, d.source())
+        : d;
   }
 
   @Override

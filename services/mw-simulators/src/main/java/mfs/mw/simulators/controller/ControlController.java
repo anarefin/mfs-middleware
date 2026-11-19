@@ -3,10 +3,12 @@ package mfs.mw.simulators.controller;
 import jakarta.validation.Valid;
 import java.util.List;
 import mfs.mw.simulators.dto.MerchantIpnScenario;
+import mfs.mw.simulators.dto.PayShieldScenario;
 import mfs.mw.simulators.dto.RecordedRequest;
 import mfs.mw.simulators.dto.ReplayRequest;
 import mfs.mw.simulators.dto.ReplayResult;
 import mfs.mw.simulators.dto.Scenario;
+import mfs.mw.simulators.dto.UssdSmppScenario;
 import mfs.mw.simulators.service.CallbackService;
 import mfs.mw.simulators.service.MerchantIpnService;
 import mfs.mw.simulators.service.mockcontrol.Journal;
@@ -26,7 +28,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * The old control API (spec 22.2), deprecated by ADR D33 and kept as aliases of the mock-control engine
  * for one release ({@link LegacyScenarios} translates): scenario, recorded requests, callback replay, and
- * the merchant IPN receiver's scenario and reset. Only in the {@value MockControl#PROFILE} profile.
+ * the merchant IPN receiver's scenario and reset, the payShield and SMPP USSD gateway scenarios (ticket
+ * 102b). Only in the {@value MockControl#PROFILE} profile.
  */
 @RestController
 @Profile(MockControl.PROFILE)
@@ -88,6 +91,29 @@ public class ControlController {
   MerchantIpnScenario merchantScenario(@Valid @RequestBody MerchantIpnScenario scenario) {
     scenarios.merchant(scenario);
     return scenario;
+  }
+
+  @PostMapping("/sim/payshield/scenario")
+  PayShieldScenario setPayShield(@RequestBody PayShieldScenario body) {
+    scenarios.payShield(body);
+    return scenarios.payShield();
+  }
+
+  @GetMapping("/sim/payshield/scenario")
+  PayShieldScenario getPayShield() {
+    return scenarios.payShield();
+  }
+
+  @DeleteMapping("/sim/payshield/scenario")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  void resetPayShield() {
+    scenarios.forget("payshield");
+  }
+
+  @PostMapping("/sim/ussdgw/smpp/scenario")
+  @ResponseStatus(HttpStatus.NO_CONTENT)
+  void ussdSmppScenario(@RequestBody UssdSmppScenario body) {
+    scenarios.ussd(body);
   }
 
   /** Resets the merchant receiver: what it received and its scenarios. */

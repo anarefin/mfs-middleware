@@ -6,9 +6,16 @@ import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import mfs.mw.simulators.client.UssdGatewayClient;
+import mfs.mw.simulators.config.SimulatorProperties;
+import mfs.mw.simulators.service.mockcontrol.Journal;
+import mfs.mw.simulators.service.mockcontrol.MagicValuesOnly;
+import mfs.mw.simulators.service.mockcontrol.MockControl;
+import org.springframework.beans.factory.support.StaticListableBeanFactory;
 import mfs.mw.simulators.dto.UssdDialRequest;
 import mfs.mw.simulators.dto.UssdDialResult;
 import org.junit.jupiter.api.AfterEach;
@@ -55,10 +62,13 @@ class UssdGatewayServiceTest {
   }
 
   UssdGatewayService service() {
+    MockControl control = new MagicValuesOnly(new SimulatorProperties(Duration.ofSeconds(1), 10));
     return new UssdGatewayService(
         new UssdGatewayClient(JSON, env),
         new mfs.mw.simulators.client.UssdSmppGateway(
-            new mfs.mw.simulators.config.UssdSmppGatewayProperties(false, 0, java.util.List.of("gp"), null)),
+            new mfs.mw.simulators.config.UssdSmppGatewayProperties(false, 0, java.util.List.of("gp"), null),
+            control, new StaticListableBeanFactory().getBeanProvider(Journal.class), Clock.systemUTC()),
+        control,
         "http://127.0.0.1:" + server.getAddress().getPort() + "/ussd", "END");
   }
 
