@@ -1,6 +1,8 @@
 package mfs.mw.simulators.service.mockcontrol;
 
 import java.util.Map;
+import java.util.Optional;
+import mfs.mw.simulators.dto.MockScenario;
 import mfs.mw.simulators.dto.MockSettings;
 import mfs.mw.simulators.dto.SimMode;
 
@@ -27,4 +29,11 @@ public interface MockControl {
 
   /** The party's settings (callback target, callback-only, timeout hold). */
   MockSettings settings(String party);
+
+  /**
+   * How a file mock delivers one file (ticket 123, FRS MCT-05): the most specific FILE-dimension scenario
+   * (MISSING_FILE, LATE_FILE, DUPLICATE_FILE, CORRUPT_FILE, INJECTED_MISMATCH) matching the operation and keys
+   * (file name, business date), counted down when next-N scoped; empty = deliver as built.
+   */
+  Optional<MockScenario> fileFault(String party, String operation, Map<String, String> keys);
 }

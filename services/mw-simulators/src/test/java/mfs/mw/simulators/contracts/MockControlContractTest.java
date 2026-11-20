@@ -63,6 +63,36 @@ class MockControlContractTest {
         .singleElement().extracting(mfs.mw.simulators.dto.ResetResult.PartyResult::seedVersion).isEqualTo("v1");
   }
 
+  /** Ticket 123: the file mocks' run answer, and the core answers the trust bank reads, are what the contracts say. */
+  @Test
+  void theFileMockBodiesAreTheContracts() {
+    RecordedRequest w = new RecordedRequest(3, Instant.parse("2026-11-20T10:00:00Z"), "WRITE",
+        "trustbank/out/MT940_1_20261120.fin", null, Map.of("sha256", "ab", "bytes", "2", "fault", "CORRUPT_FILE"), "x");
+    var result = new mfs.mw.simulators.dto.FileRunResult("trustbank", "mt940", List.of(w));
+    assertThat(OpenApiSchemas.response(API, "/mock-control/{party}/run", "post", "200").validate(tree(result))).isEmpty();
+    assertThat(OpenApiSchemas.component(API, "FileRunRequest")
+        .validate(tree(new mfs.mw.simulators.dto.FileRunRequest("mt942", java.time.LocalDate.of(2026, 11, 20), "14:05"))))
+        .isEmpty();
+    assertThat(OpenApiSchemas.component(API, "FileRunRequest").validate(JSON.readTree("{\"at\":\"25:00\"}"))).isNotEmpty();
+    assertThat(OpenApiSchemas.response(API, "/mock-control/{party}/files", "post", "201")
+        .validate(tree(new mfs.mw.simulators.dto.FileDropResult("aml/in/AML_TXN_1.txt", "ab", 2)))).isEmpty();
+    assertThat(OpenApiSchemas.component(API, "ScenarioRequest").validate(JSON.readTree(
+        "{\"behaviour\":\"INJECTED_MISMATCH\",\"code\":\"MISSING_IN_PARTNER\",\"count\":2}"))).isEmpty();
+
+    String wallet = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
+    JsonNode statement = JSON.readTree("""
+        {"walletId":"SETTLEMENT","from":"2026-11-19T18:00:00Z","to":"2026-11-20T18:00:00Z","page":0,"hasMore":false,
+         "entries":[{"txnId":"t1","walletId":"SETTLEMENT","direction":"CREDIT","kind":"TRANSFER",
+          "amount":{"valueMinor":25000,"currency":"BDT"},"balanceAfter":{"valueMinor":125000,"currency":"BDT"},
+          "at":"2026-11-20T03:00:00Z"}]}""");
+    assertThat(OpenApiSchemas.response(wallet, "/core/v1/statements", "get", "200").validate(statement))
+        .as("the statement page client/CoreLedgerClient reads (SftpMocksIT's stub plays it)").isEmpty();
+    String seed = "api/mw-core-mock/core-mock-seed.v1.openapi.yaml";
+    JsonNode w2 = JSON.readTree("{\"walletId\":\"SETTLEMENT\",\"type\":\"SYSTEM\",\"status\":\"ACTIVE\",\"balanceMinor\":120000,"
+        + "\"heldMinor\":0,\"availableMinor\":120000}");
+    assertThat(OpenApiSchemas.response(seed, "/core-mock/v1/wallets/{walletId}", "get", "200").validate(w2)).isEmpty();
+  }
+
   @Test
   void theContractListsEveryBehaviourOfTheEngine() {
     JsonNode e = tree(Arrays.stream(MockBehaviour.values()).map(Enum::name).toList());

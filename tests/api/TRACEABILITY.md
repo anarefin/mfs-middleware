@@ -238,5 +238,9 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 40 | [mock] one call resets every mock party and brings the core ledger back to its seed | - |  |
 | 40 | [mock] a fault set through the old core fault API is a core scenario the reset clears | - |  |
 | 40 | [mock] an unknown core seed version is reported FAILED and changes nothing else | - |  |
+| 44 | [mock] the trust bank writes an MT940 on request and the journal lists it with its checksum | - |  |
+| 44 | [mock] a MISSING_FILE scenario skips the next statement only and an injected mismatch reaches the one after | - |  |
+| 44 | [mock] the AML mock answers an uploaded transaction file with HOLD and BLOCK lines | - |  |
+| 44 | [mock] the DW drop check rejects a control file with a wrong row count | - |  |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

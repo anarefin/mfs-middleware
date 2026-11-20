@@ -1,0 +1,7 @@
+{
+  "_comment": "Data Warehouse drop mock (ticket 123, FRS EXT-17): the CSV header each daily batch file type must carry, keyed by the file name before _<date>.csv. Draft for mw-data-export (ticket 128), which finalises the columns; the control file is control_<date>.json {date, files:[{name, rows, sha256}]}. Test data only.",
+  "transactions": ["txn_id", "type", "status", "amount_minor", "currency", "channel", "payer_token", "payee_token", "created_at", "completed_at"],
+  "wallet_snapshot": ["wallet_token", "type", "status", "balance_minor", "held_minor", "snapshot_at"],
+  "notifications": ["notification_id", "channel", "template", "status", "recipient_token", "sent_at"],
+  "recon": ["exception_id", "class", "partner", "txn_id", "amount_minor", "statement_ref", "detected_at"]
+}

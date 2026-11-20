@@ -5,7 +5,7 @@
 // with data-testid="scope"). Values are applied in their order (App flows: category, user, then the
 // type, as each one resets the fields after it). Pure data: how-to.test.ts checks every page and every fill target.
 
-export const PAGE_KEYS = ["home", "app", "auth", "ussd", "simulators", "inbox", "checkout", "bulk", "transactions", "credentials", "seed-data"] as const;
+export const PAGE_KEYS = ["home", "app", "auth", "ussd", "simulators", "files", "inbox", "checkout", "bulk", "transactions", "credentials", "seed-data"] as const;
 export type PageKey = (typeof PAGE_KEYS)[number];
 
 export type Fill = { label: string; values: Record<string, string> };
@@ -25,6 +25,10 @@ export const FILL_FIELDS: Record<PageKey, readonly string[]> = {
     "core-fault:mode", "core-fault:commandType", "core-fault:times", "core-fault:reasonCode", "core-fault:delayMs",
     "mock-scenario:party", "mock-scenario:operation", "mock-scenario:behaviour", "mock-scenario:code", "mock-scenario:key",
     "mock-scenario:nextN", "mock-switch:party", "mock-switch:state", "mock-switch:latencyMinMs", "msisdn",
+  ],
+  files: [
+    "file-run:party", "file-run:operation", "file-run:date", "file-run:at",
+    "file-fault:party", "file-fault:operation", "file-fault:behaviour", "file-fault:kind", "file-fault:count", "file-fault:nextN",
   ],
   inbox: ["msisdn", "email"],
   checkout: ["merchant", "amount", "locale", "wallet", "pin"],
@@ -269,6 +273,31 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       { label: "customer01's top-ups", values: { txnId: "", msisdn: "01711000001", status: "", txnType: "TOPUP" } },
       { label: "Every MANUAL_REVIEW", values: { txnId: "", msisdn: "", status: "MANUAL_REVIEW", txnType: "" } },
       { label: "Unknown id", values: { txnId: "00000000-0000-4000-8000-000000000000", msisdn: "", status: "", txnType: "" } },
+    ],
+  },
+  files: {
+    goal: "Exercise the file-based partners: AML responses, trust bank statements, the DW drop check, and their file faults.",
+    steps: [
+      "Run the trust bank's MT940 (or an MT942 with a cut time) and open the step's answer: the FIN text and its sha256.",
+      "Upload the AML sample: the response lists a HOLD and a BLOCK.",
+      "Add a file fault (e.g. MISSING_FILE for the next file, or INJECTED_MISMATCH AMOUNT_MISMATCH), run again, read the journal.",
+      "Reset the party when done.",
+    ],
+    magic: [
+      { value: "AML payer on the watch-list (01711000777)", meaning: "HOLD" },
+      { value: "AML party ending 6666", meaning: "BLOCK" },
+      { value: "AML amount above 50,000 Tk", meaning: "ALERT" },
+    ],
+    expect: [
+      "The run answers WRITE entries with the file path and sha256; a MISSING_FILE run answers SKIP.",
+      "The journal lists every READ / WRITE / SKIP / LATE with the fault applied; the DW control file shows ACCEPTED or REJECTED with its reasons.",
+      "Without partner-sftp (profile tester) a run fails with 503 MW-SYS-FILE_MOCK_UNAVAILABLE.",
+    ],
+    fills: [
+      { label: "MT940 of 2026-11-20", values: { "file-run:party": "trustbank", "file-run:operation": "mt940", "file-run:date": "2026-11-20" } },
+      { label: "MT942 at 14:00", values: { "file-run:party": "trustbank", "file-run:operation": "mt942", "file-run:at": "14:00" } },
+      { label: "Next MT940 missing", values: { "file-fault:party": "trustbank", "file-fault:operation": "mt940", "file-fault:behaviour": "MISSING_FILE", "file-fault:nextN": "1" } },
+      { label: "Next MT940 with 2 amount mismatches", values: { "file-fault:party": "trustbank", "file-fault:operation": "mt940", "file-fault:behaviour": "INJECTED_MISMATCH", "file-fault:kind": "AMOUNT_MISMATCH", "file-fault:count": "2", "file-fault:nextN": "1" } },
     ],
   },
   credentials: {

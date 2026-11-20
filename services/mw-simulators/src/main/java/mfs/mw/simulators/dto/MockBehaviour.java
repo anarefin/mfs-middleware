@@ -32,13 +32,25 @@ public enum MockBehaviour {
   /** No callback (a partner that never calls back; replay still works). */
   NO_CALLBACK(Dimension.CALLBACK),
   /** The party's partial reply (status {@code PARTIAL}). */
-  PARTIAL_SUCCESS(Dimension.OUTCOME);
+  PARTIAL_SUCCESS(Dimension.OUTCOME),
+  /** File mocks (ticket 123, FRS MCT-05): the file is not delivered at all. */
+  MISSING_FILE(Dimension.FILE),
+  /** File mocks: the file is delivered {@code delayMs} late (default the party's timeout hold). */
+  LATE_FILE(Dimension.FILE),
+  /** File mocks: the file is delivered twice, the second copy as {@code <name>_DUP<ext>}. */
+  DUPLICATE_FILE(Dimension.FILE),
+  /** File mocks: the file is cut in half and a corruption marker appended (unparseable). */
+  CORRUPT_FILE(Dimension.FILE),
+  /** File mocks: the content carries {@code count} (default 1) mismatches of the kind {@code code}. */
+  INJECTED_MISMATCH(Dimension.FILE);
 
   /** The part of a call's behaviour a scenario decides. */
   public enum Dimension {
     OUTCOME,
     DELAY,
-    CALLBACK
+    CALLBACK,
+    /** How a file mock delivers one file (ticket 123). */
+    FILE
   }
 
   private final Dimension dimension;

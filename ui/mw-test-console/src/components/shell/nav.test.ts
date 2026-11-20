@@ -7,6 +7,7 @@ describe("nav", () => {
     expect(activeNav("/ussd")?.label).toBe("USSD phone");
     expect(activeNav("/auth")?.label).toBe("Wallet auth");
     expect(activeNav("/simulators/x")?.label).toBe("Simulators & faults");
+    expect(activeNav("/files")?.label).toBe("Files (AML, MT940, DW)");
     expect(activeNav("/credentials")?.label).toBe("Logins & secrets");
     expect(activeNav("/seed-data")?.label).toBe("Seed data");
     expect(activeNav("/transactions")?.label).toBe("Transactions");

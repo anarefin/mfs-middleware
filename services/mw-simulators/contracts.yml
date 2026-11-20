@@ -6,4 +6,6 @@ produces:
 consumes:
   events: []
   # ticket 103: the global reset fans out to mw-core-mock's POST /mock-control/reset
-  apis:   [api/mw-ussd/ussd-http.v1.openapi.yaml, api/mw-core-mock/core-mock-control.v1.openapi.yaml]
+  # ticket 123: the trust bank mock reads the ledger (GET /core/v1/statements, GET /core-mock/v1/wallets/{id})
+  apis:   [api/mw-ussd/ussd-http.v1.openapi.yaml, api/mw-core-mock/core-mock-control.v1.openapi.yaml,
+           api/mw-core-mock/core-wallet.v1.openapi.yaml, api/mw-core-mock/core-mock-seed.v1.openapi.yaml]
