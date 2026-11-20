@@ -134,7 +134,7 @@
 118a-card-adapter                           95,97,102         done     27m      274 files +25935 −28   4f974e08,005a0983  (admin-api V18; postgres max_connections 100->120; 3DS webhook endpoint -> 118b)
 118b-card-flow-channels                     118a              split (2026-11-20, 1 h cap)
 118b1-card-3ds-webhook                      118a              done     15m      27 files +1096 −7      bd5c540e  (HMAC/nonce/PLT-014 dedup; family card on mw.partner.inbound.v1; APISIX callback route; admin-api cybersource seed)
-118b2-add-money-card-flow                   118b1             open   (orchestrator AddMoneyCardFlow, app-gateway sessions, Newman 56, simulator callbackUrl seeding; keep transientToken out of logs/audit)
+118b2-add-money-card-flow                   118b1             done     30m      49 files +1944 −31     4ff19347  (orchestrator V20 card routing; app.v1 1.16.0; Newman 56 not run live; card refund of a COMPLETED add-money not built; hosted page has no edge route)
 119-mw-adapter-remit                        95,97,102         split (119-split-decisions.md, 2026-11-20)
 119a-remit-adapter                          95,97,102         done     -        286 files +26376 −36   bfa47ddf  (admin-api V19 remit; host port 8101. RemitInFlow, Newman 53, lookup -> 119b)
 119b-remit-flow                             119a              open
@@ -144,12 +144,16 @@
 # --- M10 gate: UC-13..17
 121-mw-adapter-interop                      92,97,102         split (121-split-decisions.md, 2026-11-20)
 121a-interop-adapter-module                 92,97,102         done     90m      270 files +25086 −28   80896661  (admin-api V21 interop; host port 8102; NPSB participant mock; no npsb seed yet)
-121b-npsb-iso20022-wire                     121a              open   (Prowide, XSD, XML-DSig via mw-crypto, npsb seed, inbound endpoint, stateful mock)
+121b-npsb-iso20022-wire                     121a              split (1 h cap)
+121b1-iso20022-mapping-xmldsig              121a              done     60m      31 files +8375 −16     662834c6  (Prowide SRU2025-10.4.1; mw-crypto XMLDSIG purpose for interop)
+121b2-npsb-seed-inbound-mock                121b1             open   (EndToEndId = reference without BITS prefix; ISO step in adapter service layer; mTLS to mw-crypto)
 121c-npsb-flows-api                         121b              open   (orchestrator flows, app preview/confirm, Newman 57-npsb)
 122-banglaqr                                121               open
 # --- M11 gate: UC-18, UC-19
 123-file-mocks                              102,94            done     90m      72 files +3401 −39     57a73927
-124-mw-compliance-ekyc                      94,102,106        open
+124-mw-compliance-ekyc                      94,102,106        split (124-split-decisions.md)
+124a-compliance-ekyc-api                    94,102,106        done     ~60m     152 files +11689 −14   81f431f6,b984ba1b,3be57f1e  (3 security fixes: subject scoping, NID reuse -> MANUAL_REVIEW, unscoped read-only)
+124b-compliance-wiring                      124a              open   (EC mock, app onboarding routes, Keycloak/mw-crypto/mTLS, consumers, Newman 64; core KYC level endpoint: user decision)
 125-aml-feed-actions                        124,123,96        open
 126-mw-recon-matching                       123,95            done     -        150 files, +10903 −38  62f06496
 127-mw-recon-reports                        126               done (split 127a,127b,127c; 127-split-decisions.md)
@@ -180,3 +184,4 @@
 138-frs-acceptance-gate                     137               open
 # --- M13 gate: FRS 10.4 acceptance criteria 1-7
 # --- M9 review fix A merged (2026-11-20, fix/m9-review-a eb265a20, 37 files +509 −40): aggregator bare 404 -> UNKNOWN, billMonth sent, checkout refund kept PENDING + duplicate guard, full reversal refused after a live refund (MW-VAL-021), dry-run OAuth2 dummy secret (8 adapter copies; interop synced at merge). Open: merchant NOTIFY retry/DLQ, linked-account owner binding + AVL rate limit (user decision), AVL check in W2B preview, 7 Lows.
+# --- M9 review fix recon merged (2026-11-20, fix/m9-review-recon, 30 files +745 −54; admin-api V22, recon V7): REC-05 reopen, REC-07 62F date, re-run dedup, ShedLock, :86: masking, DAT-01, REC-06 stale, stale approval on changed gap, admin-api action retry. Open: dispute/accept-as-explained maker-checker, missed trust days catch-up, names in narrative. Post-merge build of 10 modules + repo checks green.
