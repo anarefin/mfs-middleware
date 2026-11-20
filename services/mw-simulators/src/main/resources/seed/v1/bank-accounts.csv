@@ -1,0 +1,12 @@
+bank,accountNumber,holderName,status,balance
+# Seeded accounts of the simulated bank gateway, seed v1 (ticket 117d, FRS MCK-08; bank `*` = the account
+# exists at every bank of bank-profiles.csv). Fake test data. status ACTIVE|DORMANT|CLOSED; balance in taka.
+# An account number not listed is opened on first use (ACTIVE, holder "Test Customer", balance 1000000.00)
+# unless its ending is a trigger (the table in mw-simulators CLAUDE.md "Bank gateway").
+*,1234567890,Rahim Uddin,ACTIVE,500000.00
+*,1234567891,Karima Begum,ACTIVE,25000.00
+*,1234567892,Sajid Hasan,ACTIVE,100.00
+*,1234567893,Nusrat Jahan,DORMANT,10000.00
+*,1234567894,Abdul Karim,CLOSED,0.00
+dbbl,2001000101,Farhana Akter,ACTIVE,750000.00
+sonali,3001000101,Mizanur Rahman,ACTIVE,750000.00

@@ -59,7 +59,7 @@ class OcsServiceTest {
           new mfs.mw.simulators.client.CallbackSigner(new org.springframework.mock.env.MockEnvironment(), java.time.Clock.systemUTC()),
           mapper, new mfs.mw.simulators.mapper.BillAggregatorMapper(java.time.Clock.systemUTC()),
           new BankDebitLedger(), new mfs.mw.simulators.mapper.BankDebitMapper(),
-          JsonMapper.builder().build(), Runnable::run);
+          JsonMapper.builder().build(), Runnable::run, new BankGatewayLedger());
   private final OcsService service = new OcsService(engine, ledger, mapper, callbackService);
 
   private OcsTopupRequest req(String id, String msisdn, String amount) {

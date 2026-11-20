@@ -113,7 +113,9 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
   (`MW-PTR-BANK_<CODE>-<suffix>`). Callbacks are hmac-sha256 (`hmac-secret`) for every bank; secrets in
   `secret/mw-adapter-bank/bank-<code>` (dev: `provision_mw_adapter_bank`). Base URL
   `BANK_GATEWAY_BASE_URL`, hosts `MW_BANK_ALLOWED_HOSTS`. Proved by `partner/route/BankProfileRouteIT`
-  (`bank-dbbl` REST, `bank-sonali` SOAP). The mw-simulators bank gateway is not built yet (117d).
+  (`bank-dbbl` REST, `bank-sonali` SOAP, the health probe). Every profile has `healthCheck: true` and a
+  HEALTH_CHECK branch (`GET /bank/<code>/v1/health` with the profile's HTTP auth, none for ws-security; ticket
+  117d). The dev bank gateway is mw-simulators' (its CLAUDE.md "Bank gateway": trigger table, seeded accounts).
 - Only the outbound call is the route; the callback still goes APISIX -> `controller/
   PartnerCallbackController` -> `PartnerGateway.inbound` (the record's `auth` and `CALLBACK.response`)
   -> `mw.partner.inbound.v1` (above).
