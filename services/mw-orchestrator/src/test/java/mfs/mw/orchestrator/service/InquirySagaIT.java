@@ -279,12 +279,13 @@ class InquirySagaIT {
     partnerReplies.handle(inquiryReply(txn, "UNKNOWN", ",\"errorCode\":\"MW-TMO-PARTNER_TIMEOUT\""));
     assertThat(status(txn)).isEqualTo("UNKNOWN");
 
-    advanceAndSweep(Duration.ofSeconds(59));
+    // FRS PLT-023 schedule: 30 s, then 2 min, then 10 min
+    advanceAndSweep(Duration.ofSeconds(119));
     assertThat(inquiries(txn)).hasSize(1);
     advanceAndSweep(Duration.ofSeconds(1));
     assertThat(inquiries(txn)).hasSize(2);
     assertThat(inquiries(txn)).extracting(r -> r.path("requestId").asString()).doesNotHaveDuplicates();
-    advanceAndSweep(Duration.ofMinutes(2));
+    advanceAndSweep(Duration.ofMinutes(10));
     assertThat(inquiries(txn)).hasSize(3);
     assertThat(statuses(txn)).endsWith("UNKNOWN").filteredOn("UNKNOWN"::equals).hasSize(1);
   }
@@ -300,7 +301,7 @@ class InquirySagaIT {
     partnerReplies.handle(inquiryReply(txn, "NOT_FOUND", ""));
     assertThat(status(txn)).isEqualTo("UNKNOWN");
 
-    advanceAndSweep(Duration.ofMinutes(1));
+    advanceAndSweep(Duration.ofMinutes(2)); // the second inquiry (FRS schedule: 2 min after the first)
     partnerReplies.handle(inquiryReply(txn, "NOT_FOUND", ""));
     assertThat(statuses(txn)).endsWith("UNKNOWN", "RELEASING");
     coreEvents.answer(event("HoldReleased", txn, txn + ":release", null, "{}"));
@@ -321,7 +322,8 @@ class InquirySagaIT {
 
   @Test
   void anExhaustedScheduleHandsTheTransactionToAnOperator() {
-    // tsqfast: inquiries after 1 s and 2 s, cut-off 5 s after the outcome became unknown
+    // tsqfast: inquiries after 1 s and 2 s, then 2 s (answer-wait) for the last answer
+    double enteredBefore = meters.get("mw.manual.review.entered").counter().count();
     String txn = topupLostReply("tsqfast");
     advanceAndSweep(Duration.ofSeconds(1));
     assertThat(inquiries(txn)).hasSize(1);
@@ -340,6 +342,8 @@ class InquirySagaIT {
     assertThat(inquiries(txn)).hasSize(2);
     assertThat(timersOf(txn)).isZero();
     assertThat(commandTypes(txn)).containsExactly("ValidateTransaction", "HoldFunds");
+    // the ops alert (FRS PLT-024): counted once; mw-notify alerts operations from the status
+    assertThat(meters.get("mw.manual.review.entered").counter().count()).isEqualTo(enteredBefore + 1);
 
     // an answer after the hand-over changes nothing: the operator decides
     partnerReplies.handle(inquiryReply(txn, "SUCCESS", ",\"partnerRef\":\"OCS-TOO-LATE\""));
@@ -434,6 +438,8 @@ class InquirySagaIT {
     topupLostReply("gp");
     startP2pToUnknown();
     String review = topupLostReply("tsqfast");
+    // one slot per sweep: two inquiries, then the hand-over
+    advanceAndSweep(Duration.ofSeconds(6));
     advanceAndSweep(Duration.ofSeconds(6));
     advanceAndSweep(Duration.ofSeconds(6));
     assertThat(status(review)).isEqualTo("MANUAL_REVIEW");

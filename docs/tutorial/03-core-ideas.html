@@ -316,15 +316,11 @@
         <line x1="40" y1="70" x2="860" y2="70" stroke="#9aa3b5" stroke-width="2"/>
         <g class="t-sm" text-anchor="middle">
           <circle cx="40" cy="70" r="9" class="n-wait"/><text x="40" y="45">UNKNOWN</text><text x="40" y="100">start</text>
-          <circle cx="122" cy="70" r="7" class="n-kafka"/><text x="122" y="100">30 s</text>
-          <circle cx="204" cy="70" r="7" class="n-kafka"/><text x="204" y="100">1 min</text>
-          <circle cx="286" cy="70" r="7" class="n-kafka"/><text x="286" y="100">2 min</text>
-          <circle cx="368" cy="70" r="7" class="n-kafka"/><text x="368" y="100">5 min</text>
-          <circle cx="450" cy="70" r="7" class="n-kafka"/><text x="450" y="100">15 min</text>
-          <circle cx="532" cy="70" r="7" class="n-kafka"/><text x="532" y="100">1 h</text>
-          <circle cx="614" cy="70" r="7" class="n-kafka"/><circle cx="696" cy="70" r="7" class="n-kafka"/><circle cx="778" cy="70" r="7" class="n-kafka"/>
-          <text x="696" y="100">then every 6 h</text>
-          <circle cx="860" cy="70" r="10" class="n-manual"/><text x="860" y="45">MANUAL_REVIEW</text><text x="860" y="100">24 h cut-off</text>
+          <circle cx="204" cy="70" r="7" class="n-kafka"/><text x="204" y="100">+30 s</text>
+          <circle cx="368" cy="70" r="7" class="n-kafka"/><text x="368" y="100">+2 min</text>
+          <circle cx="532" cy="70" r="7" class="n-kafka"/><text x="532" y="100">+10 min</text>
+          <circle cx="696" cy="70" r="7" class="n-kafka"/><text x="696" y="100">+1 h</text>
+          <circle cx="860" cy="70" r="10" class="n-manual"/><text x="860" y="45">MANUAL_REVIEW</text><text x="860" y="100">+30 s, ops alerted</text>
           <text x="330" y="45">ask: "what happened?"</text>
         </g>
         <text x="450" y="134" text-anchor="middle" class="t-sm">A clear answer at any ask ends the wait: posted → COMPLETED, rejected or not found (after the deadline) → FAILED.</text>
@@ -339,8 +335,9 @@
     <li>A timeout <em>before</em> any money could move (validation) just fails the transaction. A timeout <em>after</em>
       money might have moved (posting, partner) goes to UNKNOWN.</li>
     <li>For partner steps the same idea applies, but the adapter asks the partner (a <code>STATUS_QUERY</code>).</li>
-    <li>If 24 hours pass, or an answer makes no sense, the transaction goes to <span class="st manual">MANUAL_REVIEW</span>: a
-      person in the ops console decides (chapter 7).</li>
+    <li>If the last of the four inquiries (30 s, 2 min, 10 min, 1 h apart; FRS PLT-023) gets no clear answer within 30 s,
+      or an answer makes no sense, the transaction goes to <span class="st manual">MANUAL_REVIEW</span>: operations get an
+      SMS and an email (mw-notify's ops rule) and a person in the ops console decides (chapter 7).</li>
     <li>A late answer that contradicts what the saga already decided changes nothing; it is logged and audited as a
       conflict.</li>
   </ul>

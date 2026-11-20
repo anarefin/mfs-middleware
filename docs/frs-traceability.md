@@ -175,10 +175,10 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-014 | tickets 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) and signed nonces (ticket 99) built; card, IMT, NPSB in their adapters |
 | PLT-020 | done | saga steps with compensation (`saga_step`, spec 7.1) |
 | PLT-021 | done | step state persisted per step; resume after restart (`scripts/chaos.sh`); a core REST call starts only after its step commits and its answer re-enters the saga in its own transaction (ticket 95a, `CoreCallDispatcher`, `CoreReplyService`) |
-| PLT-022 | ticket 96 | core-side compensation built; the partner leg in reverse order in 96 |
-| PLT-023 | ticket 96 | `UNKNOWN` and the inquiry schedule built (spec 7.4); a core call without a definite answer (timeout, 5xx) goes UNKNOWN on its step deadline and WAL-13 settles it (ticket 95a, `CoreRestFlowIT`); FRS default 30 s / 2 min / 10 min / 1 h in 96 |
-| PLT-024 | ticket 96 | `MANUAL_REVIEW` after the cut-off built; alert event and metric in 96 |
-| PLT-025 | ticket 96 | partner REVERSE, idempotent and retried until acknowledged |
+| PLT-022 | ticket 96 | core-side compensation built; the partner leg (96b after a refused commit, 96c partner first when reversing a completed txn) |
+| PLT-023 | done | `UNKNOWN` and the inquiry schedule (spec 7.4): default 30 s / 2 min / 10 min / 1 h, `mw.orchestrator.inquiry.schedule`, per-partner list of waits (ticket 96a, `InquiryScheduleTest`, `InquirySagaIT`); a core call without a definite answer (timeout, 5xx) goes UNKNOWN on its step deadline and WAL-13 settles it (ticket 95a, `CoreRestFlowIT`) |
+| PLT-024 | done | `MANUAL_REVIEW` once the last inquiry went unanswered (`answer-wait` 30 s, `MW-TMO-004`); entering MANUAL_REVIEW from any state counts `mw_manual_review_entered_total` and logs `txn.manual_review.entered` (`SagaAlerts`), and mw-notify alerts operations by SMS and email from the status (recipient `OPS`, `mw.notify.ops.*`, V16, `FlowNotificationsIT`; ticket 96a) |
+| PLT-025 | ticket 96 | partner REVERSE (96b, and 96c for a completed txn), idempotent and retried until acknowledged |
 | PLT-026 | ticket 105 | core fee returned at validation; preview with fee, VAT and commission in 105 |
 | PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector `client/CoreWalletClient` (connect/read timeouts, breaker `core`, reads retried only; ticket 95a) |
 | PLT-031 | done | no automatic redelivery of a PAY (D28); INQUIRY and STATUS retried |

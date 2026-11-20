@@ -139,7 +139,7 @@ test_test_timers_default_to_production_values_and_the_dev_defaults_shorten_them(
   local j o
   j="$(compose_json)"
   o="$(printf '%s' "$j" | jq -c '.services["mw-orchestrator"].environment')"
-  printf '%s' "$o" | jq -e '.MW_ORCHESTRATOR_INQUIRY_SCHEDULE == "30s,1m,2m,5m,15m,1h"
+  printf '%s' "$o" | jq -e '.MW_ORCHESTRATOR_INQUIRY_SCHEDULE == "30s,2m,10m,1h"
     and .MW_ORCHESTRATOR_INQUIRY_NOTFOUNDGRACE == "30s" and .MW_ORCHESTRATOR_REVERSINGTIMEOUT == "60s"
     and .MW_ORCHESTRATOR_POSTINGTIMEOUT == "5s" and .MW_ORCHESTRATOR_HOLDINGTIMEOUT == "5s"
     and .MW_ORCHESTRATOR_PARTNERTIMEOUT == "30s" and .MW_KAFKA_RETRY_DELAYS == "10s,1m,10m"' >/dev/null \
