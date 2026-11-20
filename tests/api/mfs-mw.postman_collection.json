@@ -3662,6 +3662,48 @@
             "url": "{{baseUrl}}/healthz",
             "description": ""
           }
+        },
+        {
+          "name": "[history] the signed-in wallet saves a biller account and another wallet cannot see it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[history] the signed-in wallet saves a biller account and another wallet cannot see it\", eval(MW.forRun(\"async function findIn(MW, user, txnId, query) {\\n  const item = r => r.status === 200 ? ((r.body || {}).items || []).find(i => i.txnId === txnId) : undefined;\\n  const r = await MW.poll(() => MW.app.history(user, query || 'limit=50'), x => !!item(x), 20000, 700);\\n  return { r, item: item(r) };\\n}\\n;(async (MW, S) => {\\n      const account = ('9' + MW.unique()).replace(/[^0-9A-Za-z]/g, '').slice(0, 20);\\n      const saved = await MW.http('POST', '/app/v1/saved-billers', {\\n        headers: await MW.app.headers('customer01'),\\n        json: { billerCode: 'DESCO', accountNo: account, nickname: 'home' },\\n      });\\n      S.record(saved);\\n      S.status(201);\\n      S.eq('the owner sees the account number', saved.body.accountNo, account);\\n      const id = saved.body.id;\\n      const mine = await MW.http('GET', '/app/v1/saved-billers', { headers: await MW.app.headers('customer01') });\\n      S.record(mine);\\n      S.status(200);\\n      S.check('the owner lists that biller', (mine.body.billers || []).some(b => b.id === id && b.accountNo === account), String(mine));\\n      const other = await MW.http('GET', '/app/v1/saved-billers', { headers: await MW.app.headers('customer02') });\\n      S.record(other);\\n      S.status(200);\\n      S.check('another wallet does not see it', !(other.body.billers || []).some(b => b.id === id || b.accountNo === account), String(other));\\n      S.record(await MW.http('DELETE', '/app/v1/saved-billers/' + id, { headers: await MW.app.headers('customer02') }));\\n      S.status(404);\\n      S.code('MW-VAL-003');\\n      S.record(await MW.http('DELETE', '/app/v1/saved-billers/' + id, { headers: await MW.app.headers('customer01') }));\\n      S.status(204);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[history] the signed-in wallet saves a favourite and another wallet cannot delete it",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[history] the signed-in wallet saves a favourite and another wallet cannot delete it\", eval(MW.forRun(\"async function findIn(MW, user, txnId, query) {\\n  const item = r => r.status === 200 ? ((r.body || {}).items || []).find(i => i.txnId === txnId) : undefined;\\n  const r = await MW.poll(() => MW.app.history(user, query || 'limit=50'), x => !!item(x), 20000, 700);\\n  return { r, item: item(r) };\\n}\\n;(async (MW, S) => {\\n      const msisdn = '01719' + String(Date.now()).slice(-6);\\n      const saved = await MW.http('POST', '/app/v1/favourites', {\\n        headers: await MW.app.headers('customer01'),\\n        json: { msisdn: msisdn, label: 'Amma' },\\n      });\\n      S.record(saved);\\n      S.status(201);\\n      S.eq('the owner sees the number', saved.body.msisdn, msisdn);\\n      const id = saved.body.id;\\n      const mine = await MW.http('GET', '/app/v1/favourites', { headers: await MW.app.headers('customer01') });\\n      S.record(mine);\\n      S.status(200);\\n      S.check('the owner lists that favourite', (mine.body.favourites || []).some(f => f.id === id && f.msisdn === msisdn), String(mine));\\n      S.record(await MW.http('DELETE', '/app/v1/favourites/' + id, { headers: await MW.app.headers('customer02') }));\\n      S.status(404);\\n      S.code('MW-VAL-003');\\n      S.record(await MW.http('DELETE', '/app/v1/favourites/' + id, { headers: await MW.app.headers('customer01') }));\\n      S.status(204);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
         }
       ]
     },
@@ -3805,6 +3847,27 @@
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
                   "MW.run(\"[balance history] a balance check is not in the wallet history\", eval(MW.forRun(\"function tk(minor) {\\n    const s = String(Math.floor(minor / 100)).replace(/\\\\B(?=(\\\\d{3})+(?!\\\\d))/g, ',');\\n    return s + '.' + String(minor % 100).padStart(2, '0');\\n  }\\n;(async (MW, S) => {\\n      await S.balance('customer01', MW.pin);\\n      S.status(200);\\n      const id = S.txnId();\\n      const h = await MW.app.history('customer01', 'limit=50');\\n      S.status(200, h);\\n      S.check('the balance check is not listed', !((h.body || {}).items || []).some(i => i.txnId === id || i.txnType === 'BALANCE'), String(h));\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[notify] the signed-in wallet reads its notification inbox and cannot mark another id read",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[notify] the signed-in wallet reads its notification inbox and cannot mark another id read\", eval(MW.forRun(\"function tk(minor) {\\n    const s = String(Math.floor(minor / 100)).replace(/\\\\B(?=(\\\\d{3})+(?!\\\\d))/g, ',');\\n    return s + '.' + String(minor % 100).padStart(2, '0');\\n  }\\n;(async (MW, S) => {\\n      const page = await MW.http('GET', '/app/v1/notifications?limit=5&offset=0', { headers: await MW.app.headers('customer01') });\\n      S.record(page);\\n      S.status(200);\\n      S.eq('a page of at most 5', [Array.isArray(page.body.items), page.body.items.length <= 5, page.body.limit, page.body.offset],\\n        [true, true, 5, 0]);\\n      S.check('the inbox does not carry the raw MSISDN', !JSON.stringify(page.body).includes('01711000001'), String(page));\\n      S.record(await MW.http('POST', '/app/v1/notifications/no-such-message/read', { headers: await MW.app.headers('customer01') }));\\n      S.status(404);\\n      S.code('MW-VAL-003');\\n    })\")), null);"
                 ]
               }
             }

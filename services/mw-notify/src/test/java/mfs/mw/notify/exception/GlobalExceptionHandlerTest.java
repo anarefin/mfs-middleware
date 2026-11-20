@@ -7,6 +7,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Positive;
 import java.util.List;
 import mfs.mw.notify.dto.ErrorDetail;
+import mfs.mw.notify.service.InboxService;
 import mfs.mw.notify.service.NotificationLogService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,6 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 class GlobalExceptionHandlerTest {
 
   @MockitoBean NotificationLogService notificationLogs;
+  @MockitoBean InboxService inbox;
 
   private final MockMvcTester mvc;
 

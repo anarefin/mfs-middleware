@@ -1,0 +1,25 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/SaveBillerRequest",
+  "type": "object",
+  "required": [
+    "billerCode",
+    "accountNo"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "billerCode": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "accountNo": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "nickname": {
+      "type": "string",
+      "maxLength": 40
+    }
+  }
+}

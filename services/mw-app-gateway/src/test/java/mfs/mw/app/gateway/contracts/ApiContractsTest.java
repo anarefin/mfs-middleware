@@ -26,7 +26,12 @@ import mfs.mw.app.gateway.dto.LiveSession;
 import mfs.mw.app.gateway.dto.EncryptedPin;
 import mfs.mw.app.gateway.dto.ErrorDetail;
 import mfs.mw.app.gateway.dto.ErrorEnvelope;
+import mfs.mw.app.gateway.dto.Favourite;
+import mfs.mw.app.gateway.dto.FavouriteList;
+import mfs.mw.app.gateway.dto.InboxMessage;
 import mfs.mw.app.gateway.dto.ErrorInfo;
+import mfs.mw.app.gateway.dto.SavedBiller;
+import mfs.mw.app.gateway.dto.SavedBillerList;
 import mfs.mw.app.gateway.dto.Party;
 import mfs.mw.app.gateway.dto.StatusMessage;
 import mfs.mw.app.gateway.dto.TransactionRequest;
@@ -55,6 +60,7 @@ class ApiContractsTest {
   static final String BILLPAY_API = "api/mw-adapter-billpay/billpay.v1.openapi.yaml";
   static final String AUTH_API = "api/mw-auth/auth-internal.v1.openapi.yaml";
   static final String QUERY_API = "api/mw-orchestrator/txn-query.v1.openapi.yaml";
+  static final String NOTIFY_API = "api/mw-notify/notify-internal.v1.openapi.yaml";
   static final String TXN_ID = "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d";
   static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
   static final Instant NOW = Instant.parse("2026-11-04T06:00:00Z");
@@ -63,7 +69,8 @@ class ApiContractsTest {
   void theManifestListsTheseApis() {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(APP_API);
-    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API, AUTH_PUBLIC_API, QUERY_API);
+    assertThat(manifest.consumedApis())
+        .containsExactly(BILLPAY_API, AUTH_API, AUTH_PUBLIC_API, QUERY_API, NOTIFY_API);
   }
 
   // ---- served: app.v1 ----
@@ -161,6 +168,23 @@ class ApiContractsTest {
         new Bill("DESCO", "1234567", new Amount(66_700L, "BDT"), "2026-11-14", "2026-11"));
     assertValid(OpenApiSchemas.component(APP_API, "Bill"),
         new Bill("DESCO", "1234567", new Amount(66_700L, "BDT"), null, null));
+  }
+
+  @Test
+  void savedBillersFavouritesAndTheInboxMatchTheContract() {
+    SavedBiller biller = new SavedBiller("11111111-1111-1111-1111-111111111111", "DESCO", "9876543210", "home", NOW);
+    assertValid(OpenApiSchemas.component(APP_API, "SavedBillerList"), new SavedBillerList(List.of(biller)));
+    assertValid(OpenApiSchemas.component(APP_API, "SavedBiller"),
+        new SavedBiller(biller.id(), "DESCO", "9876543210", null, NOW));
+    Favourite favourite = new Favourite("22222222-2222-2222-2222-222222222222", "01711000099", null, NOW);
+    assertValid(OpenApiSchemas.component(APP_API, "FavouriteList"), new FavouriteList(List.of(favourite)));
+    InboxMessage item = new InboxMessage("m-1", "SMS", null, "0171****001", "TXN", "You sent Tk 10.00", false, NOW);
+    assertValid(OpenApiSchemas.component(APP_API, "InboxPage"), new InboxMessage.Page(List.of(item), 20, 0));
+    String page = "{\"items\":[{\"id\":\"m-1\",\"channel\":\"SMS\",\"msisdn\":\"0171****077\",\"priority\":\"TXN\","
+        + "\"body\":\"You sent Tk 10.00\",\"read\":false,\"createdAt\":\"2026-11-20T08:00:00Z\"}],\"limit\":2,"
+        + "\"offset\":0}";
+    assertThat(OpenApiSchemas.component(NOTIFY_API, "InboxPage").validate(JSON.readTree(page))).isEmpty();
+    assertThat(JSON.readValue(page, InboxMessage.Page.class).items().getFirst().msisdn()).isEqualTo("0171****077");
   }
 
   // ---- served: the wallet history; called: mw-orchestrator's query API (ADR D25) ----

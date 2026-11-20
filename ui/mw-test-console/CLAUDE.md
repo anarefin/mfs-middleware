@@ -70,7 +70,8 @@ D9 amendment), can unlock and reset accounts, and has no sign-in.
   `lib/server/auth.ts`, `actions/auth.ts`: fresh wallet with its first PIN via the LOGIN OTP, PIN login,
   a second device (old one refused, the newDevice cooling window until boundAt + 24 h shown; the flag
   itself travels only in the assertion to the core), PIN change, self-service reset, taking up a care
-  reset approved in `/console` on a new phone, three wrong PINs to the lock).
+  reset approved in `/console` on a new phone, three wrong PINs to the lock), `/preferences` (ticket 107a:
+  saved billers, favourites and the notification inbox of one signed-in wallet, `actions/preferences.ts`).
 - `/credentials` ("Logins & secrets"): every `seed-ops-*` / `ops-e2e-*` / `ops-*01` and portal login with its
   password and a live TOTP code (server action over `lib/crypto.ts` `totp`, refetched at each 30 s
   boundary, `lib/totp-window.ts`, `components/totp-code.tsx`; every ops and portal user has the pre-set

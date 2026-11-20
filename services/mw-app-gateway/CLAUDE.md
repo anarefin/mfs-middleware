@@ -220,7 +220,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   mw-orchestrator's internal query API (`client/OrchestratorQueryClient`, copied from mw-portal-api's,
   `config/OrchestratorClientProperties` `mw.app-gateway.orchestrator.*`, `MW_ORCHESTRATOR_BASE_URL`, plain
   HTTP on the app network) with the same `client/ServiceTokenClient` token as mw-auth's (client
-  `mw-app-gateway`, audiences mw-auth and mw-orchestrator): always `walletId`, asks `limit + 1` to tell
+  `mw-app-gateway`, audiences mw-auth, mw-orchestrator and mw-notify): always `walletId`, asks `limit + 1` to tell
   `hasMore`, a 401 drops the token and asks once more. The orchestrator decides what is shown (IN items only
   COMPLETED / REVERSING / REVERSED) and masks the parties; the mapper keeps the other side as `counterparty`
   (credit party of an OUT item, debit party of an IN one) and leaves out the fee and the error of an IN
@@ -238,12 +238,24 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   correlationId}` (key the wallet; contract owned by mw-notify, its consumer) straight to Kafka (nothing stored
   here); 204; Kafka refusing `503 MW-SYS-010`. The token is never logged. APISIX route `app-v1` takes PUT since.
   Tests: `PushTokenControllerTest`, `contracts/ProducedContractsTest` (fixture through the real service).
+- Saved billers, favourites and the inbox (ticket 107a, app.v1 1.10.0, CH-APP-08; `controller/NonFinancialController`,
+  `service/PreferenceService`, `repository/SavedBillerRepository`, `repository/FavouriteRepository`, schema
+  `V10__preferences.sql`): `GET|POST|DELETE /app/v1/saved-billers` and `/app/v1/favourites` are the token
+  wallet's own rows, stored in the clear (no mw-crypto). The owner sees the account number and the
+  counterparty MSISDN; `@Sensitive` masks them in logs. A duplicate is 409 `MW-IDEM-001`; another wallet's
+  id is 404 `MW-VAL-003`. `GET /app/v1/notifications` and `POST /app/v1/notifications/{id}/read` read
+  mw-notify's customer inbox (`client/NotifyInboxClient`, `config/NotifyClientProperties`
+  `mw.app-gateway.notify.*`, `MW_NOTIFY_BASE_URL`, the same service token, audience mw-notify) for the token
+  MSISDN only. Unavailable is 503 `MW-SYS-014`, retryable. Session level, no signature. Body schemas
+  `derived-schemas/app-v1-save-biller-request.json` and `app-v1-save-favourite-request.json`. The edge route
+  `app-v1` allows DELETE. Tests: `SavedBillerRepositoryIT`, `FavouriteRepositoryIT`,
+  `NonFinancialControllerTest`, `contracts/ApiContractsTest`.
 - Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password; `spring.data.redis.password`
   synced from `REDIS_PASSWORD`; `mw.app-gateway.auth.client-secret` from `KC_MW_APP_GATEWAY_SECRET`;
   `mw.app-gateway.preview.signing-key` created once, ticket 105), AppRole, PKI
-  role `mw-app-gateway`. Keycloak realm `services` client `mw-app-gateway` (audiences `mw-auth` and, ADR D25,
-  `mw-orchestrator`): a running stack
+  role `mw-app-gateway`. Keycloak realm `services` client `mw-app-gateway` (audiences `mw-auth`, ADR D25
+  `mw-orchestrator`, and `mw-notify` for the inbox): a running stack
   needs `deploy/reset.sh` to import it. Compose waits for a healthy mw-auth.
 
 ## Contracts owned
@@ -259,6 +271,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   event built by the real mapper validates), `contracts/ConsumedContractsTest` (every valid sample reads into
   the own DTO) and `contracts/ApiContractsTest` (app API responses, the billpay client's requests and mw-auth's answers).
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (client; own types `dto/Biller`, `dto/Bill`).
+- `api/mw-notify/notify-internal.v1.openapi.yaml` (client, ticket 107a: `GET /internal/v1/inbox` and
+  `POST /internal/v1/inbox/{id}/read` for the token's MSISDN; own type `dto/InboxMessage`).
 - `api/mw-orchestrator/txn-query.v1.openapi.yaml` (client, 1.3.0, ADR D25: `GET /internal/v1/transactions` with
   `walletId`, as the wallet-scoped caller; own types `dto/QueryTxnPage`, `dto/QueryTxn`; a contract-shaped page
   is validated and read in `ApiContractsTest`).

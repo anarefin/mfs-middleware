@@ -346,6 +346,8 @@ test_every_public_json_body_has_a_derived_schema_in_its_service() {
     "mw-auth/auth-v1-set-pin-request.json|api/mw-auth/auth.v1.openapi.yaml#/components/schemas/SetPinRequest|encryptedPin" \
     "mw-auth/auth-v1-device-binding-request.json|api/mw-auth/auth.v1.openapi.yaml#/components/schemas/DeviceBindingRequest|otp" \
     "mw-app-gateway/app-v1-fetch-bill-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/FetchBillRequest|billNumber" \
+    "mw-app-gateway/app-v1-save-biller-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/SaveBillerRequest|billerCode" \
+    "mw-app-gateway/app-v1-save-favourite-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/SaveFavouriteRequest|msisdn" \
     "mw-checkout/checkout-v1-create-session.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/CreateSessionRequest|orderId" \
     "mw-checkout/checkout-pay-v1-otp.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/OtpRequest|wallet" \
     "mw-checkout/checkout-pay-v1-confirm.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/ConfirmRequest|encryptedPin" \

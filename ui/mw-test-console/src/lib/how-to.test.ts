@@ -18,6 +18,7 @@ const SOURCES: Record<PageKey, string[]> = {
   checkout: ["checkout/checkout-tester.tsx"],
   bulk: ["bulk/bulk-tester.tsx"],
   transactions: ["transactions/explorer.tsx"],
+  preferences: ["preferences/preferences.tsx"],
   credentials: [],
   "seed-data": [],
 };

@@ -205,7 +205,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-APP-05 | done | `POST /app/v1/{group}/preview` then `/confirm`; `POST /app/v1/transactions` runs both (ticket 105) |
 | CH-APP-06 | ticket 106 | channel roles for customer, agent, merchant apps built (spec 9.1); distributor, DSO, partner in 106 |
 | CH-APP-07 | ticket 106 | PIN lockout built (D20: 3 tries, then 1 h, 24 h); per-app-type throttles in 106 |
-| CH-APP-08 | ticket 107 | balance and history built (D25, D26); profile, limits, billers, favourites, inbox, statement in 107 |
+| CH-APP-08 | ticket 107 | saved billers, favourites and the customer inbox built (107a); profile, limits and statement remain (107b) |
 | CH-APP-09 | done | `GET /app/v1/transactions/{txnId}` (mw-app-gateway) |
 | CH-USSD-01 | ticket 109 | GP over SMPP built; all four MNOs, TX+RX binds in 109 |
 | CH-USSD-02 | done | mw-ussd SMPP binds: enquire_link 30 s, reconnect with backoff, window (`UssdSmppProperties`) |

@@ -82,4 +82,18 @@ export default [
       S.check('the balance check is not listed', !((h.body || {}).items || []).some(i => i.txnId === id || i.txnType === 'BALANCE'), String(h));
     },
   },
+  {
+    name: '[notify] the signed-in wallet reads its notification inbox and cannot mark another id read',
+    run: async (MW, S) => {
+      const page = await MW.http('GET', '/app/v1/notifications?limit=5&offset=0', { headers: await MW.app.headers('customer01') });
+      S.record(page);
+      S.status(200);
+      S.eq('a page of at most 5', [Array.isArray(page.body.items), page.body.items.length <= 5, page.body.limit, page.body.offset],
+        [true, true, 5, 0]);
+      S.check('the inbox does not carry the raw MSISDN', !JSON.stringify(page.body).includes('01711000001'), String(page));
+      S.record(await MW.http('POST', '/app/v1/notifications/no-such-message/read', { headers: await MW.app.headers('customer01') }));
+      S.status(404);
+      S.code('MW-VAL-003');
+    },
+  },
 ];

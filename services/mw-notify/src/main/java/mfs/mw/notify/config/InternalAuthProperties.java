@@ -17,10 +17,12 @@ public record InternalAuthProperties(
     @NotBlank String issuer,
     @NotBlank String audience,
     @NotEmpty Set<String> allowedClients,
-    Set<String> orgScopedClients) {
+    Set<String> orgScopedClients,
+    @NotEmpty Set<String> inboxClients) {
 
   public InternalAuthProperties {
     allowedClients = Set.copyOf(allowedClients == null ? Set.of() : allowedClients);
     orgScopedClients = Set.copyOf(orgScopedClients == null ? Set.of() : orgScopedClients);
+    inboxClients = Set.copyOf(inboxClients == null ? Set.of() : inboxClients);
   }
 }

@@ -237,6 +237,8 @@ mw:
     audience: mw-notify
     allowed-clients: mw-admin-api
     org-scoped-clients: []
+    # Customer inbox (ticket 107a): mw-app-gateway only. The log above stays mw-admin-api.
+    inbox-clients: mw-app-gateway
   notify:
     # Transient SMPP errors: retry after 2 s, 10 s, 30 s, then FAILED (spec 10.4).
     retry-backoff: 2s,10s,30s

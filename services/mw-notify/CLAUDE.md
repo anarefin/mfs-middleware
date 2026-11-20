@@ -148,13 +148,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 - `events/mw-notify/mw.notify.status.v1.schema.json` (produced; `dto/NotifyStatusEvent`).
 - `events/mw-notify/mw.notify.push-token.v1.schema.json` (consumed, ticket 110; produced by mw-app-gateway;
   `dto/PushTokenEvent`).
+- `api/mw-notify/notify-internal.v1.openapi.yaml` (produced, ticket 107a: the customer inbox).
 
 ## Contracts used
 
 - `events/mw-orchestrator/mw.txn.status.v1.schema.json` (own subset type `dto/TxnStatusEvent`).
 - `events/mw-admin-api/mw.config.changed.v1.schema.json` (ticket 39; own type `dto/ConfigChangedEvent`).
 - Machine-readable list: `contracts.yml` (produces `mw.notify.status.v1`; consumes `mw.notify.request.v1`,
-  `mw.txn.status.v1`, `mw.config.changed.v1` and `mw.notify.push-token.v1`; no APIs), checked by `./gradlew :contractsLint`, tested by
+  `mw.txn.status.v1`, `mw.config.changed.v1` and `mw.notify.push-token.v1`; produces the inbox API
+  `api/mw-notify/notify-internal.v1.openapi.yaml`), checked by `./gradlew :contractsLint`, tested by
   `contracts/ProducedContractsTest` (events built by `StatusEvents`) / `ConsumedContractsTest` (samples
   through the real listeners); no Spring, no Docker.
 
@@ -221,7 +223,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   publishes `mw.notify.opt-out.v1`; an SMS whose text is STOP does the same. Honoured for PROMO
   SMS only (`SUPPRESSED`, not sent). OTP and transactional messages are never opted out.
 - Log: `GET /internal/v1/notifications` (internal JWT, audience `mw-notify`, client `mw-admin-api`),
-  paged, MSISDN masked, OTP body always `****`.
+  paged, MSISDN masked, OTP body always `****`. Unchanged by the customer inbox.
+- Customer inbox (ticket 107a, `controller/InboxController`, `service/InboxService`, `repository/InboxRepository`,
+  `V19__inbox_read.sql` column `read_at`): `GET /internal/v1/inbox` and `POST /internal/v1/inbox/{id}/read`.
+  Caller `mw-app-gateway` only (`security/InternalCallerPolicy`, `mw.internal-auth.inbox-clients`). OTP rows
+  are omitted. Rows are limited to the requested MSISDN. The MSISDN in the body is masked. Tests:
+  `controller/InboxControllerIT`, `security/InternalCallerPolicyTest`.
 
 ## Commands
 

@@ -53,6 +53,8 @@ public class BodySchemaConfig implements WebMvcConfigurer {
     add(registry, BodySchema.PUSH_TOKEN, false, "/app/v1/notifications/push-token");
     add(registry, BodySchema.PREVIEW, false, "/app/v1/*/preview");
     add(registry, BodySchema.CONFIRM, false, "/app/v1/*/confirm");
+    add(registry, BodySchema.SAVE_BILLER, false, "/app/v1/saved-billers");
+    add(registry, BodySchema.SAVE_FAVOURITE, false, "/app/v1/favourites");
   }
 
   private void add(InterceptorRegistry registry, String schema, boolean optional, String path) {

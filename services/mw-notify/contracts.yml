@@ -1,7 +1,8 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
 produces:
   events: [events/mw-notify/mw.notify.status.v1.schema.json]
-  apis:   []
+  # ticket 107a: GET /internal/v1/inbox and POST /internal/v1/inbox/{id}/read (caller mw-app-gateway)
+  apis: [api/mw-notify/notify-internal.v1.openapi.yaml]
 consumes:
   events: [events/mw-notify/mw.notify.request.v1.schema.json, events/mw-orchestrator/mw.txn.status.v1.schema.json,
            events/mw-admin-api/mw.config.changed.v1.schema.json,

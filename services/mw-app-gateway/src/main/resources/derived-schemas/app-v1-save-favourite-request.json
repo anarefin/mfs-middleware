@@ -1,0 +1,19 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/SaveFavouriteRequest",
+  "type": "object",
+  "required": [
+    "msisdn"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "msisdn": {
+      "type": "string",
+      "minLength": 11,
+      "maxLength": 14
+    },
+    "label": {
+      "type": "string",
+      "maxLength": 40
+    }
+  }
+}

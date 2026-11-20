@@ -304,6 +304,11 @@ mw:
       base-url: ${MW_ORCHESTRATOR_BASE_URL:http://mw-orchestrator:8080}
       connect-timeout: 1s
       read-timeout: 3s
+    # mw-notify's customer inbox (ticket 107a): GET /internal/v1/inbox for the token's MSISDN only.
+    notify:
+      base-url: ${MW_NOTIFY_BASE_URL:http://mw-notify:8080}
+      connect-timeout: 1s
+      read-timeout: 3s
     # Preview and confirm (ticket 105, FRS CH-APP-05, PLT-026; service/PreviewService): a preview is kept
     # in Redis preview:<id> for ttl; its previewId is signed with HMAC-SHA256 under signing-key, which
     # comes from Vault only (secret/mw-app-gateway, created once by the dev provisioning; >= 32 chars).

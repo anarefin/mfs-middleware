@@ -46,6 +46,10 @@ public class BodySchema {
   public static final String PREVIEW = "derived-schemas/app-v1-preview-request.json";
   /** {@code POST /app/v1/{group}/confirm}, from {@code ConfirmRequest} (ticket 105). */
   public static final String CONFIRM = "derived-schemas/app-v1-confirm-request.json";
+  /** {@code POST /app/v1/saved-billers}, from {@code SaveBillerRequest} (ticket 107a). */
+  public static final String SAVE_BILLER = "derived-schemas/app-v1-save-biller-request.json";
+  /** {@code POST /app/v1/favourites}, from {@code SaveFavouriteRequest} (ticket 107a). */
+  public static final String SAVE_FAVOURITE = "derived-schemas/app-v1-save-favourite-request.json";
 
   private final ObjectReader reader;
   private final Schema schema;

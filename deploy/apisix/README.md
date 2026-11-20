@@ -338,6 +338,8 @@ service; each keeps its own body cap, 413 `MW-VAL-BODY_TOO_LARGE`). Every public
 | --- | --- | --- | --- |
 | `app-v1` | `POST /app/v1/transactions` | mw-app-gateway: `BodySchemaInterceptor` (cached bytes, the ones the device signs) | `app-v1-transaction-request.json` (`TransactionRequest`) |
 | `app-v1` | `POST /app/v1/billers/{code}/fetch-bill` | mw-app-gateway, as above | `app-v1-fetch-bill-request.json` (`FetchBillRequest`) |
+| `app-v1` | `POST /app/v1/saved-billers` | mw-app-gateway, as above | `app-v1-save-biller-request.json` (`SaveBillerRequest`) |
+| `app-v1` | `POST /app/v1/favourites` | mw-app-gateway, as above | `app-v1-save-favourite-request.json` (`SaveFavouriteRequest`) |
 | `auth-v1` | `POST /auth/v1/otp` | mw-auth: `BodySchemaInterceptor` (cached bytes, the ones the device signs) | `auth-v1-otp-request.json` (`OtpRequest`) |
 | `auth-v1` | `POST /auth/v1/devices` | mw-auth, as above | `auth-v1-device-binding-request.json` (`DeviceBindingRequest`) |
 | `auth-v1` | `POST /auth/v1/sessions` | mw-auth, as above | `auth-v1-login-request.json` (`LoginRequest`) |

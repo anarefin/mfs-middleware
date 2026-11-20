@@ -218,6 +218,8 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 28 | [history cash] an agent cash-in is IN in the customer's history and OUT in the agent's | - |  |
 | 28 | [history merchant] a merchant payment is IN in the merchant's history | - |  |
 | 28 | [history] the history filters by direction, pages with hasMore and refuses bad parameters | - |  |
+| 28 | [history] the signed-in wallet saves a biller account and another wallet cannot see it | - |  |
+| 28 | [history] the signed-in wallet saves a favourite and another wallet cannot delete it | - |  |
 | 29 | [balance ussd] option 5 asks for the PIN and shows the available balance in English; no money moves | - |  | FR-10 |
 | 29 | [balance ussd] the balance check in Bangla shows the same figure | - |  | FR-10 |
 | 29 | [balance assertion ussd] a wrong PIN on the balance check is asked again and shows no balance | - |  | SEC-09, FR-10 |
@@ -229,6 +231,7 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 35 | [topup mock] ocs switched DOWN fails the top-up at once and is switched back UP | - |  |
 | 35 | [billpay admin] a maintenance message disables DESCO with the Bangla and English text | - |  |
 | 29 | [balance history] a balance check is not in the wallet history | - |  | SEC-10 |
+| 29 | [notify] the signed-in wallet reads its notification inbox and cannot mark another id read | - |  |
 | 36 | [p2p] the same payment under a new key within the window asks to confirm (MW-VAL-024); the confirmed resend completes | - |  | FR-05 |
 | 36 | [p2p] another amount within the window is no duplicate | - |  | FR-05 |
 | 36 | [p2p reversal] a key answered 200 replays that very body after a reversal; other content is 409 MW-IDEM-001 | - |  | FR-05 |
