@@ -1,0 +1,14 @@
+openapi: 3.1.0
+info:
+  title: mw-recon test
+  version: 1.0.0
+  description: >
+    Dev/test only (mw.recon.test-api.enabled). Pulls the trust bank's MT940 and MT942 so the API
+    suite can inject a mismatch and read the result. Key-auth at the test-only APISIX route.
+paths:
+  /test/v1/pull:
+    post:
+      operationId: pullStatements
+      responses:
+        "200":
+          description: The files that were new, and the ones already registered.

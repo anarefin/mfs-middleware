@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-recon/mw.recon.result.v1.schema.json",
+  "title": "mw.recon.result.v1",
+  "description": "One reconciliation run (ticket 126, FRS REC-03, REC-04). Counts per class and the open exceptions. Key: partnerId. mw-recon reports; it never posts money or changes a transaction. No in-repo consumer yet (contracts/EXTERNAL.yml).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "partnerId", "source", "fileName", "businessDate", "counts", "exceptions", "finishedAt"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "runId": { "type": "string", "format": "uuid" },
+    "partnerId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+    "source": { "enum": ["PARTNER", "TRUST_MT940", "TRUST_MT942"] },
+    "fileName": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "businessDate": { "type": "string", "format": "date" },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["MATCHED", "MISSING_IN_PARTNER", "MISSING_IN_UPAY", "AMOUNT_MISMATCH", "STATUS_MISMATCH"],
+      "properties": {
+        "MATCHED": { "type": "integer", "minimum": 0 },
+        "MISSING_IN_PARTNER": { "type": "integer", "minimum": 0 },
+        "MISSING_IN_UPAY": { "type": "integer", "minimum": 0 },
+        "AMOUNT_MISMATCH": { "type": "integer", "minimum": 0 },
+        "STATUS_MISMATCH": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["exceptionId", "class", "owner", "state"],
+        "properties": {
+          "exceptionId": { "type": "string", "format": "uuid" },
+          "class": { "enum": ["MISSING_IN_PARTNER", "MISSING_IN_UPAY", "AMOUNT_MISMATCH", "STATUS_MISMATCH"] },
+          "owner": { "enum": ["ops", "partner-ops"] },
+          "state": { "enum": ["OPEN", "ACTIONED", "RESOLVED"] },
+          "detail": { "type": "string", "minLength": 1 },
+          "txnId": { "type": "string", "format": "uuid" },
+          "partnerRef": { "type": "string" },
+          "reference": { "type": "string" },
+          "fileAmountMinor": { "type": "integer" },
+          "upayAmountMinor": { "type": "integer" },
+          "ledgerAmountMinor": { "type": "integer" }
+        }
+      }
+    },
+    "finishedAt": { "type": "string", "format": "date-time" }
+  }
+}

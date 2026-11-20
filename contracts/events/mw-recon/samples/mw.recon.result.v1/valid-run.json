@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "runId": "0196a1b2-0000-7000-8000-0000000000aa",
+  "partnerId": "billagg",
+  "source": "PARTNER",
+  "fileName": "settlement-20261120.csv",
+  "businessDate": "2026-11-20",
+  "counts": {
+    "MATCHED": 1,
+    "MISSING_IN_PARTNER": 1,
+    "MISSING_IN_UPAY": 1,
+    "AMOUNT_MISMATCH": 1,
+    "STATUS_MISMATCH": 1
+  },
+  "exceptions": [
+    {
+      "exceptionId": "0196a1b2-0000-7000-8000-0000000000bb",
+      "class": "MISSING_IN_UPAY",
+      "owner": "ops",
+      "state": "OPEN",
+      "partnerRef": "TB-EXTRA",
+      "fileAmountMinor": 1000
+    }
+  ],
+  "finishedAt": "2026-11-20T18:30:00Z"
+}

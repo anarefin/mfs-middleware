@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "partnerId": "billagg",
+  "source": "PARTNER",
+  "fileName": "settlement-20261120.csv",
+  "businessDate": "2026-11-20",
+  "counts": {
+    "MATCHED": 0,
+    "MISSING_IN_PARTNER": 0,
+    "MISSING_IN_UPAY": 0,
+    "AMOUNT_MISMATCH": 0,
+    "STATUS_MISMATCH": 0
+  },
+  "exceptions": [],
+  "finishedAt": "2026-11-20T18:30:00Z"
+}
