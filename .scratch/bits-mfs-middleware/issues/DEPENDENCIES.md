@@ -110,7 +110,10 @@
 112a-telco-ocs-profiles                     97,98,102         done     -        38 files +2043 −58     dc7c74e0
 112b-postpaid-amount                        112a              done     -        46 files +1372 −78     b79ccbd9
 112c-topup-matrix                           112b              done     -        31 files +1005 −27     266d341a  (T5 skipped: it only passes by waiting out the inquiry schedule. T11 is ticket 125. T12 is ticket 127)
-113-biller-catalogue                        98                open
+113-biller-catalogue                        98                split (113-split-decisions.md, 2026-11-20)
+113a-biller-catalogue-owner                 98                done     ~45m     43 files +2020 −40     0d0f506d..a79d4435
+113b-biller-channel-projections             113a              open
+113c-biller-amount-rule                     113a              in progress
 114-bill-aggregators                        113,97,102        open
 115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
 115a-merchant-adapter                       97,102            in progress
@@ -135,7 +138,10 @@
 124-mw-compliance-ekyc                      94,102,106        open
 125-aml-feed-actions                        124,123,96        open
 126-mw-recon-matching                       123,95            done     -        150 files, +10903 −38  62f06496
-127-mw-recon-reports                        126               open
+127-mw-recon-reports                        126               split (127-split-decisions.md, 2026-11-20)
+127a-recon-reports-queue                    126               done     18m      24 files +1281 −11     9ac2723a,aaf3660d
+127b-recon-exception-actions                127a              in progress
+127c-trust-job-suite                        127b              open
 128-mw-data-export                          123               done     -        189 files +12102 −46   9a1ccad6
 129-portal-bulk-sp                          95,116            open
 130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f

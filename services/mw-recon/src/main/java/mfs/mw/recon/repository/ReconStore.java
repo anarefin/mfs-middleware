@@ -21,6 +21,14 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class ReconStore {
 
+  /** One finding of a run, for the reports (ticket 127): its class and amount in poisha. */
+  public record FindingRow(String reconClass, long amountMinor) {}
+
+  /** One work-queue exception (ticket 127). */
+  public record ExceptionRow(UUID id, String reconClass, String detail, String owner, String partnerId, UUID txnId,
+      String partnerRef, String reference, Long fileAmountMinor, Long upayAmountMinor, Long ledgerAmountMinor,
+      String state, Instant createdAt, String explanation, String explainedBy, Instant explainedAt) {}
+
   /** A registered file. */
   public record FileHead(UUID id, String source, String filename, String partnerId, String status, LocalDate businessDate) {}
 
@@ -180,11 +188,11 @@ public class ReconStore {
       jdbc.update("""
           insert into recon_exception
             (id, run_id, file_id, class, detail, owner, txn_id, partner_ref, reference,
-             file_amount_minor, upay_amount_minor, ledger_amount_minor, state, created_at)
-          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?)
+             file_amount_minor, upay_amount_minor, ledger_amount_minor, state, created_at, partner_id)
+          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'OPEN', ?, (select partner_id from recon_run where id = ?))
           """, id, runId, fileId, finding.classification().name(), finding.detail(), finding.owner(), txnId,
           finding.partnerRef(), finding.reference(), finding.fileAmountMinor(), finding.upayAmountMinor(),
-          finding.ledgerAmountMinor(), Timestamp.from(at));
+          finding.ledgerAmountMinor(), Timestamp.from(at), runId);
     }
   }
 
@@ -203,6 +211,128 @@ public class ReconStore {
     return n == null ? 0 : n;
   }
 
+  /** The findings of the runs of one source for a partner whose file's business date is in [from, to]. */
+  public List<FindingRow> findingsFor(String partnerId, LocalDate from, LocalDate to, String source) {
+    return jdbc.query("""
+        select m.class, coalesce(m.file_amount_minor, m.upay_amount_minor, m.ledger_amount_minor, 0)
+        from match_result m
+        join recon_run r on r.id = m.run_id
+        join source_file f on f.id = r.file_id
+        where r.partner_id = ? and r.source = ? and f.business_date between ? and ?
+        """, (rs, n) -> new FindingRow(rs.getString(1), rs.getLong(2)), partnerId, source, from, to);
+  }
+
+  /** Partners with a run on that business date, for the scheduled daily report. */
+  public List<String> partnersOn(LocalDate day) {
+    return jdbc.queryForList("""
+        select distinct r.partner_id from recon_run r join source_file f on f.id = r.file_id
+        where f.business_date = ? order by 1
+        """, String.class, day);
+  }
+
+  public void saveReport(String partnerId, String kind, LocalDate from, LocalDate to, String format, byte[] content,
+      Instant at) {
+    jdbc.update("""
+        insert into report (id, partner_id, kind, from_date, to_date, format, content, created_at)
+        values (?, ?, ?, ?, ?, ?, ?, ?)
+        on conflict on constraint report_partner_day do update
+          set content = excluded.content, created_at = excluded.created_at
+        """, UUID.randomUUID(), partnerId, kind, from, to, format, content, Timestamp.from(at));
+  }
+
+  public byte[] storedReport(String partnerId, String kind, LocalDate from, LocalDate to, String format) {
+    return jdbc.query("""
+        select content from report where partner_id = ? and kind = ? and from_date = ? and to_date = ? and format = ?
+        """, (rs, n) -> rs.getBytes(1), partnerId, kind, from, to, format).stream().findFirst().orElse(null);
+  }
+
+  /** The work queue, oldest first; every filter is optional. {@code olderThan} keeps rows created before it. */
+  public List<ExceptionRow> exceptionQueue(String reconClass, String partnerId, String state, Instant olderThan,
+      int limit) {
+    StringBuilder sql = new StringBuilder(EXCEPTION_COLUMNS).append(" where 1 = 1");
+    List<Object> args = new ArrayList<>();
+    if (reconClass != null) {
+      sql.append(" and class = ?");
+      args.add(reconClass);
+    }
+    if (partnerId != null) {
+      sql.append(" and partner_id = ?");
+      args.add(partnerId);
+    }
+    if (state != null) {
+      sql.append(" and state = ?");
+      args.add(state);
+    }
+    if (olderThan != null) {
+      sql.append(" and created_at < ?");
+      args.add(Timestamp.from(olderThan));
+    }
+    sql.append(" order by created_at, id limit ?");
+    args.add(limit);
+    return jdbc.query(sql.toString(), (rs, n) -> exception(rs), args.toArray());
+  }
+
+  public ExceptionRow exception(UUID id) {
+    return jdbc.query(EXCEPTION_COLUMNS + " where id = ?", (rs, n) -> exception(rs), id).stream().findFirst()
+        .orElse(null);
+  }
+
+  /**
+   * Records the explanation while the exception is OPEN or EXPLAINED (OPEN becomes EXPLAINED; FRS 10.4 #7). An
+   * ACTIONED or RESOLVED exception is never rewritten: 0 rows.
+   */
+  public int explain(UUID id, String explanation, String operatorId, Instant at) {
+    return jdbc.update("""
+        update recon_exception set explanation = ?, explained_by = ?, explained_at = ?, state = 'EXPLAINED'
+        where id = ? and state in ('OPEN', 'EXPLAINED')
+        """, explanation, operatorId, Timestamp.from(at), id);
+  }
+
+  /** A run-less exception (the trust position, REC-07). */
+  public void insertStandaloneException(UUID id, String reconClass, String detail, String owner, String partnerId,
+      Long fileAmountMinor, Long upayAmountMinor, Instant at) {
+    jdbc.update("""
+        insert into recon_exception
+          (id, class, detail, owner, partner_id, file_amount_minor, upay_amount_minor, state, created_at)
+        values (?, ?, ?, ?, ?, ?, ?, 'OPEN', ?)
+        """, id, reconClass, detail, owner, partnerId, fileAmountMinor, upayAmountMinor, Timestamp.from(at));
+  }
+
+  public void setClosingBalance(UUID fileId, long closingMinor) {
+    jdbc.update("update source_file set closing_balance_minor = ? where id = ?", closingMinor, fileId);
+  }
+
+  /** The closing balance of the latest statement of that source for the business date, or null. */
+  public Long trustClosing(LocalDate day, String source) {
+    return jdbc.query("""
+        select closing_balance_minor from source_file
+        where source = ? and business_date = ? and closing_balance_minor is not null
+        order by received_at desc limit 1
+        """, (rs, n) -> rs.getLong(1), source, day).stream().findFirst().orElse(null);
+  }
+
+  public void saveTrustPosition(LocalDate day, long emoney, long trust, long difference, UUID exceptionId, Instant at) {
+    jdbc.update("""
+        insert into trust_position
+          (business_date, emoney_total_minor, trust_closing_minor, difference_minor, exception_id, computed_at)
+        values (?, ?, ?, ?, ?, ?)
+        on conflict (business_date) do update set emoney_total_minor = excluded.emoney_total_minor,
+          trust_closing_minor = excluded.trust_closing_minor, difference_minor = excluded.difference_minor,
+          exception_id = excluded.exception_id, computed_at = excluded.computed_at
+        """, day, emoney, trust, difference, exceptionId, Timestamp.from(at));
+  }
+
+  private static final String EXCEPTION_COLUMNS = """
+      select id, class, detail, owner, partner_id, txn_id, partner_ref, reference, file_amount_minor,
+        upay_amount_minor, ledger_amount_minor, state, created_at, explanation, explained_by, explained_at
+      from recon_exception""";
+
+  private static ExceptionRow exception(ResultSet rs) throws SQLException {
+    return new ExceptionRow(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3), rs.getString(4),
+        rs.getString(5), rs.getObject(6, UUID.class), rs.getString(7), rs.getString(8), rs.getObject(9, Long.class),
+        rs.getObject(10, Long.class), rs.getObject(11, Long.class), rs.getString(12), rs.getTimestamp(13).toInstant(),
+        rs.getString(14), rs.getString(15), rs.getTimestamp(16) == null ? null : rs.getTimestamp(16).toInstant());
+  }
 
   private static FileHead head(ResultSet rs) throws SQLException {
     return new FileHead(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3), rs.getString(4),

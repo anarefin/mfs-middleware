@@ -12,7 +12,7 @@
       "pattern": "^[a-z0-9-]+(/[A-Za-z0-9_.-]+)+$",
       "description": "<configType path>/<id>, e.g. partner/gp."
     },
-    "configType": { "enum": ["PARTNER", "ROUTE", "TEMPLATE", "USSD_MENU", "LIMIT", "FEATURE_FLAG", "ERROR_MAP", "ROUTING_RULE", "MSISDN_PREFIX", "MNP_OVERRIDE", "MAINTENANCE_MESSAGE"] },
+    "configType": { "enum": ["PARTNER", "ROUTE", "TEMPLATE", "USSD_MENU", "LIMIT", "FEATURE_FLAG", "ERROR_MAP", "ROUTING_RULE", "MSISDN_PREFIX", "MNP_OVERRIDE", "MAINTENANCE_MESSAGE", "BILLER"] },
     "change": { "enum": ["UPSERT", "DELETE"] },
     "version": {
       "type": "integer",
@@ -33,9 +33,51 @@
     {
       "if": { "properties": { "configType": { "const": "PARTNER" } }, "required": ["configType"] },
       "then": { "properties": { "value": { "$ref": "#/$defs/PartnerValue" } } }
+    },
+    {
+      "if": { "properties": { "configType": { "const": "BILLER" } }, "required": ["configType"] },
+      "then": { "properties": { "value": { "$ref": "#/$defs/BillerValue" } } }
     }
   ],
   "$defs": {
+    "BillerValue": {
+      "type": "object",
+      "description": "BILLER value (ticket 113, FRS FL-04, FL-05, ADM-05): one biller catalogue entry, configKey biller/<code>. mw-adapter-billpay keeps a read projection; mw-orchestrator enforces amountRule. A disabled biller is refused with maintenanceEn/maintenanceBn (PLT-043).",
+      "required": ["code", "nameEn", "nameBn", "category", "primaryAggregator", "fields", "amountRule", "billMonthRequired", "enabled"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z0-9_]{2,32}$" },
+        "nameEn": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "nameBn": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "category": { "enum": ["UTILITY", "OTHER"] },
+        "primaryAggregator": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+        "fallbackAggregator": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+        "fields": {
+          "type": "array",
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "required": ["name", "labelEn", "labelBn", "regex", "required"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9]{0,31}$" },
+              "labelEn": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "labelBn": { "type": "string", "minLength": 1, "maxLength": 100 },
+              "regex": { "type": "string", "minLength": 1, "maxLength": 200, "description": "Java regex in a strict grammar checked by mw-admin-api: optional ^, atoms (literal, [class], \\d, \\w, \\s, .) each with at most one quantifier (?, *, +, {n}, {m,n} with n <= 64), optional $; no groups, alternation, backreferences or lookarounds; at most 8 quantifiers, at most one of them variable-width (the rest {n}). Consumers match at most 64 characters of input." },
+              "required": { "type": "boolean" }
+            }
+          }
+        },
+        "amountRule": {
+          "enum": ["FIXED", "MINIMUM", "OPEN"],
+          "description": "FIXED: the paid amount equals the fetched amount; MINIMUM: at least minAmountMinor; OPEN: within minAmountMinor..maxAmountMinor (each bound optional)."
+        },
+        "minAmountMinor": { "type": "integer", "minimum": 0 },
+        "maxAmountMinor": { "type": "integer", "minimum": 0 },
+        "billMonthRequired": { "type": "boolean", "description": "The bill fetch carries billMonth (YYYYMM)." },
+        "enabled": { "type": "boolean" },
+        "maintenanceEn": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "maintenanceBn": { "type": "string", "minLength": 1, "maxLength": 500 }
+      }
+    },
     "PartnerValue": {
       "type": "object",
       "description": "PARTNER value: the adapters' partner record (spec 12.1, ADR D28), every field optional at this level; the adapter that owns the family checks the whole record and reports LIVE / REJECTED on mw.partner.route.status.v1. Additive fields of ticket 83: route, mappings, allowedHosts, family, dryRun. The old shape (template, operations) is gone since ticket 84 and refused. A record whose changedBy is system/rollback republishes the newest LIVE version after the current one was REJECTED (ticket 84).",

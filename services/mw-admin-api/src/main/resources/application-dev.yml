@@ -38,3 +38,8 @@ mw:
       - classpath:partner-seeds/dev/bank-premier.json
       - classpath:partner-seeds/dev/bank-nrbc.json
       # END bank profiles
+  # The dev biller catalogue (ticket 113): stored and published at version 1 for every code not in
+  # the catalogue yet (scheduler/BillerSeedJob).
+  billers:
+    seeds:
+      - classpath:biller-seeds/dev/billers.csv
