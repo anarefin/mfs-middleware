@@ -3,8 +3,9 @@ info:
   title: mw-recon internal
   version: 1.0.0
   description: >
-    Operator reprocess of one registered statement or settlement file (ticket 126). Not routed
-    at the edge. The action is audited on mw.audit.event.v1. It re-runs matching and never posts money.
+    Operator reprocess of one registered statement or settlement file (ticket 126), the recon reports and
+    the exception work queue (ticket 127). Not routed at the edge; mw-admin-api calls it. Reprocess is
+    audited on mw.audit.event.v1. Nothing here posts money or changes a transaction.
 paths:
   /internal/v1/recon/files/{id}/reprocess:
     post:
@@ -25,3 +26,125 @@ paths:
           description: The operator header is missing.
         "404":
           description: No such file.
+  /internal/v1/recon/reports:
+    get:
+      operationId: downloadReport
+      description: >
+        Per-partner recon report (ticket 127, FRS REC-05, REC-06): count and amount per class for the
+        Asia/Dhaka business dates from..to. DAILY reads the MT940 and partner-file runs, INTRADAY the MT942
+        runs. A stored daily report is returned as stored; anything else is computed on demand.
+      parameters:
+        - { name: partner, in: query, required: true, schema: { type: string, minLength: 1 } }
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - name: kind
+          in: query
+          required: false
+          schema: { type: string, enum: [DAILY, INTRADAY, daily, intraday], default: DAILY }
+        - name: format
+          in: query
+          required: false
+          schema: { type: string, enum: [csv, xlsx, pdf, CSV, XLSX, PDF], default: csv }
+      responses:
+        "200":
+          description: The report file (CSV, XLSX or PDF) as an attachment.
+          content:
+            text/csv: { schema: { type: string } }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: { schema: { type: string, format: binary } }
+            application/pdf: { schema: { type: string, format: binary } }
+        "400":
+          description: A missing or invalid parameter (MW-VAL-001).
+  /internal/v1/recon/exceptions:
+    get:
+      operationId: listExceptions
+      description: >
+        The exception work queue (ticket 127, UC-22), oldest first. Every filter is optional; minAgeHours
+        keeps exceptions at least that old. An action on an exception is a maker-checker change request in
+        mw-admin-api, never a call to mw-recon.
+      parameters:
+        - name: class
+          in: query
+          required: false
+          schema: { type: string, enum: [MISSING_IN_PARTNER, MISSING_IN_UPAY, AMOUNT_MISMATCH, STATUS_MISMATCH] }
+        - { name: partner, in: query, required: false, schema: { type: string } }
+        - name: state
+          in: query
+          required: false
+          schema: { type: string, enum: [OPEN, EXPLAINED, ACTIONED, RESOLVED] }
+        - { name: minAgeHours, in: query, required: false, schema: { type: integer, minimum: 0 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        "200":
+          description: The matching exceptions.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ReconException" } }
+  /internal/v1/recon/exceptions/{id}:
+    get:
+      operationId: getException
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The exception with its suggested action.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReconException" }
+        "404":
+          description: No such exception (MW-VAL-003).
+  /internal/v1/recon/exceptions/{id}/explanations:
+    post:
+      operationId: explainException
+      description: >
+        Records an explanation (FRS 10.4 criterion 7: every difference is resolved or explained) of an OPEN
+        or EXPLAINED exception, which becomes EXPLAINED; each explanation is audited on mw.audit.event.v1
+        (action recon.exception.explained). Nothing moves money.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Mw-Operator-Id, in: header, required: true, schema: { type: string, minLength: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [explanation]
+              additionalProperties: false
+              properties:
+                explanation: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        "200":
+          description: The explained exception.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReconException" }
+        "400":
+          description: A blank explanation or a missing operator header (MW-VAL-001).
+        "404":
+          description: No such exception (MW-VAL-003).
+        "409":
+          description: The exception is ACTIONED or RESOLVED and is not rewritten (MW-VAL-006).
+components:
+  schemas:
+    ReconException:
+      type: object
+      required: [id, reconClass, owner, state, createdAt, ageHours, suggestedAction]
+      properties:
+        id: { type: string, format: uuid }
+        reconClass: { type: string, enum: [MISSING_IN_PARTNER, MISSING_IN_UPAY, AMOUNT_MISMATCH, STATUS_MISMATCH] }
+        detail: { type: [string, "null"], description: "LEDGER_MISSING, TRUST_POSITION, ..." }
+        owner: { type: string }
+        partnerId: { type: [string, "null"] }
+        txnId: { type: [string, "null"] }
+        partnerRef: { type: [string, "null"] }
+        reference: { type: [string, "null"] }
+        fileAmountMinor: { type: [integer, "null"] }
+        upayAmountMinor: { type: [integer, "null"] }
+        ledgerAmountMinor: { type: [integer, "null"] }
+        state: { type: string, enum: [OPEN, EXPLAINED, ACTIONED, RESOLVED] }
+        createdAt: { type: string, format: date-time }
+        ageHours: { type: integer }
+        suggestedAction: { type: string, enum: [FORCE_COMPLETE, REVERSE, RAISE_DISPUTE, ACCEPT_AS_EXPLAINED] }
+        explanation: { type: [string, "null"] }
+        explainedBy: { type: [string, "null"] }
+        explainedAt: { type: [string, "null"], format: date-time }

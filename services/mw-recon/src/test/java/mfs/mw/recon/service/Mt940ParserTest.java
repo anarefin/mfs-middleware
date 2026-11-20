@@ -79,6 +79,13 @@ class Mt940ParserTest {
     });
   }
 
+  @Test
+  void theClosingBalanceIsField62fInPoisha() {
+    assertThat(parser.closingBalanceMinor(HAND_MT940)).isEqualTo(89_950L);
+    assertThat(parser.closingBalanceMinor(HAND_MT940.replace(":62F:C", ":62F:D"))).isEqualTo(-89_950L);
+    assertThat(parser.closingBalanceMinor(generatorMt940())).isNull();
+  }
+
   /** The :61:/:86: layout {@code TrustStatementGenerator} writes (ticket 123). */
   private static String generatorMt940() {
     MT940 mt = new MT940("TRUSTBDDXXXX", "BITSBDDHXXXX");
