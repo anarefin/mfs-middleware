@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.UUID;
 import mfs.mw.compliance.client.EcNidClient;
 import mfs.mw.compliance.config.ComplianceProperties;
+import mfs.mw.compliance.dto.Caller;
 import mfs.mw.compliance.dto.Channel;
 import mfs.mw.compliance.dto.ConsentRequest;
 import mfs.mw.compliance.dto.CreateApplicationRequest;
@@ -59,7 +60,7 @@ class ConsentBeforeCallTest {
     when(store.documentTypes(id)).thenReturn(List.of(DocumentType.NID_FRONT, DocumentType.NID_BACK, DocumentType.SELFIE));
     when(store.consentExists(consentId)).thenReturn(false);
 
-    MwException e = catchThrowableOfType(MwException.class, () -> service.submit(id));
+    MwException e = catchThrowableOfType(MwException.class, () -> service.submit(id, Caller.wallet("mw-app-gateway", "01712345678")));
 
     assertThat(e.code()).isEqualTo(ErrorCodes.VAL_CONSENT_MISSING);
     verifyNoInteractions(ec);
@@ -72,7 +73,7 @@ class ConsentBeforeCallTest {
     CreateApplicationRequest req = new CreateApplicationRequest("01712345678", Channel.DSO, "AGT-7",
         "1990123456789", LocalDate.of(1990, 5, 17), "Rahim Uddin", null, new ConsentRequest("EKYC_ONBOARDING", null));
 
-    service.create(req, "corr-1");
+    service.create(req, Caller.agent("mw-app-gateway", "AGT-7"), "corr-1");
 
     InOrder order = inOrder(store);
     order.verify(store).insertConsent(any());

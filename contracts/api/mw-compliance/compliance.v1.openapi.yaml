@@ -10,6 +10,17 @@ info:
     mw-admin-api for the console). No or bad token 401 MW-AUTH-001; another client 403 MW-AUTH-002. Every
     error is the 5.3 envelope.
 
+    Scope (security review): a channel client names the end user its app token authenticated in
+    `X-Mw-Subject-Type` (`WALLET`: the customer; `AGENT`: the assisting DSO or agent) and `X-Mw-Subject-Id`;
+    without them 403 MW-AUTH-002. It then sees only the applications of that wallet, or the ones that agent
+    assisted: any other id is 404 MW-VAL-003, as if it did not exist. A customer applies for their own wallet on
+    channel APP only; an agent applies as itself (its id replaces `agentId`); otherwise 403 MW-AUTH-002. Only
+    the clients of `mw.compliance.unscoped-clients` (mw-admin-api) read any application without a subject.
+
+    NID reuse: when another wallet already holds the same NID (an application MATCHED, APPROVED or being
+    checked), submit makes no EC call and issues no level: the application is MANUAL_REVIEW with reason
+    NID_IN_USE, for an operator (ticket 134).
+
     Flow: create the application (the consent row commits with it, CMP-04), upload the three images
     (NID_FRONT, NID_BACK, SELFIE: JPEG or PNG, at most 2 MB each, the type checked against the bytes),
     then submit. Submit calls the Election Commission NID service with the consent id and compares the
@@ -39,6 +50,8 @@ paths:
       summary: Record the consent and open an eKYC application
       parameters:
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/SubjectType"
+        - $ref: "#/components/parameters/SubjectId"
       requestBody:
         required: true
         content:
@@ -61,6 +74,8 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ApplicationId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/SubjectType"
+        - $ref: "#/components/parameters/SubjectId"
       requestBody:
         required: true
         content:
@@ -85,6 +100,8 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ApplicationId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/SubjectType"
+        - $ref: "#/components/parameters/SubjectId"
       responses:
         "200":
           description: MATCHED (with kycLevel) or MISMATCHED (with reason)
@@ -104,6 +121,8 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ApplicationId"
         - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/SubjectType"
+        - $ref: "#/components/parameters/SubjectId"
       responses:
         "200":
           description: The application
@@ -125,6 +144,18 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    SubjectType:
+      name: X-Mw-Subject-Type
+      in: header
+      required: false
+      description: Required for every client but mw-admin-api
+      schema: { type: string, enum: [WALLET, AGENT] }
+    SubjectId:
+      name: X-Mw-Subject-Id
+      in: header
+      required: false
+      description: The wallet id (WALLET) or the DSO/agent id (AGENT) from the app token
+      schema: { type: string, maxLength: 64 }
     CorrelationId:
       name: X-Correlation-Id
       in: header
@@ -191,11 +222,11 @@ components:
         channel: { $ref: "#/components/schemas/Channel" }
         agentId: { type: string }
         consentId: { type: string, format: uuid }
-        status: { type: string, enum: [SUBMITTED, EC_CALLED, MATCHED, MISMATCHED, FAILED, APPROVED] }
+        status: { type: string, enum: [SUBMITTED, EC_CALLED, MATCHED, MISMATCHED, FAILED, MANUAL_REVIEW, APPROVED] }
         nidMasked: { type: string, description: "Last three digits only (****789)" }
         matchScore: { type: number, minimum: 0, maximum: 1 }
         kycLevel: { type: string, enum: [BASIC, FULL] }
-        reason: { type: string, enum: [DOB_MISMATCH, NID_NOT_FOUND] }
+        reason: { type: string, enum: [DOB_MISMATCH, NID_NOT_FOUND, NID_IN_USE] }
         errorCode: { type: string, description: "FAILED: the error of the last submit" }
         retryable: { type: boolean, description: "FAILED: submit again" }
         documents:

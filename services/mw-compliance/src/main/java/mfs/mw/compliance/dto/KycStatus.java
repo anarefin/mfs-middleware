@@ -7,5 +7,7 @@ public enum KycStatus {
   MATCHED,
   MISMATCHED,
   FAILED,
+  /** Held for an operator (ticket 134): e.g. the NID is already verified for another wallet. No EC call, no level. */
+  MANUAL_REVIEW,
   APPROVED
 }

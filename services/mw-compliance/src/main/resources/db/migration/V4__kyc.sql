@@ -22,7 +22,7 @@ CREATE TABLE kyc_application (
   agent_id       text,
   consent_id     uuid        NOT NULL REFERENCES consent (id),
   status         text        NOT NULL
-                 CHECK (status IN ('SUBMITTED', 'EC_CALLED', 'MATCHED', 'MISMATCHED', 'FAILED', 'APPROVED')),
+                 CHECK (status IN ('SUBMITTED', 'EC_CALLED', 'MATCHED', 'MISMATCHED', 'FAILED', 'MANUAL_REVIEW', 'APPROVED')),
   nid_token      text        NOT NULL,
   nid_last3      text        NOT NULL,
   nid_enc        jsonb       NOT NULL,

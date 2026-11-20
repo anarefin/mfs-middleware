@@ -124,18 +124,35 @@ class KycApplicationIT {
                 + "\",\"fatherName\":\"Karim Uddin\",\"motherName\":\"Amena Begum\",\"address\":\"Dhaka\"}")));
   }
 
+  static final String GATEWAY = "mw-app-gateway";
+  static final String AGENT = "DSO-17";
+
+  /** As mw-app-gateway on behalf of the assisting DSO {@link #AGENT}. */
   HttpResponse<String> call(String method, String path, String body) throws Exception {
+    return callAs(GATEWAY, "AGENT", AGENT, method, path, body);
+  }
+
+  HttpResponse<String> callAs(String client, String subjectType, String subjectId, String method, String path,
+      String body) throws Exception {
     HttpRequest.Builder b = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
-        .header("Authorization", InternalTokens.bearer("mw-app-gateway"))
+        .header("Authorization", InternalTokens.bearer(client))
         .header("Content-Type", "application/json");
+    if (subjectType != null) {
+      b = b.header("X-Mw-Subject-Type", subjectType).header("X-Mw-Subject-Id", subjectId);
+    }
     b = body == null ? b.method(method, HttpRequest.BodyPublishers.noBody())
         : b.method(method, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
     return http.send(b.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
   }
 
   String apply(String nid, String nameEn) throws Exception {
+    return apply("01712345678", nid, nameEn);
+  }
+
+  /** A DSO-assisted application of {@code wallet}, with the three images. */
+  String apply(String wallet, String nid, String nameEn) throws Exception {
     HttpResponse<String> res = call("POST", "/internal/v1/kyc/applications", json.writeValueAsString(Map.of(
-        "walletId", "01712345678", "channel", "DSO", "agentId", "DSO-17", "nid", nid, "dob", "1990-05-17",
+        "walletId", wallet, "channel", "DSO", "agentId", AGENT, "nid", nid, "dob", "1990-05-17",
         "nameEn", nameEn, "nameBn", NAME_BN, "consent", Map.of("purpose", "EKYC_ONBOARDING"))));
     assertThat(res.statusCode()).as(res.body()).isEqualTo(201);
     String id = json.readTree(res.body()).path("applicationId").asString();
@@ -245,14 +262,54 @@ class KycApplicationIT {
     assertThat(EC.getAllServeEvents()).isEmpty();
   }
 
+  /** Security review: no IDOR. Another customer or agent gets 404; only mw-admin-api looks up unscoped. */
+  @Test
+  void onlyTheOwnerTheAssistingAgentOrTheConsoleSeesAnApplication() throws Exception {
+    String id = apply("1990123456444", NAME_EN);
+    String path = "/internal/v1/kyc/applications/" + id;
+
+    assertThat(callAs(GATEWAY, "WALLET", "01712345678", "GET", path, null).statusCode()).isEqualTo(200);
+    assertThat(callAs(GATEWAY, "AGENT", AGENT, "GET", path, null).statusCode()).isEqualTo(200);
+    assertThat(callAs(GATEWAY, "WALLET", "01812345678", "GET", path, null).statusCode()).isEqualTo(404);
+    assertThat(callAs(GATEWAY, "AGENT", "DSO-99", "GET", path, null).statusCode()).isEqualTo(404);
+    assertThat(callAs(GATEWAY, "AGENT", "DSO-99", "POST", path + "/submit", null).statusCode()).isEqualTo(404);
+    assertThat(callAs(GATEWAY, "AGENT", "DSO-99", "POST", path + "/documents", json.writeValueAsString(Map.of(
+        "type", "SELFIE", "contentType", "image/jpeg", "content", Base64.getEncoder().encodeToString(JPEG)))).statusCode())
+        .isEqualTo(404);
+    // A channel that names no end user is refused; the console reads unscoped.
+    assertThat(callAs(GATEWAY, null, null, "GET", path, null).statusCode()).isEqualTo(403);
+    assertThat(callAs("mw-admin-api", null, null, "GET", path, null).statusCode()).isEqualTo(200);
+    assertThat(EC.getAllServeEvents()).isEmpty();
+  }
+
+  /** Security review: an NID already verified for another wallet goes to manual review, no EC call, no level. */
+  @Test
+  void anNidAnotherWalletHoldsGoesToManualReview() throws Exception {
+    String nid = "1990123456333";
+    ecKnows(nid, "1990-05-17", "RAHIM UDDIN", NAME_BN);
+    String first = apply("01712345678", nid, NAME_EN);
+    assertThat(json.readTree(call("POST", "/internal/v1/kyc/applications/" + first + "/submit", null).body())
+        .path("status").asString()).isEqualTo("MATCHED");
+
+    String second = apply("01912345678", nid, NAME_EN);
+    JsonNode body = json.readTree(call("POST", "/internal/v1/kyc/applications/" + second + "/submit", null).body());
+
+    assertThat(body.path("status").asString()).isEqualTo("MANUAL_REVIEW");
+    assertThat(body.path("reason").asString()).isEqualTo("NID_IN_USE");
+    assertThat(body.has("kycLevel")).isFalse();
+    assertThat(outboxRows(second)).isZero();
+    EC.verify(1, postRequestedFor(urlEqualTo("/ec/v1/nid/verify")));
+  }
+
   @Test
   void submitBeforeEveryImageIsRefused() throws Exception {
-    HttpResponse<String> res = call("POST", "/internal/v1/kyc/applications", json.writeValueAsString(Map.of(
-        "walletId", "01712345679", "channel", "APP", "nid", NID, "dob", "1990-05-17", "nameEn", NAME_EN,
-        "consent", Map.of("purpose", "EKYC_ONBOARDING"))));
+    String self = "01712345679";
+    HttpResponse<String> res = callAs(GATEWAY, "WALLET", self, "POST", "/internal/v1/kyc/applications",
+        json.writeValueAsString(Map.of("walletId", self, "channel", "APP", "nid", NID, "dob", "1990-05-17",
+            "nameEn", NAME_EN, "consent", Map.of("purpose", "EKYC_ONBOARDING"))));
     String id = json.readTree(res.body()).path("applicationId").asString();
 
-    HttpResponse<String> submit = call("POST", "/internal/v1/kyc/applications/" + id + "/submit", null);
+    HttpResponse<String> submit = callAs(GATEWAY, "WALLET", self, "POST", "/internal/v1/kyc/applications/" + id + "/submit", null);
 
     assertThat(submit.statusCode()).isEqualTo(409);
     assertThat(json.readTree(submit.body()).path("code").asString()).isEqualTo("MW-VAL-022");

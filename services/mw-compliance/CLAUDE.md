@@ -25,6 +25,15 @@ Compliance domain service (ADR D32; no Camel: outbound calls are `RestClient` + 
   `shedlock`.
 - Internal API `/internal/**`: realm `services` JWT (`aud` mw-compliance; `azp` mw-app-gateway,
   mw-admin-api: `config/SecurityConfig`), and mTLS when `mw.tls.enabled` (server `client-auth: need`).
+- Scope (security review): `dto/Caller`. A client outside `mw.compliance.unscoped-clients` (mw-admin-api)
+  must send `X-Mw-Subject-Type` WALLET|AGENT and `X-Mw-Subject-Id` (the app token's customer wallet or
+  assisting agent), else 403; it sees only that wallet's or that agent's applications, any other id 404
+  (`KycApplicationService.visible`, `KycAccessTest`). A customer applies for their own wallet on APP only; an
+  agent's id replaces `agentId`.
+- NID reuse: in the submit transaction, under an advisory lock on the token, an NID another wallet holds
+  (EC_CALLED, MATCHED, APPROVED) makes the application MANUAL_REVIEW, reason NID_IN_USE: no EC call, no level.
+- Open product decision: a DOB-only match (name below the threshold) auto-issues BASIC and publishes
+  `mw.kyc.completed.v1`, as the ticket's rule table says; not changed pending a product call.
 - Planned: ticket 124b (channel routes in mw-app-gateway, KYC level on the core, EC mock in mw-simulators,
   compose/provision/Keycloak/mw-crypto authz wiring, Newman folder 64); ticket 125 the AML feed (parties
   HMAC-SHA256-tokenised under a Vault key: add `/internal/v1/hmac/sign` to `client/CryptoClient`).

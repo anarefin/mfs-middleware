@@ -13,7 +13,15 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * from the EC mock to the real service is configuration only.
  */
 @ConfigurationProperties("mw.compliance")
-public record ComplianceProperties(Kyc kyc, Ec ec, Crypto crypto) {
+public record ComplianceProperties(Kyc kyc, Ec ec, Crypto crypto, Set<String> unscopedClients) {
+
+  /**
+   * {@code unscoped-clients}: service clients ({@code azp}) that may read any application (mw-admin-api, the
+   * console). Every other client must name the authenticated end user ({@code X-Mw-Subject-Type/-Id}).
+   */
+  public ComplianceProperties {
+    unscopedClients = Set.copyOf(unscopedClients == null ? Set.of() : unscopedClients);
+  }
 
   /**
    * @param nameThreshold normalised name similarity (0..1) at or above which an exact-DOB match is FULL
@@ -41,6 +49,7 @@ public record ComplianceProperties(Kyc kyc, Ec ec, Crypto crypto) {
             List.of(DocumentType.NID_FRONT, DocumentType.NID_BACK, DocumentType.SELFIE)),
         new Ec(URI.create("http://mw-simulators:8080"), "mw-compliance", "", Duration.ofSeconds(2), Duration.ofSeconds(5)),
         new Crypto(URI.create("https://mw-crypto:8080"), URI.create("http://keycloak:8080/realms/services/protocol/openid-connect/token"),
-            "mw-compliance", "", Duration.ofSeconds(2), Duration.ofSeconds(2)));
+            "mw-compliance", "", Duration.ofSeconds(2), Duration.ofSeconds(2)),
+        Set.of("mw-admin-api"));
   }
 }

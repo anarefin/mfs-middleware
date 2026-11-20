@@ -189,6 +189,9 @@ management:
 
 mw:
   compliance:
+    # Only these service clients look up any application; a channel (mw-app-gateway) must pass the
+    # authenticated customer wallet or agent in X-Mw-Subject-Type / X-Mw-Subject-Id (security review).
+    unscoped-clients: mw-admin-api
     kyc:
       # Match rules (ticket 124): exact DOB and normalised name similarity >= this is FULL, DOB only BASIC.
       name-threshold: ${MW_COMPLIANCE_NAME_THRESHOLD:0.85}

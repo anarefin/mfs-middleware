@@ -44,3 +44,12 @@ level + stack wiring + Newman). Split as the orchestrator suggested:
 
 Ticket 125 (AML feed) builds on this module: parties HMAC-SHA256-tokenised under a Vault key; `client/CryptoClient`
 is where `/internal/v1/hmac/sign` (purpose `HMAC_<use>`) goes.
+
+## Security review follow-up (2026-11-20, in 124a)
+
+- IDOR fixed: channel callers name the end user in `X-Mw-Subject-Type` / `X-Mw-Subject-Id`; other ids are 404; only
+  mw-admin-api (`mw.compliance.unscoped-clients`) reads unscoped. **124b must make mw-app-gateway send these headers**
+  from the app token (customer wallet, or DSO/agent id).
+- NID reuse: another wallet holding the NID (EC_CALLED/MATCHED/APPROVED) -> MANUAL_REVIEW, reason NID_IN_USE, no EC
+  call, no level. Checked at submit (the gate before the EC call), not at create.
+- **Open product decision**: a DOB-only match auto-issues BASIC (ticket rule table). Left as is.

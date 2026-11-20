@@ -43,6 +43,24 @@ public class KycStore {
         .query(Long.class).single() > 0;
   }
 
+  /**
+   * Whether another wallet already holds this NID: an application of another wallet with the same token that is
+   * MATCHED, APPROVED or being checked (EC_CALLED). Call inside the transaction that moves to EC_CALLED, after
+   * {@link #lockNid}, so two wallets cannot pass it at once.
+   */
+  public boolean nidHeldByAnotherWallet(String nidToken, String walletId) {
+    return jdbc.sql("""
+        SELECT count(*) FROM kyc_application WHERE nid_token = :token AND wallet_id <> :wallet
+          AND status IN ('EC_CALLED', 'MATCHED', 'APPROVED')""")
+        .param("token", nidToken).param("wallet", walletId).query(Long.class).single() > 0;
+  }
+
+  /** Serialises submits of one NID token for the rest of the transaction. */
+  public void lockNid(String nidToken) {
+    jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:token, 0))").param("token", nidToken)
+        .query((rs, n) -> 1).list();
+  }
+
   public void insertApplication(KycApplication a) {
     jdbc.sql("""
         INSERT INTO kyc_application (id, wallet_id, channel, agent_id, consent_id, status, nid_token, nid_last3,

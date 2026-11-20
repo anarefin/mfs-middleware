@@ -15,6 +15,8 @@ import java.util.UUID;
 import mfs.mw.compliance.client.EcNidClient;
 import mfs.mw.compliance.config.ComplianceProperties;
 import mfs.mw.compliance.dto.ApplicationView;
+import mfs.mw.compliance.dto.Caller;
+import mfs.mw.compliance.dto.Channel;
 import mfs.mw.compliance.dto.CreateApplicationRequest;
 import mfs.mw.compliance.dto.DocumentRequest;
 import mfs.mw.compliance.dto.DocumentType;
@@ -60,6 +62,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class KycApplicationService {
 
   public static final String TOPIC = "mw.kyc.completed.v1";
+  /** MANUAL_REVIEW reason: another wallet already holds this NID (matched, approved or being checked). */
+  public static final String NID_IN_USE = "NID_IN_USE";
   /** An application left EC_CALLED longer than this (a crash mid-call) may be submitted again. */
   static final Duration STALE_EC_CALL = Duration.ofMinutes(2);
 
@@ -87,15 +91,24 @@ public class KycApplicationService {
     this.kyc = props.kyc();
   }
 
-  public ApplicationView create(CreateApplicationRequest req, String correlationId) {
+  public ApplicationView create(CreateApplicationRequest req, Caller caller, String correlationId) {
     if (blank(req.nameEn()) && blank(req.nameBn())) {
       throw new MwException(ErrorCodes.VAL_INVALID, "nameEn or nameBn is required");
     }
     Instant now = clock.instant();
     UUID consentId = UUID.randomUUID();
     UUID id = UUID.randomUUID();
-    String agentId = req.channel() == mfs.mw.compliance.dto.Channel.APP ? null : req.agentId();
-    if (agentId == null && req.channel() != mfs.mw.compliance.dto.Channel.APP) {
+    if (caller.subject() == Caller.Subject.WALLET
+        && (req.channel() != Channel.APP || !req.walletId().equals(caller.subjectId()))) {
+      throw forbidden("A customer applies for their own wallet only");
+    }
+    String requested = req.channel() == Channel.APP ? null : req.agentId();
+    if (caller.subject() == Caller.Subject.AGENT
+        && (req.channel() == Channel.APP || (requested != null && !requested.equals(caller.subjectId())))) {
+      throw forbidden("An agent applies as itself on an assisted channel only");
+    }
+    String agentId = caller.subject() == Caller.Subject.AGENT ? caller.subjectId() : requested;
+    if (agentId == null && req.channel() != Channel.APP) {
       throw new MwException(ErrorCodes.VAL_INVALID, "agentId is required on an assisted channel");
     }
     String row = "kyc_application/" + id + "/";
@@ -116,8 +129,8 @@ public class KycApplicationService {
     return view(app, List.of());
   }
 
-  public DocumentView addDocument(UUID id, DocumentRequest req) {
-    KycApplication app = find(id);
+  public DocumentView addDocument(UUID id, DocumentRequest req, Caller caller) {
+    KycApplication app = find(id, caller);
     if (app.status() != KycStatus.SUBMITTED && app.status() != KycStatus.FAILED) {
       throw state("Documents can no longer be changed");
     }
@@ -140,9 +153,9 @@ public class KycApplicationService {
     return new DocumentView(docId, id, req.type(), bytes.length, sha);
   }
 
-  public ApplicationView submit(UUID id) {
+  public ApplicationView submit(UUID id, Caller caller) {
     KycApplication app = tx.execute(s -> {
-      KycApplication a = store.lockApplication(id).orElseThrow(() -> notFound(id));
+      KycApplication a = store.lockApplication(id).filter(x -> visible(x, caller)).orElseThrow(() -> notFound(id));
       boolean staleCall = a.status() == KycStatus.EC_CALLED
           && a.updatedAt().plus(STALE_EC_CALL).isBefore(clock.instant());
       if (a.status() != KycStatus.SUBMITTED && a.status() != KycStatus.FAILED && !staleCall) {
@@ -157,9 +170,21 @@ public class KycApplicationService {
       if (!store.consentExists(a.consentId())) {
         throw new MwException(ErrorCodes.VAL_CONSENT_MISSING, "No consent recorded").withStatus(HttpStatus.CONFLICT);
       }
+      // Security review: an NID another wallet already holds is never auto-issued a level; an operator decides
+      // (ticket 134). The advisory lock keeps two wallets from passing this check at once.
+      store.lockNid(a.nidToken());
+      if (store.nidHeldByAnotherWallet(a.nidToken(), a.walletId())) {
+        store.recordOutcome(id, KycStatus.MANUAL_REVIEW, null, 0.0, null, NID_IN_USE, clock.instant());
+        return null;
+      }
       store.updateStatus(id, KycStatus.EC_CALLED, null, clock.instant());
       return a;
     });
+    if (app == null) {
+      log.atWarn().addKeyValue("event", "kyc.application.decided").addKeyValue("status", "MANUAL_REVIEW")
+          .addKeyValue("reason", NID_IN_USE).log("KYC application {} held for review: NID in use", id);
+      return get(id, caller);
+    }
     MatchResult result;
     Optional<EcPerson> person;
     try {
@@ -189,15 +214,27 @@ public class KycApplicationService {
     });
     log.atInfo().addKeyValue("event", "kyc.application.decided").addKeyValue("status", status.name())
         .log("KYC application {} {}", id, status);
-    return get(id);
+    return get(id, caller);
   }
 
-  public ApplicationView get(UUID id) {
-    return view(find(id), store.documentTypes(id));
+  public ApplicationView get(UUID id, Caller caller) {
+    return view(find(id, caller), store.documentTypes(id));
   }
 
-  private KycApplication find(UUID id) {
-    return store.findApplication(id).orElseThrow(() -> notFound(id));
+  /** The application if this caller may see it; another wallet's or agent's is 404, as if it did not exist. */
+  private KycApplication find(UUID id, Caller caller) {
+    return store.findApplication(id).filter(a -> visible(a, caller)).orElseThrow(() -> notFound(id));
+  }
+
+  /** The unscoped caller (mw-admin-api) sees all; a customer their wallet's; an agent the ones it assisted. */
+  static boolean visible(KycApplication a, Caller caller) {
+    if (caller.isUnscoped()) {
+      return true;
+    }
+    return switch (caller.subject()) {
+      case WALLET -> a.walletId().equals(caller.subjectId());
+      case AGENT -> caller.subjectId().equals(a.agentId());
+    };
   }
 
   private static ApplicationView view(KycApplication a, List<DocumentType> docs) {
@@ -236,6 +273,10 @@ public class KycApplicationService {
 
   private static MwException notFound(UUID id) {
     return new MwException(ErrorCodes.VAL_NOT_FOUND, "No such application").withStatus(HttpStatus.NOT_FOUND);
+  }
+
+  private static MwException forbidden(String message) {
+    return new MwException(ErrorCodes.AUTH_FORBIDDEN, message).withStatus(HttpStatus.FORBIDDEN);
   }
 
   private static MwException state(String message) {
