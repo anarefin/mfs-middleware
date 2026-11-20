@@ -65,6 +65,24 @@ test_log_scan_still_finds_an_msisdn_next_to_a_uuid() {
   assert_out_contains "FINDING msisdn"
 }
 
+# Ticket 117e: a bank account number is masked to its last 4 everywhere (FRS UC-14/15, root CLAUDE.md
+# "Masking"): a field named for an account, or a BANK_ACCOUNT party id, holding 6+ digits is a finding.
+test_log_scan_finds_an_unmasked_bank_account_number() {
+  assert_ok scan_lines \
+    '{"accountNumber":"****7890","account":"****0123","creditParty":{"type":"BANK_ACCOUNT","id":"****7890"}}' \
+    '{"accountLast4":"7890","accountId":"0b5e0c2a-3b4d-4e5f-8a7b-017123456789","account_lookup":"AbCd"}'
+  assert_out_contains "no PIN"
+  assert_fails scan_lines '{"accountNumber":"1234567890"}'
+  assert_out_contains "FINDING account logs.txt:1"
+  assert_out_lacks "1234567890"
+  assert_fails scan_lines 'account_number=2001000101 bank=dbbl'
+  assert_out_contains "FINDING account"
+  assert_fails scan_lines '{"debitParty":{"type":"BANK_ACCOUNT","id":"1234567890123"}}'
+  assert_out_contains "FINDING account"
+  assert_fails scan_lines '{"creditParty":{"id":"3001000101","type":"BANK_ACCOUNT"}}'
+  assert_out_contains "FINDING account"
+}
+
 test_log_scan_finds_a_plain_pin_and_any_pin_ciphertext() {
   assert_fails scan_lines '{"pin":"1234"}'
   assert_out_contains "FINDING pin"

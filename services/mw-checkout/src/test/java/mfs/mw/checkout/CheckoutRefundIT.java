@@ -1,6 +1,13 @@
 package mfs.mw.checkout;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -10,6 +17,7 @@ import java.util.UUID;
 import mfs.mw.checkout.dto.SessionStatus;
 import mfs.mw.checkout.entity.CheckoutSession;
 import mfs.mw.checkout.entity.IpnDelivery;
+import mfs.mw.checkout.messaging.EventPublisher;
 import mfs.mw.checkout.messaging.OrchestratorStub;
 import mfs.mw.checkout.repository.IpnDeliveryRepository;
 import mfs.mw.checkout.repository.SessionRepository;
@@ -26,6 +34,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tools.jackson.databind.JsonNode;
@@ -59,6 +68,9 @@ class CheckoutRefundIT {
   private final IpnDeliveryRepository deliveries;
   private final JdbcClient jdbc;
   private OrchestratorStub orchestrator;
+
+  @MockitoSpyBean
+  EventPublisher publisher;
 
   @Autowired
   CheckoutRefundIT(
@@ -153,6 +165,66 @@ class CheckoutRefundIT {
         .param(UUID.fromString(p.sessionId())).query(Long.class).single()).isEqualTo(1);
   }
 
+  /**
+   * M9 review (FL-06): Kafka stored the REVERSAL but the send timed out. The refund row stays PENDING
+   * (never deleted), the orchestrator's final status settles it, and the merchant's retry with the
+   * same key answers that refund: counted, one IPN, one request.
+   */
+  @Test
+  void aRefundWhoseSendTimedOutAfterKafkaStoredItIsSettledNotLost() throws Exception {
+    Paid p = paid(5_000);
+    String key = "r-" + UUID.randomUUID();
+    doAnswer(inv -> {
+      inv.callRealMethod();
+      throw new IllegalStateException("ack timed out");
+    }).when(publisher).publish(eq("mw.txn.request.v1"), anyString(), any(), any(), anyMap());
+    try {
+      assertThat(refund(MERCHANT, p.sessionId(), key, 2_000)).hasStatus(503);
+    } finally {
+      reset(publisher);
+    }
+    for (long end = System.nanoTime() + Duration.ofSeconds(20).toNanos();
+        !"COMPLETED".equals(refundStatus(p.sessionId())) && System.nanoTime() < end; ) {
+      Thread.sleep(50);
+    }
+
+    MvcTestResult retry = refund(MERCHANT, p.sessionId(), key, 2_000);
+    assertThat(retry).hasStatus(200);
+    assertThat(body(retry).path("status").asString()).isEqualTo("COMPLETED");
+    String refundId = body(retry).path("refundId").asString();
+    assertThat(requestsOf(refundId)).hasSize(1);
+    assertThat(deliveries.findByRefund(UUID.fromString(refundId))).hasSize(1);
+    assertThat(body(http.get().uri("/checkout/v1/payments/{id}/refunds", p.sessionId())
+        .header("X-Mw-Merchant-Id", MERCHANT).exchange()).path("refunded").path("valueMinor").asLong()).isEqualTo(2_000);
+  }
+
+  /**
+   * M9 review (FL-06): Kafka refused the REVERSAL (nothing stored). The row stays PENDING and the
+   * merchant's retry with the same key sends the same refund (same refundId, same key) again.
+   */
+  @Test
+  void aRefundKafkaRefusedIsSentAgainUnderTheSameRefundIdOnTheRetry() throws Exception {
+    Paid p = paid(5_000);
+    String key = "r-" + UUID.randomUUID();
+    doThrow(new IllegalStateException("kafka down"))
+        .when(publisher).publish(eq("mw.txn.request.v1"), anyString(), any(), any(), anyMap());
+    try {
+      assertThat(refund(MERCHANT, p.sessionId(), key, 2_000)).hasStatus(503);
+    } finally {
+      reset(publisher);
+    }
+    assertThat(refundStatus(p.sessionId())).isEqualTo("PENDING");
+    String refundId = jdbc.sql("select refund_id from refund where session_id = ?")
+        .param(UUID.fromString(p.sessionId())).query(UUID.class).single().toString();
+
+    MvcTestResult retry = refund(MERCHANT, p.sessionId(), key, 2_000);
+    assertThat(retry).hasStatus(200);
+    assertThat(body(retry).path("refundId").asString()).isEqualTo(refundId);
+    assertThat(body(retry).path("status").asString()).isEqualTo("COMPLETED");
+    assertThat(requestsOf(refundId)).hasSize(1);
+    assertThat(deliveries.findByRefund(UUID.fromString(refundId))).hasSize(1);
+  }
+
   @Test
   void noAmountRefundsTheWholePayment() throws Exception {
     Paid p = paid(3_000);
@@ -229,6 +301,11 @@ class CheckoutRefundIT {
         .contentType(MediaType.APPLICATION_JSON)
         .content("{\"amount\":{\"valueMinor\":" + amount + ",\"currency\":\"BDT\"},\"reason\":\"returned\"}")
         .exchange();
+  }
+
+  private String refundStatus(String sessionId) {
+    return jdbc.sql("select status from refund where session_id = ?")
+        .param(UUID.fromString(sessionId)).query(String.class).single();
   }
 
   private List<ConsumerRecord<String, String>> requestsOf(String txnId) {

@@ -148,6 +148,8 @@ class BillFetchServiceTest {
       org.mockito.Mockito.verify(gateway, org.mockito.Mockito.times(2)).call(calls.capture());
       assertThat(calls.getAllValues()).extracting(PartnerCall::partnerId).containsExactly("billagg", "ekpay");
       assertThat(calls.getAllValues()).extracting(PartnerCall::operation).containsOnly("INQUIRY");
+      // M9 review (FL-04): the month the customer picked reaches both aggregators
+      assertThat(calls.getAllValues()).allSatisfy(c -> assertThat(c.input()).containsEntry("billMonth", "202611"));
     }
   }
 

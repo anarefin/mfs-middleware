@@ -32,7 +32,8 @@
         "merchant",
         "card",
         "remit",
-        "atm"
+        "atm",
+        "interop"
       ]
     },
     "timeouts": {

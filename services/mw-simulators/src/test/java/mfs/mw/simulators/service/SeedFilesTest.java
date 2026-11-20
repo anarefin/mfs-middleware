@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import mfs.mw.simulators.dto.Biller;
+import mfs.mw.simulators.dto.NpsbParticipant;
 import org.junit.jupiter.api.Test;
 
 /** The simulators' seed files (ticket 103, FRS MCK-08): the aggregator's ten billers come from seed/v1/billers.csv. */
@@ -37,6 +38,21 @@ class SeedFilesTest {
       assertThat(a.bank()).isEqualTo("*");
       assertThat(a.accountNumber()).isEqualTo("1234567890");
     });
+  }
+
+  @Test
+  void theNpsbParticipantsOfVersionOne() {
+    var participants = SeedFiles.npsbParticipants("v1");
+
+    // ticket 121 (FRS MCK-01): at least ten banks and MFS providers, unique ids, every kind present
+    assertThat(participants).hasSizeGreaterThanOrEqualTo(10);
+    assertThat(participants.stream().map(NpsbParticipant::id).distinct()).hasSameSizeAs(participants);
+    assertThat(participants.stream().map(NpsbParticipant::kind)).contains(NpsbParticipant.Kind.BANK, NpsbParticipant.Kind.MFS);
+    assertThat(participants).allSatisfy(p -> {
+      assertThat(p.id()).matches("[A-Z0-9]{8}");
+      assertThat(p.name()).isNotBlank();
+    });
+    assertThat(participants).anySatisfy(p -> assertThat(p.active()).isFalse());
   }
 
   @Test

@@ -91,7 +91,13 @@ public class RefundService {
 
     Refund existing = refunds.findByKey(merchantId, idemKey).orElse(null);
     if (existing != null) {
-      return new Created(repeat(existing, hash, s), false);
+      RefundView view = repeat(existing, hash, s);
+      if (existing.status() != Refund.Status.PENDING) {
+        return new Created(view, false);
+      }
+      // M9 review (FL-06): a PENDING refund may never have reached Kafka (the send failed). Send the
+      // same REVERSAL again, same refundId and key: the orchestrator deduplicates it on the key.
+      return new Created(send(existing, s), false);
     }
     if (s.status() != SessionStatus.PAID || s.txnId() == null) {
       throw new MwException(ErrorCodes.VAL_SESSION_STATE, "Only a paid payment can be refunded")
@@ -104,6 +110,17 @@ public class RefundService {
       // the same key at the same moment from another request: answer as a repeat
       return new Created(repeat(refunds.findByKey(merchantId, idemKey).orElseThrow(), hash, s), false);
     }
+    return new Created(send(r, s), true);
+  }
+
+  /**
+   * Sends the refund's REVERSAL and waits for its final status within the reply budget. A failed send
+   * keeps the row PENDING (M9 review, FL-06): Kafka may have stored the record although the send
+   * timed out, so the refund may run; its final status settles the row, and the merchant's retry
+   * with the same key sends it again under the same refundId.
+   */
+  private RefundView send(Refund r, CheckoutSession s) {
+    Instant now = clock.instant();
     String correlationId = correlationId();
     TxnRequest txn = mapper.toTxnRequest(r, s, correlationId, now);
     CompletableFuture<StatusMessage> answer =
@@ -115,7 +132,10 @@ public class RefundService {
           Map.of(MwHeaders.REPLY_TO, props.instanceId()));
     } catch (RuntimeException e) {
       waiters.remove(txn.txnId());
-      refunds.deleteUnsent(r.refundId());
+      log.atWarn()
+          .addKeyValue("event", "checkout.refund.send_failed")
+          .addKeyValue("txnId", txn.txnId())
+          .log("checkout refund request not confirmed by Kafka; kept PENDING for the retry with the same key");
       throw new MwException(ErrorCodes.SYS_UNAVAILABLE, "Service temporarily unavailable, try again", e)
           .withStatus(HttpStatus.SERVICE_UNAVAILABLE);
     }
@@ -127,10 +147,10 @@ public class RefundService {
         .log("checkout refund request published");
     StatusMessage status = await(answer, txn.txnId());
     if (status != null && status.terminal()) {
-      outcomes.apply(status);
+      outcomes.applyAnswer(status, r.refundId());
     }
     Refund after = refunds.findById(r.refundId()).orElseThrow();
-    return new Created(answerOf(after, s), true);
+    return answerOf(after, s);
   }
 
   public RefundList list(String merchantId, String paymentId) {

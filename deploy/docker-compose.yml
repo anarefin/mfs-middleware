@@ -34,7 +34,7 @@
 # ops = Keycloak, Vault, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
-# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8101), the
+# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8102), the
 # two consoles (3000, 3001) and the platform (postgres 5432, redis 6379, kafka 9094, keycloak 8180,
 # vault 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
 # (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
@@ -78,7 +78,7 @@
 #   KAFKA_MEM (576M)            kafka                469  (KAFKA_HEAP (256m) fixed heap; 1 partition per topic, MW_KAFKA_PARTITIONS)
 #   KEYCLOAK_MEM (608M)         keycloak             483  (heap 128..384m)
 #   APISIX_MEM (384M)           apisix               290, 368*
-#   POSTGRES_MEM (320M)         postgres             140, 274*  (shared_buffers 64MB, max_connections 120; pools total 59 + audit-dw 5 + keycloak 20)
+#   POSTGRES_MEM (320M)         postgres             140, 274*  (shared_buffers 64MB, max_connections 120; pools total 61 + audit-dw 5 + keycloak 20)
 #   GREENMAIL_MEM (160M)        greenmail            125  (heap 96m)
 #   VAULT_MEM (128M)            vault                 95
 #   SOFTHSM_MEM (48M)           softhsm               new (ticket 61): socat + one p11-kit remote per client
@@ -202,6 +202,7 @@ volumes:
   adapter-card-approle:
   adapter-remit-approle:
   adapter-atm-approle:
+  adapter-interop-approle:
   orchestrator-approle:
   audit-dw-approle:
   data-export-approle:
@@ -315,9 +316,9 @@ services:
     # One shared dev instance serves Keycloak and every service's pool. max_connections sizing
     # (sum of the worst case, one replica each; keep it below max_connections minus the 3
     # superuser_reserved_connections when a pool or a replica is added): the dev stack caps each
-    # service's Hikari pool (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE below: 2-4, 61 in all, 66 with
+    # service's Hikari pool (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE below: 2-4, 63 in all, 68 with
     # audit-dw's extra pools, plus Keycloak's 20; ticket 118 raised it from 100 for mw-adapter-card;
-    # ticket 119 adds mw-adapter-remit's 2 and ticket 120a adds mw-adapter-atm's 2), so 120 leaves room for psql sessions and the provision one-shot.
+    # ticket 119 adds mw-adapter-remit's 2 and ticket 120a adds mw-adapter-atm's 2, ticket 121 mw-adapter-interop's 2), so 120 leaves room for psql sessions and the provision one-shot.
     # Production sizes max_connections per instance (pool x replicas, summed).
     command:
       - postgres
@@ -723,6 +724,7 @@ services:
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?cp dev.env.defaults .env}
       BILLAGG_WS_PASSWORD: ${BILLAGG_WS_PASSWORD:?cp dev.env.defaults .env}
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
+      BANK_GATEWAY_HMAC_SECRET: ${BANK_GATEWAY_HMAC_SECRET:?cp dev.env.defaults .env}
       MERCHANT_SOAP_WS_PASSWORD: ${MERCHANT_SOAP_WS_PASSWORD:?cp dev.env.defaults .env}
       CYBERSOURCE_HMAC_SECRET: ${CYBERSOURCE_HMAC_SECRET:?cp dev.env.defaults .env}
       UCB_IMT_HMAC_SECRET: ${UCB_IMT_HMAC_SECRET:?cp dev.env.defaults .env}
@@ -775,6 +777,7 @@ services:
       - adapter-card-approle:/out/adapter-card
       - adapter-remit-approle:/out/adapter-remit
       - adapter-atm-approle:/out/adapter-atm
+      - adapter-interop-approle:/out/adapter-interop
       - portal-api-approle:/out/portal-api
       - checkout-approle:/out/checkout
     deploy:
@@ -1403,6 +1406,32 @@ services:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
+  # NPSB interop adapter (ticket 121, FRS EXT-13 / UC-19 / FL-12): fund transfer, status inquiry and
+  # return over ISO 20022 with the NPSB switch (mw-simulators NpsbMock, ticket 121b); also the off-us
+  # BanglaQR leg (ticket 122). Host port 8102.
+  mw-adapter-interop:
+    <<: *app
+    profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_ADAPTER_INTEROP:-8102}:8080"
+    image: mfs-mw/mw-adapter-interop:local
+    build: { context: ../services/mw-adapter-interop, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+    volumes:
+      - adapter-interop-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "2"
+      # NPSB switch endpoint; the MVP stack targets mw-simulators (NpsbMock, /npsb/v1/*).
+      NPSB_BASE_URL: ${NPSB_BASE_URL:-http://mw-simulators:8080}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+      MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
+
   # Organisation portal API and bulk disbursement (spec 8.2, 9.4).
   mw-portal-api:
     <<: *app
@@ -1541,6 +1570,7 @@ services:
       APISIX_ADMIN_KEY: ${APISIX_ADMIN_KEY:?cp dev.env.defaults .env}
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?cp dev.env.defaults .env}
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
+      BANK_GATEWAY_HMAC_SECRET: ${BANK_GATEWAY_HMAC_SECRET:?cp dev.env.defaults .env}
       USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?cp dev.env.defaults .env}
@@ -1641,6 +1671,7 @@ services:
       mw-adapter-card: { condition: service_healthy }
       mw-adapter-remit: { condition: service_healthy }
       mw-adapter-atm: { condition: service_healthy }
+      mw-adapter-interop: { condition: service_healthy }
       mw-checkout: { condition: service_healthy }
       mw-portal-api: { condition: service_healthy }
     volumes:
