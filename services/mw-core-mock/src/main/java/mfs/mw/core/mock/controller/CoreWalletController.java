@@ -15,6 +15,8 @@ import mfs.mw.core.mock.dto.BalanceView;
 import mfs.mw.core.mock.dto.ChargesRequest;
 import mfs.mw.core.mock.dto.ChargesView;
 import mfs.mw.core.mock.dto.HoldActionRequest;
+import mfs.mw.core.mock.dto.KycLevelRequest;
+import mfs.mw.core.mock.dto.KycLevelResult;
 import mfs.mw.core.mock.dto.LimitsRequest;
 import mfs.mw.core.mock.dto.LimitsView;
 import mfs.mw.core.mock.dto.OperationResult;
@@ -32,6 +34,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -139,6 +142,13 @@ public class CoreWalletController {
   AccountActionResult unlock(
       @PathVariable @Size(min = 1, max = 64) String walletId, @Valid @RequestBody AccountUnlockRequest req) {
     return wallet.unlock(walletId, req);
+  }
+
+  /** The KYC level after an eKYC match (ticket 124b): only mw-compliance ({@code config/SecurityConfig}). */
+  @PutMapping("/accounts/{walletId}/kyc-level")
+  KycLevelResult kycLevel(
+      @PathVariable @Size(min = 1, max = 64) String walletId, @Valid @RequestBody KycLevelRequest req) {
+    return wallet.setKycLevel(walletId, req);
   }
 
   /** VerifyCustomerFactors over REST (ticket 95b): only mw-auth ({@code config/SecurityConfig}). */

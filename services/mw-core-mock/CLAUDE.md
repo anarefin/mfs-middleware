@@ -84,6 +84,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - **Account readers (ticket 119c):** `mw.internal-auth.account-clients` (mw-adapter-remit's beneficiary lookup) may
   call only `GET /core/v1/accounts/{msisdn}` (WAL-01), a list apart from `allowed-clients`; any other `/core/**`
   operation is 403 (`CoreWalletRestIT.aMwAdapterRemitTokenReadsAnAccountAndNothingElse`).
+- **KYC level (ticket 124b):** `PUT /core/v1/accounts/{walletId}/kyc-level` `{kycLevel, applicationId}` only for
+  `mw.internal-auth.kyc-clients` (mw-compliance after an eKYC match), a list apart from `allowed-clients`: no
+  allowed client may set it and a mw-compliance token reaches nothing else (403). Idempotent (the same level
+  changes nothing); a changed level bumps the wallet version and is announced as `WalletStateChanged`
+  (STATUS_CHANGED); unknown wallet `422 MW-CORE-WALLET_NOT_FOUND`. Open item for Upay: the real core must provide it.
 - **The Kafka command side is gone (ticket 95b):** `messaging/CoreCommandListener`, the topics
   `core.wallet.command.v1` / `core.payment.command.v1` (`deploy/kafka/topics.txt`) and the contract
   `core.command.v1` (files and samples) are retired; this module consumes no Kafka topic. The internal

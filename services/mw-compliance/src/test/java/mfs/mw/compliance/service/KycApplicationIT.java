@@ -5,6 +5,10 @@ import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.put;
+import static com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -47,8 +51,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * eKYC end to end on the service (ticket 124): the internal API, PostgreSQL, the outbox, the real {@code
- * EcNidClient} against a WireMock EC NID service, and a reversible stand-in for mw-crypto. Covers submit, EC call,
- * match, {@code mw.kyc.completed.v1} once in the outbox, mismatch, EC not found, timeout and open breaker (retryable),
+ * EcNidClient} against a WireMock EC NID service, the real {@code CoreWalletClient} against a WireMock core (and its
+ * token endpoint), and a reversible stand-in for mw-crypto. Covers submit, EC call, match, the KYC level set on the
+ * core, then APPROVED and {@code mw.kyc.completed.v1} once in the outbox, the core down (retryable, no second EC
+ * call), DOB-only match to manual review, mismatch, EC not found, timeout and open breaker (retryable),
  * PII at rest (no clear NID, DOB or name in any column) and the log (no clear NID or name in any line).
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -57,20 +63,34 @@ import tools.jackson.databind.json.JsonMapper;
 class KycApplicationIT {
 
   static final WireMockServer EC = new WireMockServer(options().dynamicPort());
+  static final WireMockServer CORE = new WireMockServer(options().dynamicPort());
 
   static {
     EC.start();
+    CORE.start();
   }
 
   @DynamicPropertySource
   static void ec(DynamicPropertyRegistry r) {
     r.add("mw.compliance.ec.base-url", EC::baseUrl);
     r.add("mw.compliance.ec.timeout", () -> "600ms");
+    r.add("mw.compliance.core.base-url", CORE::baseUrl);
+    r.add("mw.compliance.crypto.token-uri", () -> CORE.baseUrl() + "/token");
   }
 
   @AfterAll
   static void stop() {
     EC.stop();
+    CORE.stop();
+  }
+
+  static void coreUp() {
+    CORE.resetAll();
+    CORE.stubFor(post(urlEqualTo("/token")).willReturn(aResponse().withStatus(200)
+        .withHeader("Content-Type", "application/json").withBody("{\"access_token\":\"core-token\",\"expires_in\":300}")));
+    CORE.stubFor(put(urlPathMatching("/core/v1/accounts/[^/]+/kyc-level")).willReturn(aResponse().withStatus(200)
+        .withHeader("Content-Type", "application/json")
+        .withBody("{\"walletId\":\"01712345678\",\"kycLevel\":\"FULL\",\"applicationId\":\"00000000-0000-4000-8000-000000000000\"}")));
   }
 
   static final String NID = "1990123456789";
@@ -101,6 +121,7 @@ class KycApplicationIT {
         "aXY=", Base64.getEncoder().encodeToString(flip(i.getArgument(1))), null));
     when(crypto.decrypt(any())).thenAnswer(i -> flip(Base64.getDecoder().decode(((CryptoEnvelope) i.getArgument(0)).ciphertext())));
     EC.resetAll();
+    coreUp();
     breakers.circuitBreaker("ec-nid").reset();
   }
 
@@ -180,8 +201,13 @@ class KycApplicationIT {
 
     assertThat(res.statusCode()).as(res.body()).isEqualTo(200);
     JsonNode body = json.readTree(res.body());
-    assertThat(body.path("status").asString()).isEqualTo("MATCHED");
+    assertThat(body.path("status").asString()).isEqualTo("APPROVED");
     assertThat(body.path("kycLevel").asString()).isEqualTo("FULL");
+    // The level is set on the core (decision a), with this service's token, before the event.
+    CORE.verify(1, putRequestedFor(urlEqualTo("/core/v1/accounts/01712345678/kyc-level"))
+        .withHeader("Authorization", equalTo("Bearer core-token"))
+        .withRequestBody(matchingJsonPath("$.kycLevel", equalTo("FULL")))
+        .withRequestBody(matchingJsonPath("$.applicationId", equalTo(id))));
     assertThat(body.path("nidMasked").asString()).endsWith("789").doesNotContain(NID);
     assertThat(outboxRows(id)).isEqualTo(1);
     Map<String, Object> event = jdbc.queryForMap(
@@ -245,7 +271,45 @@ class KycApplicationIT {
     EC.resetAll();
     ecKnows(nid, "1990-05-17", "RAHIM UDDIN", NAME_BN);
     JsonNode again = json.readTree(call("POST", "/internal/v1/kyc/applications/" + id + "/submit", null).body());
-    assertThat(again.path("status").asString()).isEqualTo("MATCHED");
+    assertThat(again.path("status").asString()).isEqualTo("APPROVED");
+  }
+
+  @Test
+  void coreDownLeavesTheMatchRetryableAndAResubmitSetsTheLevelWithoutCallingTheEcAgain() throws Exception {
+    String nid = "1990123456777";
+    ecKnows(nid, "1990-05-17", "RAHIM UDDIN", NAME_BN);
+    String id = apply(nid, NAME_EN);
+    CORE.stubFor(put(urlPathMatching("/core/v1/accounts/[^/]+/kyc-level")).willReturn(aResponse().withStatus(503)));
+
+    HttpResponse<String> res = call("POST", "/internal/v1/kyc/applications/" + id + "/submit", null);
+
+    assertThat(res.statusCode()).as(res.body()).isEqualTo(503);
+    assertThat(json.readTree(res.body()).path("retryable").asBoolean()).isTrue();
+    JsonNode held = json.readTree(call("GET", "/internal/v1/kyc/applications/" + id, null).body());
+    assertThat(held.path("status").asString()).isEqualTo("MATCHED");
+    assertThat(outboxRows(id)).as("no event before the core has the level").isZero();
+
+    coreUp();
+    JsonNode again = json.readTree(call("POST", "/internal/v1/kyc/applications/" + id + "/submit", null).body());
+    assertThat(again.path("status").asString()).isEqualTo("APPROVED");
+    assertThat(outboxRows(id)).isEqualTo(1);
+    EC.verify(1, postRequestedFor(urlEqualTo("/ec/v1/nid/verify")));
+  }
+
+  /** Product decision (124b): a DOB-only match is never auto-issued a level; an operator decides (ticket 134). */
+  @Test
+  void aDobOnlyMatchIsHeldForManualReviewWithoutALevelOrAnEvent() throws Exception {
+    String nid = "1990123456888";
+    ecKnows(nid, "1990-05-17", "KARIM HOSSAIN", "করিম হোসেন");
+    String id = apply(nid, NAME_EN);
+
+    JsonNode body = json.readTree(call("POST", "/internal/v1/kyc/applications/" + id + "/submit", null).body());
+
+    assertThat(body.path("status").asString()).isEqualTo("MANUAL_REVIEW");
+    assertThat(body.path("reason").asString()).isEqualTo("NAME_MISMATCH");
+    assertThat(body.has("kycLevel")).isFalse();
+    assertThat(outboxRows(id)).isZero();
+    CORE.verify(0, putRequestedFor(anyUrl()));
   }
 
   @Test
@@ -311,7 +375,7 @@ class KycApplicationIT {
     ecKnows(nid, "1990-05-17", "RAHIM UDDIN", NAME_BN);
     String first = apply("01712345678", nid, NAME_EN);
     assertThat(json.readTree(call("POST", "/internal/v1/kyc/applications/" + first + "/submit", null).body())
-        .path("status").asString()).isEqualTo("MATCHED");
+        .path("status").asString()).isEqualTo("APPROVED");
 
     String second = apply("01912345678", nid, NAME_EN);
     JsonNode body = json.readTree(call("POST", "/internal/v1/kyc/applications/" + second + "/submit", null).body());

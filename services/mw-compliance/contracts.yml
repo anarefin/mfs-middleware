@@ -10,4 +10,5 @@ produces:
 consumes:
   events: []
   apis:
+    - api/mw-core-mock/core-wallet.v1.openapi.yaml
     - api/mw-crypto/crypto-internal.v1.openapi.yaml

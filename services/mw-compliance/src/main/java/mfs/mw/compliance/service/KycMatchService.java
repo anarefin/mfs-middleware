@@ -11,8 +11,9 @@ import org.springframework.stereotype.Service;
 /**
  * The match rule table (ticket 124): the date of birth must be exactly the EC's; then the better of the English
  * and the Bangla name similarity (each normalised: {@link NameNormaliser}) at or above {@code
- * mw.compliance.kyc.name-threshold} gives {@code FULL}, below it {@code BASIC}. Another date of birth is
- * MISMATCHED (manual review in the console, ticket 134).
+ * mw.compliance.kyc.name-threshold} gives {@code FULL}; below it the application is held for manual review ({@code
+ * NAME_MISMATCH}, no level: product decision of ticket 124b). Another date of birth is MISMATCHED (manual review in
+ * the console, ticket 134).
  */
 @Service
 public class KycMatchService {
@@ -31,7 +32,9 @@ public class KycMatchService {
     if (ec.dob() == null || !ec.dob().equals(dob)) {
       return new MatchResult(null, score, DOB_MISMATCH);
     }
-    return new MatchResult(score >= threshold ? KycLevel.FULL : KycLevel.BASIC, score, null);
+    return score >= threshold
+        ? new MatchResult(KycLevel.FULL, score, null)
+        : new MatchResult(null, score, MatchResult.NAME_MISMATCH);
   }
 
   /** The EC has no such NID. */

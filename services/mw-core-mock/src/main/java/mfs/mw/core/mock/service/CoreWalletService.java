@@ -25,6 +25,8 @@ import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.dto.CoreEvent;
 import mfs.mw.core.mock.dto.EntryView;
 import mfs.mw.core.mock.dto.HoldActionRequest;
+import mfs.mw.core.mock.dto.KycLevelRequest;
+import mfs.mw.core.mock.dto.KycLevelResult;
 import mfs.mw.core.mock.dto.LimitsRequest;
 import mfs.mw.core.mock.dto.LimitsView;
 import mfs.mw.core.mock.dto.OperationResult;
@@ -84,6 +86,7 @@ public class CoreWalletService {
   private final RestRequestRepository requests;
   private final JsonMapper json;
   private final Clock clock;
+  private final WalletStateEvents stateEvents;
 
   @SuppressWarnings("java:S107")
   public CoreWalletService(
@@ -96,7 +99,8 @@ public class CoreWalletService {
       CommandLogRepository commandLog,
       RestRequestRepository requests,
       JsonMapper json,
-      Clock clock) {
+      Clock clock,
+      WalletStateEvents stateEvents) {
     this.core = core;
     this.status = status;
     this.rules = rules;
@@ -107,6 +111,7 @@ public class CoreWalletService {
     this.requests = requests;
     this.json = json;
     this.clock = clock;
+    this.stateEvents = stateEvents;
   }
 
   // --- reads ---
@@ -382,6 +387,21 @@ public class CoreWalletService {
         new java.util.TreeMap<>(Map.of("walletId", walletId, "request", req)), p,
         e -> new AccountActionResult(e.txnId(), payload(e).path("walletId").asString(), "VERIFIED", e.coreRef(),
             payload(e).path("resetId").asString()));
+  }
+
+  /**
+   * The KYC level mw-compliance's eKYC match decided (ticket 124b). Setting the level the wallet has changes
+   * nothing; a changed one is announced as {@code WalletStateChanged} in this transaction. An unknown wallet is
+   * 422 {@code MW-CORE-WALLET_NOT_FOUND}.
+   */
+  @Transactional
+  public KycLevelResult setKycLevel(String walletId, KycLevelRequest req) {
+    String id = wallets.resolveId(walletId)
+        .orElseThrow(() -> refusal(Reason.WALLET_NOT_FOUND.code(), "Wallet not found", null));
+    if (wallets.setKycLevel(id, req.kycLevel())) {
+      stateEvents.statusChanged(id);
+    }
+    return new KycLevelResult(id, req.kycLevel(), req.applicationId());
   }
 
   /** The operation of an operator's round {@code n >= 1}: {@code <op>:manual-<n>}, else {@code op}. */

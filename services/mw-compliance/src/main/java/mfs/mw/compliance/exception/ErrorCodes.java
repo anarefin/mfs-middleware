@@ -35,6 +35,8 @@ public final class ErrorCodes {
   public static final String SYS_PARTNER_CIRCUIT_OPEN = "MW-SYS-PARTNER_CIRCUIT_OPEN";
   /** An upstream (EC NID service, token endpoint) failed or answered unexpectedly (503). */
   public static final String SYS_UPSTREAM = "MW-SYS-002";
+  /** The core refused to set the KYC level (unknown wallet, policy): the application stays MATCHED (422). */
+  public static final String CORE_KYC_LEVEL_REFUSED = "MW-CORE-KYC_LEVEL_REFUSED";
   /** mw-crypto unreachable or failing: fail closed (503). */
   public static final String SYS_CRYPTO_UNAVAILABLE = "MW-SYS-050";
   /** mw-crypto refused the call (policy, bad request). */

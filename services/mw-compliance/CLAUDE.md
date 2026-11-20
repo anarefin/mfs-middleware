@@ -11,12 +11,16 @@ Compliance domain service (ADR D32; no Camel: outbound calls are `RestClient` + 
   Create = the consent row (CMP-04) and the application in one transaction; documents = NID front, back and
   selfie (JPEG/PNG, magic bytes checked, 2 MB); submit = EC_CALLED in one transaction (only with every image
   and a committed consent: `ConsentBeforeCallTest`), the EC verify call outside any transaction carrying the
-  consent id, then the outcome and, on a match, `mw.kyc.completed.v1` through the outbox in a second one.
+  consent id, then the outcome in a second one. A match (MATCHED) then sets the level on the core
+  (`client/CoreWalletClient`, `PUT /core/v1/accounts/{walletId}/kyc-level`, ticket 124b) and only after that,
+  in a third transaction under the row lock, becomes APPROVED with `mw.kyc.completed.v1` through the outbox.
   EC timeout / open breaker / EC or mw-crypto failure: FAILED, retryable, submit again (an EC_CALLED left
-  for 2 min after a crash may be submitted again too).
+  for 2 min after a crash may be submitted again too). Core down: stays MATCHED (`error_code` set), 503
+  retryable; a resubmit of a MATCHED application goes straight to the core, no second EC call.
 - Match rules (`service/KycMatchService`, `util/NameNormaliser`): exact DOB, then the better of English and
   Bangla name similarity (NFC, zero-width joiners and punctuation dropped, case folded, words sorted,
-  1 - Levenshtein/length) >= `mw.compliance.kyc.name-threshold` (0.85) is FULL, below BASIC; another DOB or
+  1 - Levenshtein/length) >= `mw.compliance.kyc.name-threshold` (0.85) is FULL; below it (DOB only) is
+  MANUAL_REVIEW, reason NAME_MISMATCH, no level, no event (product decision, ticket 124b); another DOB or
   an NID the EC does not know is MISMATCHED (`reason` DOB_MISMATCH / NID_NOT_FOUND; manual review ticket 134).
 - PII at rest (FL-02, CMP-05): NID, DOB, claimed and EC names and the images are mw-crypto envelopes under
   `KEK_COLUMN` (`service/PiiCipher`, AAD `<table>/<id>/<column>`), the NID searched by its `TOKENISE_NID`
@@ -33,9 +37,7 @@ Compliance domain service (ADR D32; no Camel: outbound calls are `RestClient` + 
   no operator write path (`KycAccessTest.theUnscopedCallerMayOnlyRead`).
 - NID reuse: in the submit transaction, under an advisory lock on the token, an NID another wallet holds
   (EC_CALLED, MATCHED, APPROVED) makes the application MANUAL_REVIEW, reason NID_IN_USE: no EC call, no level.
-- Open product decision: a DOB-only match (name below the threshold) auto-issues BASIC and publishes
-  `mw.kyc.completed.v1`, as the ticket's rule table says; not changed pending a product call.
-- Planned: ticket 124b (channel routes in mw-app-gateway, KYC level on the core, EC mock in mw-simulators,
+- Planned: ticket 124b/124c (channel routes in mw-app-gateway, EC mock in mw-simulators,
   compose/provision/Keycloak/mw-crypto authz wiring, Newman folder 64); ticket 125 the AML feed (parties
   HMAC-SHA256-tokenised under a Vault key: add `/internal/v1/hmac/sign` to `client/CryptoClient`).
 
@@ -47,6 +49,10 @@ Compliance domain service (ADR D32; no Camel: outbound calls are `RestClient` + 
 
 ## Contracts used
 
+- `api/mw-core-mock/core-wallet.v1.openapi.yaml`: `PUT /core/v1/accounts/{walletId}/kyc-level` `{kycLevel,
+  applicationId}` (only mw-compliance may call it: core-mock `kyc-clients`); token from `client/ServiceTokenClient`
+  (the realm client needs an `aud-mw-core-mock` mapper next to `aud-mw-crypto`); breaker `core-wallet`; failure
+  `MW-SYS-002` (503, retryable), a refusal `MW-CORE-KYC_LEVEL_REFUSED` (422).
 - `api/mw-crypto/crypto-internal.v1.openapi.yaml`: `/tokens` (TOKENISE_NID), `/envelope/encrypt|decrypt`
   (KEK_COLUMN); own DTOs `dto/Crypto*`.
 - EC NID service (no contract file yet; 124b adds it with the mock): `POST /ec/v1/nid/verify`
