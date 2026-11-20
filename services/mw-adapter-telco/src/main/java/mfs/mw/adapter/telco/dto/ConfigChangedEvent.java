@@ -46,7 +46,8 @@ public record ConfigChangedEvent(
     ROUTING_RULE,
     MSISDN_PREFIX,
     MNP_OVERRIDE,
-    MAINTENANCE_MESSAGE
+    MAINTENANCE_MESSAGE,
+    BILLER
   }
 
   public enum Change {

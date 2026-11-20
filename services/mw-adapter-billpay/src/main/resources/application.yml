@@ -215,9 +215,15 @@ management:
       type: w3c
 
 mw:
+  biller-catalog:
+    consumer:
+      # Consumer of mw.config.changed.v1 BILLER records (messaging/BillerCatalogKafkaListener,
+      # ticket 113); tests switch it off.
+      enabled: true
   # Biller catalogue (ticket 21): which aggregator (partner instance) serves which biller. Read by
-  # the internal API (GET /billpay/v1/billers, bill fetch) that mw-app-gateway calls. Static seed
-  # until mw-admin-api publishes the catalogue (spec 11.2 "Biller catalogue", ticket 38).
+  # the internal API (GET /billpay/v1/billers, bill fetch) that mw-app-gateway calls. Since ticket
+  # 113 these are version-0 seeds of service/BillerCatalog: the catalogue mw-admin-api publishes
+  # (mw.config.changed.v1 BILLER, key biller/<code>) replaces or adds entries without a restart.
   billers:
     # All on the aggregator billagg: KGDCL, JGTDSL, BTCL and LINK3 go over its SOAP front end (the
     # billagg route branches on the header mwPartnerCode), the others over REST.

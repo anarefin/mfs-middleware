@@ -29,8 +29,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.billpay`. Fol
 - Biller catalogue (`config/BillerProperties`, `mw.billers.<code>: {name, category, partner-id}`):
   which partner instance (aggregator) serves which biller. Static seed of 10 Bangladesh billers, all ->
   `billagg` (REST: BREB, CWASA, DESCO, DPDC, TITAS, WASA; SOAP: BTCL, JGTDSL, KGDCL, LINK3, see the
-  aggregator paragraph at the end of "Partner engine") until mw-admin-api publishes the catalogue (spec 11.2, ticket 38). Routing and failover
-  between aggregators (FR-09) are not built: one aggregator per biller.
+  aggregator paragraph at the end of "Partner engine"). Since ticket 113 these are version-0 seeds of
+  the read projection `service/BillerCatalog`: `messaging/BillerCatalogKafkaListener` (group
+  `<service>-billers-<HOSTNAME>`, seeks to the beginning, never commits, `mw.biller-catalog.consumer.enabled`,
+  off in tests) applies `mw.config.changed.v1` BILLER records (mw-admin-api's catalogue, key
+  `biller/<code>`; an older version is ignored, a bad value skipped `biller.config_refused`). The
+  partner engine's own listener is left untouched (the `partner/` trees stay identical). `GET
+  /billpay/v1/billers` adds the catalogue fields (nameBn, fallbackPartnerId, fields, amountRule, bounds,
+  billMonthRequired, enabled, maintenance text); the fetch takes `billMonth` (YYYYMM) and checks the
+  entry first: disabled -> 503 `MW-SYS-BILLER_DISABLED` with its bn/en text (PLT-043), input over 64
+  characters, a bill number not matching the first required field's regex, a missing / bad `billMonth`
+  -> 400 `MW-VAL-001`. Tests `BillerCatalogTest`, `BillerProjectionIT`. Failover to the fallback
+  aggregator (ticket 98 routing) is not built here: one aggregator per call.
 - Internal API (ticket 21; contract `api/mw-adapter-billpay/billpay.v1.openapi.yaml`, owned here),
   `controller/BillerController` + `service/BillFetchService`: `GET /billpay/v1/billers` (catalogue
   with `partnerId`) and `POST /billpay/v1/billers/{code}/bills/fetch {billNumber}` -> `{billerCode,

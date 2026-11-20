@@ -1,9 +1,7 @@
 package mfs.mw.adapter.billpay.service;
 
 import java.math.BigDecimal;
-import java.util.Comparator;
 import java.util.List;
-import mfs.mw.adapter.billpay.config.BillerProperties;
 import mfs.mw.adapter.billpay.dto.BillView;
 import mfs.mw.adapter.billpay.dto.BillerView;
 import mfs.mw.adapter.billpay.dto.Money;
@@ -28,28 +26,57 @@ import org.springframework.stereotype.Service;
 @Service
 public class BillFetchService {
 
-  private final BillerProperties billers;
+  private final BillerCatalog billers;
   private final PartnerCallMapper calls;
   private final PartnerGateway partners;
 
-  public BillFetchService(BillerProperties billers, PartnerCallMapper calls, PartnerGateway partners) {
+  public BillFetchService(BillerCatalog billers, PartnerCallMapper calls, PartnerGateway partners) {
     this.billers = billers;
     this.calls = calls;
     this.partners = partners;
   }
 
   public List<BillerView> billers() {
-    return billers.billers().entrySet().stream()
-        .sorted(Comparator.comparing(java.util.Map.Entry::getKey))
-        .map(e -> new BillerView(e.getKey(), e.getValue().name(), e.getValue().category(), e.getValue().partnerId()))
-        .toList();
+    return billers.list().stream().map(BillFetchService::view).toList();
+  }
+
+  /** The catalogue entry as the internal API shows it (ticket 113 fields left out for a seed). */
+  static BillerView view(BillerCatalog.Biller b) {
+    if (b.version() == 0) {
+      return new BillerView(b.code(), b.nameEn(), b.category(), b.partnerId());
+    }
+    return new BillerView(
+        b.code(),
+        b.nameEn(),
+        b.category(),
+        b.partnerId(),
+        b.nameBn(),
+        b.fallbackPartnerId(),
+        b.fields().stream()
+            .map(f -> new BillerView.FieldView(f.name(), f.labelEn(), f.labelBn(), f.regex().pattern(), f.required()))
+            .toList(),
+        b.amountRule(),
+        b.minAmountMinor(),
+        b.maxAmountMinor(),
+        b.billMonthRequired(),
+        b.enabled(),
+        b.maintenanceEn(),
+        b.maintenanceBn());
   }
 
   public BillView fetch(String billerCode, String billNumber) {
-    BillerProperties.Biller biller = billers.billers().get(billerCode);
-    if (biller == null) {
-      throw new MwException(ErrorCodes.VAL_NOT_FOUND, "Unknown biller").withStatus(HttpStatus.NOT_FOUND);
-    }
+    return fetch(billerCode, billNumber, null);
+  }
+
+  /**
+   * Ticket 113: the catalogue entry's rules first (disabled -> 503 {@code MW-SYS-BILLER_DISABLED}
+   * with its bn/en text; field regex, {@code billMonth} -> 400 {@code MW-VAL-001}), then the call.
+   */
+  public BillView fetch(String billerCode, String billNumber, String billMonth) {
+    BillerCatalog.Biller biller =
+        billers.find(billerCode)
+            .orElseThrow(() -> new MwException(ErrorCodes.VAL_NOT_FOUND, "Unknown biller").withStatus(HttpStatus.NOT_FOUND));
+    biller.checkFetch(billNumber, billMonth);
     String partnerId = biller.partnerId();
     PartnerResponse response =
         partners.call(calls.fetchCall(partnerId, billerCode, billNumber, MDC.get("correlationId")));

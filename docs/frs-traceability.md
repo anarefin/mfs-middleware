@@ -189,7 +189,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-040 | done | most specific enabled rule wins in mw-orchestrator `service/routing` (`RoutingServiceTest`); a named partner is honoured only when that rule allows it, otherwise `MW-PTR-UNKNOWN` |
 | PLT-041 | done | rules in `txn.routing_rule` (V14), maker-checker in mw-admin-api (V15, `RoutingRuleChangeRequestIT`), applied from `mw.config.changed.v1` and re-read every 30 s (`RoutingRuleReloadIT`) |
 | PLT-042 | done | prefix to MNO (017/013 gp, 018 robi, 015 teletalk, 019/014 banglalink) with an MNP override winning (`MsisdnRoutingTest`) |
-| PLT-043 | done | a maintenance message for a partner or biller is `MW-SYS-PARTNER_DISABLED` with the bn and en text (`MaintenanceMessageIT`, API folder 35); the adapter's own window stays 131b; biller-catalogue disable stays 113 |
+| PLT-043 | done | a maintenance message for a partner or biller is `MW-SYS-PARTNER_DISABLED` with the bn and en text (`MaintenanceMessageIT`, API folder 35); the adapter's own window stays 131b; a disabled catalogue biller is `MW-SYS-BILLER_DISABLED` with its bn/en maintenance text on the bill fetch (ticket 113, `BillerProjectionIT`) |
 | PLT-050 | done | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); the app SOAP WSDL is generated from `contracts/api/mw-app-gateway/app-soap.v1.xsd` (ticket 108) |
 | PLT-051 | done | versioning policy in `contracts/README.md` ("Versioning", ticket 101): breaking change = new `/v2` file and path, `/v1` kept for one release |
 | PLT-052 | done | Swagger UI and `/v3/api-docs` only in profiles `dev`/`test` (off in production, `ApiDocsProductionTest`); test-only APISIX page `/docs/` lists them and the app SOAP WSDL (`deploy/apisix/docs/index.html`, ticket 108) |
@@ -236,8 +236,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-01 | ticket 124 | eKYC with EC, consent, KYC level |
 | FL-02 | ticket 124 | encrypted images through the mw-crypto envelope |
 | FL-03 | ticket 112 | postpaid quote fetches the bill once; confirm pays from the minimum due through the outstanding (112b) |
-| FL-04 | ticket 113 | two-step bill fetch then pay built (billpay); amount rules per biller in 113 |
-| FL-05 | tickets 113, 132 | biller catalogue in the database |
+| FL-04 | ticket 113 | two-step bill fetch then pay (billpay); the catalogue carries the amount rule (FIXED, MINIMUM, OPEN) and bill month, billpay checks field regex and `billMonth` on the fetch (`BillerCatalogTest`); the orchestrator `BillPayFlow` amount check is still open (113 follow-up) |
+| FL-05 | tickets 113, 132 | biller catalogue in mw-admin-api (`biller` table V16, 57-biller dev seed, `BillerChangeRequestIT`), published as `mw.config.changed.v1` BILLER; mw-adapter-billpay projection (`BillerProjectionIT`); app-gateway and USSD projections still open (113 follow-up) |
 | FL-06 | ticket 116 | refund bounds |
 | FL-07 | ticket 118 | card tokens only (card PAN never enters the middleware, root `CLAUDE.md`) |
 | FL-08 | ticket 117 | linked bank accounts with AVL |
@@ -348,7 +348,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ADM-02 | ticket 131 | API built (131a): write-only credential upload through maker-checker (`partner_credential`, staged in Vault, approved into a field of `secret/mw-adapter-<family>/<partner>`, mw-admin-api's policy write-only there), metadata `GET /admin/v1/credentials`, dashboard feed `/admin/v1/credentials/expiring`, ops email at 30/7/1 days (`CredentialVaultIT`, `CredentialExpiryJobIT`, API folder 45); console credentials tab and the Credentials expiring card (131c) |
 | ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
 | ADM-04 | tickets 98, 132 | API maker-checker for `ROUTING_RULE`, `MSISDN_PREFIX`, `MNP_OVERRIDE` and `MAINTENANCE_MESSAGE` (ticket 98, `RoutingRuleChangeRequestIT`, API folder 35); the console and testing a rule against a sample request stay 132 |
-| ADM-05 | tickets 113, 132 | billers |
+| ADM-05 | ticket 132 | API done in 113: `GET /admin/v1/billers`, `POST /admin/v1/billers/{code}/change-requests` UPSERT / ENABLE / DISABLE, maker-checker (`BillerChangeRequestIT`) |
 | ADM-06 | ticket 133 | USSD menu JSON editing built; visual editor and preview in 133 |
 | ADM-07 | tickets 111, 133 | SMS template editing built; campaigns through maker-checker (`POST /admin/v1/notify-campaigns`, ticket 111); the rule-table editor and test send are 133 |
 | ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the Error codes tab (131c, `ui/mw-admin-ui`) |
