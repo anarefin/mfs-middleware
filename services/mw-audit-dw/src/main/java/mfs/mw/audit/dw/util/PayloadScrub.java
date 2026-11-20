@@ -14,8 +14,14 @@ import tools.jackson.databind.node.ObjectNode;
  * PAN or a clear MSISDN/NID/account number never lands in the audit store:
  *
  * <ul>
- *   <li>secret fields (PIN, PIN block, password, OTP, CVV, secret) are blanked to {@code ****}: JSON
- *       properties at any depth, XML elements and {@code key=value} / {@code key: value} pairs;
+ *   <li>secret fields are blanked to {@code ****}, the whole value (an object, array or element
+ *       subtree too): JSON properties at any depth, XML elements and {@code key=value} / {@code key:
+ *       value} pairs. A key is secret when one of its words ({@link #isSecretKey}: split at
+ *       camelCase, digits and any non-letter) is a secret word ({@code pin}, {@code mpin}, {@code
+ *       tpin}, {@code pinblock}, {@code pincode}, {@code otp}, {@code cvv}, {@code cvc}, {@code
+ *       secret}, {@code pwd}, {@code passcode}) or starts with {@code passw}; so {@code userPin},
+ *       {@code pin_code}, {@code walletPassword}, {@code otpCode} are secret and {@code spinner},
+ *       {@code shipping}, {@code options} are not;
  *   <li>a card PAN (13-19 digits passing the Luhn check, with or without single spaces or dashes)
  *       keeps its last 4 only;
  *   <li>then {@link MaskingPolicy#scrub(String)} masks MSISDNs and every other long number, in JSON
@@ -28,19 +34,23 @@ public final class PayloadScrub {
 
   private static final String STARS = "****";
 
-  /** Property, element or parameter names whose value is a secret. */
-  private static final String NAME =
-      "(?:new|old|current|encrypted)?_?(?:pin|pin_?block|pin_?cipher(?:text)?|password|passwd|otp|cvv2?|cvc|secret)";
+  /** Words that make a key secret (lower case, trailing digits dropped). */
+  private static final java.util.Set<String> SECRET_WORDS =
+      java.util.Set.of(
+          "pin", "mpin", "tpin", "pinblock", "pincode", "pinhash", "otp", "totp", "cvv", "cvc", "secret",
+          "pwd", "passwd", "passcode", "passphrase");
 
-  private static final Pattern SECRET_NAME = Pattern.compile("(?i)" + NAME);
+  /** Word boundaries in a key: camelCase humps, letter/digit changes, anything not a letter or digit. */
+  private static final Pattern WORD_SPLIT =
+      Pattern.compile("[^A-Za-z0-9]+|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])");
 
-  /** {@code <pin>...</pin>}. */
-  private static final Pattern XML_SECRET =
-      Pattern.compile("(?i)(<(" + NAME + ")(?:\\s[^>]*)?>)([^<]*)(</\\2>)");
+  /** An element (optionally prefixed) with its attributes, its content (any depth) and its close tag. */
+  private static final Pattern XML_ELEMENT =
+      Pattern.compile("<((?:[A-Za-z_][\\w.-]*:)?([A-Za-z_][\\w.-]*))(\\s[^>]*)?>(.*?)</\\1\\s*>", Pattern.DOTALL);
 
-  /** {@code pin=...}, {@code "pin": "..."}, {@code pin: ...} in text that is not parsed JSON. */
-  private static final Pattern PAIR_SECRET =
-      Pattern.compile("(?i)((?<![A-Za-z0-9])\"?" + NAME + "\"?\\s*[=:]\\s*\"?)([^&\"',;\\s<}]+)");
+  /** {@code key=...}, {@code "key": "..."}, {@code key: ...} in text that is not parsed JSON. */
+  private static final Pattern PAIR =
+      Pattern.compile("((?<![A-Za-z0-9_.-])\"?([A-Za-z_][A-Za-z0-9_.-]*)\"?\\s*[=:]\\s*\"?)([^&\"',;\\s<}]+)");
 
   /** 13-19 digits, each pair joined by at most one space or dash. */
   private static final Pattern PAN = Pattern.compile("(?<![\\d])\\d(?:[ -]?\\d){12,18}(?![\\d])");
@@ -71,9 +81,42 @@ public final class PayloadScrub {
   }
 
   private static String text(String body) {
-    String out = replace(XML_SECRET, body, m -> m.group(1) + STARS + m.group(4));
-    out = replace(PAIR_SECRET, out, m -> m.group(1) + STARS);
+    String out = xml(body, 0);
+    out = replace(PAIR, out, m -> isSecretKey(m.group(2)) ? m.group(1) + STARS : m.group());
     return MaskingPolicy.scrub(pans(out));
+  }
+
+  /** Blanks the content of every secret element, whole; walks into the others (bounded depth). */
+  private static String xml(String text, int depth) {
+    if (depth > 32 || text.indexOf('<') < 0) {
+      return text;
+    }
+    return replace(
+        XML_ELEMENT,
+        text,
+        m -> {
+          String open = "<" + m.group(1) + (m.group(3) == null ? "" : m.group(3)) + ">";
+          String close = "</" + m.group(1) + ">";
+          return open + (isSecretKey(m.group(2)) ? STARS : xml(m.group(4), depth + 1)) + close;
+        });
+  }
+
+  /**
+   * Whether a property, element or parameter name names a secret: one of its words (split at
+   * camelCase, digits kept on their word and dropped at its end, any other character) is in {@link
+   * #SECRET_WORDS} or starts with {@code passw}.
+   */
+  static boolean isSecretKey(String key) {
+    if (key == null || key.isEmpty()) {
+      return false;
+    }
+    for (String word : WORD_SPLIT.split(key)) {
+      String w = word.toLowerCase(java.util.Locale.ROOT).replaceAll("[0-9]+$", "");
+      if (SECRET_WORDS.contains(w) || w.startsWith("passw")) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private static String value(String v) {
@@ -90,7 +133,7 @@ public final class PayloadScrub {
                 JsonNode v = p.getValue();
                 out.set(
                     name,
-                    SECRET_NAME.matcher(p.getKey()).matches() && !v.isContainer() && !v.isNull()
+                    isSecretKey(p.getKey()) && !v.isNull()
                         ? obj.stringNode(STARS)
                         : walk(v));
               });

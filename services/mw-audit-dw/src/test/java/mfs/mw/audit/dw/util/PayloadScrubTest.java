@@ -65,6 +65,59 @@ class PayloadScrubTest {
   }
 
   @Test
+  void secretWordsAnywhereInAJsonKeyAreBlanked() {
+    String out =
+        PayloadScrub.scrub(
+            "application/json",
+            """
+            {"mpin":"1111","userPin":"2222","pin_code":"3333","walletPassword":"s3cret-pw","otpCode":"444444",
+             "PINBlock":"0412AC","user-passcode":"5555","clientSecret":"abc-xyz","cvv2":"987","card_cvc":"654",
+             "txnPin1":"6666","encrypted_pin_cipher":"QUJD"}
+            """);
+
+    assertThat(out).doesNotContain("1111", "2222", "3333", "s3cret-pw", "444444", "0412AC", "5555", "abc-xyz",
+        "987", "654", "6666", "QUJD");
+    assertThat(out).contains("\"mpin\":\"****\"", "\"userPin\":\"****\"", "\"otpCode\":\"****\"");
+  }
+
+  @Test
+  void aSecretKeyWithAnObjectOrArrayValueIsBlankedWhole() {
+    String out =
+        PayloadScrub.scrub(
+            "application/json",
+            "{\"pin\":{\"block\":\"0412AC9F\",\"format\":\"ISO-0\"},\"otp\":[\"123456\",\"654321\"],\"amount\":\"5.00\"}");
+
+    assertThat(out).doesNotContain("0412AC9F", "ISO-0", "123456", "654321");
+    assertThat(out).contains("\"pin\":\"****\"", "\"otp\":\"****\"", "\"amount\":\"5.00\"");
+  }
+
+  @Test
+  void lookAlikeKeysThatAreNotSecretsAreKept() {
+    String out =
+        PayloadScrub.scrub(
+            "application/json",
+            "{\"spinner\":\"on\",\"shipping\":\"fast\",\"opinion\":\"good\",\"options\":\"a\",\"topping\":\"cheese\"}");
+
+    assertThat(out).contains("\"spinner\":\"on\"", "\"shipping\":\"fast\"", "\"opinion\":\"good\"",
+        "\"options\":\"a\"", "\"topping\":\"cheese\"");
+  }
+
+  @Test
+  void theSameKeyRuleAppliesToXmlAndKeyValueText() {
+    String xml =
+        PayloadScrub.scrub(
+            "application/xml",
+            "<req><userPin>1234</userPin><ns:mpin>5678</ns:mpin><pinBlock><fmt>ISO-0</fmt><v>0412AC</v></pinBlock>"
+                + "<shipping>fast</shipping></req>");
+    assertThat(xml).doesNotContain("1234", "5678", "ISO-0", "0412AC");
+    assertThat(xml).contains("<userPin>****</userPin>", "<pinBlock>****</pinBlock>", "<shipping>fast</shipping>");
+
+    String form =
+        PayloadScrub.scrub("text/plain", "mpin=9999&walletPassword=hunter2&otpCode=112233&spinner=on&pin_code=4444");
+    assertThat(form).doesNotContain("9999", "hunter2", "112233", "4444").contains("spinner=on", "mpin=****");
+  }
+
+  @Test
   void nullAndEmptyStayAsTheyAre() {
     assertThat(PayloadScrub.scrub("application/json", null)).isNull();
     assertThat(PayloadScrub.scrub("text/plain", "")).isEmpty();

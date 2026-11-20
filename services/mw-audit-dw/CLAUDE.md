@@ -13,8 +13,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
     body <= 64 KiB). `AuditService` stores the facts on `audit.event` (`hop`, `direction`, `duration_ms`)
     and each body in `audit.payload` (append-only, monthly partitions `payload_yyyy_MM` created by
     `ensure_month_partition` with the event's, linked by `audit_id` + `ordinal`, `size` and `sha256` of
-    the stored body). Every body is scrubbed again on write (`util/PayloadScrub`: PIN/PIN block/password/
-    OTP/CVV/secret fields blanked in JSON, XML and `key=value` text, a Luhn-valid PAN cut to its last 4,
+    the stored body). Every body is scrubbed again on write (`util/PayloadScrub`: a key holding a secret word anywhere (camelCase, `_`, `-` split: pin, mpin, pinblock, otp, passw*, cvv, cvc, secret, ...; `userPin`, `pin_code`, `otpCode` yes, `spinner`, `shipping` no) has its whole value or subtree blanked;
+    in JSON, XML and `key=value` text alike; a Luhn-valid PAN cut to its last 4,
     then `MaskingPolicy.scrub`; `PayloadScrubTest`). Chain: a row with hop facts or payloads appends
     `{hop, direction, durationMs, payloads[{ordinal, direction, contentType, payloadRef, size, sha256}]}` to
     its canonical array (`service/HashChain`); rows without them hash as before (golden vector kept), and
