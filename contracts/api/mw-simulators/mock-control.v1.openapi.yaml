@@ -393,6 +393,48 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /mock-control/npsb/inbound:
+    post:
+      operationId: pushNpsbInbound
+      summary: The NPSB switch pushes one inbound pacs.008 to the middleware (ticket 121b, MCK-06)
+      description: |
+        Builds a pacs.008.001.08 (one transaction) and posts it as application/xml to `sim.npsb.inbound-url`
+        (default `http://mw-adapter-interop:8080/partner/v1/npsb/inbound`). A DUPLICATE_CALLBACK scenario on
+        operation `inbound` sends it twice, LATE_CALLBACK waits `delayMs` first, NO_CALLBACK sends nothing.
+        `ageMinutes` back-dates its CreDtTm (the adapter refuses one older than its freshness window). Not
+        signed (open item: the dev switch key pair). Answers the EndToEndId and each answer of the middleware.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [creditorAccount]
+              properties:
+                creditorAccount: { type: string }
+                amountMinor: { type: integer, format: int64 }
+                endToEndId: { type: string, maxLength: 35 }
+                creditorAgent: { type: string }
+                debtorAgent: { type: string }
+                ageMinutes: { type: integer }
+      responses:
+        "200":
+          description: What was pushed and what the middleware answered
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [endToEndId, answers]
+                properties:
+                  endToEndId: { type: string }
+                  answers:
+                    type: array
+                    items:
+                      type: object
+                      required: [status]
+                      properties:
+                        status: { type: integer }
+                        body: { type: string, nullable: true }
 components:
   parameters:
     Party:
