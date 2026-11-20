@@ -86,6 +86,14 @@ class Mt940ParserTest {
     assertThat(parser.closingBalanceMinor(generatorMt940())).isNull();
   }
 
+  @Test
+  void theClosingDateIsTheDateOfField62fNotOfTheLines() {
+    // REC-07: a forward-value-dated line (value 2026-11-22) must not move the balance to another day
+    String forward = HAND_MT940.replace(":61:2611201120D100,50", ":61:2611221122D100,50");
+    assertThat(parser.closing(forward)).isEqualTo(new Mt940Parser.Closing(89_950L, java.time.LocalDate.of(2026, 11, 20)));
+    assertThat(parser.closing(generatorMt940())).isNull();
+  }
+
   /** The :61:/:86: layout {@code TrustStatementGenerator} writes (ticket 123). */
   private static String generatorMt940() {
     MT940 mt = new MT940("TRUSTBDDXXXX", "BITSBDDHXXXX");

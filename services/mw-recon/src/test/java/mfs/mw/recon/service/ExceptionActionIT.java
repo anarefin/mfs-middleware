@@ -77,7 +77,7 @@ class ExceptionActionIT {
     assertThat(actioned.changeRequestId()).isEqualTo(cr.toString());
     assertThat(queue.action(id, "FORCE_COMMIT", cr, "seed-recon-checker").state()).isEqualTo("ACTIONED");
 
-    recon.onTxn(status(txnId, "FAILED", Instant.parse("2026-11-19T10:01:00Z")), "e2");
+    recon.onTxn(status(txnId, "COMMITTING", Instant.parse("2026-11-19T10:01:00Z")), "e2");
     assertThat(queue.get(id).state()).isEqualTo("ACTIONED");
     recon.onTxn(status(txnId, "COMPLETED", Instant.parse("2026-11-19T10:02:00Z")), "e3");
     assertThat(queue.get(id).state()).isEqualTo("RESOLVED");
@@ -106,6 +106,46 @@ class ExceptionActionIT {
     assertThat(queue.action(id, "REVERSE", UUID.randomUUID(), "seed-recon-checker").state()).isEqualTo("RESOLVED");
     assertThat(events(id)).extracting(e -> e.path("state").asString())
         .containsExactly("EXPLAINED", "ACTIONED", "RESOLVED");
+  }
+
+  @Test
+  void aFailedActionReopensTheExceptionSoItCanBeExplainedOrActionedAgain() {
+    UUID txnId = UUID.randomUUID();
+    UUID id = exceptionOf(txnId);
+    recon.onTxn(status(txnId, "MANUAL_REVIEW", Instant.parse("2026-11-19T10:00:00Z")), "f1");
+    UUID cr = UUID.randomUUID();
+    queue.action(id, "FORCE_COMMIT", cr, "seed-recon-checker");
+
+    recon.onTxn(status(txnId, "COMMITTING", Instant.parse("2026-11-19T10:01:00Z")), "f2");
+    assertThat(queue.get(id).state()).isEqualTo("ACTIONED");
+    recon.onTxn(status(txnId, "FAILED", Instant.parse("2026-11-19T10:02:00Z")), "f3");
+
+    ExceptionView reopened = queue.get(id);
+    assertThat(reopened.state()).isEqualTo("OPEN");
+    assertThat(reopened.action()).isEqualTo("FORCE_COMMIT");
+    assertThat(reopened.changeRequestId()).isEqualTo(cr.toString());
+    // a re-delivery of the same status (same updatedAt) changes nothing
+    recon.onTxn(status(txnId, "FAILED", Instant.parse("2026-11-19T10:02:00Z")), "f4");
+    assertThat(events(id)).extracting(e -> e.path("state").asString()).containsExactly("ACTIONED", "OPEN");
+    Schema schema = ContractSchemas.schema("events/mw-recon/mw.recon.exception.v1.schema.json");
+    events(id).forEach(e -> assertThat(schema.validate(e)).isEmpty());
+
+    assertThat(queue.explain(id, "core refused the commit", "seed-recon-maker").state()).isEqualTo("EXPLAINED");
+    assertThat(queue.action(id, "REVERSE", UUID.randomUUID(), "seed-recon-checker").state()).isEqualTo("ACTIONED");
+  }
+
+  @Test
+  void aReversalTheCoreRefusesReopensTheException() {
+    UUID txnId = UUID.randomUUID();
+    UUID id = exceptionOf(txnId);
+    recon.onTxn(status(txnId, "COMPLETED", Instant.parse("2026-11-19T10:00:00Z")), "g1");
+    queue.action(id, "REVERSE", UUID.randomUUID(), "seed-recon-checker");
+    assertThat(queue.get(id).state()).isEqualTo("ACTIONED");
+
+    recon.onTxn(status(txnId, "REVERSING", Instant.parse("2026-11-19T10:01:00Z")), "g2");
+    recon.onTxn(status(txnId, "MANUAL_REVIEW", Instant.parse("2026-11-19T10:02:00Z")), "g3");
+
+    assertThat(queue.get(id).state()).isEqualTo("OPEN");
   }
 
   @Test

@@ -68,6 +68,8 @@ class ExceptionActionIT {
   static final Map<String, String> EXC_STATE = new ConcurrentHashMap<>();
   /** Bodies and operator headers mw-recon received on POST .../actions. */
   static final List<String> RECORDED = new CopyOnWriteArrayList<>();
+  /** mw-recon answers 503 on POST .../actions while true. */
+  static final java.util.concurrent.atomic.AtomicBoolean RECON_DOWN = new java.util.concurrent.atomic.AtomicBoolean();
   static final HttpServer UPSTREAM = startStub();
 
   static HttpServer startStub() {
@@ -103,6 +105,10 @@ class ExceptionActionIT {
 
   static void recon(HttpExchange ex) throws IOException {
     String path = ex.getRequestURI().getPath();
+    if ("POST".equals(ex.getRequestMethod()) && path.endsWith("/actions") && RECON_DOWN.get()) {
+      respond(ex, 503, "{}");
+      return;
+    }
     if ("POST".equals(ex.getRequestMethod()) && path.endsWith("/actions")) {
       // the services token is sent (mw-recon accepts only mw-admin-api's, ticket 127b security review)
       if (!"Bearer t".equals(ex.getRequestHeaders().getFirst("Authorization"))) {
@@ -122,7 +128,7 @@ class ExceptionActionIT {
     }
     respond(ex, 200, """
         {"id":"%s","reconClass":"STATUS_MISMATCH","detail":"LEDGER_MISSING","owner":"ops","partnerId":"billagg",
-         "txnId":"%s","state":"%s","createdAt":"2026-11-19T20:00:00Z","ageHours":14,"suggestedAction":"FORCE_COMPLETE"}
+         "txnId":"%s","state":"%s","createdAt":"2026-11-19T20:00:00Z","ageHours":14,"suggestedAction":"FORCE_COMMIT"}
         """.formatted(id, TXN, state));
   }
 
@@ -151,12 +157,17 @@ class ExceptionActionIT {
   private final MockMvcTester mvc;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
+  private final mfs.mw.admin.api.scheduler.ReconActionRetryJob retryJob;
+  private final MutableClock clock;
 
   @Autowired
-  ExceptionActionIT(MockMvcTester mvc, JdbcTemplate jdbc, JsonMapper json) {
+  ExceptionActionIT(MockMvcTester mvc, JdbcTemplate jdbc, JsonMapper json,
+      mfs.mw.admin.api.scheduler.ReconActionRetryJob retryJob, Clock clock) {
     this.mvc = mvc;
     this.jdbc = jdbc;
     this.json = json;
+    this.retryJob = retryJob;
+    this.clock = (MutableClock) clock;
   }
 
   @BeforeEach
@@ -164,6 +175,9 @@ class ExceptionActionIT {
     TXN_STATUS.clear();
     EXC_STATE.clear();
     RECORDED.clear();
+    RECON_DOWN.set(false);
+    clock.set(NOW);
+    jdbc.update("delete from recon_action_pending");
     jdbc.update("delete from outbox");
     jdbc.update("delete from change_request");
   }
@@ -255,6 +269,31 @@ class ExceptionActionIT {
   }
 
   @Test
+  void anApprovalMwReconMissedIsDeliveredByTheRetryJob() {
+    TXN_STATUS.put(TXN, "COMPLETED");
+    EXC_STATE.put(EXC, "OPEN");
+    String id = asked("REVERSE");
+    RECON_DOWN.set(true);
+
+    assertThat(approve(CHECKER, id)).hasStatus(200);
+    assertThat(RECORDED).isEmpty();
+    assertThat(jdbc.queryForObject("select count(*) from recon_action_pending where change_request_id = ?::uuid",
+        Integer.class, id)).as("the approved action is kept until mw-recon has it").isOne();
+
+    retryJob.retry();
+    assertThat(RECORDED).as("not due yet").isEmpty();
+
+    RECON_DOWN.set(false);
+    clock.advance(java.time.Duration.ofMinutes(1));
+    retryJob.retry();
+    assertThat(RECORDED).singleElement().satisfies(r -> {
+      assertThat(r).startsWith("recon-checker01 ");
+      assertThat(r).contains("\"action\":\"REVERSE\"").contains("\"changeRequestId\":\"" + id + "\"");
+    });
+    assertThat(jdbc.queryForObject("select count(*) from recon_action_pending", Integer.class)).isZero();
+  }
+
+  @Test
   void aReverseIsAReversalOfTheExceptionsTransaction() {
     TXN_STATUS.put(TXN, "COMPLETED");
     EXC_STATE.put(EXC, "OPEN");
@@ -268,6 +307,7 @@ class ExceptionActionIT {
       assertThat(r.path("idempotencyKey").asString()).isEqualTo(id);
     });
     assertThat(RECORDED).singleElement().satisfies(r -> assertThat(r).contains("\"action\":\"REVERSE\""));
+    assertThat(jdbc.queryForObject("select count(*) from recon_action_pending", Integer.class)).isZero();
   }
 
   @Test

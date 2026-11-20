@@ -3,6 +3,8 @@ package mfs.mw.recon.scheduler;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
 import mfs.mw.recon.client.CoreEmoneyClient;
 import mfs.mw.recon.config.ReconProperties;
 import mfs.mw.recon.dto.TrustPosition;
@@ -24,6 +26,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class TrustPositionJob {
 
+  static final int MAX_LOOKBACK_DAYS = 31;
+
   private static final Logger log = LoggerFactory.getLogger(TrustPositionJob.class);
 
   private final CoreEmoneyClient core;
@@ -44,16 +48,48 @@ public class TrustPositionJob {
   }
 
   @Scheduled(cron = "${mw.recon.trust.position-cron:0 45 0 * * *}", zone = "${mw.recon.trust.zone}")
-  @SchedulerLock(name = "recon-trust-position")
+  @SchedulerLock(name = "recon-trust-position", lockAtLeastFor = "PT5M")
   public void run() {
-    runFor(LocalDate.now(clock.withZone(zone)).minusDays(1));
+    LocalDate yesterday = LocalDate.now(clock.withZone(zone)).minusDays(1);
+    for (LocalDate missed : missedDays(yesterday)) {
+      log.atWarn().addKeyValue("event", "recon.trust_position.missed").addKeyValue("errorCode", "TRUST_POSITION_MISSING")
+          .log("no trust position for {}: its MT940 closing balance was not in at the cut-off; the core's e-money total"
+              + " is a current figure, so that day needs a manual position", missed);
+    }
+    if (runFor(yesterday) == null) {
+      log.atWarn().addKeyValue("event", "recon.trust_position.no_statement")
+          .addKeyValue("errorCode", "TRUST_POSITION_MISSING")
+          .log("no MT940 closing balance for {} at the position cut-off; trust position not computed", yesterday);
+    }
+  }
+
+  /**
+   * REC-07: the days after the last stored position and before {@code yesterday} that have no position (at most
+   * {@value #MAX_LOOKBACK_DAYS} days back). They are reported, not computed: the core's e-money total is a current
+   * figure, so a past day cannot be compared with it.
+   */
+  List<LocalDate> missedDays(LocalDate yesterday) {
+    LocalDate last = positions.lastPositionDate();
+    if (last == null) {
+      return List.of();
+    }
+    LocalDate from = last.plusDays(1);
+    LocalDate floor = yesterday.minusDays(MAX_LOOKBACK_DAYS);
+    if (from.isBefore(floor)) {
+      from = floor;
+    }
+    List<LocalDate> missed = new ArrayList<>();
+    for (LocalDate d = from; d.isBefore(yesterday); d = d.plusDays(1)) {
+      if (!positions.positionKnown(d)) {
+        missed.add(d);
+      }
+    }
+    return missed;
   }
 
   /** The position of {@code day}, or null when the trust bank's closing balance of that day is not in yet. */
   public TrustPosition runFor(LocalDate day) {
     if (!positions.closingKnown(day)) {
-      log.atInfo().addKeyValue("event", "recon.trust_position.no_statement")
-          .log("no MT940 closing balance for {} yet; trust position not computed", day);
       return null;
     }
     TrustPosition p = positions.compute(day, core.emoneyTotalMinor());

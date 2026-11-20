@@ -49,6 +49,8 @@ public class ReconService {
   private static final Logger log = LoggerFactory.getLogger(ReconService.class);
   private static final Set<String> POSTINGS = Set.of(
       "TransferPosted", "WalletCredited", "HoldCommitted", "TransactionReversed");
+  /** Statuses a transaction rests in; an action that leaves its transaction in another one has failed. */
+  static final Set<String> FINAL_STATUSES = Set.of("COMPLETED", "FAILED", "REJECTED", "REVERSED", "MANUAL_REVIEW");
   static final String PARTNER = "PARTNER";
   static final String MT940 = "TRUST_MT940";
   static final String MT942 = "TRUST_MT942";
@@ -61,10 +63,12 @@ public class ReconService {
   private final ReconProperties props;
   private final java.time.Clock clock;
   private final ExceptionEvents events;
+  private final ReportService reports;
 
   public ReconService(ReconStore store, MatchingService matching, Mt940Parser parser, Inbox inbox, OutboxWriter outbox,
-      ReconProperties props, java.time.Clock clock, ExceptionEvents events) {
+      ReconProperties props, java.time.Clock clock, ExceptionEvents events, ReportService reports) {
     this.events = events;
+    this.reports = reports;
     this.store = store;
     this.matching = matching;
     this.parser = parser;
@@ -109,9 +113,9 @@ public class ReconService {
         : parser.parseMt942(new String(body, java.nio.charset.StandardCharsets.UTF_8));
     store.addStatementLines(file.id(), parsed);
     if (daily) {
-      Long closing = parser.closingBalanceMinor(new String(body, java.nio.charset.StandardCharsets.UTF_8));
+      Mt940Parser.Closing closing = parser.closing(new String(body, java.nio.charset.StandardCharsets.UTF_8));
       if (closing != null) {
-        store.setClosingBalance(file.id(), closing);
+        store.setClosingBalance(file.id(), closing.minor(), closing.date());
       }
     }
     return finish(file, source, false);
@@ -172,10 +176,34 @@ public class ReconService {
       throw new MwException(ErrorCodes.VAL_INVALID, "txn status is missing a required field");
     }
     String partnerId = event.partner() == null ? null : event.partner().partnerId();
+    UUID txnId = UUID.fromString(event.txnId());
+    Instant before = store.txnUpdatedAt(txnId);
+    boolean newer = before == null || event.updatedAt().isAfter(before);
     store.upsertTxn(UUID.fromString(event.txnId()), partnerId, event.partnerRef(), event.coreRef(),
         event.amount().valueMinor(), event.amount().currency() == null ? "BDT" : event.amount().currency(),
         event.status(), event.txnType(), event.updatedAt(), event.completedAt());
-    resolveAwaiting(UUID.fromString(event.txnId()), event.status());
+    resolveAwaiting(txnId, event.status());
+    if (newer && FINAL_STATUSES.contains(event.status())) {
+      reopenFailed(txnId, event.status());
+    }
+  }
+
+  /**
+   * REC-05 / FRS 10.4 #7: an approved action failed when its transaction reaches, on a newer status event, a final
+   * status other than the expected one (a FORCE_COMMIT back in MANUAL_REVIEW or FAILED, a REVERSE the core refused).
+   * The exception goes back to OPEN with its {@code mw.recon.exception.v1}, so it can be explained or actioned again
+   * instead of staying ACTIONED forever.
+   */
+  void reopenFailed(UUID txnId, String status) {
+    Instant now = clock.instant();
+    for (UUID id : store.actionedFailed(txnId, status)) {
+      if (store.reopen(id) == 1) {
+        events.changed(id, null, now);
+        log.atWarn().addKeyValue("event", "recon.exception.action_failed").addKeyValue("exceptionId", id.toString())
+            .addKeyValue("txnId", txnId.toString()).addKeyValue("status", status)
+            .log("recon exception reopened: the approved action did not reach its expected status");
+      }
+    }
   }
 
   /**
@@ -229,6 +257,9 @@ public class ReconService {
         file.filename(), businessDate.toString(), matched, missingPartner, missingUpay, amount, status, false);
     outbox.append(ReconTopics.RESULT, file.partnerId(), meta(runId.toString(), runId.toString()),
         resultBody(summary, exceptions, finished));
+    if (!MT942.equals(source)) {
+      reports.refreshStored(file.partnerId(), businessDate, finished);
+    }
     log.atInfo().addKeyValue("event", "recon.run.completed").addKeyValue("partnerId", file.partnerId())
         .addKeyValue("matched", matched).addKeyValue("missingInPartner", missingPartner)
         .addKeyValue("missingInUpay", missingUpay).addKeyValue("amountMismatch", amount)
@@ -385,7 +416,7 @@ public class ReconService {
     put(body, "detail", finding.detail());
     put(body, "txnId", uuidText(finding.txnId()));
     put(body, "partnerRef", finding.partnerRef());
-    put(body, "reference", finding.reference());
+    put(body, "reference", ExceptionEvents.bounded(mfs.mw.recon.util.MaskingPolicy.scrub(finding.reference())));
     put(body, "fileAmountMinor", finding.fileAmountMinor());
     put(body, "upayAmountMinor", finding.upayAmountMinor());
     put(body, "ledgerAmountMinor", finding.ledgerAmountMinor());

@@ -55,7 +55,23 @@ public class TrustPositionService {
     return store.latestTrustClosingDate(ReconService.MT940);
   }
 
-  /** Computes and stores the position; a second run for the same day replaces the row. */
+  /** The latest day with a stored position, or null. */
+  @Transactional(readOnly = true)
+  public LocalDate lastPositionDate() {
+    return store.lastTrustPositionDate();
+  }
+
+  /** Whether a position is stored for {@code day}. */
+  @Transactional(readOnly = true)
+  public boolean positionKnown(LocalDate day) {
+    return store.trustPositionKnown(day);
+  }
+
+  /**
+   * Computes and stores the position; a second run for the same day replaces the row and never duplicates the day's
+   * exception (M9 review): a gap again updates the day's OPEN or EXPLAINED exception (an EXPLAINED one whose gap
+   * changed goes back to OPEN without its explanation), a clean re-run resolves it as superseded. Each change goes out on {@code mw.recon.exception.v1}.
+   */
   @Transactional
   public TrustPosition compute(LocalDate businessDate, long emoneyTotalMinor) {
     Long trust = store.trustClosing(businessDate, ReconService.MT940);
@@ -64,12 +80,20 @@ public class TrustPositionService {
     }
     long difference = trust - emoneyTotalMinor;
     Instant now = clock.instant();
+    UUID open = store.openTrustException(businessDate);
     UUID exceptionId = null;
-    if (difference != 0) {
+    if (difference != 0 && open != null) {
+      exceptionId = open;
+      if (store.updateStandaloneAmounts(open, trust, emoneyTotalMinor) == 1) {
+        events.changed(open, null, now);
+      }
+    } else if (difference != 0) {
       exceptionId = UUID.randomUUID();
       store.insertStandaloneException(exceptionId, ReconClass.AMOUNT_MISMATCH.name(), DETAIL, OWNER, trustPartnerId,
           trust, emoneyTotalMinor, now);
       events.changed(exceptionId, null, now);
+    } else if (open != null && store.supersede(open, now) == 1) {
+      events.changed(open, null, now);
     }
     store.saveTrustPosition(businessDate, emoneyTotalMinor, trust, difference, exceptionId, now);
     return new TrustPosition(businessDate, emoneyTotalMinor, trust, difference, exceptionId);

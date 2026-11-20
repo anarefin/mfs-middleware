@@ -108,8 +108,12 @@ class ReconReportsIT {
         .replace("2610051005", "2610071007").getBytes(StandardCharsets.UTF_8), true);
     LocalDate day = DAY.plusDays(2);
     UUID open = trust.compute(day, 1L).exceptionId();
-    UUID resolved = trust.compute(day, 2L).exceptionId();
-    jdbc.update("update recon_exception set state = 'RESOLVED', explanation = 'settled' where id = ?", resolved);
+    assertThat(trust.compute(day, 2L).exceptionId()).as("a re-run reuses the day's open exception").isEqualTo(open);
+    UUID resolved = UUID.randomUUID();
+    jdbc.update("""
+        insert into recon_exception (id, class, detail, owner, partner_id, state, created_at, explanation)
+        values (?, 'AMOUNT_MISMATCH', 'TRUST_POSITION', 'finance', 'trustbank', 'RESOLVED', now(), 'settled')
+        """, resolved);
 
     queue.explain(open, "timing difference", "seed-recon-maker");
     queue.explain(open, "timing difference, bank confirmed", "seed-recon-maker");
@@ -137,6 +141,29 @@ class ReconReportsIT {
   }
 
   @Test
+  void aReRunWithANewGapReopensAnExplainedTrustExceptionAndTheSameGapKeepsItsExplanation() {
+    recon.ingestStatement("MT940_rpt127d.fin", FIN.replace("RPT127", "RPT127D").replace("261005", "261008")
+        .replace("2610051005", "2610081008").getBytes(StandardCharsets.UTF_8), true);
+    LocalDate day = DAY.plusDays(3);
+    UUID id = trust.compute(day, 90_000L).exceptionId();
+    queue.explain(id, "bank charge posted next day", "seed-recon-maker");
+
+    // same gap (closing 899.50 against 900.00): the explanation still covers it
+    assertThat(trust.compute(day, 90_000L).exceptionId()).isEqualTo(id);
+    assertThat(queue.get(id).state()).isEqualTo("EXPLAINED");
+    assertThat(queue.get(id).explanation()).isEqualTo("bank charge posted next day");
+
+    // a different gap: the old explanation no longer approves it
+    assertThat(trust.compute(day, 95_000L).exceptionId()).isEqualTo(id);
+    ExceptionView reopened = queue.get(id);
+    assertThat(reopened.state()).isEqualTo("OPEN");
+    assertThat(reopened.explanation()).isNull();
+    assertThat(reopened.explainedBy()).isNull();
+    assertThat(reopened.explainedAt()).isNull();
+    assertThat(reopened.upayAmountMinor()).isEqualTo(95_000L);
+  }
+
+  @Test
   void theDailyReportIsStoredForDownload() {
     recon.ingestStatement("MT940_rpt127b.fin", FIN.replace("RPT127", "RPT127B").replace("261005", "261006")
         .replace("2610051005", "2610061006").getBytes(StandardCharsets.UTF_8), true);
@@ -147,5 +174,12 @@ class ReconReportsIT {
     byte[] csv = reports.download("trustbank", day, day, ReportKind.DAILY, ReportFormat.CSV);
     assertThat(new String(csv, StandardCharsets.UTF_8)).contains("trustbank,2026-10-06,2026-10-06,DAILY,TOTAL,1,100.50");
     assertThat(reports.download("trustbank", day, day, ReportKind.DAILY, ReportFormat.PDF)).isNotEmpty();
+
+    // REC-06: a later run for that day re-stores the report, so the download is never stale
+    recon.ingestStatement("MT940_rpt127b2.fin", FIN.replace("RPT127", "RPT127B2").replace("261005", "261006")
+        .replace("2610051005", "2610061006").replace("D100,50", "D200,00").replace("127001", "127b02")
+        .getBytes(StandardCharsets.UTF_8), true);
+    assertThat(new String(reports.download("trustbank", day, day, ReportKind.DAILY, ReportFormat.CSV),
+        StandardCharsets.UTF_8)).contains("trustbank,2026-10-06,2026-10-06,DAILY,TOTAL,2,300.50");
   }
 }

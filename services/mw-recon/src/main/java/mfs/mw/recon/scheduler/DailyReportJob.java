@@ -28,7 +28,7 @@ public class DailyReportJob {
   }
 
   @Scheduled(cron = "${mw.recon.report-cron:0 0 2 * * *}", zone = "${mw.recon.trust.zone}")
-  @SchedulerLock(name = "recon-daily-report")
+  @SchedulerLock(name = "recon-daily-report", lockAtLeastFor = "PT5M")
   public void run() {
     LocalDate day = LocalDate.now(clock.withZone(ZoneId.of(props.trust().zone()))).minusDays(1);
     int partners = reports.storeDaily(day, clock.instant());

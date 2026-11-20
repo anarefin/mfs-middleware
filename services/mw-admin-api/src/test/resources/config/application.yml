@@ -25,6 +25,9 @@ mw:
     expiry-cron: "-"
     # and the claim-first reconciler (ticket 75): KeyApprovalRaceIT calls it directly
     approving-reconcile-cron: "-"
+  recon:
+    # off in tests; controller/ExceptionActionIT calls the retry job directly
+    action-retry-cron: "-"
   apisix:
     # ticket 100a: off in tests; ChannelClientChangeRequestIT turns it on against a stand-in Admin API
     reconcile-cron: "-"

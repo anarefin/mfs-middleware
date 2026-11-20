@@ -183,7 +183,7 @@ components:
         state: { type: string, enum: [OPEN, EXPLAINED, ACTIONED, RESOLVED] }
         createdAt: { type: string, format: date-time }
         ageHours: { type: integer }
-        suggestedAction: { type: string, enum: [FORCE_COMPLETE, REVERSE, RAISE_DISPUTE, ACCEPT_AS_EXPLAINED] }
+        suggestedAction: { type: string, enum: [FORCE_COMMIT, REVERSE, RAISE_DISPUTE, ACCEPT_AS_EXPLAINED] }
         explanation: { type: [string, "null"] }
         explainedBy: { type: [string, "null"] }
         explainedAt: { type: [string, "null"], format: date-time }

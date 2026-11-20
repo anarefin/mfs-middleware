@@ -1,5 +1,7 @@
 package mfs.mw.admin.api.service;
 
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -21,6 +23,7 @@ import mfs.mw.admin.api.exception.QueryUnavailableException;
 import mfs.mw.admin.api.mapper.ChangeRequestMapper;
 import mfs.mw.admin.api.messaging.EventMetadata;
 import mfs.mw.admin.api.messaging.OutboxWriter;
+import mfs.mw.admin.api.repository.ReconActionPendingRepository;
 import mfs.mw.admin.api.util.UuidV7;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,8 +36,9 @@ import org.springframework.stereotype.Component;
  * (still OPEN or EXPLAINED, same transaction) and the transaction from mw-orchestrator (the action still fits its
  * status, the ticket 37 rules); else 409 and the request stays PENDING. The approval then takes the ticket 37 path in
  * the decision transaction: FORCE_COMMIT on {@code mw.txn.action.v1} or a REVERSAL on {@code mw.txn.request.v1}
- * through the outbox. Only after that commit mw-recon is told ({@code POST .../actions}, idempotent on the change
- * request id), so a reject or expiry that wins never leaves an ACTIONED exception; mw-recon resolves it when the
+ * through the outbox, with a {@code recon_action_pending} row. Only after that commit mw-recon is told ({@code POST
+ * .../actions}, idempotent on the change request id; re-sent by the retry job until mw-recon answers), so a reject
+ * or expiry that wins never leaves an ACTIONED exception; mw-recon resolves it when the
  * transaction's outcome arrives. mw-recon moves no money.
  */
 @Component
@@ -44,15 +48,23 @@ public class ReconExceptionChangeHandler implements ResourceChangeHandler {
 
   private static final Logger log = LoggerFactory.getLogger(ReconExceptionChangeHandler.class);
 
+  /** A pending action is sent again once its last attempt is this old. */
+  static final Duration RETRY_AFTER = Duration.ofSeconds(30);
+  static final int RETRY_BATCH = 50;
+
   private final ReconExceptionClient recon;
   private final OrchestratorQueryClient orchestrator;
   private final OutboxWriter outbox;
+  private final ReconActionPendingRepository pending;
+  private final Clock clock;
 
   public ReconExceptionChangeHandler(ReconExceptionClient recon, OrchestratorQueryClient orchestrator,
-      OutboxWriter outbox) {
+      OutboxWriter outbox, ReconActionPendingRepository pending, Clock clock) {
     this.recon = recon;
     this.orchestrator = orchestrator;
     this.outbox = outbox;
+    this.pending = pending;
+    this.clock = clock;
   }
 
   @Override
@@ -110,6 +122,7 @@ public class ReconExceptionChangeHandler implements ResourceChangeHandler {
       return new Approval(payload, ChangeRequestService.REQUEST_TOPIC, () -> {
         outbox.append(ChangeRequestService.REQUEST_TOPIC, rev.txnId(),
             new EventMetadata(correlationId, rev.txnId(), rev.idempotencyKey(), 1), rev);
+        keepForRecon(cr, checker, now);
         return Map.of();
       });
     }
@@ -119,27 +132,54 @@ public class ReconExceptionChangeHandler implements ResourceChangeHandler {
     return new Approval(payload, ChangeRequestService.ACTION_TOPIC, () -> {
       outbox.append(ChangeRequestService.ACTION_TOPIC, msg.txnId(),
           new EventMetadata(correlationId, msg.txnId(), msg.actionId(), 1), msg);
+      keepForRecon(cr, checker, now);
       return Map.of();
     });
   }
 
   /**
-   * Tells mw-recon after the commit. Its answer is logged, not tracked (as the core unlock of ticket 95b): the
-   * action was sent either way, and mw-recon's queue shows the exception's state.
+   * REC-05 (M9 review): in the decision transaction, the approved action is kept until mw-recon has it, so an
+   * mw-recon outage after the commit never leaves the exception OPEN with the action already taken.
+   */
+  private void keepForRecon(ChangeRequest cr, Operator checker, Instant now) {
+    pending.insert(cr.id(), UUID.fromString(cr.resourceId()), cr.action(), checker.username(), now);
+  }
+
+  /**
+   * Tells mw-recon after the commit. Once mw-recon answered (recorded, or refused: already actioned or resolved)
+   * the pending row is dropped; no answer keeps it for {@link #retryDue()} (REC-05, M9 review).
    */
   @Override
   public void afterApproved(ChangeRequest cr, Map<String, Object> payload, Operator checker) {
+    deliver(new ReconActionPendingRepository.Pending(cr.id(), UUID.fromString(cr.resourceId()), cr.action(),
+        checker.username(), 0));
+  }
+
+  /** Sends again every approved action mw-recon has not answered whose last attempt is due (the retry job). */
+  public void retryDue() {
+    for (ReconActionPendingRepository.Pending p : pending.due(clock.instant().minus(RETRY_AFTER), RETRY_BATCH)) {
+      deliver(p);
+    }
+  }
+
+  private void deliver(ReconActionPendingRepository.Pending p) {
     String outcome;
     try {
-      outcome = recon.recordAction(UUID.fromString(cr.resourceId()), cr.action(), cr.id(), checker.username()).name();
+      outcome = recon.recordAction(p.exceptionId(), p.action(), p.changeRequestId(), p.checkerId()).name();
     } catch (RuntimeException e) {
       outcome = "UNKNOWN";
     }
-    log.atInfo()
-        .addKeyValue("event", "admin.recon_exception.recorded")
-        .addKeyValue("resourceId", cr.resourceId())
-        .addKeyValue("changeRequestId", cr.id().toString())
+    if ("UNKNOWN".equals(outcome)) {
+      pending.attempted(p.changeRequestId(), clock.instant());
+    } else {
+      pending.delete(p.changeRequestId());
+    }
+    var event = "RECORDED".equals(outcome) ? log.atInfo() : log.atWarn();
+    event.addKeyValue("event", "admin.recon_exception.recorded")
+        .addKeyValue("resourceId", p.exceptionId().toString())
+        .addKeyValue("changeRequestId", p.changeRequestId().toString())
         .addKeyValue("outcome", outcome)
+        .addKeyValue("attempts", p.attempts() + 1)
         .log("Approved recon exception action told to mw-recon: {}", outcome);
   }
 

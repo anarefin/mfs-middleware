@@ -26,8 +26,9 @@ class TrustPositionTest {
   private static final Instant NOW = Instant.parse("2026-11-19T19:00:00Z");
 
   private final ReconStore store = mock(ReconStore.class);
+  private final ExceptionEvents events = mock(ExceptionEvents.class);
   private final TrustPositionService service =
-      new TrustPositionService(store, "trustbank", Clock.fixed(NOW, ZoneOffset.UTC), mock(ExceptionEvents.class));
+      new TrustPositionService(store, "trustbank", Clock.fixed(NOW, ZoneOffset.UTC), events);
 
   @Test
   void equalBalancesGiveZeroDifferenceAndNoException() {
@@ -53,6 +54,49 @@ class TrustPositionTest {
     verify(store).insertStandaloneException(position.exceptionId(), "AMOUNT_MISMATCH", "TRUST_POSITION", "finance",
         "trustbank", 1_000_000L, 1_000_150L, NOW);
     verify(store).saveTrustPosition(DAY, 1_000_150L, 1_000_000L, -150L, position.exceptionId(), NOW);
+  }
+
+  @Test
+  void aReRunWithTheSameGapReusesTheDaysOpenException() {
+    java.util.UUID open = java.util.UUID.randomUUID();
+    when(store.trustClosing(DAY, "TRUST_MT940")).thenReturn(1_000_000L);
+    when(store.openTrustException(DAY)).thenReturn(open);
+    when(store.updateStandaloneAmounts(open, 1_000_000L, 1_000_200L)).thenReturn(1);
+
+    TrustPosition position = service.compute(DAY, 1_000_200L);
+
+    assertThat(position.exceptionId()).isEqualTo(open);
+    verify(store, never()).insertStandaloneException(any(), anyString(), anyString(), anyString(), anyString(), any(),
+        any(), any());
+    verify(store).updateStandaloneAmounts(open, 1_000_000L, 1_000_200L);
+    verify(events).changed(open, null, NOW);
+    verify(store).saveTrustPosition(DAY, 1_000_200L, 1_000_000L, -200L, open, NOW);
+  }
+
+  @Test
+  void aReRunWithUnchangedAmountsEmitsNothing() {
+    java.util.UUID open = java.util.UUID.randomUUID();
+    when(store.trustClosing(DAY, "TRUST_MT940")).thenReturn(1_000_000L);
+    when(store.openTrustException(DAY)).thenReturn(open);
+    when(store.updateStandaloneAmounts(open, 1_000_000L, 1_000_200L)).thenReturn(0);
+
+    assertThat(service.compute(DAY, 1_000_200L).exceptionId()).isEqualTo(open);
+    verify(events, never()).changed(any(), any(), any());
+  }
+
+  @Test
+  void aCleanReRunResolvesTheDaysOpenExceptionAsSuperseded() {
+    java.util.UUID open = java.util.UUID.randomUUID();
+    when(store.trustClosing(DAY, "TRUST_MT940")).thenReturn(1_000_000L);
+    when(store.openTrustException(DAY)).thenReturn(open);
+    when(store.supersede(open, NOW)).thenReturn(1);
+
+    TrustPosition position = service.compute(DAY, 1_000_000L);
+
+    assertThat(position.exceptionId()).isNull();
+    verify(store).supersede(open, NOW);
+    verify(events).changed(open, null, NOW);
+    verify(store).saveTrustPosition(DAY, 1_000_000L, 1_000_000L, 0L, null, NOW);
   }
 
   @Test

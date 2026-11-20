@@ -309,6 +309,32 @@ public class ReconStore {
         """, UUID.class, txnId, status);
   }
 
+  /**
+   * The ACTIONED exceptions of a transaction whose action failed: the transaction reached a final status other than
+   * the one the action leads to (REC-05, FRS 10.4 #7).
+   */
+  public List<UUID> actionedFailed(UUID txnId, String status) {
+    return jdbc.queryForList("""
+        select id from recon_exception where state = 'ACTIONED' and txn_id = ? and expected_status <> ? order by id
+        """, UUID.class, txnId, status);
+  }
+
+  /**
+   * ACTIONED -> OPEN after a failed action, so it can be explained or actioned again; the last action and its change
+   * request stay on the row as history. 0 rows when it is not ACTIONED.
+   */
+  public int reopen(UUID id) {
+    return jdbc.update("""
+        update recon_exception set state = 'OPEN', expected_status = null where id = ? and state = 'ACTIONED'
+        """, id);
+  }
+
+  /** The projected {@code updatedAt} of a transaction, or null. */
+  public Instant txnUpdatedAt(UUID txnId) {
+    return jdbc.query("select updated_at from txn_view where txn_id = ?", (rs, n) -> rs.getTimestamp(1).toInstant(),
+        txnId).stream().findFirst().orElse(null);
+  }
+
   /** ACTIONED -> RESOLVED; 0 rows when it is not ACTIONED. */
   public int resolve(UUID id, Instant at) {
     return jdbc.update("""
@@ -322,6 +348,48 @@ public class ReconStore {
         .findFirst().orElse(null);
   }
 
+  /** The OPEN or EXPLAINED exception the stored trust position of {@code day} points at, or null. */
+  public UUID openTrustException(LocalDate day) {
+    return jdbc.query("""
+        select e.id from trust_position p join recon_exception e on e.id = p.exception_id
+        where p.business_date = ? and e.state in ('OPEN', 'EXPLAINED')
+        """, (rs, n) -> rs.getObject(1, UUID.class), day).stream().findFirst().orElse(null);
+  }
+
+  /**
+   * The amounts of a run-less exception after a re-computation; 0 rows when they did not change. An EXPLAINED
+   * exception whose gap (file - upay) changed goes back to OPEN and loses its explanation, so an old explanation
+   * never approves a new gap (security review); the same gap keeps it.
+   */
+  public int updateStandaloneAmounts(UUID id, long fileAmountMinor, long upayAmountMinor) {
+    return jdbc.update("""
+        update recon_exception set
+          state = case when state = 'EXPLAINED' and file_amount_minor - upay_amount_minor <> ? then 'OPEN'
+            else state end,
+          explanation = case when state = 'EXPLAINED' and file_amount_minor - upay_amount_minor <> ? then null
+            else explanation end,
+          explained_by = case when state = 'EXPLAINED' and file_amount_minor - upay_amount_minor <> ? then null
+            else explained_by end,
+          explained_at = case when state = 'EXPLAINED' and file_amount_minor - upay_amount_minor <> ? then null
+            else explained_at end,
+          file_amount_minor = ?, upay_amount_minor = ?
+        where id = ? and (file_amount_minor is distinct from ? or upay_amount_minor is distinct from ?)
+        """, gap(fileAmountMinor, upayAmountMinor), gap(fileAmountMinor, upayAmountMinor),
+        gap(fileAmountMinor, upayAmountMinor), gap(fileAmountMinor, upayAmountMinor), fileAmountMinor,
+        upayAmountMinor, id, fileAmountMinor, upayAmountMinor);
+  }
+
+  private static long gap(long fileAmountMinor, long upayAmountMinor) {
+    return fileAmountMinor - upayAmountMinor;
+  }
+
+  /** OPEN or EXPLAINED -> RESOLVED because a later computation no longer shows the difference; 0 rows otherwise. */
+  public int supersede(UUID id, Instant at) {
+    return jdbc.update("""
+        update recon_exception set state = 'RESOLVED', resolved_at = ? where id = ? and state in ('OPEN', 'EXPLAINED')
+        """, Timestamp.from(at), id);
+  }
+
   /** A run-less exception (the trust position, REC-07). */
   public void insertStandaloneException(UUID id, String reconClass, String detail, String owner, String partnerId,
       Long fileAmountMinor, Long upayAmountMinor, Instant at) {
@@ -332,24 +400,38 @@ public class ReconStore {
         """, id, reconClass, detail, owner, partnerId, fileAmountMinor, upayAmountMinor, Timestamp.from(at));
   }
 
-  public void setClosingBalance(UUID fileId, long closingMinor) {
-    jdbc.update("update source_file set closing_balance_minor = ? where id = ?", closingMinor, fileId);
+  /** The MT940 closing balance (62F) and its statement date (REC-07). */
+  public void setClosingBalance(UUID fileId, long closingMinor, LocalDate closingDate) {
+    jdbc.update("update source_file set closing_balance_minor = ?, closing_date = ? where id = ?", closingMinor,
+        closingDate, fileId);
   }
 
-  /** The closing balance of the latest statement of that source for the business date, or null. */
+  /** The closing balance of the latest statement of that source whose 62F date is {@code day}, or null. */
   public Long trustClosing(LocalDate day, String source) {
     return jdbc.query("""
         select closing_balance_minor from source_file
-        where source = ? and business_date = ? and closing_balance_minor is not null
+        where source = ? and closing_date = ? and closing_balance_minor is not null
         order by received_at desc limit 1
         """, (rs, n) -> rs.getLong(1), source, day).stream().findFirst().orElse(null);
   }
 
-  /** The latest business date of {@code source} with a closing balance, or null (ticket 127c). */
+  /** The latest 62F date of {@code source} with a closing balance, or null (ticket 127c). */
   public LocalDate latestTrustClosingDate(String source) {
     return jdbc.queryForObject(
-        "select max(business_date) from source_file where source = ? and closing_balance_minor is not null",
+        "select max(closing_date) from source_file where source = ? and closing_balance_minor is not null",
         (rs, n) -> rs.getObject(1, LocalDate.class), source);
+  }
+
+  /** The latest day with a stored trust position, or null. */
+  public LocalDate lastTrustPositionDate() {
+    return jdbc.queryForObject("select max(business_date) from trust_position",
+        (rs, n) -> rs.getObject(1, LocalDate.class));
+  }
+
+  /** Whether a trust position is stored for {@code day}. */
+  public boolean trustPositionKnown(LocalDate day) {
+    Integer n = jdbc.queryForObject("select count(*) from trust_position where business_date = ?", Integer.class, day);
+    return n != null && n > 0;
   }
 
   public void saveTrustPosition(LocalDate day, long emoney, long trust, long difference, UUID exceptionId, Instant at) {

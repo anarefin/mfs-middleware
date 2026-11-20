@@ -296,6 +296,9 @@ mw:
   # client/ReconExceptionClient), over the app network, not routed by APISIX
   recon:
     base-url: ${MW_RECON_BASE_URL:http://mw-recon:8080}
+    # REC-05 (M9 review): scheduler/ReconActionRetryJob re-sends approved recon_exception actions mw-recon has
+    # not answered (recon_action_pending), 30 s after the last attempt
+    action-retry-cron: "30 * * * * *"
   # The core wallet API (ADR D31, ticket 95b; config/CoreClientProperties, client/CoreAccountClient): an
   # approved unlock lifts the core's own lock with POST /core/v1/accounts/{walletId}/unlock, with the realm
   # services token below (audience mw-core-mock). Idempotent by unlockTxnId: no definite answer is asked

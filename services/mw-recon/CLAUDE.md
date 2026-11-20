@@ -23,18 +23,26 @@ Statement and settlement reconciliation (spec 13, ticket 126, FRS REC-01..04, RE
   `match_result` for a partner and Asia/Dhaka business dates (DAILY = MT940 and partner-file runs, INTRADAY =
   MT942 runs), rendered as CSV (formula cells defused), XLSX (Apache POI) or PDF (OpenPDF);
   `GET /internal/v1/recon/reports?partner=&from=&to=&kind=&format=`. `scheduler/DailyReportJob`
-  (`mw.recon.report-cron`, default 02:00) stores yesterday's report per partner in `recon.report`.
-- Trust position (REC-07): the MT940 closing balance (62F) is stored on `source_file`;
+  (`mw.recon.report-cron`, default 02:00) stores yesterday's report per partner in `recon.report`; a later
+  DAILY run for that day re-stores it (`ReportService.refreshStored`, REC-06).
+- Trust position (REC-07): the MT940 closing balance (62F) is stored on `source_file` with its 62F date
+  (`V7` `closing_date`; the position is keyed by that date, never by the lines' value dates);
   `service/TrustPositionService` compares it with the e-money total, stores `recon.trust_position` and
-  raises `AMOUNT_MISMATCH` detail `TRUST_POSITION` (owner `finance`) on a gap. `scheduler/TrustPositionJob`
+  raises `AMOUNT_MISMATCH` detail `TRUST_POSITION` (owner `finance`) on a gap. A re-run for the same day reuses
+  the day's OPEN or EXPLAINED exception (an EXPLAINED one whose gap changed goes back to OPEN without its
+  explanation) and a clean re-run resolves it as superseded; its event's `amountMinor` is the gap. `scheduler/TrustPositionJob`
   (ticket 127c; `mw.recon.trust.position-cron`, default 00:45 Asia/Dhaka) computes yesterday's position when its
-  MT940 closing balance is in, with the core's `GET /core/v1/reports/emoney-total` read by `client/CoreEmoneyClient`
+  MT940 closing balance is in (WARN `recon.trust_position.no_statement` when not, and
+  `recon.trust_position.missed` for every day without a position since the last one, at most 31 days: reported, not
+  computed, since the core's e-money total is a current figure; ShedLock `lockAtLeastFor` PT5M), with the core's `GET /core/v1/reports/emoney-total` read by `client/CoreEmoneyClient`
   (read only; `client/ServiceTokenClient`: realm `services` client `mw-recon`, mapper `aud-mw-core-mock`,
   `mw.recon.core.*`, secret from Vault `mw.recon.core.client-secret` / `KC_MW_RECON_SECRET`; renewed once on 401
   `MW-AUTH-001`, anything else 503 `MW-SYS-002`). Dev/test `POST /test/v1/trust-position?date=` runs it (default
   the latest closing date; none 404 `MW-VAL-003`). Open item for Upay: the real core must serve the endpoint.
 - Work queue (UC-22): `GET /internal/v1/recon/exceptions` (class, partner, state, minAgeHours, limit),
-  `GET .../{id}` with a suggested action (advice only), `POST .../{id}/explanations` (OPEN or EXPLAINED -> EXPLAINED,
+  `GET .../{id}` with a suggested action (advice only; FORCE_COMMIT, REVERSE, RAISE_DISPUTE, ACCEPT_AS_EXPLAINED;
+  the MT940 `:86:` narrative and the explanation are scrubbed by `MaskingPolicy` and cut to 255 in the view and the
+  events), `POST .../{id}/explanations` (OPEN or EXPLAINED -> EXPLAINED,
   audited on `mw.audit.event.v1` as `recon.exception.explained`; ACTIONED or RESOLVED is refused with 409
   `MW-VAL-006`; FRS 10.4 #7: every difference resolved or explained). The operator comes from
   `X-Mw-Operator-Id` as for reprocess, asserted by mw-admin-api. Exception states: OPEN, EXPLAINED, ACTIONED,
@@ -46,7 +54,10 @@ Statement and settlement reconciliation (spec 13, ticket 126, FRS REC-01..04, RE
   transaction -> ACTIONED (`V6`: action, change_request_id, actioned_by/at, expected_status COMPLETED for
   FORCE_COMMIT, REVERSED for REVERSE); anything else 409 `MW-VAL-006`. `ReconService.resolveAwaiting`: the
   transaction reaching the expected status on `mw.txn.status.v1` (or already projected so when the action
-  arrives) -> RESOLVED (`resolved_at`). Another status leaves it ACTIONED.
+  arrives) -> RESOLVED (`resolved_at`). A newer status event with another final status (COMPLETED, FAILED,
+  REJECTED, REVERSED, MANUAL_REVIEW; `ReconService.reopenFailed`) means the action failed: ACTIONED -> OPEN (WARN
+  `recon.exception.action_failed`; action and change request kept as history), so it can be explained or actioned
+  again. An intermediate status (COMMITTING, REVERSING) leaves it ACTIONED.
 - Events (ticket 127b, FRS DAT-01 `recon.exception`): `service/ExceptionEvents` writes one
   `mw.recon.exception.v1` per state change (OPEN when raised by a run or the trust position, EXPLAINED,
   ACTIONED, RESOLVED) to the outbox in the same transaction, key the exception id. Consumers mw-audit-dw (audit
