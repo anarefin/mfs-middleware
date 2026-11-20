@@ -1,0 +1,19 @@
+# Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+produces:
+  events:
+    - events/mw-orchestrator/mw.partner.reply.v1.schema.json#remit
+    # ticket 119: inbound remittances (service/RemitInboundService, kind REMITTANCE)
+    - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#remit
+    - events/mw-audit-dw/mw.audit.event.v1.schema.json
+    # ticket 84: LIVE / REJECTED of each partner record version (messaging/PartnerRouteStatusPublisher)
+    - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
+    # ticket 86: the lines of a partner's SFTP reconciliation file (messaging/PartnerReconPublisher)
+    - events/mw-adapter-billpay/mw.partner.recon.v1.schema.json
+  # ticket 119: the partner's inbound API (controller/RemitInboundController)
+  apis:
+    - api/mw-adapter-remit/remit-inbound.v1.openapi.yaml
+consumes:
+  events:
+    - events/mw-orchestrator/mw.partner.request.v1.schema.json#remit
+    - events/mw-admin-api/mw.config.changed.v1.schema.json
+  apis: []

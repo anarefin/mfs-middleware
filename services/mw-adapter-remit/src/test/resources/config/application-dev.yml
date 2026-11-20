@@ -1,0 +1,134 @@
+# Test-only overrides of application-dev.yml (a profile file wins over config/application.yml).
+mw:
+  partners:
+    instances:
+      ucb-imt:
+        # WireMock runs on localhost.
+        allowed-hosts: mw-simulators,localhost
+      # Test-only partner (ticket 115, kept by 118, 119): the shared partner-engine tests (copied from mw-adapter-bank)
+      # run on this REST async-callback record; the dev profile of this adapter seeds only ucb-imt.
+      # Generic partner bank for C2W / ADD_MONEY_BANK (wire format: mw-simulators c2wbank), a partner
+      # route as config (ADR D28). A debit is accepted (202 PENDING) and its outcome follows as a
+      # signed callback to /partner/c2wbank/callback/debits (APISIX ->
+      # controller/PartnerCallbackController, verified with auth below); a 200 SUCCESS / 422 FAILED
+      # answer is also understood.
+      c2wbank:
+        family: remit
+        base-url: ${C2WBANK_BASE_URL:http://mw-simulators:8080}
+        # The hosts the route may call (approved with the record; the static floor in application.yml
+        # narrows them).
+        allowed-hosts: mw-simulators,localhost
+        connect-timeout-ms: 3000
+        # Bank timeout (spec 11.1 says 30 s) is 25 s here so the adapter answers before the
+        # orchestrator's 30 s partner deadline; the read timeout sits a little above so the time
+        # limit decides first. Circuit breaker and bulkhead: the resilience4j instance "c2wbank".
+        timeout-ms: 25000
+        read-timeout-ms: 27000
+        # A status inquiry goes again once after a timeout, 5xx, reset or failed connect; a debit never.
+        inquiry-retries: 1
+        # hmac-sha256 both ways (spec 11.1 "signature"; mTLS per bank is TBC): every call is signed
+        # (mw-http-call auth), and a callback is believed only with a valid signature over method,
+        # path, timestamp and body (300 s skew). The shared secret is the field hmac-secret of Vault
+        # secret/mw-adapter-remit/c2wbank (dev value C2WBANK_HMAC_SECRET, deploy/provision/services.sh);
+        # never here.
+        auth:
+          scheme: hmac-sha256
+          credentials-ref: hmac-secret
+        # Raw bodies are audited masked: these fields by rule, everything by free-text scrubbing.
+        sensitive-fields:
+          accountNumber: ACCOUNT
+        # Bank codes that do not say whether the debit was applied: reply UNKNOWN.
+        ambiguous-codes: ["9876"]
+        # Bank code -> MW-PTR-C2WBANK-<suffix>. Unlisted codes become UNMAPPED.
+        error-map:
+          "[4001]": { suffix: ACCOUNT_NOT_LINKED, retryable: false }
+          "[4002]": { suffix: DEBIT_REFUSED, retryable: false }
+          "[4003]": { suffix: INSUFFICIENT_FUNDS, retryable: false }
+        # The route (async callback, deploy/partner-routes/examples/rest-async-callback.yaml): PAY: POST
+        # /c2wbank/v1/debits {transactionId, accountNumber, amount:"500.00"} (only 422 with a code and
+        # 400 are rejections; any other non-2xx is UNKNOWN); STATUS_QUERY (spec 7.4): GET
+        # /c2wbank/v1/debits/{reference}. The callback itself is never a route: it reaches
+        # controller/PartnerCallbackController and is read with CALLBACK.response.
+        route: |
+          - route:
+              from:
+                uri: direct:partner-c2wbank
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.c2wbank.base-url}&method=POST&path=/c2wbank/v1/debits&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422&pending=true"
+                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                          steps:
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.c2wbank.base-url}&method=GET&path=/c2wbank/v1/debits/{reference}&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404&pending=true"
+                        - simple: "${header.mwOperation} == 'REVERSE'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=REVERSE.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.c2wbank.base-url}&method=POST&path=/c2wbank/v1/debits/{reference}/reverse&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=404,422"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          # REVERSE (ticket 97): undo the applied call of our reference, idempotent on the
+          # reversal reference reverse:<txnId> (mw-simulators reverses once and answers the
+          # first result again); 404 / 422 with a code are refusals, anything else UNKNOWN.
+          "[REVERSE.request]": |
+            {"reversalId": reversalReference, "amount": amount.major}
+          "[REVERSE.response]": |
+            status = 200
+              ? (body.status = "REVERSED" and $type(body.reversalRef) = "string" and body.reversalRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.reversalRef, "code": body.code}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 404 or status = 422) and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[PAY.request]": |
+            {"transactionId": reference, "accountNumber": debitParty.id, "amount": amount.major}
+          "[PAY.response]": |
+            status = 200
+              ? (body.status = "SUCCESS" and $type(body.debitRef) = "string" and body.debitRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.debitRef, "code": body.code}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 202
+              ? (body.status = "PENDING"
+                  ? {"outcome": "PENDING", "partnerRef": body.debitRef, "code": body.code}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 422
+              ? ($type(body.code) = "string" and body.code != ""
+                  ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 400
+              ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # NOT_FOUND only for a 404 carrying the bank's NOT_FOUND body; anything else indefinite is
+          # UNKNOWN.
+          "[STATUS_QUERY.response]": |
+            status = 200
+              ? (body.status = "SUCCESS" and $type(body.debitRef) = "string" and body.debitRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.debitRef, "code": body.code}
+                  : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
+                    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                  : body.status = "PENDING"
+                    ? {"outcome": "PENDING", "partnerRef": body.debitRef, "code": body.code}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 404 and body.status = "NOT_FOUND"
+              ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # Callback: POST /partner/c2wbank/callback/debits with the debit body {transactionId (our
+          # reference), status SUCCESS|FAILED|PENDING, code, message, debitRef}, signed (auth above).
+          # Input {headers, body}; anything without a known status is refused.
+          "[CALLBACK.response]": |
+            $type(body.transactionId) != "string" or body.transactionId = "" ? {}
+            : body.status = "SUCCESS" and $type(body.debitRef) = "string" and body.debitRef != ""
+              ? {"outcome": "SUCCESS", "partnerRef": body.debitRef, "reference": body.transactionId,
+                 "code": body.code, "message": body.message}
+            : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "partnerRef": body.debitRef, "reference": body.transactionId,
+                 "code": body.code, "message": body.message}
+            : body.status = "PENDING"
+              ? {"outcome": "PENDING", "partnerRef": body.debitRef, "reference": body.transactionId,
+                 "code": body.code, "message": body.message}
+            : {}

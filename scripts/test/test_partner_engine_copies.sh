@@ -1,5 +1,5 @@
 # The adapter framework (root CLAUDE.md "partner/"): the three copies in mw-adapter-telco,
-# mw-adapter-billpay, mw-adapter-bank, mw-adapter-merchant (ticket 115) and mw-adapter-card (ticket 118) stay identical apart from the package (ticket 97).
+# mw-adapter-billpay, mw-adapter-bank, mw-adapter-merchant (ticket 115), mw-adapter-card (ticket 118) and mw-adapter-remit (ticket 119) stay identical apart from the package (ticket 97).
 
 # engine_tree ADAPTER: every file of the adapter's engine (main partner/ tree, Kamelets, partner
 # resources) with the package name replaced by a placeholder, one "== path" header per file.
@@ -21,7 +21,7 @@ test_partner_engine_copies_are_identical_apart_from_the_package() {
   local ref other
   ref="$(engine_tree billpay)"
   [ -n "$ref" ] || fail "no billpay engine found"
-  for a in telco bank merchant card; do
+  for a in telco bank merchant card remit; do
     other="$(engine_tree "$a")"
     if [ "$ref" != "$other" ]; then
       OUT="$(diff <(printf '%s\n' "$ref") <(printf '%s\n' "$other") | head -40)"

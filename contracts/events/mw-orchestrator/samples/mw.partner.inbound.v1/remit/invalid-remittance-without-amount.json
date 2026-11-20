@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "inboundId": "6e1f3c2a-9b8d-3e4f-a5b6-c7d8e9f0a1b3",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8e",
+  "correlationId": "corr-0002",
+  "partnerId": "ucb-imt",
+  "family": "remit",
+  "partnerRef": "IMT-2026-0002",
+  "receivedAt": "2026-11-03T09:00:00Z",
+  "payload": {
+    "kind": "REMITTANCE",
+    "txnType": "REMIT_IN",
+    "creditParty": { "type": "WALLET", "id": "01711000001", "walletType": "CUSTOMER" }
+  }
+}

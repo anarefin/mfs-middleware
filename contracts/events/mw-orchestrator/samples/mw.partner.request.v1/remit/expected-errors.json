@@ -1,0 +1,5 @@
+{
+  "invalid-confirm-without-partner.json": [
+    "/payload must have required property 'partner'"
+  ]
+}

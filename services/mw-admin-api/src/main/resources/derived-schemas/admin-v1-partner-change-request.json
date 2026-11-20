@@ -30,7 +30,8 @@
         "billpay",
         "bank",
         "merchant",
-        "card"
+        "card",
+        "remit"
       ]
     },
     "timeouts": {
