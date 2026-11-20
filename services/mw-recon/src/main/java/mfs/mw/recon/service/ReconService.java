@@ -60,9 +60,11 @@ public class ReconService {
   private final OutboxWriter outbox;
   private final ReconProperties props;
   private final java.time.Clock clock;
+  private final ExceptionEvents events;
 
   public ReconService(ReconStore store, MatchingService matching, Mt940Parser parser, Inbox inbox, OutboxWriter outbox,
-      ReconProperties props, java.time.Clock clock) {
+      ReconProperties props, java.time.Clock clock, ExceptionEvents events) {
+    this.events = events;
     this.store = store;
     this.matching = matching;
     this.parser = parser;
@@ -173,6 +175,22 @@ public class ReconService {
     store.upsertTxn(UUID.fromString(event.txnId()), partnerId, event.partnerRef(), event.coreRef(),
         event.amount().valueMinor(), event.amount().currency() == null ? "BDT" : event.amount().currency(),
         event.status(), event.txnType(), event.updatedAt(), event.completedAt());
+    resolveAwaiting(UUID.fromString(event.txnId()), event.status());
+  }
+
+  /**
+   * Ticket 127b: the outcome of an approved action. ACTIONED exceptions of this transaction waiting for this status
+   * become RESOLVED, each with its {@code mw.recon.exception.v1}. Called in the caller's transaction.
+   */
+  void resolveAwaiting(UUID txnId, String status) {
+    Instant now = clock.instant();
+    for (UUID id : store.actionedAwaiting(txnId, status)) {
+      if (store.resolve(id, now) == 1) {
+        events.changed(id, null, now);
+        log.atInfo().addKeyValue("event", "recon.exception.resolved").addKeyValue("exceptionId", id.toString())
+            .addKeyValue("txnId", txnId.toString()).log("recon exception resolved by the transaction outcome");
+      }
+    }
   }
 
   private RunSummary finish(FileHead file, String source, boolean raiseMissing) {
@@ -204,6 +222,7 @@ public class ReconService {
       }
       if (finding.classification() != ReconClass.MATCHED) {
         exceptions.add(exceptionBody(exceptionId, finding));
+        events.changed(exceptionId, null, finished);
       }
     }
     RunSummary summary = new RunSummary(runId.toString(), file.id().toString(), file.partnerId(), source,

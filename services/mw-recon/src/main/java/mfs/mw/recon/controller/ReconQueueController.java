@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import mfs.mw.recon.dto.ActionRequest;
 import mfs.mw.recon.dto.ExceptionView;
 import mfs.mw.recon.dto.ExplanationRequest;
 import mfs.mw.recon.dto.ReportFormat;
@@ -79,5 +80,12 @@ public class ReconQueueController {
   public ExceptionView explain(@PathVariable UUID id, @RequestHeader("X-Mw-Operator-Id") String operatorId,
       @Valid @RequestBody ExplanationRequest request) {
     return queue.explain(id, request.explanation(), operatorId);
+  }
+
+  /** Ticket 127b: mw-admin-api records an approved RECON_EXCEPTION action (the checker in the header). */
+  @PostMapping("/internal/v1/recon/exceptions/{id}/actions")
+  public ExceptionView action(@PathVariable UUID id, @RequestHeader("X-Mw-Operator-Id") String operatorId,
+      @Valid @RequestBody ActionRequest request) {
+    return queue.action(id, request.action(), request.changeRequestId(), operatorId);
   }
 }

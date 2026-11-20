@@ -60,7 +60,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   approval (moved on: `409 MW-VAL-030`, request stays PENDING); expired: marked EXPIRED + audited,
   `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
   `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]` (`resourceType`
-  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|notify-campaign|key|channel_client|partner_credential|partner_error_map; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
+  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|notify-campaign|key|channel_client|partner_credential|partner_error_map|recon_exception; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
   (`READ_CHANGE_REQUESTS`: the transaction readers and integration-maker/checker, ticket 38; an
   operator without `READ_TRANSACTIONS` sees partner requests only: transaction and wallet ones are
   left out of the list, `?resourceType=transaction|wallet` and their detail are 403).
@@ -454,6 +454,23 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   yet; a re-run stores nothing. Decision: the seed is applied here (like the partner seeds), not by
   mw-seeder, since only this service may write the table and the outbox. Test `BillerChangeRequestIT`,
   `BillerRulesTest`.
+- Reconciliation exception actions (ticket 127b, UC-22; `controller/ReconExceptionController` ->
+  `service/ReconExceptionActionService` (maker) and `service/ReconExceptionChangeHandler` (approval),
+  `client/ReconExceptionClient` -> mw-recon `recon.v1` at `mw.recon.base-url` (`MW_RECON_BASE_URL`,
+  `http://mw-recon:8080`, `config/ReconClientProperties`, Resilience4j `recon`)): `POST
+  /admin/v1/recon-exceptions/{exceptionId}/change-requests {action FORCE_COMMIT|REVERSE, reason}`
+  (`AdminRole.RECON_EXCEPTION_MAKER` = recon-maker) -> 201 PENDING, resourceType `recon_exception`, resourceId
+  the exception id, `payload {txnId, reconClass, amount?}`, `diff {before|after: {exceptionState, txnStatus}}`.
+  The exception must be OPEN or EXPLAINED with a transaction and the action must fit the transaction's status
+  (`ChangeRequestService.target`, the ticket 37 rules), else `409 MW-VAL-030`; unknown `404`; mw-recon or the
+  orchestrator down `503 MW-SYS-040`. Approve / reject on the shared endpoints (`RECON_EXCEPTION_CHECKER` =
+  recon-checker, added to `ANY_CHECKER`; never the maker, `403 MW-AUTH-030`); both are read again on approval.
+  Approval = ONE transaction: row APPROVED + the ticket 37 message (FORCE_COMMIT on `mw.txn.action.v1`, REVERSE
+  as a REVERSAL on `mw.txn.request.v1`, with the exception's txnId) + the audit (resource
+  `recon_exception/<id>`); only after the commit (`ResourceChangeHandler.afterApproved`, new hook) mw-recon is
+  told (`POST /internal/v1/recon/exceptions/{id}/actions`, idempotent on the change request id; the answer is
+  logged `admin.recon_exception.recorded`, not tracked). mw-recon marks it ACTIONED, then RESOLVED on the
+  outcome. Test `controller/ExceptionActionIT` (stub orchestrator and mw-recon).
 - Internal API identity (M3 gate decision; `client/ServiceTokenClient`, `client/InternalApiCaller`):
   Keycloak realm `services` client `mw-admin-api` (client credentials, HTTP Basic, token carries
   audiences mw-orchestrator and mw-audit-dw), cached until 30 s before `expires_in`, dropped on a

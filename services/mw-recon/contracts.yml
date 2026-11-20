@@ -3,6 +3,8 @@
 produces:
   events:
     - events/mw-recon/mw.recon.result.v1.schema.json
+    # ticket 127b: one event per exception state change (OPEN, EXPLAINED, ACTIONED, RESOLVED)
+    - events/mw-recon/mw.recon.exception.v1.schema.json
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
   apis:
     - api/mw-recon/recon.v1.openapi.yaml

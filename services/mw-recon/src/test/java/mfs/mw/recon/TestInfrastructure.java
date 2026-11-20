@@ -82,6 +82,7 @@ public class TestInfrastructure {
     String url = createContextDatabase();
     return registry -> {
       registry.add("spring.datasource.url", () -> url);
+      registry.add("mw.internal-auth.jwk-set-uri", mfs.mw.recon.security.InternalTokens::jwkSetUri);
       registry.add("spring.datasource.username", POSTGRES::getUsername);
       registry.add("spring.datasource.password", POSTGRES::getPassword);
     };

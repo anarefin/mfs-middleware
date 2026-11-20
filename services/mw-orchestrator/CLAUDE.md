@@ -41,7 +41,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   PostTransfer `POST /transfers`, HoldFunds `POST /holds` (mw-auth's assertion in `X-Txn-Assertion`, the request's
   `idempotencyKey` in the body; none for a bulk child), CommitHold / ReleaseHold `POST /holds/{holdId}/commit|release`,
   CreditWallet `POST /credits` (an operator round `:manual-<n>` sends `round` n, so the core decides it afresh),
-  ReverseTransaction `POST /reversals` (the reversal's txnId, no amount: the whole original), every QueryTransaction
+  ReverseTransaction `POST /reversals` (the reversal's txnId, no amount: the whole original; a merchant refund sends its amount, ticket 116b), every QueryTransaction
   (HOLDING query, inquiry, reversal query, credit check) `GET /transactions/{txnId}` (WAL-13), BalanceInquiry
   `GET /balance/{walletId}?txnId=` with the assertion and `Idempotency-Key`. Service JWT: `client/ServiceTokenClient`,
   Keycloak realm `services` client `mw-orchestrator` (audience mapper `aud-mw-core-mock`, secret
@@ -301,6 +301,26 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   idempotency key is stored with the ORIGINAL's txnId. A completed transaction with no held partner
   leg (P2P, cash, merchant pay, add money) is reversed at the core only. A completed TOPUP or
   BILL_PAY is different, below: the partner is reversed first. A refused commit is also below.
+- Merchant refund (ticket 116b, FRS CH-WEB-03, FL-06, UC-12; `RefundSagaIT`): a REVERSAL from a channel in
+  `mw.orchestrator.refund-channels` (default `WEB_CHECKOUT`) is NOT the SYSTEM reversal above: it is its
+  own transaction record (`saga/RefundFlow`, txnType REVERSAL, its own txnId and idempotency key, scope
+  (channel, merchant id, key); stored `attributes.originalTxnId` and `attributes.refundOf` = the
+  original's txnType) and the original stays COMPLETED, so a payment can be refunded several times.
+  Accepted only when the original (row-locked, so refunds of one payment serialise) is a COMPLETED
+  MERCHANT_PAY made on the same channel whose `metadata.merchantId` equals the refund's initiator
+  `{type: MERCHANT, id: <merchantId>}`; amount 1..the original's. Refused with a REJECTED status under
+  the request's txnId (no row, key not consumed): unknown original `MW-VAL-020`, not the owning merchant
+  or not paid on this channel `MW-AUTH-022`, parties not the original's reversed (debit the merchant paid,
+  credit the payer) `MW-VAL-001`, original not COMPLETED `MW-VAL-021`, amount `MW-VAL-022`. The record stores
+  the ORIGINAL's parties reversed, never the request's own.
+  Path: RECEIVED -`RefundStarted`-> REVERSING (ReverseTransaction under the refund's own txnId,
+  `<refundTxnId>:reverse`, `POST /core/v1/reversals` with `amount`, partial or whole; the core keeps the
+  refunded total) -`RefundConfirmed`-> COMPLETED; a core refusal (`MW-CORE-REFUND_EXCEEDS` once the total
+  would pass the original, `ALREADY_REVERSED`, ...) -`RefundRefused`-> REJECTED. No answer: the REVERSING
+  schedule above, the query asks about the refund's own txnId (`REVERSED` -> COMPLETED, else / none
+  MANUAL_REVIEW `MW-TMO-020`; a later TransactionReversed moves MANUAL_REVIEW to COMPLETED). A refund is
+  never reversed itself (`MW-VAL-021`) or inquired. The SYSTEM full reversal keeps the original-moving
+  path; after a partial refund the core refuses it (`REFUND_EXCEEDS`) and it ends MANUAL_REVIEW.
 - Partner reversal after a refused commit (ticket 96b, FRS PLT-022, PLT-025): CommitFailed or
   CreditRejected on a flow with a partner leg (`CommitRefused(compensatePartner=true)`) moves
   COMMITTING to REVERSING and sends `REVERSE` on `mw.partner.request.<family>.v1`. An operator's
@@ -399,7 +419,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   Other codes used: `MW-VAL-010` unsupported txn type (a contract type without a flow, e.g. NPSB_OUT, NPSB_IN until their tickets; `SagaServiceIT`), `MW-VAL-011` amount <= 0, `MW-VAL-012`
   partner missing for a flow with a partner leg, `MW-VAL-030`/`MW-VAL-031` top-up amount, `MW-VAL-032` biller amount rule, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`,
   `MW-TMO-003` (not found by inquiry, retryable), `MW-TMO-004` (inquiry exhausted),
-  `MW-TMO-005` (conflicting inquiry answer), reversal `MW-VAL-020..022`, operator action not allowed `MW-VAL-023`, `MW-AUTH-020`, `MW-TMO-020`, bulk channel `MW-AUTH-021`;
+  `MW-TMO-005` (conflicting inquiry answer), reversal `MW-VAL-020..022`, operator action not allowed `MW-VAL-023`, `MW-AUTH-020`, `MW-TMO-020`, bulk channel `MW-AUTH-021`, refund not by the owning merchant `MW-AUTH-022`;
   partner codes come from the adapter's reply.
 - Transaction assertion (spec 18.7, D22, ticket 71): a `mw.txn.request.v1` with `assertion` (mw-auth's JWS)
   keeps it in the stored request (it is no PIN material; `dto/TxnRequest.assertion`, `@Sensitive`) and

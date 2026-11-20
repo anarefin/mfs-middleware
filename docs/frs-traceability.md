@@ -145,7 +145,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-08` top-up | prepaid denominations and postpaid range landed in 112b; T1–T4 and T6–T10 are folder `tests/api/src/46-topup-operators` (112c). T5 waits out the inquiry schedule. T11 is ticket 125, T12 is ticket 127 |
 | `UC-09`, `UC-10` bills | one aggregator done; tickets 113, 114 |
 | `UC-11` merchant payment | app done (folder 04); USSD menu MERCHANT_PAY (109c); ticket 115 remains |
-| `UC-12` web checkout and refund | pay done; refund: core partial reversal built (116), checkout refund API open |
+| `UC-12` web checkout and refund | pay done; refund: core partial reversal built (116a), orchestrator refund as its own REVERSAL record, owning merchant only (116b), checkout refund API open (116c) |
 | `UC-13` add money from card | ticket 118 |
 | `UC-14` add money from bank (C2W) | done (one bank); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
 | `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts, W2bFlow, app/USSD, simulator open (117b-d) |
@@ -154,7 +154,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |
 | `UC-21` AML | ticket 125 |
-| `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports and the exception queue remain ticket 127 |
+| `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports, the exception queue and its maker-checker actions done (tickets 127, 127b); the trust position job and the API suite folder remain 127c |
 
 ## 3. Common platform (FRS 3)
 
@@ -238,7 +238,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-03 | ticket 112 | postpaid quote fetches the bill once; confirm pays from the minimum due through the outstanding (112b) |
 | FL-04 | ticket 113 | two-step bill fetch then pay (billpay); the catalogue carries the amount rule (FIXED, MINIMUM, OPEN) and bill month, billpay checks field regex and `billMonth` on the fetch (`BillerCatalogTest`); mw-orchestrator projects each BILLER record (`txn.biller_rule` V17) and `BillPayFlow.amountRefusal` refuses MINIMUM below the minimum, OPEN outside its range and FIXED other than the fetched bill with `MW-VAL-032` before a hold (`BillPayFlowTest`, `BillerAmountRuleIT`, API folder `49-biller-catalogue`); FIXED is checked when the channel attaches the fetched bill (`billOutstandingMinor`): mw-app-gateway keeps each fetch in Redis (`BillFetchStore`) and its bill-pay preview attaches it, mw-ussd attaches the `bill` lookup's amount (ticket 113b, `PreviewServiceTest`, `TxnRequestMapperTest`, API folder 49) |
 | FL-05 | tickets 113, 132 | biller catalogue in mw-admin-api (`biller` table V16, 57-biller dev seed, `BillerChangeRequestIT`), published as `mw.config.changed.v1` BILLER; mw-adapter-billpay projection (`BillerProjectionIT`); mw-app-gateway projection (in-memory replay, `GET /app/v1/billers` with fields, labels, amount rule; app.v1 1.14.0) and mw-ussd projection (`ussd.biller_catalog` V7, DYNAMIC billers, bill-number prompt from the field label) (ticket 113b) |
-| FL-06 | ticket 116 | refund bounds enforced in mw-core-mock (`MW-CORE-REFUND_EXCEEDS`, 116); checkout refund API open |
+| FL-06 | ticket 116 | refund bounds enforced in mw-core-mock (`MW-CORE-REFUND_EXCEEDS`, 116a); mw-orchestrator refunds 1..original per request and ends an overshoot REJECTED (116b); checkout refund API open (116c) |
 | FL-07 | ticket 118 | card tokens only (card PAN never enters the middleware, root `CLAUDE.md`) |
 | FL-08 | ticket 117 | linked bank accounts with AVL: done (117b: `/app/v1/bank-accounts`, AVL API `/bank/v1/accounts/validate`) |
 | FL-09 | ticket 117 | W2B with AVL and a hold |
@@ -321,7 +321,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | REC-02 | done | adapters publish `mw.partner.recon.v1` (D28); `mw-recon` consumes it (ticket 126) |
 | REC-03 | done | matching with a poisha tolerance and a date window (`MatchingServiceTest`, ticket 126) |
 | REC-04 | done | classes MATCHED, MISSING_IN_PARTNER, MISSING_IN_UPAY, AMOUNT_MISMATCH, STATUS_MISMATCH (`ReconMatchingIT`, ticket 126) |
-| REC-05 | tickets 127, 134 | exception work queue read and explain API built (ticket 127: `GET /internal/v1/recon/exceptions`, suggested action, `POST .../explanations`, `ReconReportsIT`); the `RECON_EXCEPTION` maker-checker action in mw-admin-api and `mw.recon.exception.v1` remain ticket 127 (follow-up); console 134 |
+| REC-05 | tickets 127, 134 | exception work queue read and explain API built (ticket 127: `GET /internal/v1/recon/exceptions`, suggested action, `POST .../explanations`, `ReconReportsIT`); the `recon_exception` maker-checker action in mw-admin-api (FORCE_COMMIT / REVERSE through the ticket 37 paths, recon-maker / recon-checker) and ACTIONED / RESOLVED in mw-recon built (ticket 127b, `ExceptionActionIT` in both); console 134 |
 | REC-06 | tickets 127, 134 | reports built (ticket 127): `GET /internal/v1/recon/reports` CSV, XLSX, PDF, daily report stored in `recon.report` (`ReportServiceTest`); console download 134 |
 | REC-07 | ticket 127 | trust position computed and stored with an `AMOUNT_MISMATCH`/`TRUST_POSITION` exception on a gap (`TrustPositionService`, `TrustPositionTest`, ticket 127); the scheduled job waits for a core e-money total endpoint (ticket 127 follow-up) |
 | REC-08 | done | file register, filename plus sha256, processed once (`FileRegisterIT`, ticket 126) |
@@ -335,7 +335,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | AUD-03 | done | search by txnId, actor, action, resource, outcome, time, and (ticket 130) partner, channel, status, amount range, MSISDN (TOKENISE_MSISDN token) via `audit.txn_index`; 3 s over 30 days proven by `AuditSearchPerfIT` (`slow-wait`) |
 | AUD-04 | ticket 135 | `GET /internal/v1/audit/transactions/{txnId}/timeline`: hops in order with latency, gaps and masked payloads (`TimelineIT`); mw-admin-api transaction detail does not call it yet (UI ticket 135) |
 | AUD-05 | done | `GET /internal/v1/audit/search/export.csv` with a row cap; every export writes an `audit.search.exported` operator-action record into the chain (`ExportAuditedIT`) |
-| DAT-01 | deviation | JSON Schema in Git, no schema registry (M9, D10, D31): the FRS allows JSON Schema; the registry is not run. `dw.*` topics are in `contracts/events/mw-data-export/` (ticket 128). The `recon.exception` schema is ticket 127 |
+| DAT-01 | deviation | JSON Schema in Git, no schema registry (M9, D10, D31): the FRS allows JSON Schema; the registry is not run. `dw.*` topics are in `contracts/events/mw-data-export/` (ticket 128). `recon.exception` is `contracts/events/mw-recon/mw.recon.exception.v1.schema.json` (ticket 127b; consumers mw-audit-dw, mw-data-export) |
 | DAT-02 | done | daily DW batch: Kafka stream and the SFTP drop (`DwStreamIT`, `DwDailyExportIT`) |
 | DAT-03 | done | PII policy deny-by-default, tokenise through mw-crypto (`PiiPolicyTest`) |
 | DAT-04 | done | retention per data type on the saga and the audit projection; archival of the batch facts (`ArchivalIT`) |

@@ -165,6 +165,13 @@ management:
       type: w3c
 
 mw:
+  # Ticket 127b security review: /internal/** needs a realm `services` client-credentials JWT with mw-recon in
+  # `aud` from an allowed client (config/SecurityConfig); the probes and /test/v1/** stay open.
+  internal-auth:
+    jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
+    issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
+    audience: mw-recon
+    allowed-clients: mw-admin-api
   # This service's certificate from Vault PKI (spec 18.2, 18.4, D24; config/TlsProperties,
   # config/ServiceCertificateManager): off until the service calls an mTLS server (mw-crypto, the
   # mw-auth internal API). On, it issues pki_int/issue/<service> at start (its provision role

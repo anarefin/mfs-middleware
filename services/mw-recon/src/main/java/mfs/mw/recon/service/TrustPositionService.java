@@ -29,14 +29,16 @@ public class TrustPositionService {
   private final ReconStore store;
   private final String trustPartnerId;
   private final Clock clock;
+  private final ExceptionEvents events;
 
   @Autowired
-  public TrustPositionService(ReconStore store, ReconProperties props, Clock clock) {
-    this(store, props.trust().partnerId(), clock);
+  public TrustPositionService(ReconStore store, ReconProperties props, Clock clock, ExceptionEvents events) {
+    this(store, props.trust().partnerId(), clock, events);
   }
 
-  TrustPositionService(ReconStore store, String trustPartnerId, Clock clock) {
+  TrustPositionService(ReconStore store, String trustPartnerId, Clock clock, ExceptionEvents events) {
     this.store = store;
+    this.events = events;
     this.trustPartnerId = trustPartnerId;
     this.clock = clock;
   }
@@ -55,6 +57,7 @@ public class TrustPositionService {
       exceptionId = UUID.randomUUID();
       store.insertStandaloneException(exceptionId, ReconClass.AMOUNT_MISMATCH.name(), DETAIL, OWNER, trustPartnerId,
           trust, emoneyTotalMinor, now);
+      events.changed(exceptionId, null, now);
     }
     store.saveTrustPosition(businessDate, emoneyTotalMinor, trust, difference, exceptionId, now);
     return new TrustPosition(businessDate, emoneyTotalMinor, trust, difference, exceptionId);
