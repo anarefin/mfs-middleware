@@ -122,6 +122,36 @@ export default [
       S.status(204);
     },
   },
+  {
+    name: '[history] a statement longer than 90 days is refused and a short range lists the transfer',
+    run: async (MW, S) => {
+      await S.txn('customer01', 'P2P', '01711000002', 1000, MW.pin);
+      S.status(200);
+      S.txnStatus('COMPLETED');
+      const id = S.txnId();
+      const longFrom = '2026-01-01T00:00:00Z';
+      const longTo = '2026-05-01T00:00:00Z';
+      S.record(await MW.http('GET', '/app/v1/statement?from=' + encodeURIComponent(longFrom) + '&to=' + encodeURIComponent(longTo), {
+        headers: await MW.app.headers('customer01'),
+      }));
+      S.status(400);
+      S.code('MW-VAL-001');
+      const from = new Date(Date.now() - 2 * 86400000).toISOString();
+      const to = new Date(Date.now() + 86400000).toISOString();
+      const query = 'from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to);
+      const st = await MW.http('GET', '/app/v1/statement?' + query, { headers: await MW.app.headers('customer01') });
+      S.record(st);
+      S.status(200);
+      S.check('the transfer is a debit on the statement', (st.body.entries || []).some(e => e.txnId === id && e.direction === 'DEBIT' && e.amount.valueMinor === 1000), String(st));
+      S.check('the statement does not carry the raw MSISDN', !JSON.stringify(st.body).includes('01711000001'), String(st));
+      const csv = await MW.http('GET', '/app/v1/statement?' + query, {
+        headers: Object.assign({ Accept: 'text/csv' }, await MW.app.headers('customer01')),
+      });
+      S.record(csv);
+      S.status(200);
+      S.check('the csv lists the transfer and not the raw number', csv.raw.includes(id) && !csv.raw.includes('01711000001'), csv.raw);
+    },
+  },
 ];
 
 // Shared step of the folder, inlined into each script by the builder (build_collection.mjs, `helpers`):

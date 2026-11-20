@@ -45,7 +45,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   plus every entry). WAL-02 `/pin/verify` is not built (D20, D22, D31). Auth: `/core/v1/**` needs a
   Keycloak realm `services` client-credentials JWT (`config/SecurityConfig`, `config/InternalAuthProperties`
   `mw.internal-auth.*`: exact issuer, `aud` mw-core-mock, `azp` in `allowed-clients` mw-orchestrator,
-  mw-auth, mw-admin-api; no or bad token `401 MW-AUTH-001`, other client `403 MW-AUTH-002`); every other
+  mw-auth, mw-admin-api, mw-app-gateway (ticket 107b: profile, limits, statement); the dev compose
+  list also has mw-simulators; no or bad token `401 MW-AUTH-001`, other client `403 MW-AUTH-002`); every other
   path (`/core-mock/v1/**` test/admin API, the dev-only APISIX route `/test/core-mock`, actuator) stays
   open as before. The Keycloak clients and their `aud-mw-core-mock` mappers come with the callers (ticket
   95). Tests: `controller/CoreWalletControllerTest` (slice, `security/InternalTokens`),

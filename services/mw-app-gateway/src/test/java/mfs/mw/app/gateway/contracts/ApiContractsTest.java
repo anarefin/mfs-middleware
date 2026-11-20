@@ -30,7 +30,11 @@ import mfs.mw.app.gateway.dto.Favourite;
 import mfs.mw.app.gateway.dto.FavouriteList;
 import mfs.mw.app.gateway.dto.InboxMessage;
 import mfs.mw.app.gateway.dto.ErrorInfo;
+import mfs.mw.app.gateway.dto.CoreAccount;
+import mfs.mw.app.gateway.dto.LedgerStatement;
 import mfs.mw.app.gateway.dto.SavedBiller;
+import mfs.mw.app.gateway.dto.WalletLimits;
+import mfs.mw.app.gateway.dto.WalletProfile;
 import mfs.mw.app.gateway.dto.SavedBillerList;
 import mfs.mw.app.gateway.dto.Party;
 import mfs.mw.app.gateway.dto.StatusMessage;
@@ -61,6 +65,7 @@ class ApiContractsTest {
   static final String AUTH_API = "api/mw-auth/auth-internal.v1.openapi.yaml";
   static final String QUERY_API = "api/mw-orchestrator/txn-query.v1.openapi.yaml";
   static final String NOTIFY_API = "api/mw-notify/notify-internal.v1.openapi.yaml";
+  static final String CORE_API = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
   static final String TXN_ID = "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d";
   static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
   static final Instant NOW = Instant.parse("2026-11-04T06:00:00Z");
@@ -70,7 +75,7 @@ class ApiContractsTest {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(APP_API);
     assertThat(manifest.consumedApis())
-        .containsExactly(BILLPAY_API, AUTH_API, AUTH_PUBLIC_API, QUERY_API, NOTIFY_API);
+        .containsExactly(BILLPAY_API, AUTH_API, AUTH_PUBLIC_API, QUERY_API, NOTIFY_API, CORE_API);
   }
 
   // ---- served: app.v1 ----
@@ -185,6 +190,25 @@ class ApiContractsTest {
         + "\"offset\":0}";
     assertThat(OpenApiSchemas.component(NOTIFY_API, "InboxPage").validate(JSON.readTree(page))).isEmpty();
     assertThat(JSON.readValue(page, InboxMessage.Page.class).items().getFirst().msisdn()).isEqualTo("0171****077");
+  }
+
+  @Test
+  void profileLimitsAndTheStatementMatchTheContract() {
+    assertValid(OpenApiSchemas.component(APP_API, "WalletProfile"),
+        new WalletProfile("Rahim Uddin", "CUSTOMER", "ACTIVE", "FULL", "bn"));
+    assertValid(OpenApiSchemas.component(APP_API, "WalletProfile"),
+        new WalletProfile(null, "CUSTOMER", "ACTIVE", "BASIC", "bn"));
+    assertValid(OpenApiSchemas.component(APP_API, "WalletLimits"), new WalletLimits(true, null,
+        new WalletLimits.Remaining(new Amount(500_000L, "BDT"), new Amount(0L, "BDT"), null, 4L, null)));
+    assertValid(OpenApiSchemas.component(APP_API, "LedgerStatement"), new LedgerStatement(NOW, NOW.plusSeconds(60), 0, false,
+        List.of(new LedgerStatement.LedgerEntry(TXN_ID, "DEBIT", "TRANSFER", new Amount(100_000L, "BDT"),
+            new Amount(900_000L, "BDT"), NOW))));
+    String account = "{\"walletId\":\"01711000001\",\"msisdn\":\"01711000001\",\"type\":\"CUSTOMER\",\"status\":\"ACTIVE\","
+        + "\"kycLevel\":\"FULL\",\"holderName\":\"Rahim Uddin\"}";
+    assertThat(OpenApiSchemas.component(CORE_API, "Account").validate(JSON.readTree(account))).isEmpty();
+    assertThat(JSON.readValue(account, CoreAccount.class).holderName()).isEqualTo("Rahim Uddin");
+    String limits = "{\"walletId\":\"01711000001\",\"txnType\":\"P2P\",\"amount\":{\"valueMinor\":100,\"currency\":\"BDT\"}}";
+    assertThat(OpenApiSchemas.component(CORE_API, "LimitsRequest").validate(JSON.readTree(limits))).isEmpty();
   }
 
   // ---- served: the wallet history; called: mw-orchestrator's query API (ADR D25) ----

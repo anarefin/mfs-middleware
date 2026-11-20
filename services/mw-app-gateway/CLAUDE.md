@@ -250,12 +250,22 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `derived-schemas/app-v1-save-biller-request.json` and `app-v1-save-favourite-request.json`. The edge route
   `app-v1` allows DELETE. Tests: `SavedBillerRepositoryIT`, `FavouriteRepositoryIT`,
   `NonFinancialControllerTest`, `contracts/ApiContractsTest`.
+- Profile, limits and the statement (ticket 107b, app.v1 1.11.0, CH-APP-08; `controller/AccountReadController`,
+  `service/AccountReadService`, `client/CoreWalletClient`, `config/CoreClientProperties`
+  `mw.app-gateway.core.*`, `MW_CORE_BASE_URL`): the gateway calls mw-core-mock itself. `GET /app/v1/profile`
+  is WAL-01 (the owner sees the holder name; `@Sensitive` keeps the initial in logs) plus language `bn`.
+  `GET /app/v1/limits` is WAL-05 for a P2P of 100 poisha. `GET /app/v1/statement?from&to` is WAL-12, JSON or
+  CSV (`Accept: text/csv`), and a range longer than 90 days is 400 `MW-VAL-001`. The wallet is the token's
+  MSISDN. The core out of reach is 503 `MW-SYS-015`, retryable; a core 404 is `MW-VAL-003` and a core 422
+  `MW-CORE-*` is passed through. Session level, no signature. Caller `mw-app-gateway` is on the core's
+  `allowed-clients` (and the dev compose list) and the Keycloak client has audience `mw-core-mock`. Tests:
+  `AccountReadControllerTest`, `client/CoreWalletClientTest`, `contracts/ApiContractsTest`.
 - Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password; `spring.data.redis.password`
   synced from `REDIS_PASSWORD`; `mw.app-gateway.auth.client-secret` from `KC_MW_APP_GATEWAY_SECRET`;
   `mw.app-gateway.preview.signing-key` created once, ticket 105), AppRole, PKI
   role `mw-app-gateway`. Keycloak realm `services` client `mw-app-gateway` (audiences `mw-auth`, ADR D25
-  `mw-orchestrator`, and `mw-notify` for the inbox): a running stack
+  `mw-orchestrator`, `mw-notify` for the inbox, and `mw-core-mock` for profile, limits and the statement): a running stack
   needs `deploy/reset.sh` to import it. Compose waits for a healthy mw-auth.
 
 ## Contracts owned
@@ -273,6 +283,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (client; own types `dto/Biller`, `dto/Bill`).
 - `api/mw-notify/notify-internal.v1.openapi.yaml` (client, ticket 107a: `GET /internal/v1/inbox` and
   `POST /internal/v1/inbox/{id}/read` for the token's MSISDN; own type `dto/InboxMessage`).
+- `api/mw-core-mock/core-wallet.v1.openapi.yaml` (client, ticket 107b: WAL-01, WAL-05, WAL-12 for the
+  token's MSISDN; own types `dto/CoreAccount`, `dto/CoreLimits`, `dto/CoreStatement`).
 - `api/mw-orchestrator/txn-query.v1.openapi.yaml` (client, 1.3.0, ADR D25: `GET /internal/v1/transactions` with
   `walletId`, as the wallet-scoped caller; own types `dto/QueryTxnPage`, `dto/QueryTxn`; a contract-shaped page
   is validated and read in `ApiContractsTest`).
