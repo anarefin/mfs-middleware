@@ -118,7 +118,7 @@
 115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
 115a-merchant-adapter                       97,102            done     31m      270 files +25395 −31   a58834bd,679349b0 (admin-api migration renumbered V17 at merge)
 115b-merchant-pay-flow                      115a,113          open   (Newman folder 49 is taken by 113c: use the next free one)
-139-dry-run-oauth2-isolation                115a              open   (security follow-up: dry-run keeps live tokenUrl; all adapter copies)
+139-dry-run-oauth2-isolation                115a              done     12m      20 files +648 −28      901630b7  (open: token cache entries not evicted on route discard)
 116-checkout-refund-list                    95,96             split (116-split-decisions.md, 2026-11-20)
 116a-core-partial-reversal-list             95,96             done     32m      ~32 files +500 −35     d42c5172,2bc20979
 116b-orchestrator-refund-flow               116a              in progress
@@ -127,7 +127,7 @@
 117-bank-avl-w2b                            97,98,102         split (117-split-decisions.md, 2026-11-20)
 117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069
 117b-avl-api-linked-accounts                117a              done     29m      44 files +1640 −9      343b4088,3cfc49cf  (no mTLS on bank adapter side; local AES key, not mw-crypto)
-117c-w2b-flow-channels                      117b              open
+117c-w2b-flow-channels                      117b              in progress
 117d-bank-gateway-simulator                 117a              done     19m      44 files +1416 −98     36bea5a1
 117e-bank-suite-regression                  117b,117c,117d    open
 118-mw-adapter-card                         95,97,102         split (118-split-decisions.md, 2026-11-20)
