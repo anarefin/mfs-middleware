@@ -20,7 +20,8 @@ import org.springframework.stereotype.Service;
 /**
  * seed-app-pins (ticket 69): the app wallets log in at mw-auth with MSISDN + PIN, so each gets the
  * dev app PIN ({@code mw.seeder.app-pins.pin}, {@code MW_SEED_APP_PIN}, a fixed fake value): the
- * seeded CUSTOMER, AGENT, MERCHANT and DISTRIBUTOR (ticket 94) wallets plus {@code extra-wallet-ids} (the realm imports' app
+ * seeded CUSTOMER, AGENT, MERCHANT and DISTRIBUTOR (ticket 94) wallets, an mw-auth app user whose core
+ * wallet is an organisation (the partner app), plus {@code extra-wallet-ids} (the realm imports' app
  * users the Newman suite logs in as). The PIN is encrypted as an app does, under mw-auth's PIN
  * transport key, and set through mw-auth's dev-only seed API, which leaves a wallet that has a PIN
  * alone. mw-auth learns about a wallet from the core's wallet events, asynchronously: a wallet it has
@@ -55,7 +56,7 @@ public class SeedAppPinsStep implements SeedStep {
     }
     List<String> wallets = new ArrayList<>();
     for (WalletSpec w : props.wallets()) {
-      if (APP_TYPES.contains(w.type())) {
+      if (!wallets.contains(w.walletId()) && (APP_TYPES.contains(w.type()) || appLogin(w.walletId()))) {
         wallets.add(w.walletId());
       }
     }
@@ -86,5 +87,15 @@ public class SeedAppPinsStep implements SeedStep {
     }
     ctx.setAppPins(new SeedManifest.AppPins(cfg.pinEnv(), List.copyOf(wallets)));
     return r;
+  }
+
+  /** An mw-auth persona still gets the dev PIN when the core stores that wallet as an organisation. */
+  private boolean appLogin(String walletId) {
+    for (SeederProperties.User user : props.users()) {
+      if ("mw-auth".equals(user.realm()) && walletId.equals(user.attributes().get("msisdn"))) {
+        return true;
+      }
+    }
+    return false;
   }
 }

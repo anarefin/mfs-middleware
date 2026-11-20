@@ -181,7 +181,8 @@ mw:
       # (core-mock's own three are 01311000001..3, the third Karnaphuli Shipping Ltd)
       - { wallet-id: "01612000001", type: DISTRIBUTOR, opening-balance-minor: 100000000, holder-name: "Tangail Distribution House" }
       - { wallet-id: "01512000001", type: DSO, opening-balance-minor: 100000000, holder-name: "Karim Uddin" }
-      - { wallet-id: "01412000001", type: PARTNER, opening-balance-minor: 100000000, holder-name: "Padma Payroll" }
+      # Partner app disbursement: the core posts an organisation wallet (stored as ORGANISATION). Party.walletType has no PARTNER.
+      - { wallet-id: "01412000001", type: ORG, opening-balance-minor: 100000000, holder-name: "Padma Payroll" }
       - { wallet-id: "01312000002", type: ORG, opening-balance-minor: 100000000, holder-name: "Surma Ceramics Ltd" }
       # run customers (above): 10,000,000 BDT each, a run spends about 4,000 BDT
       - { wallet-id: "01714010001", type: CUSTOMER, opening-balance-minor: 1000000000, holder-name: "Sakib Hasan" }

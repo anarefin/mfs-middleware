@@ -69,7 +69,7 @@ class SeedRunnerIT {
       new java.util.LinkedHashMap<>(
           Map.of(
               "01712000001", "CUSTOMER", "01712000002", "CUSTOMER", "01812000001", "AGENT", "01912000001", "MERCHANT",
-              "01312000001", "ORG", "01612000001", "DISTRIBUTOR", "01512000001", "DSO", "01412000001", "PARTNER",
+              "01312000001", "ORG", "01612000001", "DISTRIBUTOR", "01512000001", "DSO", "01412000001", "ORG",
               "01312000002", "ORG"));
 
   static {
@@ -199,8 +199,12 @@ class SeedRunnerIT {
     assertThat(m.path("ussdMenus").get(0).path("version").asInt()).isEqualTo(1);
     assertThat(m.path("templates")).hasSize(2);
     assertThat(m.path("appPins").path("pinEnv").asString()).isEqualTo("MW_SEED_APP_PIN");
-    long appWallets = WALLETS.values().stream().filter(t -> !t.equals("ORG")).count();
+    // An organisation wallet gets no app PIN, except the partner app's disbursement wallet: it logs in at mw-auth.
+    long appWallets = WALLETS.entrySet().stream()
+        .filter(e -> !e.getValue().equals("ORG") || e.getKey().equals("01412000001")).count();
     assertThat(m.path("appPins").path("walletIds")).hasSize((int) appWallets + 5); // + the realm imports' app users
+    assertThat(m.path("appPins").path("walletIds").toString())
+        .contains("01412000001").doesNotContain("01312000001", "01312000002");
     assertThat(first).doesNotContain("fake-ops-password", "fake-totp-secret", "fake-portals-totp-secret", "fake-admin-password", "13579");
     LoggedRequest pins = requests(RequestMethod.POST, "/internal/v1/seed/pins").getFirst();
     assertThat(pins.getBodyAsString()).contains("\"keyId\":\"pin-transport.v1\"").doesNotContain("13579");
