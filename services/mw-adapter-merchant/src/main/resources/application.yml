@@ -147,19 +147,18 @@ resilience4j:
         permitted-number-of-calls-in-half-open-state: 5
         automatic-transition-from-open-to-half-open-enabled: true
     instances:
-      # C2W bank (ticket 23). Only transport failures, 5xx, timeouts and
-      # unreadable replies count as failures; business rejections are normal answers. 80% of
-      # the 25 s limit.
-      c2wbank:
+      # Merchant system over SOAP (ticket 115). Only transport failures, 5xx, timeouts and
+      # unreadable replies count as failures; business faults are normal answers. 80% of the 10 s limit.
+      merchant-soap:
         base-config: default
-        slow-call-duration-threshold: 20s
+        slow-call-duration-threshold: 8s
   bulkhead:
     configs:
       default:
         max-concurrent-calls: 200
         max-wait-duration: 0
     instances:
-      c2wbank:
+      merchant-soap:
         base-config: default
         max-concurrent-calls: 100
   timelimiter:
@@ -222,13 +221,12 @@ mw:
   # Secrets are never here: a route names a field of the partner's own Vault secret
   # (secret/mw-adapter-merchant/<partner>), read when the route loads.
   partners:
-    # partnerId a channel sends -> the partner that serves it (D28; no silent default partner). The
-    # channels (mw-app-gateway's ADD_MONEY_BANK and C2W, the test console) send the bank's partner id
-    # (c2wbank) itself today, so no alias is needed; any other id is refused MW-PTR-UNKNOWN-PARTNER
-    # until that bank gets a partner/<id> record of its own (spec 11.1).
+    # partnerId a request names -> the partner that serves it (D28; no silent default partner). The
+    # orchestrator sends the merchant system's partner id (merchant-soap) itself, so no alias is
+    # needed; any other id is refused MW-PTR-UNKNOWN-PARTNER.
     partner-aliases: {}
-    # This adapter's family (ticket 83): a partner record whose value.family is another one (telco,
-    # billpay) belongs to another adapter and is skipped.
+    # This adapter's family (ticket 83, 115): a partner record whose value.family is another one (telco,
+    # billpay, bank) belongs to another adapter and is skipped.
     family: merchant
     # mTLS client contexts (ticket 87, static config only): <name>: {partner-id: <id>, truststore: true|false}; the key store
     # is read once at startup from secret/mw-adapter-merchant/<id> (fields <name>-keystore, base64 PKCS#12,
@@ -259,7 +257,7 @@ mw:
     # and the last good version stays.
     security:
       allowed-hosts:
-        c2wbank: ${MW_C2WBANK_ALLOWED_HOSTS:mw-simulators}
+        merchant-soap: ${MW_MERCHANT_SOAP_ALLOWED_HOSTS:mw-simulators}
       # Plain http for no host by default (ticket 50); only the dev Compose stack and the tests allow
       # the simulator host.
       insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:}

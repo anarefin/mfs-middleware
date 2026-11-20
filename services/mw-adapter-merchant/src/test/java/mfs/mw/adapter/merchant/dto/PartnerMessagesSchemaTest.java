@@ -63,11 +63,11 @@ class PartnerMessagesSchemaTest {
   void requestFieldsMarkedSensitiveAreMaskedWhenDescribed() {
     PartnerRequest request = MerchantFixtures.pay(MerchantFixtures.newTxnId(), MerchantFixtures.ACCOUNT, 2000);
 
-    // each party id by its type: the bank account keeps its last 4 only, the wallet is an MSISDN
+    // each party id by its type: the paying wallet is an MSISDN, the merchant id keeps its last 4 only
     String debit = MaskingPolicy.describe(request.payload().debitParty());
     String credit = MaskingPolicy.describe(request.payload().creditParty());
 
-    assertThat(debit).doesNotContain(MerchantFixtures.ACCOUNT, "123456").contains("id=****0123");
-    assertThat(credit).doesNotContain("01711000001").contains("id=0171****001");
+    assertThat(debit).doesNotContain("01711000001").contains("id=0171****001");
+    assertThat(credit).doesNotContain(MerchantFixtures.ACCOUNT).contains("id=0191****001");
   }
 }

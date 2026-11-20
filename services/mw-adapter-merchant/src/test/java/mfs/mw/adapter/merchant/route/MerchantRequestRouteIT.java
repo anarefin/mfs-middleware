@@ -129,7 +129,7 @@ class MerchantRequestRouteIT {
         postRequestedFor(urlEqualTo("/c2wbank/v1/debits"))
             .withRequestBody(
                 equalToJson(
-                    "{\"transactionId\":\"" + ref + "\",\"accountNumber\":\"1234567890123\",\"amount\":\"20.00\"}")));
+                    "{\"transactionId\":\"" + ref + "\",\"accountNumber\":\"01711000001\",\"amount\":\"20.00\"}")));
   }
 
   /**

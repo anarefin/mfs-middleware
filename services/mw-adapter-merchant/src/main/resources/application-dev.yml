@@ -8,128 +8,125 @@ mw:
     dry-run:
       base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
     instances:
-      # Generic partner bank for C2W / ADD_MONEY_BANK (wire format: mw-simulators c2wbank), a partner
-      # route as config (ADR D28). A debit is accepted (202 PENDING) and its outcome follows as a
-      # signed callback to /partner/c2wbank/callback/debits (APISIX ->
-      # controller/PartnerCallbackController, verified with auth below); a 200 SUCCESS / 422 FAILED
-      # answer is also understood.
-      c2wbank:
+      # Merchant system over SOAP (ticket 115, FRS UC-11 / EXT-11; mw-simulators MerchantSoapMock in 115b):
+      # SOAP 1.1 POST /merchant/v1/soap, namespace urn:merchant:v1, WS-Security UsernameToken user bits,
+      # password field ws-password of secret/mw-adapter-merchant/merchant-soap (dev value
+      # MERCHANT_SOAP_WS_PASSWORD, deploy/provision/services.sh). INQUIRY = ValidateMerchant (merchant
+      # exists, active, till valid; before the hold), PAY = NotifyPayment (after COMMIT, best effort),
+      # REVERSE = Refund. A soap:Client fault with a code is FAILED MW-PTR-MERCHANT-SOAP-<suffix>; a
+      # soap:Server fault or any other reply is UNKNOWN.
+      merchant-soap:
         family: merchant
-        base-url: ${C2WBANK_BASE_URL:http://mw-simulators:8080}
-        # The hosts the route may call (approved with the record; the static floor in application.yml
-        # narrows them).
-        allowed-hosts: ${MW_C2WBANK_ALLOWED_HOSTS:mw-simulators}
+        base-url: ${MERCHANT_SOAP_BASE_URL:http://mw-simulators:8080}
+        allowed-hosts: ${MW_MERCHANT_SOAP_ALLOWED_HOSTS:mw-simulators}
         connect-timeout-ms: 3000
-        # Bank timeout (spec 11.1 says 30 s) is 25 s here so the adapter answers before the
-        # orchestrator's 30 s partner deadline; the read timeout sits a little above so the time
-        # limit decides first. Circuit breaker and bulkhead: the resilience4j instance "c2wbank".
-        timeout-ms: 25000
-        read-timeout-ms: 27000
-        # A status inquiry goes again once after a timeout, 5xx, reset or failed connect; a debit never.
+        timeout-ms: 10000
+        read-timeout-ms: 12000
         inquiry-retries: 1
-        # hmac-sha256 both ways (spec 11.1 "signature"; mTLS per bank is TBC): every call is signed
-        # (mw-http-call auth), and a callback is believed only with a valid signature over method,
-        # path, timestamp and body (300 s skew). The shared secret is the field hmac-secret of Vault
-        # secret/mw-adapter-merchant/c2wbank (dev value C2WBANK_HMAC_SECRET, deploy/provision/services.sh);
-        # never here.
-        auth:
-          scheme: hmac-sha256
-          credentials-ref: hmac-secret
-        # Raw bodies are audited masked: these fields by rule, everything by free-text scrubbing.
         sensitive-fields:
-          accountNumber: ACCOUNT
-        # Bank codes that do not say whether the debit was applied: reply UNKNOWN.
+          merchantId: PARTY_ID
         ambiguous-codes: ["9876"]
-        # Bank code -> MW-PTR-C2WBANK-<suffix>. Unlisted codes become UNMAPPED.
         error-map:
-          "[4001]": { suffix: ACCOUNT_NOT_LINKED, retryable: false }
-          "[4002]": { suffix: DEBIT_REFUSED, retryable: false }
-          "[4003]": { suffix: INSUFFICIENT_FUNDS, retryable: false }
-        # The route (async callback, deploy/partner-routes/examples/rest-async-callback.yaml): PAY: POST
-        # /c2wbank/v1/debits {transactionId, accountNumber, amount:"500.00"} (only 422 with a code and
-        # 400 are rejections; any other non-2xx is UNKNOWN); STATUS_QUERY (spec 7.4): GET
-        # /c2wbank/v1/debits/{reference}. The callback itself is never a route: it reaches
-        # controller/PartnerCallbackController and is read with CALLBACK.response.
+          "[5001]": { suffix: MERCHANT_NOT_FOUND, retryable: false }
+          "[5002]": { suffix: MERCHANT_INACTIVE, retryable: false }
+          "[5003]": { suffix: INVALID_TILL, retryable: false }
+          "[5004]": { suffix: REFUND_REFUSED, retryable: false }
         route: |
           - route:
               from:
-                uri: direct:partner-c2wbank
+                uri: direct:partner-merchant-soap
                 steps:
                   - choice:
                       when:
+                        - simple: "${header.mwOperation} == 'INQUIRY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=INQUIRY.request"
+                            - to: "kamelet:mw-soap-call?address=${mw.partners.instances.merchant-soap.base-url}/merchant/v1/soap&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:merchant:v1:ValidateMerchant&wsUsername=bits&wsPasswordSecret=ws-password"
+                            - to: "kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=200"
                         - simple: "${header.mwOperation} == 'PAY'"
                           steps:
                             - to: "kamelet:mw-map?mapping=PAY.request"
-                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.c2wbank.base-url}&method=POST&path=/c2wbank/v1/debits&auth=hmac-sha256&secretField=hmac-secret"
-                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422&pending=true"
-                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
-                          steps:
-                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.c2wbank.base-url}&method=GET&path=/c2wbank/v1/debits/{reference}&auth=hmac-sha256&secretField=hmac-secret"
-                            - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404&pending=true"
+                            - to: "kamelet:mw-soap-call?address=${mw.partners.instances.merchant-soap.base-url}/merchant/v1/soap&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:merchant:v1:NotifyPayment&wsUsername=bits&wsPasswordSecret=ws-password"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=200"
                         - simple: "${header.mwOperation} == 'REVERSE'"
                           steps:
                             - to: "kamelet:mw-map?mapping=REVERSE.request"
-                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.c2wbank.base-url}&method=POST&path=/c2wbank/v1/debits/{reference}/reverse&auth=hmac-sha256&secretField=hmac-secret"
-                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=404,422"
+                            - to: "kamelet:mw-soap-call?address=${mw.partners.instances.merchant-soap.base-url}/merchant/v1/soap&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:merchant:v1:Refund&wsUsername=bits&wsPasswordSecret=ws-password"
+                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=200"
                   - to: "kamelet:mw-audit"
         mappings:
-          # REVERSE (ticket 97): undo the applied call of our reference, idempotent on the
-          # reversal reference reverse:<txnId> (mw-simulators reverses once and answers the
-          # first result again); 404 / 422 with a code are refusals, anything else UNKNOWN.
-          "[REVERSE.request]": |
-            {"reversalId": reversalReference, "amount": amount.major}
-          "[REVERSE.response]": |
-            status = 200
-              ? (body.status = "REVERSED" and $type(body.reversalRef) = "string" and body.reversalRef != ""
-                  ? {"outcome": "SUCCESS", "partnerRef": body.reversalRef, "code": body.code}
-                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-            : (status = 404 or status = 422) and $type(body.code) = "string" and body.code != ""
-              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
-            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[INQUIRY.request]": |
+            {"op": "VALIDATE", "merchantId": creditParty.id, "tillId": attributes.tillId ? attributes.tillId : ""}
           "[PAY.request]": |
-            {"transactionId": reference, "accountNumber": debitParty.id, "amount": amount.major}
+            {"op": "NOTIFY", "merchantId": creditParty.id, "tillId": attributes.tillId ? attributes.tillId : "",
+             "amount": amount.major, "reference": reference}
+          "[REVERSE.request]": |
+            {"op": "REFUND", "merchantId": creditParty.id, "amount": amount.major, "reference": reference,
+             "refundId": reversalReference}
+          "[soap.request.xsl]": |
+            <xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+                xmlns:fn="http://www.w3.org/2005/xpath-functions" xmlns:m="urn:merchant:v1" exclude-result-prefixes="fn">
+              <xsl:template match="/fn:map[fn:string[@key='op'] = 'NOTIFY']">
+                <m:NotifyPayment>
+                  <m:merchantId><xsl:value-of select="fn:*[@key='merchantId']"/></m:merchantId>
+                  <m:tillId><xsl:value-of select="fn:*[@key='tillId']"/></m:tillId>
+                  <m:amount><xsl:value-of select="fn:*[@key='amount']"/></m:amount>
+                  <m:reference><xsl:value-of select="fn:*[@key='reference']"/></m:reference>
+                </m:NotifyPayment>
+              </xsl:template>
+              <xsl:template match="/fn:map[fn:string[@key='op'] = 'REFUND']">
+                <m:Refund>
+                  <m:merchantId><xsl:value-of select="fn:*[@key='merchantId']"/></m:merchantId>
+                  <m:amount><xsl:value-of select="fn:*[@key='amount']"/></m:amount>
+                  <m:reference><xsl:value-of select="fn:*[@key='reference']"/></m:reference>
+                  <m:refundId><xsl:value-of select="fn:*[@key='refundId']"/></m:refundId>
+                </m:Refund>
+              </xsl:template>
+              <xsl:template match="/fn:map" priority="-1">
+                <m:ValidateMerchant>
+                  <m:merchantId><xsl:value-of select="fn:*[@key='merchantId']"/></m:merchantId>
+                  <m:tillId><xsl:value-of select="fn:*[@key='tillId']"/></m:tillId>
+                </m:ValidateMerchant>
+              </xsl:template>
+            </xsl:stylesheet>
+          "[soap.response.xsl]": |
+            <xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+                xmlns:m="urn:merchant:v1" xmlns:f="urn:bits:mw:soap-fault">
+              <xsl:output method="json"/>
+              <xsl:template match="/m:ValidateMerchantResponse">
+                <xsl:sequence select="map{'reply': 'VALIDATE', 'status': string(m:status), 'merchantRef': string(m:merchantRef)}"/>
+              </xsl:template>
+              <xsl:template match="/m:NotifyPaymentResponse">
+                <xsl:sequence select="map{'reply': 'NOTIFY', 'status': string(m:status), 'notifyRef': string(m:notifyRef),
+                    'code': string(m:code)}"/>
+              </xsl:template>
+              <xsl:template match="/m:RefundResponse">
+                <xsl:sequence select="map{'reply': 'REFUND', 'status': string(m:status), 'refundRef': string(m:refundRef),
+                    'code': string(m:code)}"/>
+              </xsl:template>
+              <xsl:template match="/f:fault">
+                <xsl:sequence select="map{'fault': string(@code), 'code': string(f:detail/m:error/m:code),
+                    'message': string(f:detail/m:error/m:message)}"/>
+              </xsl:template>
+              <xsl:template match="/*" priority="-1">
+                <xsl:sequence select="map{'reply': 'OTHER'}"/>
+              </xsl:template>
+            </xsl:stylesheet>
+          "[INQUIRY.response]": |
+            body.reply = "VALIDATE" and body.status = "ACTIVE" and body.merchantRef != ""
+              ? {"outcome": "SUCCESS", "partnerRef": body.merchantRef}
+            : body.fault = "Client" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}
           "[PAY.response]": |
-            status = 200
-              ? (body.status = "SUCCESS" and $type(body.debitRef) = "string" and body.debitRef != ""
-                  ? {"outcome": "SUCCESS", "partnerRef": body.debitRef, "code": body.code}
-                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-            : status = 202
-              ? (body.status = "PENDING"
-                  ? {"outcome": "PENDING", "partnerRef": body.debitRef, "code": body.code}
-                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-            : status = 422
-              ? ($type(body.code) = "string" and body.code != ""
-                  ? {"outcome": "FAILED", "code": body.code, "message": body.message}
-                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-            : status = 400
-              ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
-            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
-          # NOT_FOUND only for a 404 carrying the bank's NOT_FOUND body; anything else indefinite is
-          # UNKNOWN.
-          "[STATUS_QUERY.response]": |
-            status = 200
-              ? (body.status = "SUCCESS" and $type(body.debitRef) = "string" and body.debitRef != ""
-                  ? {"outcome": "SUCCESS", "partnerRef": body.debitRef, "code": body.code}
-                  : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
-                    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
-                  : body.status = "PENDING"
-                    ? {"outcome": "PENDING", "partnerRef": body.debitRef, "code": body.code}
-                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
-            : status = 404 and body.status = "NOT_FOUND"
-              ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
-            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
-          # Callback: POST /partner/c2wbank/callback/debits with the debit body {transactionId (our
-          # reference), status SUCCESS|FAILED|PENDING, code, message, debitRef}, signed (auth above).
-          # Input {headers, body}; anything without a known status is refused.
-          "[CALLBACK.response]": |
-            $type(body.transactionId) != "string" or body.transactionId = "" ? {}
-            : body.status = "SUCCESS" and $type(body.debitRef) = "string" and body.debitRef != ""
-              ? {"outcome": "SUCCESS", "partnerRef": body.debitRef, "reference": body.transactionId,
-                 "code": body.code, "message": body.message}
-            : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
-              ? {"outcome": "FAILED", "partnerRef": body.debitRef, "reference": body.transactionId,
-                 "code": body.code, "message": body.message}
-            : body.status = "PENDING"
-              ? {"outcome": "PENDING", "partnerRef": body.debitRef, "reference": body.transactionId,
-                 "code": body.code, "message": body.message}
-            : {}
+            body.reply = "NOTIFY" and body.status = "RECEIVED" and body.notifyRef != ""
+              ? {"outcome": "SUCCESS", "partnerRef": body.notifyRef, "code": body.code != "" ? body.code}
+            : body.fault = "Client" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}
+          "[REVERSE.response]": |
+            body.reply = "REFUND" and body.status = "REFUNDED" and body.refundRef != ""
+              ? {"outcome": "SUCCESS", "partnerRef": body.refundRef, "code": body.code != "" ? body.code}
+            : body.fault = "Client" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}

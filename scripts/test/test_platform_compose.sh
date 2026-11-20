@@ -186,6 +186,7 @@ greenmail:127.0.0.1:8025->8080
 kafka:127.0.0.1:9094->9094
 keycloak:127.0.0.1:8180->8080
 mw-adapter-bank:127.0.0.1:8091->8080
+mw-adapter-merchant:127.0.0.1:8098->8080
 mw-adapter-billpay:127.0.0.1:8090->8080
 mw-adapter-telco:127.0.0.1:8089->8080
 mw-admin-api:127.0.0.1:8088->8080
@@ -390,7 +391,7 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
   expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 vault=128 etcd=64 redis=64 softhsm=48
     mw-admin-ui=64 mw-crypto=320 mw-auth=320 mw-simulators=384 mw-orchestrator=448 mw-audit-dw=448 mw-core-mock=384
     mw-notify=384 mw-app-gateway=384 mw-ussd=384 mw-admin-api=384 mw-adapter-telco=384 mw-adapter-billpay=384
-    mw-adapter-bank=384 mw-portal-api=384 mw-checkout=384 mw-data-export=384 mw-recon=384"
+    mw-adapter-bank=384 mw-adapter-merchant=384 mw-portal-api=384 mw-checkout=384 mw-data-export=384 mw-recon=384"
   for s in $expect; do
     want=$(( ${s#*=} * 1048576 ))
     got="$(printf '%s' "$j" | jq -r --arg s "${s%%=*}" '.services[$s].deploy.resources.limits.memory')"

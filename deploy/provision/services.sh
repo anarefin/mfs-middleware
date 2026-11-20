@@ -24,7 +24,7 @@ EDGE_SECRETS="ussd-gp:USSD_GP_GATEWAY_SECRET ussd-robi:USSD_ROBI_GATEWAY_SECRET 
 
 SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
-  mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank
+  mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank mw-adapter-merchant:adapter-merchant
   mw-portal-api:portal-api mw-checkout:checkout mw-data-export:data-export mw-recon:recon"
 
 # Ledger stand-in. No PIN key since ticket 72 (D22): it verifies mw-auth's assertions with the
@@ -200,6 +200,16 @@ provision_mw_adapter_bank() {
   sync_env hmac-secret C2WBANK_HMAC_SECRET
   KV="secret/$SVC"
   db_role adapter_bank_rw bank_ref
+}
+
+# The dev merchant system's WS-Security password (ticket 115), shared with mw-simulators: the field
+# ws-password of the partner's own secret secret/mw-adapter-merchant/merchant-soap, read by its route.
+provision_mw_adapter_merchant() {
+  gen_once spring.datasource.password 40
+  KV="secret/$SVC/merchant-soap"
+  sync_env ws-password MERCHANT_SOAP_WS_PASSWORD
+  KV="secret/$SVC"
+  db_role adapter_merchant_rw merchant_ref
 }
 
 # Realm services client secret: mw-orchestrator's internal query API (M3 gate).

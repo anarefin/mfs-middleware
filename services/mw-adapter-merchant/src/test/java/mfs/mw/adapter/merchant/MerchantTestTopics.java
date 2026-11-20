@@ -18,7 +18,7 @@ public class MerchantTestTopics {
   public record Created(String group) {}
 
   @Bean
-  Created bankTopics(@Value("${spring.kafka.consumer.group-id}") String group) {
+  Created merchantTopics(@Value("${spring.kafka.consumer.group-id}") String group) {
     KafkaTestTopics.createWithRetries("mw.partner.request.merchant.v1", group, 3, 1);
     KafkaTestTopics.create(1, java.util.List.of("mw.config.changed.v1", "mw.partner.reply.v1", "mw.audit.event.v1"));
     return new Created(group);

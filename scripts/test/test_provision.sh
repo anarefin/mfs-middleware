@@ -115,7 +115,7 @@ manifest_services() { (. "$PROVISION_DIR/services.sh"; printf '%s\n' $SERVICES);
 test_every_service_with_an_approle_volume_is_in_the_manifest() {
   local s
   for s in mw-core-mock mw-crypto mw-auth mw-simulators mw-orchestrator mw-audit-dw mw-app-gateway mw-notify mw-ussd \
-    mw-admin-api mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-portal-api mw-checkout mw-data-export mw-recon; do
+    mw-admin-api mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-adapter-merchant mw-portal-api mw-checkout mw-data-export mw-recon; do
     manifest_services | grep -q "^$s:" || fail "$s missing from deploy/provision/services.sh"
   done
   [ "$(manifest_services | head -1)" = mw-core-mock:core-mock ] \
@@ -276,7 +276,7 @@ test_mw_admin_api_may_write_but_never_read_the_adapters_partner_secrets() {
     || fail "mw-admin-api has no credential staging area: $(cat $p)"
   grep -q 'path "secret/metadata/mw-admin-api/staged-credentials/\*" { capabilities = \["delete"\] }' $p \
     || fail "mw-admin-api cannot drop a staged credential"
-  for a in mw-adapter-telco mw-adapter-billpay mw-adapter-bank; do
+  for a in mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-adapter-merchant; do
     grep -q "path \"secret/data/$a/\*\" { capabilities = \[\"create\", \"update\", \"patch\"\] }" $p \
       || fail "mw-admin-api cannot write $a's partner secrets: $(cat $p)"
   done

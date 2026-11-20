@@ -18,21 +18,21 @@ class PartnerCallMapperTest {
   final PartnerCallMapper mapper = new PartnerCallMapper();
 
   @Test
-  void aPayBecomesACanonicalDebitCallWithOurReferenceTheAmountTheAccountAndTheWallet() {
+  void aNotifyBecomesACanonicalCallWithOurReferenceTheAmountTheWalletAndTheMerchant() {
     PartnerRequest request = pay(newTxnId(), ACCOUNT, 2000);
 
     PartnerCall call = mapper.toCall(request, "BITSREF1");
 
     assertThat(call.partnerId()).isEqualTo("c2wbank");
     assertThat(call.operation()).isEqualTo("PAY");
-    assertThat(call.txnType()).isEqualTo("ADD_MONEY_BANK");
+    assertThat(call.txnType()).isEqualTo("MERCHANT_PAY");
     assertThat(call.txnId()).isEqualTo(request.txnId());
     assertThat(call.correlationId()).isEqualTo("corr-0002");
     assertThat(call.reference()).isEqualTo("BITSREF1");
     assertThat(call.input())
         .containsEntry("amount", Map.of("valueMinor", 2000L, "currency", "BDT", "major", "20.00"))
-        .containsEntry("debitParty", Map.of("type", "BANK_ACCOUNT", "id", ACCOUNT))
-        .containsEntry("creditParty", Map.of("type", "WALLET", "id", "01711000001", "walletType", "CUSTOMER"))
+        .containsEntry("debitParty", Map.of("type", "WALLET", "id", "01711000001", "walletType", "CUSTOMER"))
+        .containsEntry("creditParty", Map.of("type", "MERCHANT", "id", ACCOUNT))
         .containsEntry("partner", Map.of("partnerId", "c2wbank", "productCode", "C2W"));
   }
 
@@ -65,10 +65,10 @@ class PartnerCallMapperTest {
     assertThat(mapper.problem(q)).isEmpty();
     PartnerRequest.Payload p = q.payload();
     PartnerRequest bare =
-        withPayload(q, new PartnerRequest.Payload("STATUS_QUERY", "ADD_MONEY_BANK", p.partner(), "x", null, null, null, null, null));
+        withPayload(q, new PartnerRequest.Payload("STATUS_QUERY", "MERCHANT_PAY", p.partner(), "x", null, null, null, null, null));
     assertThat(mapper.problem(bare)).isEmpty();
     PartnerRequest noPartner =
-        withPayload(q, new PartnerRequest.Payload("STATUS_QUERY", "ADD_MONEY_BANK", null, "x", null, null, null, null, null));
+        withPayload(q, new PartnerRequest.Payload("STATUS_QUERY", "MERCHANT_PAY", null, "x", null, null, null, null, null));
     assertThat(mapper.problem(noPartner)).contains("partner is required");
   }
 
@@ -80,19 +80,14 @@ class PartnerCallMapperTest {
     assertThat(mapper.problem(withOperation(ok, "SCREEN"))).contains("unsupported operation");
     assertThat(mapper.problem(withFamily(ok, "billpay"))).contains("unsupported family");
     assertThat(mapper.problem(pay(newTxnId(), ACCOUNT, 0))).contains("amount must be positive");
-    assertThat(mapper.problem(pay(newTxnId(), "12-34", 100))).contains("debit party must be a bank account");
     assertThat(mapper.problem(withPayload(ok, null))).isNotEqualTo(Optional.empty());
     assertThat(mapper.problem(withPayload(ok, new PartnerRequest.Payload(
-            "PAY", "W2B", p.partner(), p.partnerTxnRef(), p.amount(), p.debitParty(), p.creditParty(), null, null))))
+            "PAY", "P2P", p.partner(), p.partnerTxnRef(), p.amount(), p.debitParty(), p.creditParty(), null, null))))
         .contains("unsupported txnType");
     assertThat(mapper.problem(withPayload(ok, new PartnerRequest.Payload(
             "PAY", p.txnType(), p.partner(), p.partnerTxnRef(), p.amount(), p.debitParty(),
-            new PartnerRequest.Party("MSISDN", "01711000001", null, null), null, null))))
-        .contains("credit party must be a wallet");
-    assertThat(mapper.problem(withPayload(ok, new PartnerRequest.Payload(
-            "PAY", p.txnType(), p.partner(), p.partnerTxnRef(), p.amount(),
-            new PartnerRequest.Party("WALLET", "01711000002", null, null), p.creditParty(), null, null))))
-        .contains("debit party must be a bank account");
+            new PartnerRequest.Party("WALLET", "01711000001", null, null), null, null))))
+        .contains("credit party must be a merchant");
   }
 
   private static PartnerRequest withOperation(PartnerRequest r, String op) {
@@ -115,13 +110,29 @@ class PartnerCallMapperTest {
     PartnerRequest ok = pay(newTxnId(), ACCOUNT, 2000);
     PartnerRequest.Payload p = ok.payload();
     PartnerRequest reverse =
-        withPayload(ok, new PartnerRequest.Payload("REVERSE", p.txnType(), p.partner(), null, p.amount(), null, null, "PTR-1", null));
+        withPayload(ok, new PartnerRequest.Payload("REVERSE", p.txnType(), p.partner(), null, p.amount(), null, p.creditParty(), "PTR-1", null));
     assertThat(mapper.problem(reverse)).isEmpty();
     assertThat(mapper.toCall(reverse, "BITS-REF").operation()).isEqualTo("REVERSE");
     assertThat(mapper.toCall(reverse, "BITS-REF").reference()).isEqualTo("BITS-REF");
     PartnerRequest noAmount =
-        withPayload(ok, new PartnerRequest.Payload("REVERSE", p.txnType(), p.partner(), null, null, null, null, null, null));
+        withPayload(ok, new PartnerRequest.Payload("REVERSE", p.txnType(), p.partner(), null, null, null, p.creditParty(), null, null));
     assertThat(mapper.problem(noAmount)).contains("amount must be positive");
+  }
+
+  @Test
+  void aValidateIsAnInquiryForTheMerchantAndItsTillWithoutAnAmount() {
+    PartnerRequest ok = pay(newTxnId(), ACCOUNT, 2000);
+    PartnerRequest.Payload p = ok.payload();
+    PartnerRequest validate = withPayload(ok, new PartnerRequest.Payload(
+        "INQUIRY", p.txnType(), p.partner(), null, null, null, p.creditParty(), null, Map.of("tillId", "TILL-01")));
+    assertThat(mapper.problem(validate)).isEmpty();
+    PartnerCall call = mapper.toCall(validate, "BITS-REF");
+    assertThat(call.operation()).isEqualTo("INQUIRY");
+    assertThat(call.input()).containsEntry("attributes", Map.of("tillId", "TILL-01"))
+        .containsEntry("creditParty", Map.of("type", "MERCHANT", "id", ACCOUNT));
+    PartnerRequest noMerchant = withPayload(ok, new PartnerRequest.Payload(
+        "INQUIRY", p.txnType(), p.partner(), null, null, null, null, null, null));
+    assertThat(mapper.problem(noMerchant)).contains("credit party must be a merchant");
   }
 
   private static PartnerRequest withPayload(PartnerRequest r, PartnerRequest.Payload p) {

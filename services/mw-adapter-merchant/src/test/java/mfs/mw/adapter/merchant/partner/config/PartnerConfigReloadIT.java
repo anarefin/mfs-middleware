@@ -98,7 +98,7 @@ class PartnerConfigReloadIT {
         """
             .formatted(PARTNER.port());
     Map<String, Object> value = new java.util.LinkedHashMap<>();
-    value.put("family", "bank");
+    value.put("family", "merchant");
     value.put("route", route);
     value.put("mappings", Map.of(
         "PAY.request",

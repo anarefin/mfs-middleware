@@ -24,6 +24,7 @@ mw:
       # WireMock runs on localhost over http.
       allowed-hosts:
         c2wbank: mw-simulators,localhost
+        merchant-soap: mw-simulators,localhost
         gp: localhost
       insecure-http-hosts: mw-simulators,localhost
   outbox:

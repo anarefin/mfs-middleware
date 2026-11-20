@@ -9,7 +9,7 @@
   "payload": {
     "operation": "REVERSE",
     "txnType": "MERCHANT_PAY",
-    "partner": { "partnerId": "merchant-soap" },
+    "partner": { "partnerId": "merchant-soap", "productCode": "MERCHANT" },
     "partnerTxnRef": "BITS01933B8E7C1A"
   }
 }
