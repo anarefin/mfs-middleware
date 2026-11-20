@@ -242,6 +242,26 @@ class AtmTokenIT {
   }
 
   @Test
+  void theStepUpAssertionIsSpentByTheIssueSoItCannotIssueASecondToken() throws Exception {
+    String key = UUID.randomUUID().toString();
+    String body = issueBody(200000, key, assertion(200000, key));
+
+    assertThat(post("mw-app-gateway", ISSUE, body)).hasStatus(201);
+    assertCode(post("mw-app-gateway", ISSUE, body), 401, "MW-AUTH-049");
+  }
+
+  @Test
+  void theAtmAdapterReachesNothingButTheTokenCheck() {
+    assertCode(post("mw-adapter-atm", AUTHORISE, "{}"), 403, "MW-AUTH-002");
+    assertThat(mvc.get().uri("/internal/v1/devices/" + deviceId)
+        .header("Authorization", InternalTokens.bearer("mw-adapter-atm")).exchange()).hasStatus(403);
+    assertThat(mvc.get().uri("/internal/v1/devices/" + deviceId)
+        .header("Authorization", InternalTokens.bearer("mw-ussd")).exchange()).hasStatus(403);
+    assertThat(mvc.get().uri("/internal/v1/devices/" + deviceId)
+        .header("Authorization", InternalTokens.bearer("mw-app-gateway")).exchange()).hasStatusOk();
+  }
+
+  @Test
   void onlyTheGatewayIssuesAndOnlyTheAtmAdapterVerifies() throws Exception {
     String key = UUID.randomUUID().toString();
     String assertion = assertion(200000, key);

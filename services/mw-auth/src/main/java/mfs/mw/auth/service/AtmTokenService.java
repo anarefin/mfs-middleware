@@ -31,7 +31,8 @@ import org.springframework.stereotype.Service;
  * {@code ATM_CASH_OUT} wallet -> {@code PARTNER/<partnerId>} with the token's amount, currency,
  * idempotency key and channel. Here the live assertion cached for (wallet, idempotency key) must be
  * the one sent and bound to exactly that transaction, else 401 {@code MW-AUTH-049} and nothing is
- * stored. Then 6 random digits; only their HMAC under mw-crypto {@code HMAC_ATMTOKEN} over wallet,
+ * stored. The step-up is spent by the issue (compare-and-delete in Redis), so one PIN entry issues
+ * at most one token, also under concurrent calls. Then 6 random digits; only their HMAC under mw-crypto {@code HMAC_ATMTOKEN} over wallet,
  * amount, currency and digits is stored with the key version (one live token per wallet, a new one
  * replaces it), valid {@code ttl} (10 min).
  *
@@ -84,7 +85,8 @@ public class AtmTokenService {
     boolean ok = stepUp.isPresent()
         && now.isBefore(stepUp.get().expiresAt())
         && equal(stepUp.get().assertion(), req.assertion())
-        && stepUp.get().txnHash().equals(txnHash);
+        && stepUp.get().txnHash().equals(txnHash)
+        && assertions.consume(w.walletId(), req.idempotencyKey(), stepUp.get());
     if (!ok) {
       log.atWarn().addKeyValue("event", "auth.atm_token.step_up_refused")
           .addKeyValue("errorCode", ErrorCodes.AUTH_STEP_UP_REQUIRED).log("ATM token without a matching PIN step-up");

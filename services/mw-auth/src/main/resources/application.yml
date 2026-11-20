@@ -357,6 +357,12 @@ mw:
     # spec 18.7: the channels (txn authorisation, ticket 71), the admin API (PIN locks, ticket 70) and
     # the ATM adapter (the ATM token check only, ticket 120b2)
     allowed-clients: mw-app-gateway,mw-ussd,mw-checkout,mw-admin-api,mw-adapter-atm
+    # security/InternalCallerPolicy (ticket 120b2): a client named here reaches only its paths ...
+    client-paths:
+      mw-adapter-atm: /internal/v1/atm-tokens/verifications
+    # ... and these paths only the client they are reserved for (exact, or a prefix ending in /**)
+    reserved-paths:
+      mw-app-gateway: /internal/v1/devices/**,/internal/v1/sessions/**
   kafka:
     # How long EventPublisher.publish waits for Kafka's acknowledgement (just above the producer's
     # delivery.timeout.ms, so the producer decides first).

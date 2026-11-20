@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits wallet authentication internal API (mw-auth)
-  version: 1.5.0
+  version: 1.6.0
   description: |
     Internal API of mw-auth (spec 18.7, ADR D24), on its internal port (`https://mw-auth:8443`, the
     `app` zone network; not routed by APISIX). mTLS is mandatory: the TLS handshake needs a client
@@ -236,7 +236,9 @@ paths:
         /internal/v1/txn-authorisations` for txnType `ATM_CASH_OUT`, payer `WALLET/<walletId>`, payee
         `PARTNER/ucbatm` (`mw.auth.atm-token.partner-id`) with this amount, currency, idempotencyKey and
         channel; it must be the live assertion of that wallet and key, bound to exactly that
-        transaction, else 401 MW-AUTH-049 and nothing is stored. Answers 6 random digits valid 10 min.
+        transaction, else 401 MW-AUTH-049 and nothing is stored. The issue spends the step-up (an
+        atomic compare-and-delete): the same assertion never issues a second token (401 MW-AUTH-049).
+        Answers 6 random digits valid 10 min.
         Only their HMAC under the mw-crypto `HMAC_ATMTOKEN` key, bound to wallet, amount and currency,
         is stored; one live token per wallet (a new one replaces it). Unknown wallet 403 MW-AUTH-002,
         wallet checks as the assertion (403 MW-AUTH-043, 423 MW-AUTH-041/042), mw-crypto down 503
@@ -264,6 +266,8 @@ paths:
       operationId: verifyAtmToken
       summary: Checks an ATM token with its amount and spends it
       description: >-
+        The only path the client `mw-adapter-atm` may call (mw.internal-auth.client-paths; any other
+        path 403 MW-AUTH-002).
         Ticket 120b2. Only the client `mw-adapter-atm` (VerifyTokenAndDebit). A match spends the token
         (once: a second check is 401 MW-AUTH-011) and answers the wallet to debit. Another amount is a
         wrong token. Wrong: 401 MW-AUTH-010 (the third wrong one voids it); no token, expired, spent,

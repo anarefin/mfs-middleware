@@ -2,11 +2,13 @@ package mfs.mw.auth.repository;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 import mfs.mw.auth.exception.ErrorCodes;
 import mfs.mw.auth.exception.MwException;
 import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Repository;
 
@@ -36,6 +38,10 @@ public class AssertionCache {
       return new Entry(Instant.ofEpochMilli(Long.parseLong(p[0])), p[1], Boolean.parseBoolean(p[2]), p[3]);
     }
   }
+
+  private static final RedisScript<Long> DELETE_IF_EQUAL = RedisScript.of(
+      "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end",
+      Long.class);
 
   private final StringRedisTemplate redis;
 
@@ -73,6 +79,15 @@ public class AssertionCache {
       redis.opsForValue().set(key(walletId, idempotencyKey), entry.encode(), ttl);
       return null;
     });
+  }
+
+  /**
+   * Removes {@code entry} if it is still the one stored, in one step (compare-and-delete): true for
+   * exactly one of concurrent callers, so a step-up spent this way is spent once (ticket 120b2).
+   */
+  public boolean consume(String walletId, String idempotencyKey, Entry entry) {
+    Long n = call(() -> redis.execute(DELETE_IF_EQUAL, List.of(key(walletId, idempotencyKey)), entry.encode()));
+    return n != null && n == 1L;
   }
 
   private static <T> T call(Supplier<T> op) {

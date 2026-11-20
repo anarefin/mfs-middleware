@@ -65,9 +65,14 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   `/auth/v1/**` behind APISIX (tickets 68-69); 8081 = actuator, plain HTTP, never published (Dockerfile
   and compose healthchecks). `/internal/**` is its own filter chain: Keycloak JWT (signature, expiry,
   exact issuer, `aud` `mw-auth`), `azp` in `mw.internal-auth.allowed-clients` (mw-app-gateway, mw-ussd,
-  mw-checkout, mw-admin-api), `azp` == client certificate CN, and never on the public port. 401
+  mw-checkout, mw-admin-api, mw-adapter-atm), `azp` == client certificate CN, and never on the public
+  port. Per path (ticket 120b2, `security/InternalCallerPolicy`): a client in
+  `mw.internal-auth.client-paths` reaches only its paths (mw-adapter-atm: only `POST
+  /internal/v1/atm-tokens/verifications`), and a path in `mw.internal-auth.reserved-paths` only the
+  client it is reserved for (the device and session lookups `/internal/v1/devices/**`,
+  `/internal/v1/sessions/**`: mw-app-gateway only); a pattern is exact or a prefix ending in `/**`. 401
   `MW-AUTH-001`, 403 `MW-AUTH-002` with WARN `security.internal_call_denied` (reasons `PUBLIC_PORT`,
-  `CLIENT_NOT_ALLOWED`, `NO_CLIENT_CERT`, `CERT_MISMATCH`). `/auth/v1/**` is open except logout and
+  `CLIENT_NOT_ALLOWED`, `PATH_NOT_ALLOWED`, `NO_CLIENT_CERT`, `CERT_MISMATCH`). `/auth/v1/**` is open except logout and
   the first PIN, which take mw-auth's own access token (below); dev only, with
   `mw.auth.seed-api.enabled`, `/internal/v1/seed/**` without a token (chain 0, below); everything else is
   open. `mw.tls.enabled` defaults to true here (tests off).
@@ -313,7 +318,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   `WalletAccess.check`, then the step-up: the live `assert:{walletId}:{idempotencyKey}` entry must hold
   exactly this assertion (constant time) with the txnHash of `ATM_CASH_OUT` payer `WALLET/<walletId>`
   payee `PARTNER/<partner-id>` (`ucbatm`), the amount, currency, key and channel, else 401
-  `MW-AUTH-049` and nothing stored. Then 6 digits (`SecureRandom`); only HMAC-SHA256 under mw-crypto
+  `MW-AUTH-049` and nothing stored. The issue spends the step-up: `AssertionCache.consume` deletes the
+  entry only if it still holds exactly what was checked (one Lua compare-and-delete), so of two
+  concurrent issues with one assertion one wins and the other is 049; one PIN entry, one token. Then 6 digits (`SecureRandom`); only HMAC-SHA256 under mw-crypto
   `HMAC_ATMTOKEN` (keyId `hmac-atmtoken`, `CryptoClient.signHmac`) over `ATM_TOKEN\n<walletId>\n<amount>\n
   <currency>\n<token>` is stored with its kid, `ttl` 10 min, one live token per wallet (a new one
   replaces it with fresh checks); 201 `{token, expiresAt}`, the token shown once. `POST
@@ -324,8 +331,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   HMAC checked by mw-crypto `/hmac/verify` under the stored kid (another amount = a wrong token), wrong
   `010` (the third voids it), right: spent once (conditional on the mac), 200 `{walletId}`. Nothing logs
   the token (events `auth.atm_token.issued|wrong|spent|step_up_refused`). mw-crypto: `HMAC_ATMTOKEN` is
-  bound to mw-auth and a dev bootstrap purpose. Tested by `security/AtmTokenIT`. Open: the assertion
-  can issue again within its 60 s life (a re-issue replaces the token; only mw-app-gateway can call).
+  bound to mw-auth and a dev bootstrap purpose. Tested by `security/AtmTokenIT` and
+  `security/InternalCallerPolicyTest` (the path rules).
 - Channel PIN transport key (security review of ticket 72; `controller/InternalPinKeyController`,
   `service/ChannelPinKeyService`, `dto/InternalPinKey`): `GET /internal/v1/pin-key` on the internal mTLS
   port for the assertion's callers (`mw.auth.assertion.callers`; anyone else 403 `MW-AUTH-002`) ->
