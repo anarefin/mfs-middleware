@@ -1,0 +1,4 @@
+{
+  "name": "41 P2P FRS T1-T12",
+  "description": "Ticket 104 (FRS 10.2, 10.5 phase 1): P2P send money through the app API. P2P is core-only, so the core is the external party (mock control on /test/mock-control/core). Each scenario starts with MW.mockReset('core'), which clears scenarios and the switch and keeps the ledger. T5 waits out the inquiry schedule and lives in folder 90. T11 and T12 are n/a until tickets 125 and 127. T10's mid-saga kill is scripts/chaos.sh CHAOS_TARGETS=mw-orchestrator (that run checks the ledger); this folder checks the same identity on a completed P2P. Tariff v1 (ticket 94): P2P fee 500 poisha VAT-included, VAT 65, commission 0, FEE_INCOME 435, on a 1000 poisha send."
+}

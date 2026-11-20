@@ -31,7 +31,7 @@ pinned in the collection (`build_collection.mjs`, `PINNED`).
 | `local.postman_environment.json` | the environment: `baseUrl` and the secret names (blank; run.sh fills them from `deploy/.env`) |
 | `run_customer.mjs` | picks the run customer of a run (below) and records it in `build/api-test/run-customers.tsv` (`MW_API_RUN_LEDGER`); self-test `scripts/test/test_api_run_customer.sh` |
 | `run.sh` | the runner (options in its header); run state in `.local.postman_environment.json` (gitignored, secrets blanked after every run; `MW_API_STATE`), JUnit report in `build/newman-report.xml` (`MW_API_REPORT`); `--folder` also takes one request by its name or a prefix only it has, so the four `90 Slow` requests can run in parallel, each with its own state and report and `MW_API_SKIP_ROUTES=1` after one run has applied the routes |
-| `TRACEABILITY.md` | every request -> MVP acceptance criteria and coverage items; checked by `scripts/check-api-traceability.sh` |
+| `TRACEABILITY.md` | every request -> MVP acceptance criteria and coverage items, and the FRS UC × T1–T12 matrix (ticket 104); checked by `scripts/check-api-traceability.sh` |
 | `PARITY.md` | every Cucumber scenario -> its Newman request, step-level changes noted |
 
 ## How a request works
@@ -83,6 +83,12 @@ a stack takes some 40 runs before `deploy/reset.sh` is needed (the scenario then
 wallet without an app PIN"). The edge's own quota on `/auth/v1/*` (20 per minute per wallet, 5 per
 second per address) is waited out by `MW.http` (`MW-SYS-RATE_LIMITED` only; mw-auth's own 429 is an
 answer).
+
+## FRS harness (ticket 104)
+
+`MW.mockScenario(party, op, behaviour, scope)`, `MW.mockSwitch(party, stateOrBody)`, `MW.mockReset(party)`, `MW.mockJournal(party, query)`, `MW.coreBalance(walletId)` and `MW.waitForState(txnId, states, timeoutMs)` are the helpers later use cases call. `scope` is an MSISDN, account or biller code, or `{code, key, nextN, delayMs, httpStatus}`. `mockReset(party)` puts that party's scenarios and switch back to normal and keeps its ledger; `mockReset()` with no party is `POST /mock-control/reset` (the ledger returns to the seed, so a scenario uses it only when it means to). `coreBalance` is the core wallet record (`balanceMinor`, `heldMinor`, `availableMinor`). `waitForState` polls the app status of the user that last submitted or confirmed, until the status is one of `states`.
+
+Folder `41-p2p-frs` is P2P T1–T4 and T6–T10 (each scenario calls `mockReset('core')` first, the folder's pre-request reset). T5 waits out the inquiry schedule, so it is in `90-slow`. T11 and T12 stay `n/a` until tickets 125 and 127. T10's mid-saga kill is `scripts/chaos.sh` with `CHAOS_TARGETS=mw-orchestrator`; the request checks the ledger identity (debits equal credits) that the chaos run checks. The UC × T1–T12 matrix is in `TRACEABILITY.md`; a cell names a request, or `n/a` and a reason, and `scripts/check-api-traceability.sh` rejects a name the collection does not have.
 
 Request names start with their requirement tags (`[p2p tsq] a transfer whose core reply is lost
 ...`), the Cucumber flow tags; `TRACEABILITY.md` lists the vocabulary and the rule.
