@@ -357,6 +357,23 @@ Journal: `GET /mock-control/dw/journal` (`DELETE` clears it and resets the party
 | control file | a listed file missing, its sha256 or row count wrong, or a wrong header | verdict REJECTED with the reasons |
 | control file | everything matches | verdict ACCEPTED |
 
+## Bangladesh Election Commission NID (EXT-07)
+
+| Party | Operations | Scope keys |
+| --- | --- | --- |
+| `ec` | verify | nid |
+
+Scenarios: SUCCESS, BUSINESS_ERROR, TIMEOUT, DELAY, HTTP_5XX, MALFORMED_RESPONSE, CONNECTION_RESET, DUPLICATE_CALLBACK, LATE_CALLBACK, OUT_OF_ORDER_CALLBACK, NO_CALLBACK, PARTIAL_SUCCESS.
+Switch: UP, DOWN, MAINTENANCE, SLOW; settings `callbackUrl`, `callbackOnly`, `timeoutDelayMs`.
+Journal: `GET /mock-control/ec/journal` (`DELETE` clears it and resets the party).
+
+| Input | Trigger | Outcome |
+| --- | --- | --- |
+| NID | ending `000`, or not in `seed/v1/ec/nid.json` | 404 `NID_NOT_FOUND` |
+| NID | ending `999` | timeout: the answer held `sim.timeout-delay` |
+| NID | ending `111` | the record with the date of birth one year after the one asked |
+| NID | any other seeded one | the record (names, parents, address, photo reference) |
+
 ## payShield 10K HSM (spec 18.8)
 
 | Party | Operations | Scope keys |
@@ -377,11 +394,6 @@ The three parties below are not mw-simulators parties.
 GreenMail (compose service `greenmail`, SMTP 3025, web inbox and REST API 8025 on 127.0.0.1) receives every
 email mw-notify sends. No data triggers, scenarios, switch or journal: it accepts every message; the inbox
 is the record (`docs/testing-guide.html`).
-
-## Bangladesh Election Commission NID (EXT-07)
-
-Not built yet: the EC NID mock (SOAP and REST, seed NID records, triggers) is ticket 124b. It joins
-mw-simulators as a mock party, so `MockTriggerDocsTest` will require its section in the generated block.
 
 ## Core wallet (EXT-18)
 

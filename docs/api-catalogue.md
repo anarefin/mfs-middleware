@@ -47,6 +47,7 @@ endpoints, off in production.
 | mw-core-mock | `contracts/api/mw-core-mock/core-mock-control.v1.openapi.yaml` | test | `/mock-control/**` | `/docs/mw-core-mock/swagger-ui/index.html` |
 | mw-core-mock | `contracts/api/mw-core-mock/core-mock-seed.v1.openapi.yaml` | test | `/core-mock/v1/**` | `/docs/mw-core-mock/swagger-ui/index.html` |
 | mw-simulators | `contracts/api/mw-simulators/mock-control.v1.openapi.yaml` | test | `/mock-control/**` | `/docs/mw-simulators/swagger-ui/index.html` |
+| mw-simulators | `contracts/api/mw-simulators/ec-nid.v1.openapi.yaml` | test | `/ec/v1/**` (EC NID mock, REST and SOAP; ticket 124b) | `/docs/mw-simulators/swagger-ui/index.html` |
 
 ## SOAP (WSDL)
 
