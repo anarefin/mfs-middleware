@@ -79,12 +79,14 @@ function rest(a) {
 : status = 400
   ? {"outcome": "FAILED", "code": "HTTP_400"}
 : ${unexpected}\n`,
+    // NOT_FOUND only for a 404 carrying the aggregator's own NOT_FOUND marker: a bare gateway or load
+    // balancer 404 stays UNKNOWN, or a paid bill's hold would be released (M9 review)
     'STATUS_QUERY.response': `status = 200
   ? (${payment(B)}
     : ${B}.${f.status} = "${a.words.failed}" and $type(${B}.${f.code}) = "string"
       ? {"outcome": "FAILED", "code": ${B}.${f.code}, "message": ${B}.${f.message}}
     : ${fail})
-: status = 404
+: status = 404 and ${B}.${f.status} = "NOT_FOUND"
   ? {"outcome": "NOT_FOUND", "code": ${B}.${f.code}}
 : ${unexpected}\n`,
     'REVERSE.request': req(`{"${f.reversalId}": reversalReference, "${f.amount}": amount.major}`) + '\n',

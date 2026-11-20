@@ -210,6 +210,39 @@ class BillAggregatorRouteIT {
     assertRejected(gateway.call(call("agg4", "REVERSE")), "NOT_PAID");
   }
 
+  /**
+   * M9 review: a STATUS_QUERY 404 without the aggregator's own not-found marker (a gateway or load
+   * balancer 404) is never final; only a 404 whose body says NOT_FOUND is.
+   */
+  @Test
+  void aBare404OnStatusQueryIsUnknownAndOnlyTheAggregatorsNotFoundBodyIsFinal() {
+    Map<String, String[]> rest = Map.of(
+        "sslcommerz", new String[] {"{\"status\":\"NOT_FOUND\",\"error_code\":\"4040\"}", "status"},
+        "ekpay", new String[] {"{\"status\":\"NOT_FOUND\",\"respCode\":\"4040\"}", "status"},
+        "agg4", new String[] {"{\"res\":{\"state\":\"NOT_FOUND\",\"err\":\"4040\"}}", "state"});
+    rest.forEach((id, notFound) -> {
+      String path = "/" + id + "/v1/payments/" + REF;
+      AGG.resetAll();
+      stubToken();
+      AGG.stubFor(get(urlEqualTo(path)).willReturn(aResponse().withStatus(404).withHeader("Content-Type", "text/html")
+          .withBody("<html>404 Not Found</html>")));
+      assertThat(gateway.call(call(id, "STATUS_QUERY"))).as(id + " bare 404").isInstanceOf(PartnerResponse.Unknown.class);
+      AGG.resetAll();
+      stubToken();
+      AGG.stubFor(get(urlEqualTo(path)).willReturn(json(404, "{\"error\":\"no route\"}")));
+      assertThat(gateway.call(call(id, "STATUS_QUERY"))).as(id + " json 404").isInstanceOf(PartnerResponse.Unknown.class);
+      AGG.resetAll();
+      stubToken();
+      AGG.stubFor(get(urlEqualTo(path)).willReturn(json(404, notFound[0])));
+      assertThat(gateway.call(call(id, "STATUS_QUERY"))).as(id + " NOT_FOUND body").isInstanceOf(PartnerResponse.NotFound.class);
+    });
+  }
+
+  static void stubToken() {
+    AGG.stubFor(post(urlEqualTo("/ekpay/v1/oauth/token"))
+        .willReturn(json(200, "{\"access_token\":\"tok-ekpay\",\"token_type\":\"Bearer\",\"expires_in\":3600}")));
+  }
+
   static void assertSuccess(PartnerResponse response, String partnerRef) {
     assertThat(response).isInstanceOfSatisfying(PartnerResponse.Success.class, s -> assertThat(s.partnerRef()).isEqualTo(partnerRef));
   }
