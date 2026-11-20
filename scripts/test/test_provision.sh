@@ -5,8 +5,8 @@
 
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
-PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t
-  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t
+PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t PUSH_API_KEY=push-t
+  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t KC_MW_SIMULATORS_SECRET=simulators-t SFTP_DEV_PASSWORD=sftp-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
   APISIX_VAULT_TOKEN=apisix-vault-t APISIX_ADMIN_KEY=apisix-admin-t
@@ -182,6 +182,9 @@ test_provision_writes_the_service_specific_keys() {
   grep -q 'role=crypto_rw .*schema=crypto' .psql-calls || fail "mw-crypto role/schema"
   # mw-simulators (ticket 64): the softhsm paysim token's user PIN for the payShield simulator
   [ "$(kv mw-simulators sim.payshield.pkcs11.user-pin)" = paysim-pin-t ] || fail "paysim token PIN"
+  # mw-simulators (ticket 123): the file mocks' partner-sftp login and realm services client secret
+  [ "$(kv mw-simulators sim.files.sftp.password)" = sftp-t ] || fail "file mocks SFTP password"
+  [ "$(kv mw-simulators sim.files.trustbank.core.client-secret)" = simulators-t ] || fail "trust bank client secret"
   # mw-auth (ticket 67): its realm services client secret for mw-crypto, its role and schema
   [ "$(kv mw-auth mw.auth.crypto.client-secret)" = auth-t ] || fail "mw-auth client secret"
   grep -q 'role=auth_rw .*schema=auth' .psql-calls || fail "mw-auth role/schema"
@@ -259,6 +262,24 @@ test_pki_services_may_issue_from_their_own_role_only() {
   [ "$(grep -c pki_int .policy-mw-crypto)" = 1 ] || fail "mw-crypto may issue more than its own role"
   grep -q 'pki_int/issue/mw-audit-dw"' .policy-mw-audit-dw || fail "mw-audit-dw (caller) may not issue"
   grep -q pki .policy-mw-orchestrator && fail "mw-orchestrator may issue certificates"
+  return 0
+}
+
+test_mw_admin_api_may_write_but_never_read_the_adapters_partner_secrets() {
+  provision_fixture
+  assert_ok run_provision
+  local p=.policy-mw-admin-api a
+  grep -q 'path "secret/data/mw-admin-api/staged-credentials/\*" { capabilities = \["create", "update", "read"\] }' $p \
+    || fail "mw-admin-api has no credential staging area: $(cat $p)"
+  grep -q 'path "secret/metadata/mw-admin-api/staged-credentials/\*" { capabilities = \["delete"\] }' $p \
+    || fail "mw-admin-api cannot drop a staged credential"
+  for a in mw-adapter-telco mw-adapter-billpay mw-adapter-bank; do
+    grep -q "path \"secret/data/$a/\*\" { capabilities = \[\"create\", \"update\", \"patch\"\] }" $p \
+      || fail "mw-admin-api cannot write $a's partner secrets: $(cat $p)"
+  done
+  grep 'mw-adapter-' $p | grep -q read && fail "mw-admin-api may read an adapter's secrets"
+  grep -q 'secret/data/mw-adapter-telco"' $p && fail "mw-admin-api may write an adapter's own service secret"
+  grep -q 'mw-adapter\|staged-credentials' .policy-mw-orchestrator && fail "another service got the credential rules"
   return 0
 }
 

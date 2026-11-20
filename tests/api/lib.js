@@ -216,6 +216,8 @@
       return (await must('POST', MC + partner + '/callbacks/' + ref + '/replay', { apikey: true, json: {} })).body.targetStatus;
     },
     async sms(msisdn) { return (await must('GET', '/test/sim/smsc/messages?msisdn=' + msisdn, { apikey: true })).body || []; },
+    /** What the push server mock accepted for a device token (ticket 110): [{messageId, token, platform, title, body, data, status}]. */
+    async push(token) { return (await must('GET', '/test/sim/push/messages?token=' + encodeURIComponent(token), { apikey: true })).body || []; },
     async mail(email) {
       const r = await http('GET', '/test/mail/user/' + encodeURIComponent(email) + '/messages/', { apikey: true });
       if (r.status === 400) return [];
@@ -433,6 +435,10 @@
     async billers(user) { return http('GET', '/app/v1/billers', { headers: await app.headers(user) }); },
     async fetchBill(user, biller, bill) { return http('POST', '/app/v1/billers/' + biller + '/fetch-bill', { headers: await app.headers(user), json: { billNumber: bill } }); },
     async collections(user) { return http('GET', '/app/v1/merchant/collections', { headers: await app.headers(user) }); },
+    // the push device token (ticket 110): PUT /app/v1/notifications/push-token, session level
+    async pushToken(user, token, platform) {
+      return http('PUT', '/app/v1/notifications/push-token', { headers: await app.headers(user), json: { token, platform: platform || 'ANDROID' } });
+    },
     // the balance check (ADR D26): POST /app/v1/balance, signed like a submit, a new key per check
     async balance(user, idem, pin) {
       const d = await ready(user);
@@ -565,6 +571,11 @@
     async cr(user, id) { return http('GET', '/admin/v1/change-requests/' + id, { headers: await ops(user) }); },
     async approve(user, id) { return http('POST', '/admin/v1/change-requests/' + id + '/approve', { headers: await ops(user), raw: '' }); },
     async reject(user, id, reason) { return http('POST', '/admin/v1/change-requests/' + id + '/reject', { headers: await ops(user), json: { reason } }); },
+    // ticket 131: partner credentials (write-only upload, metadata reads) and the response-code map
+    async uploadCredential(user, p, name, body) { return http('POST', '/admin/v1/partners/' + p + '/credentials/' + name + '/change-requests', { headers: await ops(user), json: body }); },
+    async credentials(user, p) { return http('GET', '/admin/v1/credentials' + (p ? '?partnerId=' + p : ''), { headers: await ops(user) }); },
+    async expiring(user, days) { return http('GET', '/admin/v1/credentials/expiring?days=' + days, { headers: await ops(user) }); },
+    async askErrorMap(user, p, body) { return http('POST', '/admin/v1/partners/' + p + '/error-map/change-requests', { headers: await ops(user), json: body }); },
   };
 
   // ---------- Org portal (/portal/org/v1/*, realm portals) ----------

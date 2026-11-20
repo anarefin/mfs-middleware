@@ -16,6 +16,9 @@ import mfs.mw.notify.dto.NotificationRequest;
 import mfs.mw.notify.dto.TxnStatusEvent;
 import mfs.mw.notify.messaging.ConfigChangedListener;
 import mfs.mw.notify.messaging.NotifyRequestListener;
+import mfs.mw.notify.messaging.PushTokenListener;
+import mfs.mw.notify.dto.PushTokenEvent;
+import mfs.mw.notify.service.PushDeviceService;
 import mfs.mw.notify.messaging.TxnStatusListener;
 import mfs.mw.notify.service.NotificationService;
 import mfs.mw.notify.service.TemplatePublisher;
@@ -48,10 +51,16 @@ class ConsumedContractsTest {
   static final String REQUEST = "events/mw-notify/mw.notify.request.v1.schema.json";
   static final String TXN_STATUS = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
   static final String CONFIG = "events/mw-admin-api/mw.config.changed.v1.schema.json";
+  static final String PUSH_TOKEN = "events/mw-notify/mw.notify.push-token.v1.schema.json";
 
   /** Invalid samples the listener refuses (under contracts/). */
   static final List<String> REJECTED_BY_LISTENER =
       List.of("events/mw-notify/samples/mw.notify.request.v1/invalid-unknown-priority.json");
+
+  /** Invalid push-token samples the listener refuses (ticket 110): an unknown platform, no token. */
+  static final List<String> PUSH_TOKEN_REJECTED =
+      List.of("events/mw-notify/samples/mw.notify.push-token.v1/invalid-unknown-platform.json",
+          "events/mw-notify/samples/mw.notify.push-token.v1/invalid-without-token.json");
 
   static ConsumerRecord<String, String> record(String body) {
     return new ConsumerRecord<>("contract-test", 0, 0L, null, body);
@@ -83,6 +92,14 @@ class ConsumedContractsTest {
     return captor.getValue();
   }
 
+  static PushTokenEvent readPushToken(String body) {
+    PushDeviceService service = mock(PushDeviceService.class);
+    new PushTokenListener(service, JSON).handle(record(body), ACK);
+    ArgumentCaptor<PushTokenEvent> captor = ArgumentCaptor.forClass(PushTokenEvent.class);
+    verify(service).register(captor.capture());
+    return captor.getValue();
+  }
+
   /** Manifest entry -> what the listener hands the service, checked for the fields it relies on. */
   static final Map<String, Consumer<String>> READERS =
       Map.of(
@@ -107,6 +124,15 @@ class ConsumedContractsTest {
             if (e.configType() == ConfigChangedEvent.ConfigType.TEMPLATE && e.change() == ConfigChangedEvent.Change.UPSERT) {
               assertThat(e.value()).containsKeys("code", "channel", "locale", "body");
             }
+          },
+          PUSH_TOKEN,
+          body -> {
+            PushTokenEvent e = readPushToken(body);
+            assertThat(e.walletId()).isNotBlank();
+            assertThat(e.deviceId()).isNotBlank();
+            assertThat(e.token()).isNotBlank();
+            assertThat(e.platform()).isNotNull();
+            assertThat(e.registeredAt()).isNotNull();
           });
 
   @TestFactory
@@ -143,6 +169,21 @@ class ConsumedContractsTest {
                       String body = Files.readString(sample);
                       NotificationService service = mock(NotificationService.class);
                       assertThatThrownBy(() -> new NotifyRequestListener(service, JSON).handle(record(body), ACK))
+                          .isInstanceOf(RuntimeException.class);
+                    }));
+  }
+
+  @TestFactory
+  Stream<DynamicTest> invalidPushTokensAreRejected() {
+    return PUSH_TOKEN_REJECTED.stream()
+        .map(
+            name ->
+                DynamicTest.dynamicTest(
+                    name,
+                    () -> {
+                      String body = Files.readString(ContractSchemas.contractsDir().resolve(name));
+                      PushDeviceService service = mock(PushDeviceService.class);
+                      assertThatThrownBy(() -> new PushTokenListener(service, JSON).handle(record(body), ACK))
                           .isInstanceOf(RuntimeException.class);
                     }));
   }

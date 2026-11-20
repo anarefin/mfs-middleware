@@ -1,0 +1,23 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/PushTokenRequest",
+  "type": "object",
+  "required": [
+    "token",
+    "platform"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "ANDROID",
+        "IOS"
+      ]
+    }
+  }
+}

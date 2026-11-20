@@ -87,7 +87,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   then the wallet's status and locks (as at login), the OTP (`MW-AUTH-010/011/012`) and, when the wallet
   has a PIN, the PIN (`MW-AUTH-040`; missing `400 MW-VAL-001`); then in one transaction: OTP spent, the
   wallet's other bound device unbound, the device id bound to this wallet (a device id bound to another
-  wallet moves here), the "new device bound" SMS (`DEVICE_BOUND`, TXN) in the outbox. Afterwards the
+  wallet moves here), the "new device bound" SMS (`DEVICE_BOUND`, TXN; param `deviceId` = the new device: mw-notify revokes the push tokens of the wallet’s other devices on it, ticket 110) in the outbox. Afterwards the
   sessions of every device that lost its binding and of this device are closed and the wallet's (and a
   moved device's old wallet's) refresh tokens revoked; 201 `{deviceId, wallet (masked), boundAt}`, no
   session: log in next. Signed requests: timestamp within `clock-skew` 5 min (`MW-AUTH-005`), signature

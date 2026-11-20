@@ -167,4 +167,101 @@ class RuleEngineTest {
     assertThat(unknown).isEmpty();
     assertThat(engine.requestsFor(addMoney("COMPLETED", "01711000001"), List.of(email))).isEmpty();
   }
+
+  // --- OPS recipient: the MANUAL_REVIEW ops alert (FRS PLT-024, ticket 96a) ---------------------
+
+  static final List<RuleRecord> OPS_RULES =
+      List.of(
+          new RuleRecord("ops-manual-review-sms", "mw.txn.status.v1", "status == 'MANUAL_REVIEW'",
+              "OPS_MANUAL_REVIEW", "OPS", "SMS", "TXN"),
+          new RuleRecord("ops-manual-review-email", "mw.txn.status.v1", "status == 'MANUAL_REVIEW'",
+              "OPS_MANUAL_REVIEW", "OPS", "EMAIL", "TXN"));
+
+  static TxnStatusEvent topupInReview() {
+    return new TxnStatusEvent(TXN, "corr-3", "CUSTOMER_APP", "TOPUP", "MANUAL_REVIEW",
+        new Party("MSISDN", "01711000001", null), new Party("WALLET", "01711000001", "CUSTOMER"),
+        new Party("MSISDN", "01711000002", null), new Amount(5000, "BDT"), null, null, null, "bn",
+        new PartnerRef("gp", "PREPAID", null), new TxnError("MW-TMO-004"));
+  }
+
+  @Test
+  void anOpsRuleGoesToTheOperationsAddressesInTheOpsLocale() {
+    RuleEngine withOps = new RuleEngine("bn", new RuleEngine.OpsAddress("01911999000", "ops@example.test", "en"));
+
+    List<NotificationRequest> requests = withOps.requestsFor(topupInReview(), OPS_RULES);
+
+    assertThat(requests).hasSize(2);
+    NotificationRequest sms = requests.get(0);
+    assertThat(sms.messageId()).isEqualTo(TXN + ":sms:ops-manual-review-sms");
+    assertThat(sms.recipient().msisdn()).isEqualTo("01911999000");
+    assertThat(sms.channels()).containsExactly(Channel.SMS);
+    assertThat(sms.locale()).isEqualTo("en");
+    assertThat(sms.params())
+        .containsEntry("txnId", TXN)
+        .containsEntry("txnType", "TOPUP")
+        .containsEntry("errorCode", "MW-TMO-004")
+        .containsEntry("partner", "gp")
+        .doesNotContainKey("counterparty");
+    NotificationRequest email = requests.get(1);
+    assertThat(email.messageId()).isEqualTo(TXN + ":email:ops-manual-review-email");
+    assertThat(email.recipient().email()).isEqualTo("ops@example.test");
+    assertThat(email.recipient().msisdn()).isNull();
+  }
+
+  @Test
+  void anOpsRuleWithoutAConfiguredAddressSendsNothing() {
+    assertThat(engine.requestsFor(topupInReview(), OPS_RULES)).isEmpty();
+    RuleEngine emailOnly = new RuleEngine("bn", new RuleEngine.OpsAddress(null, "ops@example.test", "en"));
+    assertThat(emailOnly.requestsFor(topupInReview(), OPS_RULES))
+        .extracting(NotificationRequest::messageId)
+        .containsExactly(TXN + ":email:ops-manual-review-email");
+  }
+
+  static final RuleRecord PUSH_COMPLETED = new RuleRecord("push-txn-completed", "mw.txn.status.v1",
+      "status == 'COMPLETED' and txnType matches 'P2P|CASH_IN|CASH_OUT|TOPUP|BILL_PAY|MERCHANT_PAY|ADD_MONEY_BANK'",
+      "PUSH_TXN_COMPLETED", "INITIATOR", "PUSH", "TXN");
+
+  /** A wallet with a registered device token. */
+  static RuleEngine.ContactLookup tokens(Map<String, String> byWallet) {
+    return new RuleEngine.ContactLookup() {
+      @Override
+      public Optional<String> emailOf(String partyId) {
+        return Optional.empty();
+      }
+
+      @Override
+      public Optional<String> pushTokenOf(String partyId) {
+        return Optional.ofNullable(byWallet.get(partyId));
+      }
+    };
+  }
+
+  @Test
+  void aPushRuleGoesToTheRecipientsRegisteredDeviceTokenOnly() {
+    RuleEngine.ContactLookup lookup = tokens(Map.of("01711000001", "tok-device-abc123"));
+
+    List<NotificationRequest> known =
+        engine.requestsFor(p2p("COMPLETED", "01711000001", "01811000002"), List.of(PUSH_COMPLETED), lookup);
+    List<NotificationRequest> unknown =
+        engine.requestsFor(p2p("COMPLETED", "01711000009", "01811000002"), List.of(PUSH_COMPLETED), lookup);
+
+    assertThat(known).singleElement().satisfies(r -> {
+      assertThat(r.messageId()).isEqualTo(TXN + ":push:push-txn-completed");
+      assertThat(r.channels()).containsExactly(Channel.PUSH);
+      assertThat(r.recipient().pushToken()).isEqualTo("tok-device-abc123");
+      assertThat(r.recipient().msisdn()).isEqualTo("01711000001");
+      assertThat(r.params()).containsEntry("amount", "500.00").containsEntry("txnType", "P2P");
+    });
+    assertThat(unknown).isEmpty();
+  }
+
+  @Test
+  void thePushRuleSkipsTxnsThatMoveNoMoney() {
+    RuleEngine.ContactLookup lookup = tokens(Map.of("01711000001", "tok-device-abc123"));
+    TxnStatusEvent balance = new TxnStatusEvent(TXN, "corr-1", "CUSTOMER_APP", "BALANCE", "COMPLETED",
+        new Party("MSISDN", "01711000001", null), new Party("WALLET", "01711000001", "CUSTOMER"),
+        new Party("WALLET", "01711000001", "CUSTOMER"), new Amount(0, "BDT"), null, null, null, "en", null, null);
+
+    assertThat(engine.requestsFor(balance, List.of(PUSH_COMPLETED), lookup)).isEmpty();
+  }
 }

@@ -50,6 +50,7 @@ public class BodySchemaConfig implements WebMvcConfigurer {
     add(registry, BodySchema.TRANSACTION, false, "/app/v1/transactions");
     add(registry, BodySchema.BALANCE, false, "/app/v1/balance");
     add(registry, BodySchema.FETCH_BILL, false, "/app/v1/billers/*/fetch-bill");
+    add(registry, BodySchema.PUSH_TOKEN, false, "/app/v1/notifications/push-token");
   }
 
   private void add(InterceptorRegistry registry, String schema, boolean optional, String path) {

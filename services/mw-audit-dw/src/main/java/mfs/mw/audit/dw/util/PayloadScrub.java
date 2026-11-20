@@ -14,9 +14,11 @@ import tools.jackson.databind.node.ObjectNode;
  * PAN or a clear MSISDN/NID/account number never lands in the audit store:
  *
  * <ul>
- *   <li>secret fields are blanked to {@code ****}, the whole value (an object, array or element
- *       subtree too): JSON properties at any depth, XML elements and {@code key=value} / {@code key:
- *       value} pairs. A key is secret when one of its words ({@link #isSecretKey}: split at
+ *   <li>a non-JSON body holding a {@code <} (markup: XML, SOAP, HTML) is stored as {@code ****}
+ *       whole when it may hold a secret anywhere ({@link #markupMayHoldSecret}); markup is never
+ *       parsed (review round 4, user decision: fail closed instead of a hand-written tokenizer);
+ *   <li>secret fields are blanked to {@code ****}, the whole value (an object or array too): JSON
+ *       properties at any depth and {@code key=value} / {@code key: value} pairs. A key is secret when one of its words ({@link #isSecretKey}: split at
  *       camelCase, digits and any non-letter) is a secret word ({@code pin}, {@code mpin}, {@code
  *       tpin}, {@code pinblock}, {@code pincode}, {@code otp}, {@code cvv}, {@code cvc}, {@code
  *       secret}, {@code pwd}, {@code passcode}) or starts with {@code passw}; so {@code userPin},
@@ -37,16 +39,35 @@ public final class PayloadScrub {
   /** Words that make a key secret (lower case, trailing digits dropped). */
   private static final java.util.Set<String> SECRET_WORDS =
       java.util.Set.of(
-          "pin", "mpin", "tpin", "pinblock", "pincode", "pinhash", "otp", "totp", "cvv", "cvc", "secret",
-          "pwd", "passwd", "passcode", "passphrase");
+          "pin", "mpin", "tpin", "otp", "totp", "cvv", "cvc", "secret", "pwd", "passwd", "password",
+          "passcode", "passphrase");
+
+  /** What may follow a secret word inside one word ({@code pinblock}, {@code otpcode}, {@code pincipher}). */
+  private static final java.util.List<String> SECRET_SUFFIXES =
+      java.util.List.of(
+          "", "block", "code", "cipher", "ciphertext", "hash", "value", "data", "number", "no", "text", "enc",
+          "encrypted");
+
+  /**
+   * What may come before a secret word inside one word ({@code newpin}, {@code encryptedpin},
+   * {@code userpassword}); stripped repeatedly ({@code encryptednewpin}).
+   */
+  private static final java.util.List<String> SECRET_PREFIXES =
+      java.util.List.of(
+          "encrypted", "current", "confirm", "customer", "wallet", "login", "agent", "user", "card", "txn",
+          "new", "old", "enc", "m", "t");
+
+  /** The pre-ticket whole-key rule, kept as an extra check (case-insensitive). */
+  private static final Pattern LEGACY_NAME =
+      Pattern.compile(
+          "(?i)(?:new|old|current|encrypted)?_?(?:pin|pin_?block|pin_?cipher(?:text)?|password|passwd|otp|cvv2?|cvc|secret)");
+
+  /** The longest body scanned; a longer one is stored as {@code ****} (fail closed, bounded work). */
+  static final int MAX_SCAN = 1 << 20;
 
   /** Word boundaries in a key: camelCase humps, letter/digit changes, anything not a letter or digit. */
   private static final Pattern WORD_SPLIT =
       Pattern.compile("[^A-Za-z0-9]+|(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])");
-
-  /** An element (optionally prefixed) with its attributes, its content (any depth) and its close tag. */
-  private static final Pattern XML_ELEMENT =
-      Pattern.compile("<((?:[A-Za-z_][\\w.-]*:)?([A-Za-z_][\\w.-]*))(\\s[^>]*)?>(.*?)</\\1\\s*>", Pattern.DOTALL);
 
   /** {@code key=...}, {@code "key": "..."}, {@code key: ...} in text that is not parsed JSON. */
   private static final Pattern PAIR =
@@ -67,6 +88,9 @@ public final class PayloadScrub {
     if (body == null || body.isEmpty()) {
       return body;
     }
+    if (body.length() > MAX_SCAN) {
+      return STARS;
+    }
     if (contentType != null && contentType.toLowerCase(java.util.Locale.ROOT).contains("json")) {
       try {
         JsonNode tree = JSON.readTree(body);
@@ -81,38 +105,83 @@ public final class PayloadScrub {
   }
 
   private static String text(String body) {
-    String out = xml(body, 0);
+    if (body.indexOf('<') >= 0 && markupMayHoldSecret(body)) {
+      return STARS;
+    }
+    String out = body;
     out = replace(PAIR, out, m -> isSecretKey(m.group(2)) ? m.group(1) + STARS : m.group());
     return MaskingPolicy.scrub(pans(out));
   }
 
-  /** Blanks the content of every secret element, whole; walks into the others (bounded depth). */
-  private static String xml(String text, int depth) {
-    if (depth > 32 || text.indexOf('<') < 0) {
-      return text;
+  /** Substrings that make a markup body secret (case-insensitive), user decision of review round 4. */
+  private static final java.util.List<String> SECRET_SUBSTRINGS =
+      java.util.List.of("pin", "otp", "passw", "pwd", "passcode", "passphrase", "cvv", "cvc", "secret");
+
+  /** Identifier-like words of a markup body, each also checked with {@link #isSecretKey}. */
+  private static final Pattern MARKUP_WORD = Pattern.compile("[A-Za-z_][A-Za-z0-9_.:-]*");
+
+  /**
+   * Whether a markup body (non-JSON text holding a {@code <}) may carry a secret: a secret substring
+   * anywhere, case-insensitive (also once {@code . - _ :} are taken out), or a word {@link
+   * #isSecretKey} flags. Such a body is stored as
+   * {@code ****} whole: no markup is parsed (fail closed; look-alikes such as {@code <spinner>} are
+   * blanked too).
+   */
+  static boolean markupMayHoldSecret(String text) {
+    String lower = text.toLowerCase(java.util.Locale.ROOT);
+    // also with the name punctuation of XML (. - _ :) taken out, so <p.i-n:x> reads as "pinx"
+    String joined = lower.replaceAll("[._:-]", "");
+    for (String secret : SECRET_SUBSTRINGS) {
+      if (lower.contains(secret) || joined.contains(secret)) {
+        return true;
+      }
     }
-    return replace(
-        XML_ELEMENT,
-        text,
-        m -> {
-          String open = "<" + m.group(1) + (m.group(3) == null ? "" : m.group(3)) + ">";
-          String close = "</" + m.group(1) + ">";
-          return open + (isSecretKey(m.group(2)) ? STARS : xml(m.group(4), depth + 1)) + close;
-        });
+    Matcher m = MARKUP_WORD.matcher(text);
+    while (m.find()) {
+      if (isSecretKey(m.group())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
-   * Whether a property, element or parameter name names a secret: one of its words (split at
-   * camelCase, digits kept on their word and dropped at its end, any other character) is in {@link
-   * #SECRET_WORDS} or starts with {@code passw}.
+   * Whether a property, element or parameter name names a secret: the whole key matches the
+   * pre-ticket rule ({@link #LEGACY_NAME}), or one of its words (split at camelCase and any other
+   * character than a letter or digit; trailing digits dropped) is a secret word, alone or inside
+   * one word: known prefixes ({@link #SECRET_PREFIXES}, repeatedly) before it and a known suffix
+   * ({@link #SECRET_SUFFIXES}) after it ({@code newpin}, {@code encryptedpin}, {@code pincipher},
+   * {@code otpcode}), or a word that starts with {@code passw} after the prefixes.
    */
   static boolean isSecretKey(String key) {
-    if (key == null || key.isEmpty()) {
-      return false;
+    if (key == null || key.isEmpty() || key.length() > 256) {
+      return key != null && key.length() > 256;
+    }
+    if (LEGACY_NAME.matcher(key).matches()) {
+      return true;
     }
     for (String word : WORD_SPLIT.split(key)) {
-      String w = word.toLowerCase(java.util.Locale.ROOT).replaceAll("[0-9]+$", "");
-      if (SECRET_WORDS.contains(w) || w.startsWith("passw")) {
+      if (secretWord(word.toLowerCase(java.util.Locale.ROOT).replaceAll("[0-9]+$", ""))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private static boolean secretWord(String w) {
+    if (w.isEmpty()) {
+      return false;
+    }
+    if (w.startsWith("passw")) {
+      return true;
+    }
+    for (String secret : SECRET_WORDS) {
+      if (w.startsWith(secret) && SECRET_SUFFIXES.contains(w.substring(secret.length()))) {
+        return true;
+      }
+    }
+    for (String prefix : SECRET_PREFIXES) {
+      if (w.length() > prefix.length() && w.startsWith(prefix) && secretWord(w.substring(prefix.length()))) {
         return true;
       }
     }

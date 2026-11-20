@@ -249,6 +249,22 @@ mw:
     connect-timeout: 2s
     read-timeout: 5s
     reconcile-cron: ${MW_APISIX_RECONCILE_CRON:0 */5 * * * *}
+  # Partner credential upload and expiry alerts (ticket 131): uploads are staged under
+  # secret/mw-admin-api/staged-credentials/<id> and written on approval into the adapters' per-partner
+  # secrets secret/mw-adapter-<family>/<partner> (write-only policy, deploy/provision/lib.sh).
+  credentials:
+    vault:
+      enabled: ${VAULT_ENABLED:false}
+      uri: ${VAULT_ADDR:http://vault:8200}
+      kv-mount: secret
+      staging-path: mw-admin-api/staged-credentials
+      connect-timeout: 2s
+      read-timeout: 5s
+    expiry:
+      cron: ${MW_CREDENTIAL_EXPIRY_CRON:0 0 6 * * *}
+      thresholds-days: [30, 7, 1]
+      ops-email: ${MW_OPS_ALERT_EMAIL:ops@bits.example}
+      locale: en
   service:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}

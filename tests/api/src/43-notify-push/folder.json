@@ -1,0 +1,4 @@
+{
+  "name": "43 Customers get a push next to the SMS for their transaction",
+  "description": "Ticket 110 (FRS EXT-04, NOT-01, NOT-02, NOT-06, FL-14): the app registers its push device token (PUT /app/v1/notifications/push-token), mw-notify pushes the transaction notice to mw-simulators' push mock (party push) next to the SMS; a failing push server never holds the SMS back."
+}

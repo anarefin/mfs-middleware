@@ -131,7 +131,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - Alerts (S4, `service/SagaAlerts`, spec 6.3/7.2/21): stable `event` log lines and Micrometer meters
   `mw.txn.commit.unacknowledged`, `mw.txn.release.unacknowledged`, `mw.txn.commit.failed`,
   `mw.txn.release.failed`, `mw.txn.reversal.retry.exhausted` (counters) and
-  `mw.manual.review.oldest.age` (gauge, seconds). Daily MANUAL_REVIEW ageing check:
+  `mw.manual.review.oldest.age` (gauge, seconds). Entering MANUAL_REVIEW from any state (FRS PLT-024,
+  ticket 96a; hook in `SagaEngine.fire`): counter `mw.manual.review.entered` (`mw_manual_review_entered_total`)
+  and WARN `txn.manual_review.entered` (`from`, `errorCode`), both after the state change commits; the
+  operations SMS/email is mw-notify's `OPS` rule on the MANUAL_REVIEW status of `mw.txn.status.v1` (no
+  extra event). Daily MANUAL_REVIEW ageing check:
   `scheduler/ManualReviewAgeingJob` (ShedLock `manual-review-ageing`, cron
   `mw.orchestrator.manual-review-ageing-cron`, default 06:00 UTC) -> `service/ManualReviewAgeingService`
   -> WARN `txn.manual_review.ageing` with `count` and `oldestAgeSeconds` (age since its `updated_at`).
@@ -149,10 +153,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `STATUS_QUERY` on the partner topic (`requestId` = name UUID of `<txnId>:STATUS_QUERY:<epoch
   ms>`, fresh per inquiry; same `partnerTxnRef`; `originalPartnerRef` = stored partnerRef), else a
   core QueryTransaction (fresh commandId, as the HOLDING query). Schedule
-  `mw.orchestrator.inquiry.*`: `schedule` 30s,1m,2m,5m,15m,1h (waits between inquiries),
-  `repeat-every` 6h, `cut-off` 24h after entering UNKNOWN (stands in for the partner's settlement
-  cut-off), `partners.<partnerId>.{schedule,repeat-every,cut-off}` overrides. The expiry at the
-  cut-off asks nothing: MANUAL_REVIEW `MW-TMO-004`. Answers (any reply for an UNKNOWN txn, the
+  `mw.orchestrator.inquiry.*` (FRS PLT-023/024, ticket 96a): `schedule` 30s,2m,10m,1h (waits before each
+  inquiry; `MW_ORCHESTRATOR_INQUIRY_SCHEDULE`), `answer-wait` 30s (how long the last inquiry's answer is
+  awaited), `partners.<partnerId>.schedule` (a partner's own list of waits; nothing else is overridable).
+  The slot after the last inquiry asks nothing: MANUAL_REVIEW `MW-TMO-004`. Answers (any reply for an UNKNOWN txn, the
   STATUS_QUERY answer or a late PAY reply): SUCCESS -> COMMITTING (partnerRef stored); FAILED ->
   RELEASING with the reply's error; NOT_FOUND -> RELEASING `MW-TMO-003` only once PARTNER_PENDING
   entry + `partner-timeout` + `not-found-grace` (30 s) has passed (the adapter refuses an expired

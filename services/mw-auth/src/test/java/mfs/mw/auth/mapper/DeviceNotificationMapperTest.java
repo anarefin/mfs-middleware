@@ -30,18 +30,19 @@ class DeviceNotificationMapperTest {
   }
 
   @Test
-  void theBoundNoticeIsATxnSmsInBanglaByDefault() {
-    NotificationRequest sms = mapper.bound("01711000001", null, "corr-1");
+  void theBoundNoticeIsATxnSmsInBanglaByDefaultNamingTheNewDevice() {
+    NotificationRequest sms = mapper.bound("01711000001", "dev-0001", null, "corr-1");
     assertThat(ContractSchemas.schema(SCHEMA).validate(JSON.valueToTree(sms))).isEmpty();
     assertThat(sms.templateCode()).isEqualTo("DEVICE_BOUND");
     assertThat(sms.priority()).isEqualTo("TXN");
     assertThat(sms.locale()).isEqualTo("bn");
-    assertThat(sms.params()).isEmpty();
+    // mw-notify revokes the push tokens of the wallet's other devices (ticket 110); the SMS shows nothing of it
+    assertThat(sms.params()).containsExactly(java.util.Map.entry("deviceId", "dev-0001"));
   }
 
   @Test
   void everyMessageIsANewOne() {
-    assertThat(mapper.bound("01711000001", "en", "c").messageId())
-        .isNotEqualTo(mapper.bound("01711000001", "en", "c").messageId());
+    assertThat(mapper.bound("01711000001", "dev-1", "en", "c").messageId())
+        .isNotEqualTo(mapper.bound("01711000001", "dev-1", "en", "c").messageId());
   }
 }

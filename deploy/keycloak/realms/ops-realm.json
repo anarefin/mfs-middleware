@@ -272,7 +272,8 @@
       ],
       "realmRoles": [
         "viewer",
-        "ops-maker"
+        "ops-maker",
+        "integration-maker"
       ]
     },
     {
@@ -297,7 +298,8 @@
       ],
       "realmRoles": [
         "viewer",
-        "ops-checker"
+        "ops-checker",
+        "integration-checker"
       ]
     }
   ],

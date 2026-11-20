@@ -405,6 +405,8 @@ services:
       KC_MW_CHECKOUT_SECRET: ${KC_MW_CHECKOUT_SECRET:?cp dev.env.defaults .env}
       # realm services: mw-orchestrator's client of the core wallet API (audience mw-core-mock, ticket 95a)
       KC_MW_ORCHESTRATOR_SECRET: ${KC_MW_ORCHESTRATOR_SECRET:?cp dev.env.defaults .env}
+      # mw-simulators' trust bank mock reads mw-core-mock's /core/v1/statements (ticket 123)
+      KC_MW_SIMULATORS_SECRET: ${KC_MW_SIMULATORS_SECRET:?cp dev.env.defaults .env}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
@@ -710,6 +712,7 @@ services:
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?cp dev.env.defaults .env}
       BILLAGG_WS_PASSWORD: ${BILLAGG_WS_PASSWORD:?cp dev.env.defaults .env}
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
+      PUSH_API_KEY: ${PUSH_API_KEY:?cp dev.env.defaults .env}
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
@@ -719,6 +722,8 @@ services:
       KC_MW_CHECKOUT_SECRET: ${KC_MW_CHECKOUT_SECRET:?cp dev.env.defaults .env}
       KC_MW_ORCHESTRATOR_SECRET: ${KC_MW_ORCHESTRATOR_SECRET:?cp dev.env.defaults .env}
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
+      KC_MW_SIMULATORS_SECRET: ${KC_MW_SIMULATORS_SECRET:?cp dev.env.defaults .env}
+      SFTP_DEV_PASSWORD: ${SFTP_DEV_PASSWORD:?cp dev.env.defaults .env}
       USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?cp dev.env.defaults .env}
@@ -774,6 +779,8 @@ services:
       # Dev stack only: every wallet as WalletStateChanged SNAPSHOT on start (ticket 67), so mw-auth's
       # wallet projection catches up with a ledger it missed (idempotent by version).
       MW_COREMOCK_WALLET_SNAPSHOT: "true"
+      # Dev stack only: mw-simulators' trust bank mock (ticket 123) reads GET /core/v1/statements too.
+      MW_INTERNALAUTH_ALLOWEDCLIENTS: mw-orchestrator,mw-auth,mw-admin-api,mw-simulators
       # The core party's mock control /mock-control and the global reset's core part (ADR D33, ticket 103):
       # test-only, never production (scripts/check-mock-control-prod.sh; a start with MW_ENV=prod fails).
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev},mock-control
@@ -920,6 +927,10 @@ services:
       # Hold time of a simulated partner timeout (amount fraction .13): above the callers' time
       # limits (timer: dev.env.defaults shortens it with them).
       SIM_TIMEOUTDELAY: ${MW_SIM_TIMEOUT_DELAY:-30s}
+      # File mocks (ticket 123): AML responder, trust bank MT940/942, DW drop validator on partner-sftp
+      # (profile tester; without it the polls log one warning and keep trying). MT942 every 15 min.
+      SIM_FILES_ENABLED: ${MW_SIM_FILES_ENABLED:-true}
+      SIM_FILES_TRUSTBANK_CORE_TOKENURI: http://keycloak:8080/realms/services/protocol/openid-connect/token
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${SIM_MEM_LIMIT:-384M}" }
@@ -951,7 +962,7 @@ services:
       MW_ORCHESTRATOR_HOLDINGTIMEOUT: ${MW_ORCHESTRATOR_HOLDING_TIMEOUT:-5s}
       MW_ORCHESTRATOR_POSTINGTIMEOUT: ${MW_ORCHESTRATOR_POSTING_TIMEOUT:-5s}
       MW_ORCHESTRATOR_PARTNERTIMEOUT: ${MW_ORCHESTRATOR_PARTNER_TIMEOUT:-30s}
-      MW_ORCHESTRATOR_INQUIRY_SCHEDULE: ${MW_ORCHESTRATOR_INQUIRY_SCHEDULE:-30s,1m,2m,5m,15m,1h}
+      MW_ORCHESTRATOR_INQUIRY_SCHEDULE: ${MW_ORCHESTRATOR_INQUIRY_SCHEDULE:-30s,2m,10m,1h}
       MW_ORCHESTRATOR_INQUIRY_NOTFOUNDGRACE: ${MW_ORCHESTRATOR_INQUIRY_NOT_FOUND_GRACE:-30s}
       MW_ORCHESTRATOR_REVERSINGTIMEOUT: ${MW_ORCHESTRATOR_REVERSING_TIMEOUT:-60s}
       # business-duplicate window (FRS PLT-013, ticket 99; 0s = off): same payment under a new key
@@ -1049,6 +1060,10 @@ services:
       # DEV ONLY: GreenMail offers no STARTTLS. The service's own default requires it.
       SMTP_STARTTLS_REQUIRED: ${SMTP_STARTTLS_REQUIRED:-false}
       MAIL_FROM: ${MAIL_FROM:-bits <no-reply@bits.test>}
+      # MANUAL_REVIEW ops alert (FRS PLT-024, ticket 96a): operations' mailbox (GreenMail in dev) and
+      # mobile number (the SMSC simulator); unset = no ops alert on that channel.
+      MW_NOTIFY_OPS_EMAIL: ${MW_NOTIFY_OPS_EMAIL:-ops@bits.test}
+      MW_NOTIFY_OPS_MSISDN: ${MW_NOTIFY_OPS_MSISDN:-01700000999}
       # Dev/MVP stack only: also apply db/dev (registered emails of the seeded test users).
       MW_NOTIFY_FLYWAY_LOCATIONS: ${MW_NOTIFY_FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/dev}
     deploy:
@@ -1380,7 +1395,8 @@ services:
 
   # partner-sftp: a partner SFTP host for the batch partner routes (ticket 86; Kamelets mw-sftp-source /
   # mw-sftp-sink). Dev/test only (profile tester, outside the core budget, no host port): login
-  # bits / SFTP_DEV_PASSWORD (deploy/.env), directories recon and out under /home/bits. Drop a file
+  # bits / SFTP_DEV_PASSWORD (deploy/.env), directories recon and out under /home/bits, and the file mocks'
+  # folders of mw-simulators (ticket 123): aml/in, aml/out, trustbank/out, dw/in. Drop a file
   # with `docker compose cp recon.csv partner-sftp:/home/bits/recon/`; the host keys are generated at the
   # start of a new container, so a recreated one needs its known hosts again (docs/runbook.md,
   # "Batch partner over SFTP"). A stand-in for the partner's host, not one of ours: sshd needs root
@@ -1390,7 +1406,7 @@ services:
     image: atmoz/sftp:alpine@sha256:c5fb9e4beb8b7054a4c0b65c5e11df47cc20da95ad6002e88aecff62bab06372
     restart: unless-stopped
     networks: [app]
-    command: ["bits:${SFTP_DEV_PASSWORD:?cp dev.env.defaults .env}:1001::recon,out"]
+    command: ["bits:${SFTP_DEV_PASSWORD:?cp dev.env.defaults .env}:1001::recon,out,aml/in,aml/out,trustbank/out,dw/in"]
     healthcheck:
       test: ["CMD-SHELL", "pgrep sshd >/dev/null"]
       interval: 5s

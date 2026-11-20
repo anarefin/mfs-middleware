@@ -34,6 +34,10 @@ import org.springframework.expression.spel.support.SimpleEvaluationContext;
  * event yields the same ids and is dropped as a duplicate. The other party's id is masked in the
  * params (18.3). Params: amount, fee, txnId, txnType, counterparty, coreRef, partnerRef, partner
  * (partnerId), biller (billerCode, else partnerId), errorCode.
+ *
+ * <p>Recipient {@code OPS} (ticket 96a, FRS PLT-024: the MANUAL_REVIEW alert) is operations, not a
+ * party: an SMS goes to {@link OpsAddress#msisdn()}, an email to {@link OpsAddress#email()}, in
+ * {@link OpsAddress#locale()}, and the params carry no counterparty. An unset address skips the rule.
  */
 public class RuleEngine {
 
@@ -44,17 +48,40 @@ public class RuleEngine {
   private final SpelExpressionParser parser = new SpelExpressionParser();
   private final Map<String, Optional<Expression>> parsed = new ConcurrentHashMap<>();
   private final String defaultLocale;
+  private final OpsAddress ops;
 
   public RuleEngine(String defaultLocale) {
-    this.defaultLocale = defaultLocale;
+    this(defaultLocale, OpsAddress.NONE);
   }
 
-  /** Who to email: a party's registered address (spec 10.2), or none. */
+  public RuleEngine(String defaultLocale, OpsAddress ops) {
+    this.defaultLocale = defaultLocale;
+    this.ops = ops == null ? OpsAddress.NONE : ops;
+  }
+
+  /**
+   * Where {@code OPS} rules send (setting {@code mw.notify.ops.*}): an operations mobile number for
+   * SMS, a mailbox for email, the locale of their texts; null or blank parts skip the rule.
+   */
+  public record OpsAddress(String msisdn, String email, String locale) {
+    public static final OpsAddress NONE = new OpsAddress(null, null, null);
+  }
+
+  static final String OPS = "OPS";
+
+  /**
+   * Who to email: a party's registered address (spec 10.2), or none; and where to push: the device
+   * token the party's app registered (ticket 110), or none.
+   */
   @FunctionalInterface
   public interface ContactLookup {
     ContactLookup NONE = id -> Optional.empty();
 
     Optional<String> emailOf(String partyId);
+
+    default Optional<String> pushTokenOf(String partyId) {
+      return Optional.empty();
+    }
   }
 
   public List<NotificationRequest> requestsFor(TxnStatusEvent event, List<RuleRecord> rules) {
@@ -63,8 +90,8 @@ public class RuleEngine {
 
   /**
    * The requests of every matching rule. An SMS rule needs an MSISDN-shaped recipient id; an EMAIL
-   * rule needs a registered address for the recipient ({@code contacts}); otherwise the rule is
-   * skipped.
+   * rule needs a registered address for the recipient ({@code contacts}); a PUSH rule a registered
+   * device token of the recipient's wallet; otherwise the rule is skipped.
    */
   public List<NotificationRequest> requestsFor(TxnStatusEvent event, List<RuleRecord> rules, ContactLookup contacts) {
     TxnFacts facts = new TxnFacts(event);
@@ -72,6 +99,10 @@ public class RuleEngine {
     List<NotificationRequest> out = new ArrayList<>();
     for (RuleRecord rule : rules) {
       if (!matches(rule, ctx)) {
+        continue;
+      }
+      if (OPS.equals(rule.recipient())) {
+        opsRequest(event, rule).ifPresent(out::add);
         continue;
       }
       Party recipient = party(event, rule.recipient());
@@ -85,14 +116,40 @@ public class RuleEngine {
           continue;
         }
         address = new NotificationRequest.Recipient(null, email.get(), null, null);
+      } else if (Channel.PUSH.name().equals(rule.channel())) {
+        Optional<String> token = contacts.pushTokenOf(recipient.id());
+        if (token.isEmpty()) {
+          continue;
+        }
+        address = new NotificationRequest.Recipient(recipient.id(), null, token.get(), null);
       } else if (MSISDN.matcher(recipient.id()).matches()) {
         address = new NotificationRequest.Recipient(recipient.id(), null, null, null);
       } else {
         continue;
       }
-      out.add(request(event, rule, address, counterparty(event, rule.recipient())));
+      out.add(request(event, rule, address, counterparty(event, rule.recipient()), null));
     }
     return out;
+  }
+
+  private Optional<NotificationRequest> opsRequest(TxnStatusEvent event, RuleRecord rule) {
+    NotificationRequest.Recipient address;
+    if (Channel.EMAIL.name().equals(rule.channel())) {
+      if (blank(ops.email())) {
+        return Optional.empty();
+      }
+      address = new NotificationRequest.Recipient(null, ops.email(), null, null);
+    } else if (Channel.SMS.name().equals(rule.channel())
+        && !blank(ops.msisdn()) && MSISDN.matcher(ops.msisdn()).matches()) {
+      address = new NotificationRequest.Recipient(ops.msisdn(), null, null, null);
+    } else {
+      return Optional.empty();
+    }
+    return Optional.of(request(event, rule, address, null, blank(ops.locale()) ? defaultLocale : ops.locale()));
+  }
+
+  private static boolean blank(String s) {
+    return s == null || s.isBlank();
   }
 
   /**
@@ -136,7 +193,7 @@ public class RuleEngine {
   }
 
   private NotificationRequest request(TxnStatusEvent e, RuleRecord rule, NotificationRequest.Recipient recipient,
-      Party other) {
+      Party other, String locale) {
     Map<String, String> params = new LinkedHashMap<>();
     params.put("amount", money(e.amount()));
     params.put("fee", money(e.fee()));
@@ -159,10 +216,13 @@ public class RuleEngine {
     if (e.error() != null && e.error().code() != null) {
       params.put("errorCode", e.error().code());
     }
+    if (OPS.equals(rule.recipient())) {
+      params.putIfAbsent("errorCode", "-"); // the ops texts always name it; a missing param fails rendering
+    }
     Channel channel = Channel.valueOf(rule.channel());
     return new NotificationRequest(1, e.txnId() + ":" + channel.name().toLowerCase(Locale.ROOT) + ":" + rule.ruleId(),
         e.txnId(), e.correlationId(), recipient,
-        rule.templateCode(), e.locale() == null ? defaultLocale : e.locale(), params, List.of(channel),
+        rule.templateCode(), locale != null ? locale : e.locale() == null ? defaultLocale : e.locale(), params, List.of(channel),
         Priority.valueOf(rule.priority()), null, null);
   }
 

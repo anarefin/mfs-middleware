@@ -127,6 +127,14 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
         automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      # The push server (ticket 110): only outages count, never a refused token.
+      push:
+        base-config: default
+        minimum-number-of-calls: 20
+        slow-call-duration-threshold: 3s
+        ignore-exceptions:
+          - mfs.mw.notify.exception.PushRefusedException
   bulkhead:
     configs:
       default:
@@ -147,6 +155,13 @@ resilience4j:
         exponential-max-wait-duration: 1s
         enable-randomized-wait: true
         randomized-wait-factor: 0.5
+    instances:
+      # The push server (ticket 110, client/PushClient): a push carries its messageId, so a retried
+      # call is safe; a refusal (4xx) is never retried.
+      push:
+        base-config: default
+        ignore-exceptions:
+          - mfs.mw.notify.exception.PushRefusedException
 
 logging:
   structured:
@@ -222,6 +237,13 @@ mw:
     default-sender: Bits
     default-locale: bn
     receipt-buffer-ttl: 1d
+    # Where rules with recipient OPS send (the MANUAL_REVIEW alert, FRS PLT-024, ticket 96a, V16):
+    # operations' mobile number (SMS) and mailbox (email), texts in ops.locale; unset = that
+    # channel's ops rule is skipped.
+    ops:
+      msisdn: ${MW_NOTIFY_OPS_MSISDN:}
+      email: ${MW_NOTIFY_OPS_EMAIL:}
+      locale: ${MW_NOTIFY_OPS_LOCALE:en}
     # PROMO is held from start to end local time (spec 10.1) and sent after, unless it expires
     # first; a window whose end is before its start spans midnight.
     quiet-hours:
@@ -237,6 +259,13 @@ mw:
     email:
       enabled: ${EMAIL_ENABLED:true}
       from: ${MAIL_FROM:Bits <no-reply@bits.local>}
+    push:
+      # The app-server push API (ticket 110, FRS EXT-04; FCM / APNs style): the dev stack's push mock in
+      # mw-simulators. The API key comes from Vault (secret/mw-notify, mw.notify.push.api-key).
+      enabled: ${PUSH_ENABLED:true}
+      base-url: ${PUSH_BASE_URL:http://mw-simulators:8080}
+      connect-timeout: 2s
+      timeout: 3s
     smpp:
       # SMPP 3.4 to the SMSC (10.2); MVP: the SMSC simulator in mw-simulators. The bind password
       # comes from Vault (secret/mw-notify, mw.notify.smpp.password).

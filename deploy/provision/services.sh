@@ -60,12 +60,17 @@ provision_mw_simulators() {
   # the WS-Security UsernameToken password of the billagg SOAP front end (SOAP billers)
   sync_env sim.billagg.ws-password BILLAGG_WS_PASSWORD
   sync_env sim.callback-secrets.c2wbank C2WBANK_HMAC_SECRET
+  # the push server mock checks the key mw-notify sends (ticket 110)
+  sync_env sim.push.api-key PUSH_API_KEY
   sync_env sim.ussd-gateway.credentials.gp USSD_GP_GATEWAY_SECRET
   sync_env sim.ussd-gateway.credentials.robi USSD_ROBI_GATEWAY_SECRET
   sync_env sim.ussd-gateway.credentials.bl USSD_BL_GATEWAY_SECRET
   sync_env sim.ussd-gateway.credentials.teletalk USSD_TELETALK_GATEWAY_SECRET
   # the payShield simulator logs in to the softhsm paysim token with it (ticket 64)
   sync_env sim.payshield.pkcs11.user-pin SOFTHSM_PAYSIM_USER_PIN
+  # the file mocks (ticket 123): partner-sftp login, realm services client for mw-core-mock's statements
+  sync_env sim.files.sftp.password SFTP_DEV_PASSWORD
+  sync_env sim.files.trustbank.core.client-secret KC_MW_SIMULATORS_SECRET
   # the simulated partner's private_key_jwt key at Keycloak realm partners (ticket 73)
   partner_sim_client_key
   db_role simulators_rw simulators
@@ -124,10 +129,12 @@ provision_mw_app_gateway() {
   db_role app_gateway_rw app_gateway
 }
 
-# SMPP 3.4 passwords are at most 8 characters.
+# SMPP 3.4 passwords are at most 8 characters. The push server API key (ticket 110) is shared with
+# mw-simulators' push mock.
 provision_mw_notify() {
   gen_once spring.datasource.password 40
   gen_once mw.notify.smpp.password 8
+  sync_env mw.notify.push.api-key PUSH_API_KEY
   db_role notify_rw notify
 }
 
@@ -149,6 +156,8 @@ provision_mw_admin_api() {
   # the APISIX Admin API key: the channel client registry projects its consumers there (ticket 100a)
   sync_env mw.apisix.admin-key APISIX_ADMIN_KEY
   db_role admin_api_rw admin partner
+  # partner credential upload (ticket 131): staging area + write-only access to the adapters' partner secrets
+  EXTRA_POLICY="$(credential_upload_policy)"
 }
 
 provision_mw_adapter_telco() {

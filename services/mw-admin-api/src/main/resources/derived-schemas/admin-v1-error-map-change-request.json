@@ -1,0 +1,53 @@
+{
+  "x-mw-derived-from": "api/mw-admin-api/admin.v1.openapi.yaml#/paths/~1admin~1v1~1partners~1{partnerId}~1error-map~1change-requests/post/requestBody/content/application~1json/schema",
+  "type": "object",
+  "required": [
+    "action",
+    "reason",
+    "errorMap"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "SET_ERROR_MAP"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "errorMap": {
+      "type": "object",
+      "maxProperties": 500,
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "suffix"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "suffix": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "ambiguousCodes": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      }
+    }
+  }
+}

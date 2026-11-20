@@ -31,6 +31,15 @@ public final class MockParties {
       List.of(MockBehaviour.SUCCESS, MockBehaviour.BUSINESS_ERROR, MockBehaviour.TIMEOUT, MockBehaviour.DELAY,
           MockBehaviour.MALFORMED_RESPONSE, MockBehaviour.CONNECTION_RESET);
 
+  /** The push server (ticket 110): no callbacks. */
+  private static final List<MockBehaviour> PUSH_BEHAVIOURS =
+      List.of(MockBehaviour.SUCCESS, MockBehaviour.BUSINESS_ERROR, MockBehaviour.TIMEOUT, MockBehaviour.DELAY,
+          MockBehaviour.HTTP_5XX, MockBehaviour.MALFORMED_RESPONSE, MockBehaviour.CONNECTION_RESET,
+          MockBehaviour.PARTIAL_SUCCESS);
+  private static final List<MockBehaviour> FILE_BEHAVIOURS =
+      List.of(MockBehaviour.MISSING_FILE, MockBehaviour.LATE_FILE, MockBehaviour.DUPLICATE_FILE,
+          MockBehaviour.CORRUPT_FILE, MockBehaviour.INJECTED_MISMATCH);
+
   public static final List<MockParty> ALL =
       List.of(
           new MockParty("ocs", "prepaid top-up OCS", List.of("topup", "status", "reverse"), List.of("msisdn", "txnRef")),
@@ -46,7 +55,24 @@ public final class MockParties {
           new MockParty("ussdgw", "USSD gateway: SMPP server mw-ussd binds to; dial plays a session (SMPP or HTTP)",
               List.of("bind", "submit", "enquire_link", "dial"), List.of("systemId", "msisdn", "mno"), WIRE_BEHAVIOURS),
           new MockParty("payshield", "payShield 10K HSM, TCP host commands of mw-crypto",
-              List.of("command"), List.of("command"), WIRE_BEHAVIOURS));
+              List.of("command"), List.of("command"), WIRE_BEHAVIOURS),
+          new MockParty("push", "app-server push API (FCM / APNs style) of mw-notify; keeps every push",
+              List.of("send"), List.of("token", "topic"), PUSH_BEHAVIOURS),
+          // the file mocks of ticket 123 (FRS EXT-05, EXT-06, EXT-17, MCT-05) on the partner-sftp host
+          new MockParty("aml", "AML vendor: answers each transaction file in aml/in with a response file in aml/out",
+              List.of("respond"), List.of("file", "date"), FILE_BEHAVIOURS),
+          new MockParty("trustbank", "trust bank: daily MT940 and intraday MT942 of the trust account in trustbank/out",
+              List.of("mt940", "mt942"), List.of("date", "account"), FILE_BEHAVIOURS),
+          new MockParty("dw", "Data Warehouse drop: validates each batch and control file in dw/in (verdict in the journal)",
+              List.of("validate"), List.of("file", "date"), List.of(MockBehaviour.SUCCESS, MockBehaviour.BUSINESS_ERROR)));
+
+  /** The kinds of INJECTED_MISMATCH (its {@code code}) per file party. */
+  private static final Map<String, Set<String>> MISMATCH_KINDS = Map.of(
+      "aml", mfs.mw.simulators.service.files.AmlResponder.MISMATCH_KINDS,
+      "trustbank", mfs.mw.simulators.service.files.TrustStatementGenerator.MISMATCH_KINDS);
+
+  /** The file mocks (ticket 123): run by their scheduler jobs or {@code POST /mock-control/{party}/run}. */
+  private static final Set<String> FILE_PARTIES = Set.of("aml", "trustbank", "dw");
 
   /** Parties whose callback goes back on the caller's own connection (the SMSC's DLR): always on, no URL. */
   private static final Set<String> IN_BAND_CALLBACKS = Set.of("smsc");
@@ -87,6 +113,18 @@ public final class MockParties {
     if (code != null && s.code() != null && !code.matcher(s.code()).matches()) {
       throw new MwException(ErrorCodes.VAL_INVALID, "Party " + party + " takes a code matching " + code.pattern());
     }
+    if (s.behaviour() == MockBehaviour.INJECTED_MISMATCH) {
+      Set<String> kinds = MISMATCH_KINDS.getOrDefault(party, Set.of());
+      if (s.code() == null || !kinds.contains(s.code())) {
+        throw new MwException(ErrorCodes.VAL_INVALID, "INJECTED_MISMATCH on " + party + " takes a code of "
+            + kinds.stream().sorted().toList());
+      }
+    }
+  }
+
+  /** Whether the party is a file mock (ticket 123). */
+  public static boolean isFileParty(String name) {
+    return FILE_PARTIES.contains(name);
   }
 
   /** An SMPP command_status written as {@code 0x58} or {@code 88}. */

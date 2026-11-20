@@ -128,7 +128,14 @@ class ProducedContractsTest {
                       new AdminTxn.Amount(5000, "BDT"), "ops-checker01", "corr-1", AT)),
           "events/mw-auth/auth.wallet-lock.v1.schema.json",
           () -> List.of(ChangeRequestMapper.authUnlock(unlockRequest(), "ops-checker01", "corr-1", AT),
-              ChangeRequestMapper.pinReset(unlockRequest(), "ops-checker01", "corr-1", AT)));
+              ChangeRequestMapper.pinReset(unlockRequest(), "ops-checker01", "corr-1", AT)),
+          // ticket 131: the credential expiry ops email, as CredentialExpiryService builds it
+          "events/mw-notify/mw.notify.request.v1.schema.json",
+          () -> List.of(new mfs.mw.admin.api.dto.NotifyRequest(1, "credential-expiry:ocs/ocs-mtls:v2:7d", "corr-1",
+              new mfs.mw.admin.api.dto.NotifyRequest.Recipient("ops@bits.example"), "OPS_CREDENTIAL_EXPIRING", "en",
+              Map.of("partnerId", "ocs", "credential", "ocs/ocs-mtls", "type", "CLIENT_CERT", "kid", "ocs-mtls-v2",
+                  "notAfter", AT.toString(), "daysLeft", "6", "threshold", "7"),
+              List.of("EMAIL"), "INFO")));
 
   /** A PENDING wallet unlock as the maker leaves it (ticket 52). */
   static ChangeRequest unlockRequest() {

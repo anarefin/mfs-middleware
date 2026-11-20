@@ -44,20 +44,6 @@ class PayloadScrubTest {
   }
 
   @Test
-  void textAndXmlBodiesAreScrubbedToo() {
-    String out =
-        PayloadScrub.scrub(
-            "application/xml",
-            "<req><pin>4321</pin><msisdn>+8801711234567</msisdn><card>4111111111111111</card></req>");
-
-    assertThat(out).doesNotContain("4321", "01711234567", "4111111111111111");
-    assertThat(out).contains("<pin>****</pin>", "****1111");
-
-    String form = PayloadScrub.scrub("application/x-www-form-urlencoded", "msisdn=01711234567&pin=9999&otp=123456");
-    assertThat(form).doesNotContain("01711234567", "9999", "123456").contains("pin=****", "otp=****");
-  }
-
-  @Test
   void aBrokenJsonBodyIsScrubbedAsText() {
     String out = PayloadScrub.scrub("application/json", "{\"pin\":\"2468\",\"msisdn\":\"01711234567\"");
 
@@ -103,18 +89,73 @@ class PayloadScrubTest {
   }
 
   @Test
-  void theSameKeyRuleAppliesToXmlAndKeyValueText() {
-    String xml =
-        PayloadScrub.scrub(
-            "application/xml",
-            "<req><userPin>1234</userPin><ns:mpin>5678</ns:mpin><pinBlock><fmt>ISO-0</fmt><v>0412AC</v></pinBlock>"
-                + "<shipping>fast</shipping></req>");
-    assertThat(xml).doesNotContain("1234", "5678", "ISO-0", "0412AC");
-    assertThat(xml).contains("<userPin>****</userPin>", "<pinBlock>****</pinBlock>", "<shipping>fast</shipping>");
+  void compoundLowerCaseKeysAreSecretToo() {
+    for (String key :
+        java.util.List.of(
+            "pincipher", "pinciphertext", "newpin", "encryptedpin", "userpassword", "walletpin", "txnpin",
+            "oldpasscode", "currentotp", "mpinblock", "otpcode", "NEWPIN", "encrypted_pinciphertext")) {
+      assertThat(PayloadScrub.isSecretKey(key)).as(key).isTrue();
+      String out = PayloadScrub.scrub("application/json", "{\"" + key + "\":\"S3CR3TVALUE\"}");
+      assertThat(out).as(key).doesNotContain("S3CR3TVALUE");
+    }
+    for (String key : java.util.List.of("spinner", "shipping", "opinion", "options", "topping", "pinnacle", "happiness")) {
+      assertThat(PayloadScrub.isSecretKey(key)).as(key).isFalse();
+    }
+  }
 
+  @Test
+  void anOversizedBodyIsBlankedWhole() {
+    String big = "{\"note\":\"" + "x".repeat(PayloadScrub.MAX_SCAN) + "\"}";
+
+    assertThat(PayloadScrub.scrub("application/json", big)).isEqualTo("****");
+  }
+
+  @Test
+  void keyValueTextBlanksSecretKeysAndMasksTheRest() {
     String form =
-        PayloadScrub.scrub("text/plain", "mpin=9999&walletPassword=hunter2&otpCode=112233&spinner=on&pin_code=4444");
-    assertThat(form).doesNotContain("9999", "hunter2", "112233", "4444").contains("spinner=on", "mpin=****");
+        PayloadScrub.scrub(
+            "application/x-www-form-urlencoded",
+            "msisdn=01711234567&pin=9999&otpCode=112233&walletPassword=hunter2&spinner=on");
+
+    assertThat(form).doesNotContain("01711234567", "9999", "112233", "hunter2");
+    assertThat(form).contains("pin=****", "otpCode=****", "spinner=on");
+  }
+
+  @Test
+  void markupWithASecretAnywhereIsStoredAsStarsWhole() {
+    assertThat(PayloadScrub.scrub("application/xml", "<pin a=\"<\">1234</pin>")).isEqualTo("****");
+    assertThat(PayloadScrub.scrub("application/xml", "<req><p.i-n:x>1234</p.i-n:x></req>")).isEqualTo("****");
+    assertThat(PayloadScrub.scrub("application/xml", "<r><![CDATA[<pin>1234</pin>]]></r>")).isEqualTo("****");
+    assertThat(PayloadScrub.scrub("application/xml", "<r><!-- <otp>1234</otp> --></r>")).isEqualTo("****");
+    assertThat(PayloadScrub.scrub("text/plain", "a < b and the PASSWORD is hunter2")).isEqualTo("****");
+    assertThat(PayloadScrub.scrub("application/soap+xml", "<Envelope><Body><Auth><CVV2>987</CVV2></Auth></Body></Envelope>"))
+        .isEqualTo("****");
+    assertThat(PayloadScrub.scrub("application/xml", "<r><newPIN>1</newPIN></r>")).isEqualTo("****");
+  }
+
+  @Test
+  void aLookAlikeSuchAsSpinnerIsBlankedTooBecauseMarkupFailsClosed() {
+    assertThat(PayloadScrub.scrub("application/xml", "<spinner>on</spinner>")).isEqualTo("****");
+    assertThat(PayloadScrub.scrub("application/xml", "<shipping>fast</shipping>")).isEqualTo("****");
+  }
+
+  @Test
+  void markupWithoutSecretsIsKeptAndStillMasked() {
+    String in = "<?xml version=\"1.0\"?><req><amount>20.00</amount><ref>OCS-1</ref></req>";
+    assertThat(PayloadScrub.scrub("application/xml", in)).isEqualTo(in);
+
+    String out = PayloadScrub.scrub("application/xml", "<req><msisdn>+8801711234567</msisdn><card>4111111111111111</card></req>");
+    assertThat(out).doesNotContain("01711234567", "4111111111111111").contains("****1111", "<card>");
+  }
+
+  @Test
+  void aLargeMarkupBodyIsCheckedFast() {
+    String[] inputs = {"<a>".repeat(20_000) + "x", "<a b=\"".repeat(20_000), "<" + "a".repeat(60_000)};
+    for (String in : inputs) {
+      long start = System.nanoTime();
+      PayloadScrub.scrub("application/xml", in);
+      assertThat((System.nanoTime() - start) / 1_000_000).as("%d chars", in.length()).isLessThan(1_000);
+    }
   }
 
   @Test
