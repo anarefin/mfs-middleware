@@ -77,6 +77,22 @@ public class ReportService {
     return partners.size();
   }
 
+  /**
+   * REC-06: after a later run for {@code day} (a settlement file matched after the 02:00 report), a daily report
+   * already stored for the partner is rendered and stored again, so a download is never stale. Runs in the caller's
+   * transaction; nothing is stored when no report was stored yet (the scheduled job does that).
+   */
+  @Transactional
+  public void refreshStored(String partnerId, LocalDate day, java.time.Instant at) {
+    if (store.storedReport(partnerId, ReportKind.DAILY.name(), day, day, ReportFormat.CSV.name()) == null) {
+      return;
+    }
+    ReconReport report = report(partnerId, day, day, ReportKind.DAILY);
+    for (ReportFormat format : ReportFormat.values()) {
+      store.saveReport(partnerId, ReportKind.DAILY.name(), day, day, format.name(), render(report, format), at);
+    }
+  }
+
   /** A stored daily report, or a freshly computed one when none is stored (on demand, intraday). */
   @Transactional(readOnly = true)
   public byte[] download(String partnerId, LocalDate from, LocalDate to, ReportKind kind, ReportFormat format) {

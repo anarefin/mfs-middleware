@@ -63,10 +63,12 @@ public class ReconService {
   private final ReconProperties props;
   private final java.time.Clock clock;
   private final ExceptionEvents events;
+  private final ReportService reports;
 
   public ReconService(ReconStore store, MatchingService matching, Mt940Parser parser, Inbox inbox, OutboxWriter outbox,
-      ReconProperties props, java.time.Clock clock, ExceptionEvents events) {
+      ReconProperties props, java.time.Clock clock, ExceptionEvents events, ReportService reports) {
     this.events = events;
+    this.reports = reports;
     this.store = store;
     this.matching = matching;
     this.parser = parser;
@@ -255,6 +257,9 @@ public class ReconService {
         file.filename(), businessDate.toString(), matched, missingPartner, missingUpay, amount, status, false);
     outbox.append(ReconTopics.RESULT, file.partnerId(), meta(runId.toString(), runId.toString()),
         resultBody(summary, exceptions, finished));
+    if (!MT942.equals(source)) {
+      reports.refreshStored(file.partnerId(), businessDate, finished);
+    }
     log.atInfo().addKeyValue("event", "recon.run.completed").addKeyValue("partnerId", file.partnerId())
         .addKeyValue("matched", matched).addKeyValue("missingInPartner", missingPartner)
         .addKeyValue("missingInUpay", missingUpay).addKeyValue("amountMismatch", amount)

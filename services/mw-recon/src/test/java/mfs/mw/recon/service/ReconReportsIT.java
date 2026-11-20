@@ -151,5 +151,12 @@ class ReconReportsIT {
     byte[] csv = reports.download("trustbank", day, day, ReportKind.DAILY, ReportFormat.CSV);
     assertThat(new String(csv, StandardCharsets.UTF_8)).contains("trustbank,2026-10-06,2026-10-06,DAILY,TOTAL,1,100.50");
     assertThat(reports.download("trustbank", day, day, ReportKind.DAILY, ReportFormat.PDF)).isNotEmpty();
+
+    // REC-06: a later run for that day re-stores the report, so the download is never stale
+    recon.ingestStatement("MT940_rpt127b2.fin", FIN.replace("RPT127", "RPT127B2").replace("261005", "261006")
+        .replace("2610051005", "2610061006").replace("D100,50", "D200,00").replace("127001", "127b02")
+        .getBytes(StandardCharsets.UTF_8), true);
+    assertThat(new String(reports.download("trustbank", day, day, ReportKind.DAILY, ReportFormat.CSV),
+        StandardCharsets.UTF_8)).contains("trustbank,2026-10-06,2026-10-06,DAILY,TOTAL,2,300.50");
   }
 }
