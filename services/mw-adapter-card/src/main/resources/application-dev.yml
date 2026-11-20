@@ -92,7 +92,9 @@ mw:
           "[PAY.response]": |
             status = 201 or status = 200
               ? (body.status = "CAPTURED" and $type(body.paymentId) = "string" and body.paymentId != ""
-                  ? {"outcome": "SUCCESS", "partnerRef": body.paymentId, "code": body.code}
+                  ? {"outcome": "SUCCESS", "partnerRef": body.paymentId, "code": body.code,
+                     "attributes": {"amount": body.amount, "currency": body.currency,
+                                    "clientReference": body.clientReference}}
                   : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
             : (status = 400 or status = 422) and $type(body.code) = "string" and body.code != ""
               ? {"outcome": "FAILED", "code": body.code, "message": body.message}
@@ -100,7 +102,9 @@ mw:
           "[STATUS_QUERY.response]": |
             status = 200
               ? (body.status = "CAPTURED" and $type(body.paymentId) = "string" and body.paymentId != ""
-                  ? {"outcome": "SUCCESS", "partnerRef": body.paymentId, "code": body.code}
+                  ? {"outcome": "SUCCESS", "partnerRef": body.paymentId, "code": body.code,
+                     "attributes": {"amount": body.amount, "currency": body.currency,
+                                    "clientReference": body.clientReference}}
                   : body.status = "DECLINED" and $type(body.code) = "string" and body.code != ""
                     ? {"outcome": "FAILED", "code": body.code, "message": body.message}
                   : body.status = "PENDING"

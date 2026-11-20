@@ -1,0 +1,4 @@
+{
+  "name": "56 Add money from a card",
+  "description": "Ticket 118b (FRS UC-13, EXT-14, FL-07, PLT-014). The app opens a hosted page session (POST /app/v1/add-money/card/sessions), the customer types a test card on mw-simulators' CyberSourceMock page (/test/sim/cybersource/hp/<sessionId>), the simulator sends the signed 3-D Secure webhook through APISIX to mw-adapter-card (route partner-cybersource-callback; callbackUrl set per scenario to http://apisix:9080/partner/cybersource/callback/3ds, the address every simulator callback of this suite uses inside the compose network), then mw-orchestrator authorises and captures and credits the wallet from SETTLEMENT_CYBERSOURCE. Test cards: 4111111111111111 success, 4000000000000002 decline, 4000000000003063 3-D Secure failure, 4000000000000119 capture timeout. Card data never reaches the middleware: only the session id and a transient token."
+}

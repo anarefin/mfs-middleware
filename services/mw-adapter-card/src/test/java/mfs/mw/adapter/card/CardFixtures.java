@@ -69,6 +69,9 @@ public final class CardFixtures {
             new PartnerRequest.Party("CARD_TOKEN", "sess-fake-0001", null, null),
             new PartnerRequest.Party("WALLET", account, null, "CUSTOMER"),
             null,
-            null));
+            // a capture always carries the session and the webhook's token (ticket 118b)
+            "PAY".equals(operation)
+                ? java.util.Map.of("sessionId", "sess-fake-0001", "transientToken", "tok-fake-0001")
+                : null));
   }
 }

@@ -53,7 +53,9 @@ public class ReplyWaiters {
    * @return whether a waiter was completed
    */
   public boolean offer(StatusMessage status) {
-    if (!status.terminal() && !status.duplicate() && !"UNKNOWN".equals(status.status())) {
+    // ticket 118b: the status that opens a card session (hosted page URL) is the answer a card start waits for
+    boolean cardSession = status.attributes() != null && status.attributes().get("hostedPageUrl") != null;
+    if (!status.terminal() && !status.duplicate() && !"UNKNOWN".equals(status.status()) && !cardSession) {
       return false;
     }
     String txnId = status.awaitedTxnId();

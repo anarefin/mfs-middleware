@@ -69,6 +69,7 @@ public class PartnerInboundService {
   private final OutboxWriter outbox;
   private final FlowRegistry flows;
   private final PartnerCallRepository partnerCalls;
+  private final AddMoneyCardService cards;
   private final Clock clock;
 
   public PartnerInboundService(
@@ -81,7 +82,9 @@ public class PartnerInboundService {
       OutboxWriter outbox,
       FlowRegistry flows,
       PartnerCallRepository partnerCalls,
+      AddMoneyCardService cards,
       Clock clock) {
+    this.cards = cards;
     this.inbox = inbox;
     this.transactions = transactions;
     this.mapper = mapper;
@@ -120,6 +123,13 @@ public class PartnerInboundService {
         inbound.inboundId(), rec.txnId(), inbound.family(), inbound.partnerId(), inbound.payload().outcome(),
         inbound.partnerRef(), inbound.payload().errorCode(), clock.instant());
     PartnerReply answer = asReply(inbound);
+    if (AddMoneyCardService.isCard(rec)) {
+      // ticket 118b: the 3-D Secure webhook opens the capture; it is never the payment's outcome
+      if (!cards.callback(rec, answer)) {
+        late(rec, inbound);
+      }
+      return;
+    }
     switch (rec.status()) {
       case UNKNOWN -> inquiries.partnerAnswer(rec, answer);
       case PARTNER_PENDING -> resolvePending(rec, answer);

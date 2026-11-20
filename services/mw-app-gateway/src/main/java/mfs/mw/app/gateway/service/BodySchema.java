@@ -52,6 +52,8 @@ public class BodySchema {
   public static final String SAVE_FAVOURITE = "derived-schemas/app-v1-save-favourite-request.json";
   /** {@code LinkBankAccountRequest} (ticket 117b). */
   public static final String LINK_BANK_ACCOUNT = "derived-schemas/app-v1-link-bank-account-request.json";
+  /** {@code CardSessionRequest} (ticket 118b). */
+  public static final String CARD_SESSION = "derived-schemas/app-v1-card-session-request.json";
 
   private final ObjectReader reader;
   private final Schema schema;

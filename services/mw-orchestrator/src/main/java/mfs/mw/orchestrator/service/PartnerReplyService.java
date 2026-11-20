@@ -53,6 +53,7 @@ public class PartnerReplyService {
   private final PartnerCallRepository partnerCalls;
   private final AuditMapper audits;
   private final OutboxWriter outbox;
+  private final AddMoneyCardService cards;
   private final Clock clock;
 
   public PartnerReplyService(
@@ -65,7 +66,9 @@ public class PartnerReplyService {
       PartnerCallRepository partnerCalls,
       AuditMapper audits,
       OutboxWriter outbox,
+      AddMoneyCardService cards,
       Clock clock) {
+    this.cards = cards;
     this.inbox = inbox;
     this.transactions = transactions;
     this.mapper = mapper;
@@ -98,6 +101,14 @@ public class PartnerReplyService {
     if (MerchantPayFlow.TXN_TYPE.equals(found.get().request().txnType())
         && MerchantPayFlow.MERCHANT.family().equals(reply.family())) {
       merchantAnswer(found.get(), reply);
+      return;
+    }
+    if (AddMoneyCardService.isCard(found.get()) && PartnerRequestMapper.INQUIRY.equals(operation(reply))) {
+      cards.sessionAnswer(found.get(), reply); // ticket 118b: CREATE_SESSION is never a payment outcome
+      return;
+    }
+    if (AddMoneyCardService.isCard(found.get()) && cards.captureMismatch(found.get(), reply)) {
+      cards.refuseMismatchedCapture(found.get(), reply); // M9 review: never credit a capture of another amount
       return;
     }
     if (PartnerRequestMapper.REVERSE.equals(operation(reply))) {

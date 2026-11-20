@@ -34,6 +34,7 @@ import mfs.mw.orchestrator.service.routing.Attempt;
 import mfs.mw.orchestrator.service.routing.Decision;
 import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import mfs.mw.orchestrator.service.routing.RoutingService;
+import mfs.mw.orchestrator.service.saga.AddMoneyCardFlow;
 import mfs.mw.orchestrator.service.saga.Effect;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
@@ -443,8 +444,45 @@ public class SagaEngine {
   private void sendAttempt(TransactionRecord rec, PartnerCall call, Attempt attempt, Instant now) {
     boolean later = sentPay(rec);
     rec = persistPartner(rec, attempt);
+    if (AddMoneyCardFlow.TXN_TYPE.equals(rec.request().txnType())) {
+      // ticket 118b: the card flow opens the hosted page session first; the capture follows the webhook
+      sendToPartner(rec, call, partnerMapper.cardSession(rec, call, now, properties.partnerTimeout()), now);
+      return;
+    }
     String key = later ? PartnerRequestMapper.PAY + ":" + attempt.wirePartnerId() : PartnerRequestMapper.PAY;
     sendToPartner(rec, call, partnerMapper.pay(rec, call, now, properties.partnerTimeout(), key), now);
+  }
+
+  /**
+   * ADD_MONEY_CARD AUTHORISE_CAPTURE (ticket 118b): the PAY with the webhook's session id and transient
+   * token, through the outbox; the token is not stored on the transaction or the timeline.
+   */
+  public void sendCardCapture(TransactionRecord rec, String sessionId, String transientToken) {
+    Instant now = clock.instant();
+    sendToPartner(rec, AddMoneyCardFlow.CARD,
+        partnerMapper.cardCapture(rec, AddMoneyCardFlow.CARD, now, properties.partnerTimeout(), sessionId, transientToken),
+        now);
+  }
+
+  /**
+   * ADD_MONEY_CARD (ticket 118b): publishes the PARTNER_PENDING status once more with the hosted page
+   * session ({@code attributes.sessionId}, {@code attributes.hostedPageUrl}), so the waiting channel can
+   * send the customer to the page. Transient: the URL is not stored on the transaction.
+   */
+  public void publishCardSession(TransactionRecord rec, String sessionId, String hostedPageUrl) {
+    StatusMessage status = statusMapper.toStatus(rec);
+    Map<String, String> attributes = new java.util.HashMap<>();
+    if (status.attributes() != null) {
+      attributes.putAll(status.attributes());
+    }
+    attributes.put("sessionId", sessionId);
+    attributes.put("hostedPageUrl", hostedPageUrl);
+    publishStatus(status.withAttributes(attributes), rec.replyTo());
+  }
+
+  /** Re-arms the PARTNER_PENDING deadline at {@code wait} from now (the card hosted page session). */
+  public void armPartnerPending(TransactionRecord rec, Duration wait) {
+    timers.arm(rec.txnId(), Status.PARTNER_PENDING.name(), clock.instant().plus(wait), false);
   }
 
   private TransactionRecord persistPartner(TransactionRecord rec, Attempt attempt) {

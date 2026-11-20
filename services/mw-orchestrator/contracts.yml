@@ -9,6 +9,8 @@ produces:
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#bank
     # merchant system VALIDATE and NOTIFY (ticket 115b)
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#merchant
+    # ADD_MONEY_CARD: CREATE_SESSION, AUTHORISE_CAPTURE, STATUS_QUERY (ticket 118b)
+    - events/mw-orchestrator/mw.partner.request.v1.schema.json#card
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
     # REVERSAL of the test-only API (ticket 58, off unless mw.orchestrator.test-api.enabled)
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
@@ -23,9 +25,12 @@ consumes:
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#billpay
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#bank
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#merchant
+    - events/mw-orchestrator/mw.partner.reply.v1.schema.json#card
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#telco
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#billpay
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#bank
+    # the 3-D Secure webhook of mw-adapter-card (ticket 118b)
+    - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#card
     - events/mw-admin-api/mw.config.changed.v1.schema.json
     - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
   # The core wallet over REST (ADR D31, ticket 95a; client/CoreWalletClient). Result events of those

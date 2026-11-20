@@ -8,4 +8,11 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  * PIN: the customer is not paying.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
-public record CreditPayload(String txnType, Party debitParty, Party creditParty, Amount amount) {}
+public record CreditPayload(
+    String txnType, Party debitParty, Party creditParty, Amount amount, String settlementWallet) {
+
+  /** A credit from the default SETTLEMENT wallet. */
+  public CreditPayload(String txnType, Party debitParty, Party creditParty, Amount amount) {
+    this(txnType, debitParty, creditParty, amount, null);
+  }
+}

@@ -32,4 +32,13 @@ public record StatusMessage(
     Map<String, String> attributes,
     Instant requestedAt,
     Instant updatedAt,
-    Balance balance) {}
+    Balance balance) {
+
+  /** The same status with other {@code attributes} (the card hosted page session, ticket 118b). */
+  public StatusMessage withAttributes(Map<String, String> newAttributes) {
+    return new StatusMessage(
+        schemaVersion, txnId, idempotencyKey, correlationId, channel, txnType, status, previousStatus, initiator,
+        debitParty, creditParty, amount, fee, partner, partnerRef, coreRef, originalTxnId, error, locale,
+        newAttributes, requestedAt, updatedAt, balance);
+  }
+}

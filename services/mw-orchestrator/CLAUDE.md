@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, BULK_DISBURSE (child), TOPUP, BILL_PAY, ADD_MONEY_BANK and W2B transactions, the BALANCE check (ADR D26) and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
+- Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, BULK_DISBURSE (child), TOPUP, BILL_PAY, ADD_MONEY_BANK, ADD_MONEY_CARD and W2B transactions, the BALANCE check (ADR D26) and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
   Consumes `mw.txn.request.v1` (`messaging/TxnRequestListener`), the core's events on
   `core.wallet.event.v1` and `core.payment.event.v1` (one listener, `messaging/CoreEventListener`; since ticket 95a it
   ignores the result events of the REST calls, and since ticket 95c it applies HoldExpired and consumes
@@ -151,6 +151,33 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `deploy/partner-routes/bank/bank-profiles.csv` for W2B and for ADD_MONEY_BANK (`bank_code` = connector =
   `bank-<code>`), so add money from a linked account goes to the account's bank profile; `c2wbank` stays for
   the older add money; any other bank is `MW-PTR-UNKNOWN`. `W2bFlowTest`, `W2bSagaIT`.
+  `AddMoneyCardFlow` (ticket 118b, txnType ADD_MONEY_CARD, FRS UC-13, EXT-14, FL-07) is inbound money like
+  ADD_MONEY_BANK (validate + callPartner + commit, no hold) on the card family (`mw.partner.request.card.v1`,
+  mw-adapter-card). Parties as mw-app-gateway sets them: debit `{CARD_TOKEN, cybersource}` (no card data ever),
+  credit the customer's WALLET, partner `{cybersource, CARD}`; intake refuses other parties `MW-VAL-001` and a
+  missing acquirer `MW-VAL-012`; routing rule `add-money-card` (V20). Path (`service/AddMoneyCardService`,
+  called from `PartnerReplyService` and `PartnerInboundService` before the generic paths): VALIDATING ->
+  PARTNER_PENDING sends CREATE_SESSION (INQUIRY, requestId `<txnId>:INQUIRY`, `PartnerRequestMapper.cardSession`);
+  its SUCCESS needs a session id and a hosted page URL that is https on a host of
+  `mw.orchestrator.card.hosted-page-hosts` (`MW_CARD_HOSTED_PAGE_HOSTS`, default `localhost`), else FAILED
+  `MW-PTR-<PARTNER>-MALFORMED_REPLY` (M9 review); then the session id is the partner reference,
+  `CardSessionCreated` (self-transition), the PARTNER_PENDING deadline waits `mw.orchestrator.card.session-timeout`
+  (15 min) for the customer, and the status is published once more with `attributes.sessionId` and
+  `attributes.hostedPageUrl` (transient, `SagaEngine.publishCardSession`; the waiting app gets it). A refused
+  session is FAILED with nothing moved. The 3-D Secure webhook (CALLBACK, family `card`, after the ownership
+  checks): AUTHENTICATED with a token for the stored session, while no capture was sent -> `CardAuthenticated`
+  and AUTHORISE_CAPTURE (PAY `<txnId>:PAY`, debit `{CARD_TOKEN, <sessionId>}`, `attributes {sessionId,
+  transientToken}`, `SagaEngine.sendCardCapture`); FAILED -> FAILED with the acquirer's error (3-D Secure failure,
+  no capture); anything else (before the session, after the capture, in UNKNOWN or later) is a late callback
+  and moves nothing: a webhook is never read as the capture's outcome. The capture answer is a normal partner
+  reply (SUCCESS -> COMMITTING -> CreditWallet with `settlementWallet` SETTLEMENT_CYBERSOURCE; FAILED -> FAILED;
+  UNKNOWN / no answer -> UNKNOWN -> STATUS_QUERY), except that a capture SUCCESS (PAY or STATUS_QUERY) whose
+  echoed `attributes.amount` (major units), `currency` or `clientReference` is missing or differs is never
+  credited: ERROR `card.capture.mismatch`, PARTNER_PENDING -> UNKNOWN (inquiries, then MANUAL_REVIEW). The
+  transient token is never stored: not on the row, `partner_call`, a status, the audit or a log (only the
+  capture request in the outbox carries it). A refused credit follows "Partner reversal after a refused
+  commit" (REVERSE = REFUND). Open: the refund of a COMPLETED card add money (core reversal first, then
+  REFUND) is not built (the reversal code is another ticket's). `AddMoneyCardIT`, `AddMoneyCardServiceTest`.
   `BalanceFlow` (ADR D26, txnType BALANCE) moves no money and the middleware never stores the balance:
   steps BALANCE_INQUIRY only (it overrides `allows`: no REVERSE, no INQUIRE). Intake refuses a BALANCE
   with an amount other than 0 (`MW-VAL-011`; 0 is refused `MW-VAL-011` for every other type), debit and
@@ -476,7 +503,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.
 - Schema `txn` (role `orchestrator_rw`): `transaction`, `saga_step`, `saga_timer`, `idempotency`
   (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`, `wallet_txn`, `routing_rule`, `msisdn_prefix`,
-  `mnp_override`, `maintenance_message`, `biller_rule`); migrations V1..V19 (V19 one BILL_PAY routing rule per dev catalogue biller, primary and fallback aggregator, ticket 114; V18 bank routing rules, ticket 117c; V17 `biller_rule`, ticket 113c; V14 routing tables and the prefix and partner
+  `mnp_override`, `maintenance_message`, `biller_rule`); migrations V1..V20 (V20 the ADD_MONEY_CARD routing rule, ticket 118b; V19 one BILL_PAY routing rule per dev catalogue biller, primary and fallback aggregator, ticket 114; V18 bank routing rules, ticket 117c; V17 `biller_rule`, ticket 113c; V14 routing tables and the prefix and partner
   seeds, ticket 98; V12 `wallet_txn`,
   V13 = Java migration `repository/WalletPartyMigration` filling it for older rows, ADR D25, `WalletPartyMigrationIT`;
   V11 drops `transaction.encrypted_pin`, ticket 72; V6 `reversal_txn_id`, V7 drops
@@ -616,7 +643,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - `mw.partner.inbound.v1` (owned, consumed): own type `dto/PartnerInbound`;
   `PartnerMessagesTest` reads every valid sample, `PartnerCallbackSagaIT` validates the callbacks
   it feeds in. Family `card` (mw-adapter-card's 3-D Secure webhook, ticket 118b part 1) is in the schema
-  and produced; this service consumes it with `AddMoneyCardFlow` (ticket 118b part 2, not built yet).
+  and produced; this service consumes it with `AddMoneyCardFlow` (ticket 118b part 2).
 - Own partner contracts: `dto/PartnerRequest` (produced, `PartnerMessagesTest`, `TopupSagaIT` and
   `InquirySagaIT` validate it) and `dto/PartnerReply` (consumed; the telco samples read into it).
   Reply `outcome` `NOT_FOUND` (ticket 18) answers a STATUS_QUERY only.

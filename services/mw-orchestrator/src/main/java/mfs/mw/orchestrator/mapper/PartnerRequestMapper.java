@@ -71,6 +71,39 @@ public class PartnerRequestMapper {
   public static final String INQUIRY = "INQUIRY";
 
   /**
+   * ADD_MONEY_CARD CREATE_SESSION (ticket 118b): an INQUIRY for the amount, request id
+   * {@code <txnId>:INQUIRY}; no debit party and no attributes (the wallet is the credit party).
+   */
+  public PartnerRequest cardSession(TransactionRecord rec, PartnerCall call, Instant now, Duration deadline) {
+    String txnId = rec.txnId().toString();
+    TxnRequest req = rec.request();
+    return new PartnerRequest(
+        1, call.family(), requestId(txnId, INQUIRY), txnId, req.correlationId(), now, now.plus(deadline),
+        new PartnerRequest.Payload(
+            INQUIRY, req.txnType(), req.partner(), partnerTxnRef(txnId), req.amount(), null,
+            req.creditParty(), null, null));
+  }
+
+  /**
+   * ADD_MONEY_CARD AUTHORISE_CAPTURE (ticket 118b): a PAY with the session id and the transient token
+   * of the 3-D Secure webhook, request id {@code <txnId>:PAY}. Debit party the card token
+   * ({@code CARD_TOKEN} = the session id). The token is never stored on the transaction.
+   */
+  public PartnerRequest cardCapture(
+      TransactionRecord rec, PartnerCall call, Instant now, Duration deadline, String sessionId, String transientToken) {
+    String txnId = rec.txnId().toString();
+    TxnRequest req = rec.request();
+    Map<String, String> attributes = new LinkedHashMap<>();
+    attributes.put("sessionId", sessionId);
+    attributes.put("transientToken", transientToken);
+    return new PartnerRequest(
+        1, call.family(), requestId(txnId, PAY), txnId, req.correlationId(), now, now.plus(deadline),
+        new PartnerRequest.Payload(
+            PAY, req.txnType(), req.partner(), partnerTxnRef(txnId), req.amount(),
+            new Party("CARD_TOKEN", sessionId, null, null), req.creditParty(), null, attributes));
+  }
+
+  /**
    * The merchant VALIDATE (ticket 115b): an INQUIRY to the merchant system before the core is asked.
    * Partner = the merchant's record, credit party {@code {MERCHANT, <merchant id in that system>}},
    * {@code attributes.tillId} the till; request id {@code <txnId>:INQUIRY}.

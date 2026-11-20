@@ -54,9 +54,9 @@ public class CyberSourceService implements PartyState {
   record Token(String token, String sessionId, CardOutcome outcome) {}
 
   record Payment(String clientReference, String paymentId, String status, String code, String amount,
-      String refundId) {
+      String currency, String refundId) {
     Payment refunded(String id) {
-      return new Payment(clientReference, paymentId, status, code, amount, id);
+      return new Payment(clientReference, paymentId, status, code, amount, currency, id);
     }
   }
 
@@ -171,9 +171,10 @@ public class CyberSourceService implements PartyState {
     Payment p;
     if (d.mode() == SimMode.BUSINESS_FAILURE) {
       String code = d.codeOr(t != null && t.outcome() == CardOutcome.THREE_DS_FAILED ? "4002" : "4001");
-      p = new Payment(req.clientReference(), null, "DECLINED", code, req.amount(), null);
+      p = new Payment(req.clientReference(), null, "DECLINED", code, req.amount(), currency(req.currency()), null);
     } else {
-      p = new Payment(req.clientReference(), "pay-" + refs.incrementAndGet(), "CAPTURED", "100", req.amount(), null);
+      p = new Payment(req.clientReference(), "pay-" + refs.incrementAndGet(), "CAPTURED", "100", req.amount(),
+          currency(req.currency()), null);
     }
     Payment stored = Optional.ofNullable(payments.putIfAbsent(req.clientReference(), p)).orElse(p);
     log.atInfo()
@@ -259,10 +260,17 @@ public class CyberSourceService implements PartyState {
     if (p.paymentId() != null) {
       m.put("paymentId", p.paymentId());
     }
+    // what was captured (M9 review): the middleware credits only a capture of its own amount and reference
+    m.put("amount", p.amount());
+    m.put("currency", p.currency());
     if (p.refundId() != null) {
       m.put("refundId", p.refundId());
     }
     return m;
+  }
+
+  private static String currency(String requested) {
+    return requested == null || requested.isBlank() ? "BDT" : requested;
   }
 
   private static Map<String, Object> refusal(String status, String code, String message) {

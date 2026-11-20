@@ -142,6 +142,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `app_transaction` projection and a replayed answer never show the number. Tests `TransactionServiceTest`,
   `PreviewServiceTest`, `LinkBankAccountIT`. The SOAP facade takes the same: group `transfer-to-bank` and
   element `linkedAccountId` in `PreviewRequest` / `ConfirmRequest` (`AppSoapEndpointTest`).
+- Add money from a card (ticket 118b, app.v1 1.16.0, FRS UC-13, EXT-14, FL-07; `controller/AddMoneyCardController`,
+  `service/CardSessionService`, `dto/CardSessionRequest` / `dto/CardSessionView`, `RequestMapper.toCardRequest`):
+  `POST /app/v1/add-money/card/sessions {amount, encryptedPin, locale?}` with `Idempotency-Key`, signed
+  (`@DeviceGate(SIGNED)`), customer only (`txn-type-roles` ADD_MONEY_CARD; not a txnType of `POST
+  /app/v1/transactions`); body schema `derived-schemas/app-v1-card-session-request.json` (no card field can pass).
+  mw-auth's assertion and `mw.txn.request.v1` for ADD_MONEY_CARD from `{CARD_TOKEN, cybersource}` to the token's
+  own wallet, partner `{cybersource, CARD}`; the waiter is also completed by the PARTNER_PENDING status that
+  carries `attributes.hostedPageUrl` (`ReplyWaiters.offer`). 201 `{txnId, status, sessionId, hostedPageUrl,
+  amount}` (the URL already checked by mw-orchestrator: https on an allowed host; never logged), 202
+  `PROCESSING` without a URL when the budget runs out (or for a repeated key: the session went to the first
+  answer), FAILED/REJECTED as the envelope. `GET /app/v1/add-money/card/sessions/{txnId}` is the caller's own
+  ADD_MONEY_CARD from `app_transaction` (anything else 404 `MW-VAL-003`). Tests `CardSessionServiceTest`,
+  `ContractDriftTest`; API folder 56.
 - Billers and bill fetch (ticket 21, `controller/BillerController`, `service/BillerService`,
   `client/BillPayClient`): read-only calls to mw-adapter-billpay's internal API
   (`contracts/api/mw-adapter-billpay/billpay.v1.openapi.yaml`, `mw.app-gateway.billpay.base-url`
