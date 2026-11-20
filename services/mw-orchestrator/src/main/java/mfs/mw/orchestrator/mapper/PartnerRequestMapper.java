@@ -21,10 +21,19 @@ public class PartnerRequestMapper {
 
   public static final String PAY = "PAY";
   public static final String STATUS_QUERY = "STATUS_QUERY";
+  public static final String REVERSE = "REVERSE";
 
   /** Stable request id of {@code operation} for {@code txnId} (UUID, as the contract requires). */
   public static String requestId(String txnId, String operation) {
     return UUID.nameUUIDFromBytes((txnId + ":" + operation).getBytes(StandardCharsets.UTF_8)).toString();
+  }
+
+  /**
+   * The partner REVERSE key (ticket 96b, PLT-025): the name-based UUID of {@code reverse:<txnId>},
+   * the same on every resend.
+   */
+  public static String reverseRequestId(String txnId) {
+    return UUID.nameUUIDFromBytes(("reverse:" + txnId).getBytes(StandardCharsets.UTF_8)).toString();
   }
 
   /** Our reference towards the partner: {@code BITS} + the txnId's hex digits, upper case. */
@@ -66,5 +75,20 @@ public class PartnerRequestMapper {
         new PartnerRequest.Payload(
             STATUS_QUERY, req.txnType(), req.partner(), partnerTxnRef(txnId), req.amount(),
             req.debitParty(), req.creditParty(), rec.partnerRef(), req.attributes()));
+  }
+
+  /**
+   * REVERSE of a partner call the core then refused to commit (ticket 96b). {@code requestId} is
+   * {@link #reverseRequestId}: one key for every resend. The amount is the original's; {@code
+   * originalPartnerRef} is the partner's reference of the PAY.
+   */
+  public PartnerRequest reverse(TransactionRecord rec, PartnerCall call, Instant now, Duration deadline) {
+    String txnId = rec.txnId().toString();
+    TxnRequest req = rec.request();
+    return new PartnerRequest(
+        1, call.family(), reverseRequestId(txnId), txnId, req.correlationId(), now, now.plus(deadline),
+        new PartnerRequest.Payload(
+            REVERSE, req.txnType(), req.partner(), partnerTxnRef(txnId), req.amount(), req.debitParty(),
+            req.creditParty(), rec.partnerRef(), req.attributes()));
   }
 }

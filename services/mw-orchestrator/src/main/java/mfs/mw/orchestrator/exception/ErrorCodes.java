@@ -68,6 +68,13 @@ public final class ErrorCodes {
   public static final String AUTH_BULK_CHANNEL = "MW-AUTH-021";
   /** The core did not confirm ReverseTransaction within {@code reversing-timeout}: MANUAL_REVIEW. */
   public static final String TMO_CORE_REVERSE = "MW-TMO-020";
+  /**
+   * After a confirmed partner REVERSE the core's status was not a hold that remains and not a hold
+   * that is gone (ticket 96b): MANUAL_REVIEW.
+   */
+  public static final String TMO_HOLD_UNCLEAR = "MW-TMO-021";
+  /** The partner did not acknowledge REVERSE within {@code reversing-timeout} (ticket 96b): MANUAL_REVIEW. */
+  public static final String TMO_PARTNER_REVERSE = "MW-TMO-022";
   /** Internal API: no valid client-credentials token (missing, expired, bad signature, issuer, audience): 401. */
   public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
   /** Internal API: the calling client may not ask (not allowed, or mw-portal-api without orgId): 403. */

@@ -6,6 +6,7 @@ import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
+import mfs.mw.orchestrator.service.saga.PendingLeg;
 import mfs.mw.orchestrator.service.saga.Status;
 
 /**
@@ -15,6 +16,7 @@ import mfs.mw.orchestrator.service.saga.Status;
  * {@code holdId} is the core's hold (flows that hold), {@code partnerRef} the partner's own
  * reference after a successful partner call, {@code reversalTxnId} the txnId of the REVERSAL
  * request that compensates this transaction (set when it moves to REVERSING).
+ * {@code pendingLeg} is the compensation a refused commit is waiting on (ticket 96b); null otherwise.
  */
 public record TransactionRecord(
     UUID txnId,
@@ -29,19 +31,29 @@ public record TransactionRecord(
     ErrorInfo error,
     String holdId,
     String partnerRef,
-    UUID reversalTxnId) {
+    UUID reversalTxnId,
+    PendingLeg pendingLeg) {
+
+  /** A record with no pending compensation leg. */
+  public TransactionRecord(
+      UUID txnId, Instant createdAt, Instant updatedAt, TxnRequest request, Status status,
+      Status previousStatus, String replyTo, Long feeMinor, String coreRef, ErrorInfo error,
+      String holdId, String partnerRef, UUID reversalTxnId) {
+    this(txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor, coreRef,
+        error, holdId, partnerRef, reversalTxnId, null);
+  }
 
   public TransactionRecord moved(Status to, Instant at, ErrorInfo newError) {
     return new TransactionRecord(
         txnId, createdAt, at, request, to, status, replyTo, feeMinor, coreRef,
-        newError != null ? newError : error, holdId, partnerRef, reversalTxnId);
+        newError != null ? newError : error, holdId, partnerRef, reversalTxnId, pendingLeg);
   }
 
   public TransactionRecord withCore(String newCoreRef, Long newFeeMinor) {
     return new TransactionRecord(
         txnId, createdAt, updatedAt, request, status, previousStatus, replyTo,
         newFeeMinor != null ? newFeeMinor : feeMinor,
-        newCoreRef != null ? newCoreRef : coreRef, error, holdId, partnerRef, reversalTxnId);
+        newCoreRef != null ? newCoreRef : coreRef, error, holdId, partnerRef, reversalTxnId, pendingLeg);
   }
 
   /** The core's hold id, when an event carried one (kept otherwise). */
@@ -50,7 +62,7 @@ public record TransactionRecord(
         ? this
         : new TransactionRecord(
             txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor,
-            coreRef, error, newHoldId, partnerRef, reversalTxnId);
+            coreRef, error, newHoldId, partnerRef, reversalTxnId, pendingLeg);
   }
 
   /** The partner's reference, when a reply carried one (kept otherwise). */
@@ -59,7 +71,14 @@ public record TransactionRecord(
         ? this
         : new TransactionRecord(
             txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor,
-            coreRef, error, holdId, newPartnerRef, reversalTxnId);
+            coreRef, error, holdId, newPartnerRef, reversalTxnId, pendingLeg);
+  }
+
+  /** The compensation leg a refused commit is waiting on; null clears it. */
+  public TransactionRecord withPendingLeg(PendingLeg leg) {
+    return new TransactionRecord(
+        txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor, coreRef,
+        error, holdId, partnerRef, reversalTxnId, leg);
   }
 
   /**
@@ -74,13 +93,13 @@ public record TransactionRecord(
   public TransactionRecord withRequest(TxnRequest chosen) {
     return new TransactionRecord(
         txnId, createdAt, updatedAt, chosen, status, previousStatus, replyTo, feeMinor, coreRef, error,
-        holdId, partnerRef, reversalTxnId);
+        holdId, partnerRef, reversalTxnId, pendingLeg);
   }
 
   /** The REVERSAL request that compensates this transaction. */
   public TransactionRecord withReversal(UUID newReversalTxnId) {
     return new TransactionRecord(
         txnId, createdAt, updatedAt, request, status, previousStatus, replyTo, feeMinor, coreRef,
-        error, holdId, partnerRef, newReversalTxnId);
+        error, holdId, partnerRef, newReversalTxnId, pendingLeg);
   }
 }

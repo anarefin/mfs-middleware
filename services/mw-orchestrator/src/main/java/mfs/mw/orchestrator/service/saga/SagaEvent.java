@@ -77,8 +77,42 @@ public sealed interface SagaEvent {
 
   record CommitAcknowledged() implements SagaEvent {}
 
-  /** The core refused CommitHold (CommitFailed): the partner was paid but the hold is gone. */
-  record CommitRefused() implements SagaEvent {}
+  /**
+   * The core refused the commit (CommitFailed or CreditRejected) after the partner was paid.
+   * {@code compensatePartner}: the flow has a partner leg, so the saga sends partner REVERSE
+   * (ticket 96b) instead of stopping in MANUAL_REVIEW.
+   */
+  record CommitRefused(boolean compensatePartner) implements SagaEvent {
+
+    /** A refusal with no partner leg to compensate. */
+    public CommitRefused() {
+      this(false);
+    }
+  }
+
+  /** The partner confirmed REVERSE of a refused commit (ticket 96b). */
+  record PartnerReverseConfirmed() implements SagaEvent {}
+
+  /** The partner definitely refused REVERSE of a refused commit (ticket 96b). */
+  record PartnerReverseRefused() implements SagaEvent {}
+
+  /**
+   * The core's answer, after the partner confirmed REVERSE, to whether the hold remains.
+   * EXISTS releases it; GONE ends REVERSED with nothing to release; UNCLEAR is MANUAL_REVIEW.
+   */
+  record HoldCheckResult(Hold hold) implements SagaEvent {
+
+    public enum Hold { EXISTS, GONE, UNCLEAR }
+  }
+
+  /** Resend ReleaseHold while the pending leg is {@link PendingLeg#HOLD_RELEASE}. */
+  record CompensatingReleaseRetry() implements SagaEvent {}
+
+  /** ReleaseHold of a hold that remained after the partner confirmed REVERSE. */
+  record CompensatingReleaseAcknowledged() implements SagaEvent {}
+
+  /** The core refused that ReleaseHold: the hold's state is no longer clear. */
+  record CompensatingReleaseRefused() implements SagaEvent {}
 
   record ReleaseAcknowledged() implements SagaEvent {}
 
