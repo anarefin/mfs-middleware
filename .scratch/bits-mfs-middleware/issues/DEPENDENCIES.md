@@ -110,7 +110,7 @@
 121-mw-adapter-interop                      92,97,102         open
 122-banglaqr                                121               open
 # --- M11 gate: UC-18, UC-19
-123-file-mocks                              102,94            open
+123-file-mocks                              102,94            done     90m      72 files +3401 −39     57a73927
 124-mw-compliance-ekyc                      94,102,106        open
 125-aml-feed-actions                        124,123,96        open
 126-mw-recon-matching                       123,95            open
