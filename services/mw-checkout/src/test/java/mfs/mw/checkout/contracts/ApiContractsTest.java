@@ -172,6 +172,39 @@ class ApiContractsTest {
   }
 
   @Test
+  void refundViewsListAndTheRefundIpnMatchTheContract() {
+    mfs.mw.checkout.mapper.RefundMapper mapper =
+        new mfs.mw.checkout.mapper.RefundMapper(JSON, Clock.fixed(NOW, ZoneOffset.UTC));
+    CheckoutSession paid = session(SessionStatus.PAID, TXN_ID, null);
+    Schema ipn = OpenApiSchemas.at(API, "webhooks", "refundIpn", "post", "requestBody", "content",
+        "application/json", "schema");
+    List<mfs.mw.checkout.entity.Refund> refunds = List.of(
+        refund(paid, mfs.mw.checkout.entity.Refund.Status.PENDING, null),
+        refund(paid, mfs.mw.checkout.entity.Refund.Status.COMPLETED, null),
+        refund(paid, mfs.mw.checkout.entity.Refund.Status.REJECTED, "MW-CORE-REFUND_EXCEEDS"));
+    for (mfs.mw.checkout.entity.Refund r : refunds) {
+      assertValid("Refund", mapper.view(r, paid));
+      if (r.status() != mfs.mw.checkout.entity.Refund.Status.PENDING) {
+        JsonNode body = JSON.readTree(mapper.firstIpnAttempt(r, paid, NOW).payload());
+        assertThat(ipn.validate(body)).as("%s", body).isEmpty();
+      }
+    }
+    assertValid("RefundList", new mfs.mw.checkout.dto.RefundList(
+        refunds.stream().map(r -> mapper.view(r, paid)).toList(), new mfs.mw.checkout.dto.Amount(0L, "BDT")));
+    // the REVERSAL the refund publishes is a valid mw.txn.request.v1 (owned by mw-orchestrator)
+    JsonNode reversal = JSON.readTree(JSON.writeValueAsString(
+        mapper.toTxnRequest(refunds.get(1), paid, CORRELATION_ID, NOW)));
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(reversal))
+        .as("%s", reversal).isEmpty();
+  }
+
+  private static mfs.mw.checkout.entity.Refund refund(
+      CheckoutSession s, mfs.mw.checkout.entity.Refund.Status status, String errorCode) {
+    return new mfs.mw.checkout.entity.Refund(mfs.mw.checkout.util.UuidV7.next(Clock.fixed(NOW, ZoneOffset.UTC)), s.sessionId(), s.merchantId(), "key-1", "h", 4_000,
+        "BDT", s.txnId(), "returned", status, errorCode, NOW, NOW);
+  }
+
+  @Test
   void theOpenApiSchemasReallyValidate() {
     // guard against a $ref that resolves to nothing (which would accept anything)
     assertThat(OpenApiSchemas.component(API, "PayResult").validate(JSON.readTree("{\"status\":\"DONE\"}")))

@@ -57,7 +57,7 @@ public class SessionOutcomes {
         switch (terminal) {
           case COMPLETED -> SessionStatus.PAID;
           case FAILED, REJECTED -> SessionStatus.FAILED;
-          case REVERSED -> null; // refunds are a later ticket; the session keeps PAID
+          case REVERSED -> null; // refunds are their own transactions (RefundOutcomes); the session keeps PAID
         };
     if (outcome == null) {
       return;

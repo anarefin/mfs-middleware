@@ -1,0 +1,53 @@
+# mw-auth-jws (ticket 87): signs the request body as a detached JWS (RFC 7515 appendix F) on the
+# request mw-http-call prepared. Called by mw-http-call (auth=jws).
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-auth-jws
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW auth JWS
+    description: >-
+      Signs the request body (empty when there is none) as a detached JWS, header.''.signature with
+      the protected header {"alg", "kid"?}, and puts it in one header (default X-JWS-Signature). The
+      private key (PKCS#8 PEM; RSA for RS256, P-256 for ES256) is a field of this partner's own
+      Vault secret, read when the route loaded (no mw-crypto key purpose fits; ticket 87). Input and
+      output: the prepared request; only headers change.
+    type: object
+    required: [secretField, alg]
+    properties:
+      secretField:
+        title: Key secret field
+        description: Field of this partner's own Vault secret holding the PKCS#8 PEM private key; a reference, never the value.
+        type: string
+        format: password
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      alg:
+        title: Algorithm
+        description: JWS alg, RS256 or ES256.
+        type: string
+        enum: [RS256, ES256]
+      header:
+        title: Signature header
+        description: Header carrying the detached JWS (empty = X-JWS-Signature); mw-http-call's authHeader.
+        type: string
+        default: ""
+      keyId:
+        title: Key id
+        description: Sent as the kid of the protected header when set.
+        type: string
+        default: ""
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - bean:
+            ref: mwAuth
+            method: "jws(${exchange}, '{{secretField}}', '{{alg}}', '{{header}}', '{{keyId}}')"

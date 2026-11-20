@@ -1,0 +1,29 @@
+{
+  "x-mw-derived-from": "api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/RefundRequest",
+  "type": "object",
+  "properties": {
+    "amount": {
+      "type": "object",
+      "required": [
+        "valueMinor",
+        "currency"
+      ],
+      "properties": {
+        "valueMinor": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "currency": {
+          "type": "string",
+          "enum": [
+            "BDT"
+          ]
+        }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 140
+    }
+  }
+}

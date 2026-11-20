@@ -164,6 +164,11 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 49 | [billpay] a FIXED biller refuses an amount other than the bill the app fetched before any hold | 1 | BILL_PAY app failure |
 | 49 | [billpay] a MINIMUM biller refuses an amount below its minimum before any hold | 1 | BILL_PAY app failure |
 | 49 | [billpay] an OPEN biller refuses an amount below its range before any hold | 1 | BILL_PAY app failure |
+| 50 | [checkout frs] T1 two partial refunds return the money to the payer and each sends a signed refund IPN | - | |
+| 50 | [checkout frs] T2 a refund past the payment is refused with MW-CORE-REFUND_EXCEEDS and moves nothing | - | |
+| 50 | [checkout frs] T6 the same Idempotency-Key twice refunds once and another body is MW-IDEM-001 | 2 | |
+| 50 | [checkout frs] T9 a session that was never paid is not refunded and nothing moves | - | |
+| 50 | [checkout frs] T10 a refund keeps the ledger identity: what the merchant gives back the payer gets | - | |
 | 01 | [p2p] a P2P completes and moves the money once | 1 | P2P app success |
 | 01 | [p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves | 1 | P2P app failure |
 | 01 | [p2p] a core rejection (over per-txn limit) moves no money | 1 | P2P app failure |
@@ -321,7 +326,8 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 
 Ticket 104. P2P (UC-04) is filled in; T5 is the folder 90 request. UC-08 top-up (ticket 112c) is
 folder `46-topup-operators`; its T5 waits out the inquiry schedule, so that cell stays `n/a`.
-T11 and T12 stay `n/a` until tickets 125 and 127. T10 names the request that checks the ledger
+UC-12 merchant refund (ticket 116) is folder `50-checkout-refund`; a refund calls the core only, so the
+external-partner columns T3/T4/T5/T7/T8 are `n/a`. T11 and T12 stay `n/a` until tickets 125 and 127. T10 names the request that checks the ledger
 identity; the mid-saga kill is `scripts/chaos.sh` with `CHAOS_TARGETS=mw-orchestrator`. A use
 case still waiting on its ticket stays `n/a`.
 
@@ -338,7 +344,7 @@ case still waiting on its ticket stays `n/a`.
 | UC-09 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-10 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-11 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
-| UC-12 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-12 | [checkout frs] T1 two partial refunds return the money to the payer and each sends a signed refund IPN | [checkout frs] T2 a refund past the payment is refused with MW-CORE-REFUND_EXCEEDS and moves nothing | n/a no external partner (core only; ticket 116) | n/a no external partner (core only; ticket 116) | n/a no external partner (core only; ticket 116) | [checkout frs] T6 the same Idempotency-Key twice refunds once and another body is MW-IDEM-001 | n/a no external partner (core only; ticket 116) | n/a no external partner (core only; ticket 116) | [checkout frs] T9 a session that was never paid is not refunded and nothing moves | [checkout frs] T10 a refund keeps the ledger identity: what the merchant gives back the payer gets | n/a ticket 125 | n/a ticket 127 |
 | UC-13 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-14 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-15 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |

@@ -1,0 +1,62 @@
+{
+  "name": "checkout-v1-refunds",
+  "desc": "Checkout merchant API: refund a paid payment (FRS CH-WEB-03, ticket 116) to mw-checkout. hmac-auth (method, path, Date, Digest, X-Nonce signed), consumer name as X-Mw-Merchant-Id, quota per merchant",
+  "uri": "/checkout/v1/payments/:paymentId/refunds",
+  "methods": [
+    "POST"
+  ],
+  "plugins": {
+    "client-control": {
+      "max_body_size": 4096
+    },
+    "hmac-auth": {
+      "allowed_algorithms": [
+        "hmac-sha256"
+      ],
+      "clock_skew": 300,
+      "signed_headers": [
+        "@request-target",
+        "date",
+        "digest",
+        "x-nonce"
+      ],
+      "validate_request_body": true,
+      "hide_credentials": true
+    },
+    "proxy-rewrite": {
+      "headers": {
+        "set": {
+          "X-Mw-Merchant-Id": "$consumer_name"
+        }
+      }
+    },
+    "limit-count": {
+      "count": 120,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "consumer_name",
+      "group": "checkout-v1-refunds",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "redis",
+      "redis_port": 6379,
+      "redis_password": "$env://REDIS_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": {
+      "connect": 5,
+      "send": 10,
+      "read": 30
+    },
+    "nodes": {
+      "mw-checkout:8080": 1
+    }
+  }
+}

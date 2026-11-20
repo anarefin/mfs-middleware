@@ -25,7 +25,7 @@ public class MerchantReplayInterceptor implements HandlerInterceptor {
 
   @Override
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-    if ("POST".equals(request.getMethod()) && "/checkout/v1/sessions".equals(request.getRequestURI())) {
+    if ("POST".equals(request.getMethod()) && guarded(request.getRequestURI())) {
       guard.check(
           request.getHeader(MerchantSessionController.MERCHANT_HEADER),
           request.getHeader(DATE_HEADER),
@@ -33,4 +33,12 @@ public class MerchantReplayInterceptor implements HandlerInterceptor {
     }
     return true;
   }
+
+  /** Session create and refund create (ticket 116): the requests that move money. */
+  static boolean guarded(String uri) {
+    return "/checkout/v1/sessions".equals(uri) || REFUNDS.matcher(uri).matches();
+  }
+
+  private static final java.util.regex.Pattern REFUNDS =
+      java.util.regex.Pattern.compile("/checkout/v1/payments/[^/]+/refunds");
 }
