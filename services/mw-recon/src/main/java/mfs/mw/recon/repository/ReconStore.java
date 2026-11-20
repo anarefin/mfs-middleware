@@ -309,6 +309,32 @@ public class ReconStore {
         """, UUID.class, txnId, status);
   }
 
+  /**
+   * The ACTIONED exceptions of a transaction whose action failed: the transaction reached a final status other than
+   * the one the action leads to (REC-05, FRS 10.4 #7).
+   */
+  public List<UUID> actionedFailed(UUID txnId, String status) {
+    return jdbc.queryForList("""
+        select id from recon_exception where state = 'ACTIONED' and txn_id = ? and expected_status <> ? order by id
+        """, UUID.class, txnId, status);
+  }
+
+  /**
+   * ACTIONED -> OPEN after a failed action, so it can be explained or actioned again; the last action and its change
+   * request stay on the row as history. 0 rows when it is not ACTIONED.
+   */
+  public int reopen(UUID id) {
+    return jdbc.update("""
+        update recon_exception set state = 'OPEN', expected_status = null where id = ? and state = 'ACTIONED'
+        """, id);
+  }
+
+  /** The projected {@code updatedAt} of a transaction, or null. */
+  public Instant txnUpdatedAt(UUID txnId) {
+    return jdbc.query("select updated_at from txn_view where txn_id = ?", (rs, n) -> rs.getTimestamp(1).toInstant(),
+        txnId).stream().findFirst().orElse(null);
+  }
+
   /** ACTIONED -> RESOLVED; 0 rows when it is not ACTIONED. */
   public int resolve(UUID id, Instant at) {
     return jdbc.update("""
