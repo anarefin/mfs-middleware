@@ -1,0 +1,103 @@
+# mw-sftp-source (ADR D28, ticket 86): the start of a batch partner route
+# (`from: kamelet:mw-sftp-source?...`): polls the partner's SFTP directory for reconciliation and
+# settlement files.
+#
+# stepwise=false on purpose (ticket 86 asked for stepwise=true; review of 86, ADR D28): with
+# streamDownload=true camel-sftp 4.22 hands the route an open ChannelSftp.get stream and, when
+# stepwise, then sends "cd" back to the start directory on that same channel while the stream is still
+# unread (SftpOperations.retrieveFileToStreamInBody). JSch runs one request at a time per channel, so
+# the cd interleaves with the open download (camel-ftp refuses the pair for FTP outright: "The option
+# stepwise is not supported for stream downloading"). stepwise=false sends no cd: it gets the file by
+# its path, which the loader keeps a relative path without . or .. segments. The stream download (a
+# file never fully in memory) is the requirement kept.
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-sftp-source
+  labels:
+    camel.apache.org/kamelet.type: source
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW SFTP source
+    description: >-
+      Polls one directory of the partner's SFTP host (camel-sftp) and hands each file to the route as
+      a stream (streamDownload, never fully in memory). The host key is checked strictly against the
+      partner's known hosts (a field of its own Vault secret, never the user's known_hosts file,
+      never written); the password or private key is a field of the same secret. A file is processed
+      once (JDBC idempotent repository in the adapter's own schema, key name-size-modified), only once
+      the partner stopped writing it (readLock=changed), and stays on the host: moved to .done after
+      the route (and its outbox write) succeeded, to .error when it failed; never deleted. Output: the
+      file content as a stream, the Camel file headers.
+    type: object
+    required: [host, username, directory, partnerId, knownHosts]
+    properties:
+      host:
+        title: Host
+        description: The partner's SFTP host, one of the record's allowedHosts.
+        type: string
+      port:
+        title: Port
+        description: SFTP port.
+        type: integer
+        default: 22
+      username:
+        title: User name
+        description: SFTP login.
+        type: string
+      directory:
+        title: Directory
+        description: Directory to poll, relative to the login's home (no .. segments).
+        type: string
+      delay:
+        title: Poll delay
+        description: Milliseconds between two polls, 100 or more (daily files need no tight poll; the connection is closed in between). Not with cron.
+        type: integer
+        default: 60000
+      cron:
+        title: Poll schedule
+        description: >-
+          Spring cron expression of six fields (second minute hour day month weekday, + for a space),
+          e.g. 0+0+6+*+*+* for 06:00 every day; polls on the schedule instead of every delay ms.
+        type: string
+      scheduler:
+        title: Scheduler
+        description: Set by the route loader (spring when cron is given); never by the route.
+        type: string
+        default: none
+      maxMessagesPerPoll:
+        title: Files per poll
+        description: At most this many files per poll.
+        type: integer
+        default: 10
+      password:
+        title: Password secret reference
+        description: Set by the route loader from secretField (auth=password) as a registry reference, never the value.
+        type: string
+        format: password
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      privateKey:
+        title: Private key secret reference
+        description: Set by the route loader from secretField (auth=key) as a registry reference, never the value.
+        type: string
+        format: password
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      knownHosts:
+        title: Known hosts reference
+        description: Set by the route loader from knownHostsField (the host's known_hosts lines in the partner's secret).
+        type: string
+      partnerId:
+        title: Partner id
+        description: Set by the route loader.
+        type: string
+  template:
+    from:
+      uri: "sftp:{{host}}:{{port}}/{{directory}}?username={{username}}&password={{?password}}&privateKey={{?privateKey}}&knownHosts={{knownHosts}}&strictHostKeyChecking=yes&useUserKnownHostsFile=false&autoCreateKnownHostsFile=false&delay={{delay}}&scheduler={{scheduler}}&scheduler.cron={{?cron}}&maxMessagesPerPoll={{maxMessagesPerPoll}}&readLock=changed&readLockCheckInterval=500&readLockTimeout=20000&idempotent=true&idempotentKey={{partnerId}}/${file:name}-${file:size}-${file:modified}&idempotentRepository=#mwSftpFiles&move=.done&moveFailed=.error&streamDownload=true&stepwise=false&disconnect=true&binary=true&connectTimeout=10000&soTimeout=30000"
+      steps:
+        - to: "kamelet:sink"

@@ -1,3 +1,8 @@
 {
-  "invalid-decimal-amount.json": ["/payload/amount/valueMinor must be integer"]
+  "invalid-decimal-amount.json": [
+    "/payload/amount/valueMinor must be integer"
+  ],
+  "invalid-npsb-return-without-amount.json": [
+    "/payload must have required property 'amount'"
+  ]
 }

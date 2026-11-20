@@ -1540,7 +1540,7 @@ components:
       pattern: "^[a-z0-9][a-z0-9-]{0,63}$"
     PartnerFamily:
       type: string
-      enum: ["telco", "billpay", "bank", "merchant", "card", "remit", "atm"]
+      enum: ["telco", "billpay", "bank", "merchant", "card", "remit", "atm", "interop"]
       description: The adapter that serves the partner
     PartnerTimeouts:
       type: object

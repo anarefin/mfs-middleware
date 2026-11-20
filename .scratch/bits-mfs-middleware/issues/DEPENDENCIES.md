@@ -142,7 +142,10 @@
 120a-atm-adapter-inbound                    95,97,102         done     -        283 files +26354 −31   372dceb2  (admin-api V20 atm; host port 8100. Inbound SOAP recorded locally; publish, token, cash flows, Newman 54 -> 120b)
 120b-atm-token-flows                        120a              open
 # --- M10 gate: UC-13..17
-121-mw-adapter-interop                      92,97,102         open
+121-mw-adapter-interop                      92,97,102         split (121-split-decisions.md, 2026-11-20)
+121a-interop-adapter-module                 92,97,102         done     90m      270 files +25086 −28   80896661  (admin-api V21 interop; host port 8102; NPSB participant mock; no npsb seed yet)
+121b-npsb-iso20022-wire                     121a              open   (Prowide, XSD, XML-DSig via mw-crypto, npsb seed, inbound endpoint, stateful mock)
+121c-npsb-flows-api                         121b              open   (orchestrator flows, app preview/confirm, Newman 57-npsb)
 122-banglaqr                                121               open
 # --- M11 gate: UC-18, UC-19
 123-file-mocks                              102,94            done     90m      72 files +3401 −39     57a73927
@@ -176,3 +179,4 @@
 137-frs-e2e-completion                      104-129(flows)    open
 138-frs-acceptance-gate                     137               open
 # --- M13 gate: FRS 10.4 acceptance criteria 1-7
+# --- M9 review fix A merged (2026-11-20, fix/m9-review-a eb265a20, 37 files +509 −40): aggregator bare 404 -> UNKNOWN, billMonth sent, checkout refund kept PENDING + duplicate guard, full reversal refused after a live refund (MW-VAL-021), dry-run OAuth2 dummy secret (8 adapter copies; interop synced at merge). Open: merchant NOTIFY retry/DLQ, linked-account owner binding + AVL rate limit (user decision), AVL check in W2B preview, 7 Lows.

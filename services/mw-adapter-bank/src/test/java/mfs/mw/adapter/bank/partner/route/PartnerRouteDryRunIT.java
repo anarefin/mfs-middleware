@@ -219,6 +219,12 @@ class PartnerRouteDryRunIT {
     assertThat(status("tokco", 1).path("status").asString()).isEqualTo("LIVE");
     SIM.verify(1, postRequestedFor(urlEqualTo("/sim/partners/tokco/oauth/token")));
     PARTNER.verify(0, postRequestedFor(urlEqualTo("/oauth/token")));
+    // M9 review (139): the dry-run target never sees the live client secret, only a fixed dummy one
+    String basic = SIM.findAll(postRequestedFor(urlEqualTo("/sim/partners/tokco/oauth/token"))).getFirst()
+        .getHeader("Authorization");
+    String credentials = new String(java.util.Base64.getDecoder().decode(basic.substring("Basic ".length())),
+        java.nio.charset.StandardCharsets.UTF_8);
+    assertThat(credentials).doesNotContain("fake-tokco-client-secret").endsWith(":dry-run-client-secret");
 
     PartnerCall live = new PartnerCall("tokco", "PAY", "BILL_PAY", "01933b8e-7c1a-7b2e-9f3d-000000000139", "corr-139",
         "BITS-139-A", Map.of("creditParty", Map.of("type", "BILLER_ACCOUNT", "id", "77001234")));

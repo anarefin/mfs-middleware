@@ -1,0 +1,299 @@
+# Static configuration baked into the image (spec 20.4). Per-environment overrides are
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from Vault
+# only (18.4) and are never written here.
+spring:
+  application:
+    name: mw-adapter-interop
+  threads:
+    virtual:
+      enabled: true
+  config:
+    # Spring Cloud Vault reads secrets at start-up (AppRole) when VAULT_ENABLED=true.
+    # The configtree carries the AppRole role-id/secret-id files of a stack (one file per property).
+    import: "optional:configtree:${MW_APPROLE_DIR:/run/mw/approle/},optional:vault://"
+  cloud:
+    vault:
+      enabled: ${VAULT_ENABLED:false}
+      uri: ${VAULT_ADDR:http://vault:8200}
+      authentication: APPROLE
+      app-role:
+        role-id: ${VAULT_ROLE_ID:}
+        secret-id: ${VAULT_SECRET_ID:}
+      kv:
+        enabled: true
+        backend: secret
+        default-context: ${spring.application.name}
+  mvc:
+    problemdetails:
+      enabled: false
+  # This service's own schema (16.2), migrated by Flyway on start-up from
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from Vault's database engine
+  # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
+    username: ${DB_USERNAME:adapter_interop_rw}
+    password: ${DB_PASSWORD:}
+    hikari:
+      schema: interop_ref
+      # Explicit, small pool (Kafka-driven or light on the database). PostgreSQL
+      # max_connections sizing: deploy/docker-compose.yml (postgres).
+      maximum-pool-size: 5
+  flyway:
+    schemas: interop_ref
+  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27); retry topics, templates and interceptors
+  # in config/KafkaConfig. Single KRaft node; topics come from deploy/kafka/ and are never
+  # auto-created by the service.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      # Exactly one copy per send, every in-sync replica acknowledges, order kept per key (6.1).
+      acks: all
+      # Strings, and the raw bytes of a record that could not be deserialized when it is parked
+      # on the DLQ.
+      key-serializer: org.springframework.kafka.support.serializer.StringOrBytesSerializer
+      value-serializer: org.springframework.kafka.support.serializer.StringOrBytesSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        # A partner callback waits for its publish: when Kafka is down it must fail fast with 503
+        # MW-SYS-EVENT_NOT_WRITTEN instead of blocking for the client defaults (60 s, 2 min).
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+    consumer:
+      # One group per service: listeners use groupId = "${spring.kafka.consumer.group-id}", and
+      # the group is the middle part of the service's retry and DLQ topic names.
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      # Offsets are committed per record, only after it is handled (the listener acknowledges)
+      # or parked on its next retry topic or the DLQ (the error handler); never on poll or close.
+      enable-auto-commit: false
+      # A record that is not UTF-8 text fails here, goes straight to the DLQ and never blocks
+      # its partition (messaging/Utf8Deserializer wrapped by ErrorHandlingDeserializer).
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.key.delegate.class: mfs.mw.adapter.interop.messaging.Utf8Deserializer
+        spring.deserializer.value.delegate.class: mfs.mw.adapter.interop.messaging.Utf8Deserializer
+    listener:
+      # Per-record commit, from the listener (Acknowledgment.acknowledge()) or the error handler.
+      ack-mode: manual_immediate
+      # Consumer threads per listener container; at most the topic's partition count.
+      concurrency: ${MW_KAFKA_LISTENER_CONCURRENCY:1}
+      # Micrometer observation: each record continues its traceparent (traceId/spanId in the MDC).
+      observation-enabled: true
+    admin:
+      # Topics belong to the platform (deploy/kafka/); the service never creates any.
+      auto-create: false
+      # The observed KafkaTemplate asks the admin client for the cluster id on its first send; with
+      # Kafka down that must fail as fast as the producer does, not after the client defaults (60 s).
+      operation-timeout: 5s
+      properties:
+        default.api.timeout.ms: 5000
+        request.timeout.ms: 5000
+
+# Camel, for the partner side only (ADR D1 amendment, D28): partner routes are YAML DSL loaded at
+# runtime (partner/route/PartnerRouteLoader) and built from the mw-* Kamelets (classpath:kamelets).
+camel:
+  main:
+    name: ${spring.application.name}
+    # No bodies in exchange logs, no tracer, no route dumps (dumps resolve placeholders); routes
+    # are never reloaded from files (D28: a partner route changes only through its record).
+    message-history: false
+    tracing: false
+    routes-reload-enabled: false
+    # The longest partner timeout (25 s) + 5 s, in seconds: calls in flight finish on shutdown.
+    shutdown-timeout: 30
+  component:
+    kamelet:
+      location: classpath:kamelets
+  health:
+    # Partner routes and their Kamelet routes report through the per-partner `partners` health
+    # indicator (partner/route/PartnerRouteHealth), so one partner that fails to start never makes
+    # the whole service DOWN or not ready.
+    exclude-pattern: partner-*,mw-*
+  metrics:
+    # Endpoint URIs stay out of metric tags (they are static and secret-free, but long).
+    uri-tag-enabled: false
+  micrometer:
+    observability:
+      # Route spans for partner calls (camel-micrometer-observability, the replacement of the
+      # deprecated camel-observation). The starter has no defaults for these two (it fails on start
+      # without them): one span per route and endpoint, none per processor.
+      trace-processors: false
+      disable-core-processors: false
+  vault:
+    hashicorp:
+      # Partner secrets through Camel's HashiCorp Vault properties function against Vault (D28):
+      # read when a partner route loads, never refreshed. The function uses Spring Cloud Vault's
+      # VaultTemplate (AppRole) when VAULT_ENABLED=true (partner/route/PartnerSecretsConfiguration).
+      refresh-enabled: false
+
+# Resilience defaults for client/ calls (19.2). A partner overrides them under
+# resilience4j.<kind>.instances.<partner> (base-config: default). Retry is only for idempotent
+# calls (status inquiry, GET): never annotate a payment call with @Retry.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 60
+        minimum-number-of-calls: 50
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        # 80% of the default partner timeout (30 s, 11.1); partners override both.
+        slow-call-duration-threshold: 24s
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      # The NPSB switch (ticket 121). Only transport failures, 5xx, timeouts and
+      # unreadable replies count as failures; RJCT answers are normal answers. 80% of the 10 s limit.
+      npsb:
+        base-config: default
+        slow-call-duration-threshold: 8s
+  bulkhead:
+    configs:
+      default:
+        max-concurrent-calls: 200
+        max-wait-duration: 0
+    instances:
+      npsb:
+        base-config: default
+        max-concurrent-calls: 100
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 30s
+        cancel-running-future: true
+    # Partner calls take their time limit from partner config (mw.partners.instances.<id>.timeout-ms),
+    # so a config-changed record can change it without a restart; no per-partner instance here.
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        exponential-max-wait-duration: 1s
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+
+logging:
+  structured:
+    format:
+      # JSON lines with the spec 21.1 fields; masking runs in the formatter (18.3).
+      console: mfs.mw.adapter.interop.logging.JsonLogFormatter
+
+server:
+  port: 8080
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: w3c
+
+mw:
+  # Partner engine (ADR D28, package partner): a partner is a record holding its Camel YAML DSL
+  # route (built from the mw-* Kamelets in classpath:kamelets), its JSONata mappings, the hosts it may
+  # call and its error-code map. These are seeds (version 0); a mw.config.changed.v1 PARTNER record
+  # (configKey partner/<id>, same field names in camelCase) replaces or adds one without a restart.
+  # Secrets are never here: a route names a field of the partner's own Vault secret
+  # (secret/mw-adapter-interop/<partner>), read when the route loads.
+  partners:
+    # partnerId a request names -> the partner that serves it (D28; no silent default partner). The
+    # orchestrator sends the switch's partner id (npsb) itself, so no alias is
+    # needed; any other id is refused MW-PTR-UNKNOWN-PARTNER.
+    partner-aliases: {}
+    # This adapter's family (ticket 83, 115, 118, 121): a partner record whose value.family is another one (telco,
+    # billpay, bank, merchant) belongs to another adapter and is skipped.
+    family: interop
+    # mTLS client contexts (ticket 87, static config only): <name>: {partner-id: <id>, truststore: true|false}; the key store
+    # is read once at startup from secret/mw-adapter-interop/<id> (fields <name>-keystore, base64 PKCS#12,
+    # <name>-keystore-password; with truststore: true also <name>-truststore and <name>-truststore-password,
+    # a failed read leaves the context unregistered, never the JVM trust store) into the bean
+    # mwTls-<name>, which only that partner's route may name (mw-http-call sslContextRef=<name>). None by default.
+    tls:
+      contexts: {}
+    # OAuth2 client credentials (mw-auth-oauth2-cc): a token is reused until expires_in minus this skew.
+    oauth2:
+      expiry-skew: 30s
+    # mw-recon (batch routes): data lines per file; a longer file is refused as a whole and moves to
+    # .error (all lines of a file are written in one transaction).
+    recon:
+      max-lines: ${MW_PARTNER_RECON_MAX_LINES:1000000}
+    # Where a new version's dry-run goes when its record names no sandbox (dryRun.baseUrl): {partnerId}
+    # is replaced, the host joins the candidate's allowed hosts. Empty in production (each record names
+    # its partner's sandbox); the dev profile points at mw-simulators' stub.
+    dry-run:
+      base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:}
+    config-consumer:
+      # Consumer of mw.config.changed.v1 (partner/config/PartnerConfigKafkaListener); tests switch it off.
+      enabled: true
+    # Security (static config only; a config-changed record can never widen it). A route may call
+    # only the hosts of its approved record (allowedHosts); a partner listed here can never leave
+    # these hosts whatever its record says (optional floor). https unless the host is an explicitly
+    # allowed dev/test host. A record breaking a rule is refused (event security.partner_route_refused)
+    # and the last good version stays.
+    security:
+      allowed-hosts:
+        npsb: ${MW_NPSB_ALLOWED_HOSTS:mw-simulators}
+      # Plain http for no host by default (ticket 50); only the dev Compose stack and the tests allow
+      # the simulator host.
+      insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:}
+    # No partner here: a production start has none until mw-admin-api publishes a partner/<id>
+    # record. The dev seed (simulator URL) is in application-dev.yml, active only with the dev
+    # profile (SPRING_PROFILES_ACTIVE=dev in deploy/docker-compose.yml, and the tests).
+  kafka:
+    # How long EventPublisher.publish waits for Kafka's acknowledgement (just above the producer's
+    # delivery.timeout.ms, so the producer decides first).
+    send-timeout: 12s
+    listener:
+      # How long a stopping listener container waits for its consumer thread.
+      shutdown-timeout: 10s
+    retry:
+      # Non-blocking retry topics <topic>.<group>.retry.1..3, then <topic>.<group>.dlq (19.2).
+      delays: 10s,1m,10m
+      # The config topic has no retry topics of this service: its listener never throws
+      # (partner/config/PartnerConfigKafkaListener).
+      exclude-topics: [mw.config.changed.v1]
+  outbox:
+    relay:
+      # Transactional outbox relay (6.4): claims up to batch-size unsent rows, sends them all
+      # without waiting, then stamps sent_at on the acknowledged ones in one statement. Polls
+      # again at once while batches come back full; waits one period once the outbox is drained.
+      enabled: true
+      period: 500ms
+      batch-size: 500
+  retention:
+    # Purge (service/RetentionService via scheduler/OutboxInboxPurgeJob): sent outbox rows and
+    # inbox rows older than these; unsent outbox rows never. ShedLock-guarded, one instance at a
+    # time, batch-size rows per statement, on a Spring cron ("-" switches it off).
+    outbox: 7d
+    inbox: 7d
+    batch-size: 1000
+    cron: "0 0 * * * *"
+  service:
+    name: ${spring.application.name}
+    version: ${MW_VERSION:0.1.0-SNAPSHOT}
+    env: ${MW_ENV:local}

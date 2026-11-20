@@ -151,7 +151,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts (117b); simulator (117d); orchestrator `W2bFlow` with a hold, bank routing V18, app `transfer-to-bank` preview/confirm and add money from a linked account (`linkedAccountId`, 117c); API suite folder `55-bank-avl-w2b` T1-T4, T6-T10 on a REST and a SOAP bank, bank callbacks through the APISIX route `partner-bank-callback` with a shared dev secret, account-number rule in `scripts/log-scan.sh` (117e); USSD Transfer to Bank stays app-only (user decision 2026-11-20; the USSD 'use the app' screen is open) |
 | `UC-16` remittance | USSD status by Upay txn id is core WAL-13 (109c); inbound credit is ticket 119 |
 | `UC-17` ATM | partial: inbound SOAP (verify, confirm, reversal, cash-in) and UcbAtmMock (120a); token issue, orchestrator flows and the suite remain ticket 120 |
-| `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
+| `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122; 121a built the `mw-adapter-interop` module (family `interop`) and the NPSB participant list mock; the ISO 20022 wire (121b) and the flows and API (121c) remain |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |
 | `UC-21` AML | ticket 125 |
 | `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports, the exception queue and its maker-checker actions done (tickets 127, 127b); the trust position job and API suite folder `61-recon-reports` done (ticket 127c; open item for Upay: the real core must serve the e-money total endpoint, see REC-07) |
@@ -270,7 +270,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-10 | done | four bill aggregators sslcommerz, ekpay, agg3 (SOAP), agg4 as generated route records (`deploy/partner-routes/aggregators/generate.mjs`) and mock profiles (ticket 114; agg4 JSON, not form/XML: open item) |
 | EXT-11 | done | merchant SOAP (115a, 115b): mw-adapter-merchant `merchant-soap`, mw-simulators `MerchantSoapMock`, orchestrator validate + notify |
 | EXT-12 | ticket 117 | partial: 20 bank profiles (REST and SOAP) generated from `deploy/partner-routes/bank/bank-profiles.csv`, AVL/W2B/STATUS/REVERSE routes (117a); mw-simulators bank gateway from the same CSV, seeded accounts, trigger table, mock party `bank-<code>`, health probe (117d); AVL API (117b), W2B flow (117c), bank callbacks at the edge and suite folder 55 (117e) |
-| EXT-13 | tickets 121, 122 | NPSB and BanglaQR mock switch |
+| EXT-13 | tickets 121, 122 | NPSB and BanglaQR mock switch; partial: mw-simulators party `npsb` with the seeded participant list (`NpsbSimulatorIT`, 121a); ISO 20022 transfers remain 121b |
 | EXT-14 | ticket 118 | done: CyberSource mock in mw-simulators (hosted page, test cards, signed 3-D Secure webhook, 118a; the capture echoes amount and currency, 118b), mw-adapter-card, orchestrator `AddMoneyCardFlow` and the app API (118b); folder 56 |
 | EXT-15 | ticket 119 | UCB IMT mock |
 | EXT-16 | ticket 120 | UCB ATM mock: dispense status in mw-simulators (`UcbAtmSimulatorIT`, 120a); the test-console page remains ticket 120 |

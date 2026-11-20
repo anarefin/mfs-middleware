@@ -73,11 +73,6 @@ public class RefundRepository {
         == 1;
   }
 
-  /** Removes a refund whose request was never sent (Kafka refused it), so its key can be used again. */
-  public void deleteUnsent(UUID refundId) {
-    jdbc.sql("delete from refund where refund_id = ? and status = 'PENDING'").param(refundId).update();
-  }
-
   private static Refund map(ResultSet rs, int row) throws SQLException {
     return new Refund(
         rs.getObject("refund_id", UUID.class),
