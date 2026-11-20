@@ -17,8 +17,17 @@ import org.springframework.validation.annotation.Validated;
  * @param inbox how long inbox rows are kept
  * @param batchSize rows deleted per statement
  * @param cron Spring cron for the purge job ({@code -} switches it off)
+ * @param events how long an audit event is retained; the table is append-only, so it is not deleted
+ * @param payloads how long an audit payload is retained; the table is append-only, so it is not deleted
+ * @param txnIndex how long a transaction search projection is kept
  */
 @Validated
 @ConfigurationProperties("mw.retention")
 public record RetentionProperties(
-    @NotNull Duration outbox, @NotNull Duration inbox, @Positive int batchSize, @NotBlank String cron) {}
+    @NotNull Duration outbox,
+    @NotNull Duration inbox,
+    @Positive int batchSize,
+    @NotBlank String cron,
+    @NotNull Duration events,
+    @NotNull Duration payloads,
+    @NotNull Duration txnIndex) {}

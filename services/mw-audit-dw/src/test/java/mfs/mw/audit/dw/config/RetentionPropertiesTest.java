@@ -38,6 +38,9 @@ class RetentionPropertiesTest {
     assertThat(props.inbox()).isEqualTo(Duration.ofDays(7));
     assertThat(props.batchSize()).isEqualTo(1000);
     assertThat(props.cron()).isEqualTo("0 0 * * * *");
+    assertThat(props.events()).isEqualTo(Duration.ofDays(395));
+    assertThat(props.payloads()).isEqualTo(Duration.ofDays(395));
+    assertThat(props.txnIndex()).isEqualTo(Duration.ofDays(395));
   }
 
   @Test

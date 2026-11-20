@@ -38,9 +38,44 @@ public class RetentionService {
     this.properties = properties;
   }
 
-  /** Purges both tables and returns how many rows each lost. */
+  private static final String TERMINAL = "('COMPLETED','FAILED','REJECTED','REVERSED')";
+
+  /** Purges both tables, terminal saga rows past their window, and expired idempotency keys. */
   public Purged purge() {
     OffsetDateTime now = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
+    int steps = deleteWhere(
+        "delete from saga_step where id in (select s.id from saga_step s"
+            + " left join transaction t on t.txn_id = s.txn_id"
+            + " where s.at < ? and (t.txn_id is null or t.status in " + TERMINAL + ")"
+            + " order by s.id limit ?)",
+        now.minus(properties.sagaSteps()));
+    int timers = deleteWhere(
+        "delete from saga_timer where (txn_id, step) in (select s.txn_id, s.step from saga_timer s"
+            + " left join transaction t on t.txn_id = s.txn_id"
+            + " where t.txn_id is null or (t.status in " + TERMINAL + " and t.updated_at < ?)"
+            + " order by s.txn_id limit ?)",
+        now.minus(properties.transactions()));
+    int partners = deleteWhere(
+        "delete from partner_call where id in (select c.id from partner_call c"
+            + " left join transaction t on t.txn_id = c.txn_id"
+            + " where c.sent_at < ? and (t.txn_id is null or t.status in " + TERMINAL + ")"
+            + " order by c.id limit ?)",
+        now.minus(properties.partnerCalls()));
+    int core = deleteWhere(
+        "delete from core_call where id in (select c.id from core_call c"
+            + " left join transaction t on t.txn_id = c.txn_id"
+            + " where c.sent_at < ? and (t.txn_id is null or t.status in " + TERMINAL + ")"
+            + " order by c.id limit ?)",
+        now.minus(properties.coreCalls()));
+    int txns = deleteWhere(
+        "delete from transaction where txn_id in (select txn_id from transaction"
+            + " where status in " + TERMINAL + " and updated_at < ? order by txn_id limit ?)",
+        now.minus(properties.transactions()));
+    int idem = deleteWhere(
+        "delete from idempotency where (channel, initiator_id, idem_key) in ("
+            + "select channel, initiator_id, idem_key from idempotency where expires_at < ?"
+            + " order by expires_at limit ?)",
+        now);
     Purged purged =
         new Purged(
             deleteInBatches(PURGE_OUTBOX, now.minus(properties.outbox())),
@@ -49,8 +84,19 @@ public class RetentionService {
         .addKeyValue("event", "outbox.inbox.purged")
         .addKeyValue("outboxRows", purged.outboxRows())
         .addKeyValue("inboxRows", purged.inboxRows())
-        .log("purged processed outbox and inbox rows");
+        .addKeyValue("transactions", txns)
+        .addKeyValue("sagaSteps", steps)
+        .addKeyValue("sagaTimers", timers)
+        .addKeyValue("partnerCalls", partners)
+        .addKeyValue("coreCalls", core)
+        .addKeyValue("idempotency", idem)
+        .addKeyValue("idempotencyWindow", properties.idempotency())
+        .log("purged processed outbox, inbox and terminal saga rows");
     return purged;
+  }
+
+  private int deleteWhere(String sql, OffsetDateTime cutoff) {
+    return deleteInBatches(sql, cutoff);
   }
 
   private int deleteInBatches(String sql, OffsetDateTime cutoff) {

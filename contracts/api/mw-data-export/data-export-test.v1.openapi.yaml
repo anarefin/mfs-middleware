@@ -1,0 +1,14 @@
+openapi: 3.1.0
+info:
+  title: mw-data-export test
+  version: 1.0.0
+  description: >
+    Dev/test only (mw.data-export.test-api.enabled). Exports today so the API suite can ask the
+    warehouse drop mock to check the batch. Key-auth at the test-only APISIX route.
+paths:
+  /test/v1/exports/today:
+    post:
+      operationId: exportToday
+      responses:
+        "200":
+          description: Today's drop was uploaded, or it had already been uploaded.

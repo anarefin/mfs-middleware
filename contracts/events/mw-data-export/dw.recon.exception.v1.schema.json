@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-data-export/dw.recon.exception.v1.schema.json",
+  "title": "dw.recon.exception.v1",
+  "description": "DW projection of a reconciliation exception (FRS DAT-01, ticket 128). The source topic arrives with ticket 127.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "exceptionId",
+    "exceptionClass",
+    "partner",
+    "txnId",
+    "amountMinor",
+    "statementRef",
+    "detectedAt",
+    "correlationId"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "exceptionId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "exceptionClass": {
+      "type": "string",
+      "minLength": 1
+    },
+    "partner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "txnId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "amountMinor": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "statementRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "detectedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -69,3 +69,12 @@ files:
   api/mw-core-mock/core-wallet.v1.openapi.yaml: mw-core-mock
   # test-only mock-control API of the core party and the core's global reset (ADR D33, ticket 103)
   api/mw-core-mock/core-mock-control.v1.openapi.yaml: mw-core-mock
+  events/mw-data-export/dw.txn.created.v1.schema.json: mw-data-export
+  events/mw-data-export/dw.txn.state-changed.v1.schema.json: mw-data-export
+  events/mw-data-export/dw.txn.completed.v1.schema.json: mw-data-export
+  events/mw-data-export/dw.notification.status.v1.schema.json: mw-data-export
+  events/mw-data-export/dw.recon.exception.v1.schema.json: mw-data-export
+  events/mw-data-export/dw.kyc.completed.v1.schema.json: mw-data-export
+  events/mw-data-export/dw.audit.operator-action.v1.schema.json: mw-data-export
+  api/mw-data-export/data-export.v1.openapi.yaml: mw-data-export
+  api/mw-data-export/data-export-test.v1.openapi.yaml: mw-data-export

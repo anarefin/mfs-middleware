@@ -43,6 +43,9 @@ The three partner envelopes keep the `family` enum and one `oneOf` branch per fa
 Other topics: `mw.txn.request.v1`, `mw.txn.status.v1` -> `events/mw-orchestrator/mw.txn.*.v1`;
 `mw.notify.request.v1`, `mw.notify.status.v1` -> `events/mw-notify/`; `mw.audit.event.v1` ->
 `events/mw-audit-dw/`; `mw.config.changed.v1` -> `events/mw-admin-api/`.
+The warehouse projections `dw.txn.created.v1`, `dw.txn.state-changed.v1`, `dw.txn.completed.v1`,
+`dw.notification.status.v1`, `dw.recon.exception.v1`, `dw.kyc.completed.v1` and
+`dw.audit.operator-action.v1` live under `events/mw-data-export/` (ticket 128).
 
 ### Ids and references
 

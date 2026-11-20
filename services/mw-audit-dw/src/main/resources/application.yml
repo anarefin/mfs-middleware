@@ -221,6 +221,11 @@ mw:
     inbox: 7d
     batch-size: 1000
     cron: "0 0 * * * *"
+    # Audit events and payloads are append-only (ticket 128, spec 17): these durations are the
+    # documented window and are not a delete. The transaction search projection is deletable.
+    events: 395d
+    payloads: 395d
+    txn-index: 395d
   audit-dw:
     # Consumer of mw.audit.event.v1 (messaging/AuditEventListener); tests switch it off.
     consumers:

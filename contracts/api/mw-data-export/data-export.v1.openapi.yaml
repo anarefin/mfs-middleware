@@ -1,0 +1,45 @@
+openapi: 3.1.0
+info:
+  title: mw-data-export internal
+  version: 1.0.0
+  description: >
+    Operator calls of the data warehouse export (ticket 128). Not routed at the edge.
+    Re-export one business day, or read an archived day's CSV.
+paths:
+  /internal/v1/exports/{date}:
+    post:
+      operationId: reexportDay
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+        - name: X-Mw-Operator-Id
+          in: header
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: The day was uploaded, or the upload was skipped.
+        "400":
+          description: The operator header is missing or the date is not a day.
+  /internal/v1/archive/{type}/{date}:
+    get:
+      operationId: readArchive
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema: { type: string }
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: The archived CSV.
+          content:
+            text/csv:
+              schema: { type: string }
+        "404":
+          description: No archive for that type and day.

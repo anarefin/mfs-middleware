@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "notificationId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b:sms",
+  "correlationId": "corr-128",
+  "channel": "SMS",
+  "template": "TXN_P2P_SENT",
+  "status": "SENT",
+  "recipientToken": "MSISDN_PAYER",
+  "sentAt": "2026-11-20T02:00:06Z"
+}

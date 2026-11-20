@@ -38,9 +38,18 @@ public class RetentionService {
     this.properties = properties;
   }
 
-  /** Purges both tables and returns how many rows each lost. */
+  private static final String PURGE_TXN_INDEX =
+      "delete from txn_index where txn_id in (select txn_id from txn_index where updated_at < ?"
+          + " order by txn_id limit ?)";
+
+  /**
+   * Purges the outbox, the inbox and the transaction search projection. Audit events and payloads
+   * stay: those tables are append-only, and {@code events} / {@code payloads} are the documented
+   * window only.
+   */
   public Purged purge() {
     OffsetDateTime now = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC);
+    int index = deleteInBatches(PURGE_TXN_INDEX, now.minus(properties.txnIndex()));
     Purged purged =
         new Purged(
             deleteInBatches(PURGE_OUTBOX, now.minus(properties.outbox())),
@@ -49,7 +58,10 @@ public class RetentionService {
         .addKeyValue("event", "outbox.inbox.purged")
         .addKeyValue("outboxRows", purged.outboxRows())
         .addKeyValue("inboxRows", purged.inboxRows())
-        .log("purged processed outbox and inbox rows");
+        .addKeyValue("txnIndex", index)
+        .addKeyValue("eventsKept", properties.events())
+        .addKeyValue("payloadsKept", properties.payloads())
+        .log("purged processed outbox, inbox and transaction index rows");
     return purged;
   }
 

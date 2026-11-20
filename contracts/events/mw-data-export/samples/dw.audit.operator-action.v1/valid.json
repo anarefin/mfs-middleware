@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "auditId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8c",
+  "correlationId": "corr-128",
+  "actorType": "user",
+  "actorId": "ops.checker1",
+  "action": "dw.export.replayed",
+  "resource": "export/2026-11-20",
+  "outcome": "SUCCESS",
+  "at": "2026-11-20T02:10:00Z",
+  "service": "mw-data-export"
+}

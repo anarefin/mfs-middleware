@@ -34,7 +34,7 @@
 # ops = Keycloak, Vault, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
-# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8095), the
+# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8096), the
 # two consoles (3000, 3001) and the platform (postgres 5432, redis 6379, kafka 9094, keycloak 8180,
 # vault 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
 # (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
@@ -49,7 +49,7 @@
 # Memory (laptop demo footprint: functional runs and feature exploration only, never load tests).
 # Target: the whole core profile + seed inside Docker Desktop at 8 GB on a personal laptop.
 # Hard guard: the limits of all long-running containers (no mw.oneshot label) must add up to
-# <= 8192 MiB; scripts/compose-check.sh fails above that (it sums the knob defaults below, or the
+# <= MW_RAM_BUDGET_MIB (default 12288); scripts/compose-check.sh fails above that (it sums the knob defaults below, or the
 # values set in the shell or deploy/.env), or when a long-running service has no limit.
 # The GC flags are the image's JVM_OPTS build arg (x-jvm-build-args, JAVA_TOOL_OPTIONS of every
 # start); the run adds only sizes (JDK_JAVA_OPTIONS in x-jvm-env). CPU: at most 1 CPU per JVM
@@ -86,7 +86,7 @@
 #   REDIS_MEM_LIMIT (64M)       redis                 8  (measured before the ticket 90 image swap)
 #   ADMIN_UI_MEM (64M)          mw-admin-ui           46  (Node.js standalone server; 160 -> 64 in ticket 62
 #                                                    to free memory for mw-crypto: peak x 1.3, rounded up)
-#   long-running total with the defaults: 8176 of the 8192 guard (ticket 67: -320 APP_MEM_LIMIT, +320
+#   long-running total with the defaults: 8560 of the 12288 budget (ticket 128: +384 mw-data-export; ticket 67: -320 APP_MEM_LIMIT, +320
 #                                                    mw-auth; sum of the measured peaks: 6249 without mw-auth)
 #   fixed (outside the guard): one-shots exit before their service starts: provision 128,
 #   kafka-init 512 (3 parallel CLI JVMs; 8 were OOM-killed at 384), apisix-init 256 (apisix-init-tester
@@ -200,6 +200,7 @@ volumes:
   adapter-bank-approle:
   orchestrator-approle:
   audit-dw-approle:
+  data-export-approle:
   app-gateway-approle:
   notify-approle:
   ussd-approle:
@@ -212,6 +213,8 @@ volumes:
   softhsm-tokens:
   # mw-audit-dw's export of the signed daily audit anchors (ticket 74; WORM target TBC)
   audit-anchors:
+  # mw-data-export's gzipped daily archives (ticket 128)
+  dw-archive:
 
 services:
   # ------------------------------------------------------------ platform (no profile: always start)
@@ -399,6 +402,7 @@ services:
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
+      KC_MW_DATA_EXPORT_SECRET: ${KC_MW_DATA_EXPORT_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
       KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       KC_MW_USSD_SECRET: ${KC_MW_USSD_SECRET:?cp dev.env.defaults .env}
@@ -716,6 +720,7 @@ services:
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
+      KC_MW_DATA_EXPORT_SECRET: ${KC_MW_DATA_EXPORT_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
       KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       KC_MW_USSD_SECRET: ${KC_MW_USSD_SECRET:?cp dev.env.defaults .env}
@@ -744,6 +749,7 @@ services:
       - simulators-approle:/out/simulators
       - orchestrator-approle:/out/orchestrator
       - audit-dw-approle:/out/audit-dw
+      - data-export-approle:/out/data-export
       - app-gateway-approle:/out/app-gateway
       - notify-approle:/out/notify
       - ussd-approle:/out/ussd
@@ -1002,6 +1008,30 @@ services:
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT_LARGE:-448M}" }
+
+  # Data warehouse stream, daily SFTP batch and archive (ticket 128, profile core).
+  mw-data-export:
+    <<: *app
+    profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_DATA_EXPORT:-8096}:8080"
+    image: mfs-mw/mw-data-export:local
+    build: { context: ../services/mw-data-export, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+    volumes:
+      - data-export-approle:/run/mw/approle:ro
+      - dw-archive:/var/lib/mw/dw-archive
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      # mTLS client certificate (pki_int/issue/mw-data-export) for tokenise at mw-crypto
+      MW_TLS_ENABLED: "true"
+      # Dev/test only: POST /test/v1/exports/today, reached through the test-only APISIX route.
+      MW_DATA_EXPORT_TEST_API_ENABLED: "true"
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
   # Customer app API (spec 9.1).
   mw-app-gateway:
@@ -1450,6 +1480,7 @@ services:
       mw-simulators: { condition: service_healthy }
       mw-notify: { condition: service_healthy }
       mw-audit-dw: { condition: service_healthy }
+      mw-data-export: { condition: service_healthy }
       mw-ussd: { condition: service_healthy }
       mw-adapter-telco: { condition: service_healthy }
       mw-adapter-billpay: { condition: service_healthy }

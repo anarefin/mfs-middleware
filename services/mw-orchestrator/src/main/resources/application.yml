@@ -293,6 +293,13 @@ mw:
     inbox: 7d
     batch-size: 1000
     cron: "0 0 * * * *"
+    # Online retention of terminal saga data (spec 17, ticket 128): about 13 months. Idempotency
+    # rows are deleted once expires_at has passed; this duration is that same 72 hour window.
+    transactions: 395d
+    saga-steps: 395d
+    partner-calls: 395d
+    core-calls: 395d
+    idempotency: 72h
   service:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}

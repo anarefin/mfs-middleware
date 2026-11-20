@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "correlationId": "corr-128",
+  "channel": "APP",
+  "txnType": "P2P",
+  "status": "COMPLETED",
+  "amountMinor": 100,
+  "currency": "BDT",
+  "payerToken": "MSISDN_PAYER",
+  "payeeToken": "MSISDN_PAYEE",
+  "requestedAt": "2026-11-20T02:00:00Z",
+  "updatedAt": "2026-11-20T02:00:01Z",
+  "completedAt": "2026-11-20T02:00:05Z"
+}

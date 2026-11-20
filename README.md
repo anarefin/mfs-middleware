@@ -46,7 +46,7 @@ runs in Docker.
 
 | What | Why | Check |
 | --- | --- | --- |
-| Linux or macOS host, 4+ CPU cores, 16 GB RAM, 40 GB free disk | the stack's memory limits add up to about 8.0 GB (8176 MiB) (`./gradlew :composeCheck` caps them at 8 GB: a laptop demo footprint, never a load test host); images and Gradle caches take about 15 GB | `nproc` / `sysctl -n hw.ncpu` |
+| Linux or macOS host, 4+ CPU cores, 16 GB RAM, 40 GB free disk | the stack's memory limits add up to 8560 MiB (`./gradlew :composeCheck` caps them at 12 GB, `MW_RAM_BUDGET_MIB` default 12288: a laptop demo footprint, never a load test host); images and Gradle caches take about 15 GB | `nproc` / `sysctl -n hw.ncpu` |
 | Docker Engine with the Compose v2 plugin, 2.20 or newer (profiles, `up --wait`, `wait`); on macOS Docker Desktop with at least 8 GB memory for its VM | every container, and the Testcontainers tests of `./gradlew build` | `docker compose version` |
 | JDK 25 (Temurin or any other build) on `PATH` or in `JAVA_HOME` | the images do not compile code: they copy `build/libs/mw-<module>.jar`, built on the host. No Gradle install needed: the repo ships `./gradlew` | `java -version` |
 | bash, git, curl, jq | `scripts/`; jq for `scripts/smoke.sh`, `scripts/edge-test.sh`, `scripts/security.sh` | `jq --version` |
@@ -106,7 +106,7 @@ Without the test console: `docker compose --profile core --profile seed up -d --
 Compose builds the images (`mfs-mw/<service>:local`, both consoles included), then starts everything in dependency order:
 the platform, the one-shots (`kafka-init` creates the topics, `etcd-init` and `apisix-init` the
 edge config, `provision` every service's Vault secret, database role, schema and AppRole), the
-15 services (mw-auth and mw-crypto included) and the admin console, then the one-shot `mw-seeder`,
+16 services (mw-auth, mw-crypto and mw-data-export included) and the admin console, then the one-shot `mw-seeder`,
 and with `--profile tester` the one-shot `apisix-init-tester` (the test-only routes) and the test console at https://localhost/tester. `provision` runs again on every
 `up` and creates what is missing, so a new service's schema appears without dropping volumes.
 `deploy/.env` carries the short test timers (core and partner deadlines, status inquiry, reversal,
@@ -366,12 +366,8 @@ peaks, is the header of `deploy/docker-compose.yml`.
 | `SOFTHSM_MEM` (48M) | `softhsm` (profiles `minimal` and `core`) |
 | `ADMIN_UI_MEM` (64M) | `mw-admin-ui` (was 160M; trimmed in ticket 62 to free memory for `mw-crypto`: measured peak 46 MiB x 1.3, rounded up to 32 MiB) |
 
-With the defaults the long-running limits add up to 8176 MiB, inside the old 8192 MiB laptop guard (ticket 62 added
-`mw-crypto` at 320M and trimmed `ADMIN_UI_MEM` 160M -> 64M; ticket 67 added `mw-auth` at 320M and
-trimmed `APP_MEM_LIMIT` 416M -> 384M on its ten services). Ticket 72 (channels on mw-auth's
-assertion, the core PIN scheme removed) adds no container and no limit: mw-ussd and mw-checkout gain
-an mTLS client (a few MiB inside their 384M) and mw-core-mock loses bcrypt, so the core profile stays
-at 8176 of 8192 MiB; no stack was measured for it, so no limit was cut. Raise `APP_MEM_LIMIT` in `deploy/.env` if a
+With the defaults the long-running limits add up to 8560 MiB of the 12288 MiB budget (`MW_RAM_BUDGET_MIB`).
+Ticket 128 adds `mw-data-export` at 384M (`APP_MEM_LIMIT`) on profile `core`. Raise `APP_MEM_LIMIT` in `deploy/.env` if a
 service is killed for memory (exit 137). Raise `ADMIN_UI_MEM` in `deploy/.env` if
 the admin console is killed for memory under a long Playwright run.
 
@@ -403,6 +399,7 @@ https://localhost on 443. Production stays edge-only (ADR D3 amendment).
 | 8093 | `mw-portal-api` (`MW_PORT_PORTAL_API`) |
 | 8094 | `mw-crypto`, the HSM gateway (`MW_PORT_CRYPTO`) |
 | 8095 | `mw-auth`, wallet authentication: its public port (`MW_PORT_AUTH`; the mTLS internal API 8443 is not published) |
+| 8096 | `mw-data-export` (`MW_PORT_DATA_EXPORT`) |
 | 3000 | `mw-admin-ui`, path `/console` (`MW_PORT_ADMIN_UI`) |
 | 3001 | `mw-test-console`, profile `tester` (`MW_PORT_TEST_CONSOLE`) |
 | 5432 | `postgres` (`MW_PORT_POSTGRES`) |

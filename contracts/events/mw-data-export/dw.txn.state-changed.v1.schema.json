@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-data-export/dw.txn.state-changed.v1.schema.json",
+  "title": "dw.txn.state-changed.v1",
+  "description": "DW projection of a transaction state change (FRS DAT-01, ticket 128). Party MSISDNs are tokens.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "txnId",
+    "correlationId",
+    "channel",
+    "txnType",
+    "status",
+    "amountMinor",
+    "currency",
+    "payerToken",
+    "payeeToken",
+    "requestedAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "txnId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "channel": {
+      "type": "string",
+      "minLength": 1
+    },
+    "txnType": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "minLength": 1
+    },
+    "previousStatus": {
+      "type": "string",
+      "minLength": 1
+    },
+    "amountMinor": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "currency": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 3
+    },
+    "payerToken": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payeeToken": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requestedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

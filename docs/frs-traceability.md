@@ -154,7 +154,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |
 | `UC-21` AML | ticket 125 |
-| `UC-22` recon and DW export | tickets 126, 127, 128 |
+| `UC-22` recon and DW export | DW export done (ticket 128); recon remains tickets 126, 127 |
 
 ## 3. Common platform (FRS 3)
 
@@ -246,7 +246,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-11 | ticket 120 | ATM one-time token |
 | FL-12 | tickets 121, 122 | BanglaQR on-us and off-us |
 | FL-13 | done | each bulk row is its own transaction linked to the batch (mw-portal-api, `BULK_DISBURSE`) |
-| FL-14 | tickets 125, 128 | completion SMS and event built; push next to the SMS (SMS always, push optional) in mw-notify (ticket 110, `PushDispatchIT`); AML feed 125, DW 128 |
+| FL-14 | ticket 125 | completion SMS and event built; push next to the SMS (SMS always, push optional) in mw-notify (ticket 110, `PushDispatchIT`); DW stream and daily drop done (ticket 128, `DwStreamIT`); AML feed remains 125 |
 
 ## 6. Connectors and mocks (FRS 6)
 
@@ -274,7 +274,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-14 | ticket 118 | CyberSource mock |
 | EXT-15 | ticket 119 | UCB IMT mock |
 | EXT-16 | ticket 120 | UCB ATM mock |
-| EXT-17 | ticket 128 | mock side done (ticket 123): party `dw` checks each `control_<date>.json` drop of `dw/in` (row count, sha256, header per file type, `seed/v1/dw/schemas.json`), verdict in the journal (`DwDropValidatorTest`, `SftpMocksIT`); the export in 128 |
+| EXT-17 | done | mock side (ticket 123) and the export (ticket 128): `mw-data-export` writes the daily drop, party `dw` checks `control_<date>.json` (`DwDailyExportIT`, folder 62) |
 | EXT-18 | done | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93), the orchestrator calls it (`client/CoreWalletClient`, ticket 95a), mw-auth checks a PIN reset's KYC factors (`client/CoreClient`) and mw-admin-api unlocks an account (`client/CoreAccountClient`) over it (ticket 95b); the core command topics and `core.command.v1` are retired, the core events stay on Kafka |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
 | MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
@@ -335,10 +335,10 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | AUD-03 | done | search by txnId, actor, action, resource, outcome, time, and (ticket 130) partner, channel, status, amount range, MSISDN (TOKENISE_MSISDN token) via `audit.txn_index`; 3 s over 30 days proven by `AuditSearchPerfIT` (`slow-wait`) |
 | AUD-04 | ticket 135 | `GET /internal/v1/audit/transactions/{txnId}/timeline`: hops in order with latency, gaps and masked payloads (`TimelineIT`); mw-admin-api transaction detail does not call it yet (UI ticket 135) |
 | AUD-05 | done | `GET /internal/v1/audit/search/export.csv` with a row cap; every export writes an `audit.search.exported` operator-action record into the chain (`ExportAuditedIT`) |
-| DAT-01 | deviation | JSON Schema in Git, no schema registry (M9, D10, D31): the FRS allows JSON Schema; the registry is not run. The FRS topics come with tickets 127 (`recon.exception`) and 128 |
-| DAT-02 | ticket 128 | daily DW batch |
-| DAT-03 | ticket 128 | PII tokenisation policy |
-| DAT-04 | ticket 128 | retention and archival |
+| DAT-01 | deviation | JSON Schema in Git, no schema registry (M9, D10, D31): the FRS allows JSON Schema; the registry is not run. `dw.*` topics are in `contracts/events/mw-data-export/` (ticket 128). The `recon.exception` schema is ticket 127 |
+| DAT-02 | done | daily DW batch: Kafka stream and the SFTP drop (`DwStreamIT`, `DwDailyExportIT`) |
+| DAT-03 | done | PII policy deny-by-default, tokenise through mw-crypto (`PiiPolicyTest`) |
+| DAT-04 | done | retention per data type on the saga and the audit projection; archival of the batch facts (`ArchivalIT`) |
 
 ## 9. Admin console (FRS 9.1)
 

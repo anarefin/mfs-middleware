@@ -256,5 +256,6 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 45 | [admin partner-config credentials] an uploaded partner credential is approved by another checker into Vault and only its metadata is ever shown | - |  | FR-19, SEC-04 |
 | 45 | [admin credentials] the expiry dashboard lists a credential expiring within 30 days, soonest first | - |  |
 | 45 | [admin partner-config] an approved response-code map is published as the partner's next version | - |  | FR-19 |
+| 62 | [mock] today's data warehouse export is accepted by the drop check | - |  |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

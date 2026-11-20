@@ -13,12 +13,14 @@
 #              topic (scripts/test/test_platform_compose.sh checks it).
 #
 # MVP subset of the 6.2 catalogue. Deferred and therefore left out: the interop and
-# compliance partner families, mw.compliance.instruction.v1, mw.recon.result.v1,
-# dw.txn.event.v1.
+# compliance partner families, mw.compliance.instruction.v1, mw.recon.result.v1.
+# dw.* topics are produced by mw-data-export (ticket 128). mw.recon.exception.v1 and
+# mw.kyc.completed.v1 are created here so the export can subscribe; their schemas arrive
+# with tickets 127 and 124.
 
 mw.txn.request.v1              48 7d retry=mw-orchestrator
 mw.txn.action.v1                6 7d retry=mw-orchestrator
-mw.txn.status.v1               48 7d retry=mw-app-gateway,mw-audit-dw,mw-checkout,mw-notify,mw-portal-api
+mw.txn.status.v1               48 7d retry=mw-app-gateway,mw-audit-dw,mw-checkout,mw-data-export,mw-notify,mw-portal-api
 core.wallet.event.v1           48 7d retry=mw-orchestrator,mw-auth
 auth.wallet-lock.v1             6 7d retry=mw-auth
 core.payment.event.v1          48 7d retry=mw-orchestrator
@@ -28,10 +30,19 @@ mw.partner.request.bank.v1     24 3d retry=mw-adapter-bank
 mw.partner.reply.v1            48 3d retry=mw-orchestrator
 mw.partner.inbound.v1          24 7d retry=mw-orchestrator
 mw.notify.request.v1           24 3d retry=mw-notify
-mw.notify.status.v1            12 7d
+mw.notify.status.v1            12 7d retry=mw-data-export
 # ticket 110: push device tokens from mw-app-gateway, kept by mw-notify (key walletId)
 mw.notify.push-token.v1        12 7d retry=mw-notify
-mw.audit.event.v1              24 7d retry=mw-audit-dw
+mw.audit.event.v1              24 7d retry=mw-audit-dw,mw-data-export
+mw.recon.exception.v1           6 7d retry=mw-data-export
+mw.kyc.completed.v1             6 7d retry=mw-data-export
+dw.txn.created.v1              12 7d
+dw.txn.state-changed.v1        12 7d
+dw.txn.completed.v1            12 7d
+dw.notification.status.v1      12 7d
+dw.recon.exception.v1           6 7d
+dw.kyc.completed.v1             6 7d
+dw.audit.operator-action.v1     6 7d
 mw.config.changed.v1            6 compact retry=mw-ussd,mw-notify
 mw.partner.route.status.v1      6 7d retry=mw-admin-api
 # ticket 86: lines of the partners' SFTP reconciliation files; consumer mw-recon (ticket 88) adds its retry group

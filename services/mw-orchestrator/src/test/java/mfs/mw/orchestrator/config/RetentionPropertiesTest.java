@@ -38,6 +38,11 @@ class RetentionPropertiesTest {
     assertThat(props.inbox()).isEqualTo(Duration.ofDays(7));
     assertThat(props.batchSize()).isEqualTo(1000);
     assertThat(props.cron()).isEqualTo("0 0 * * * *");
+    assertThat(props.transactions()).isEqualTo(Duration.ofDays(395));
+    assertThat(props.sagaSteps()).isEqualTo(Duration.ofDays(395));
+    assertThat(props.partnerCalls()).isEqualTo(Duration.ofDays(395));
+    assertThat(props.coreCalls()).isEqualTo(Duration.ofDays(395));
+    assertThat(props.idempotency()).isEqualTo(Duration.ofHours(72));
   }
 
   @Test

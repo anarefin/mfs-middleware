@@ -13,7 +13,7 @@ SECRETS_AHEAD=""
 # 66): the two mTLS servers (mw-crypto; mw-auth's internal API, ticket 67) and every caller of them.
 # Each gets a pki_int role named after it (CN and SAN = its compose DNS name, 72 h) and its AppRole
 # policy may issue from that role only. A role may exist before its service is in SERVICES.
-PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api"
+PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api mw-data-export"
 
 # EDGE_SECRETS: the credentials APISIX reads from the Vault KV v1 mount apisix/ (ticket 100a, lib.sh
 # apisix_edge), <clientId>:<VAR>: apisix/<clientId> field password = deploy/.env's VAR, synced on every
@@ -25,7 +25,7 @@ EDGE_SECRETS="ussd-gp:USSD_GP_GATEWAY_SECRET ussd-robi:USSD_ROBI_GATEWAY_SECRET 
 SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank
-  mw-portal-api:portal-api mw-checkout:checkout"
+  mw-portal-api:portal-api mw-checkout:checkout mw-data-export:data-export"
 
 # Ledger stand-in. No PIN key since ticket 72 (D22): it verifies mw-auth's assertions with the
 # public set at mw-auth's assertion-jwks.json, which needs no secret.
@@ -200,6 +200,14 @@ provision_mw_portal_api() {
 # The dev merchants' signing secrets (ticket 31; each the same value as its APISIX hmac-auth consumer
 # merchant_demo, merchant_pharmacy, merchant_fashion) and its realm services client secret for mw-auth's internal API (checkout OTP and
 # txn authorisation, ticket 72); its certificate comes from PKI_SERVICES.
+# Realm services client for mw-crypto tokenise, and the dev SFTP password of the warehouse drop.
+provision_mw_data_export() {
+  gen_once spring.datasource.password 40
+  sync_env mw.export.sftp.password SFTP_DEV_PASSWORD
+  sync_env mw.export.crypto.client-secret KC_MW_DATA_EXPORT_SECRET
+  db_role data_export_rw data_export
+}
+
 provision_mw_checkout() {
   gen_once spring.datasource.password 40
   sync_env mw.checkout.merchants.merchant_demo.secret CHECKOUT_DEMO_MERCHANT_SECRET

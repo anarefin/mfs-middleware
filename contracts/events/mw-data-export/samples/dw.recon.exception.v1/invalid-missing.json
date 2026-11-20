@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "exceptionClass": "MISSING_IN_LEDGER",
+  "partner": "trustbank",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b",
+  "amountMinor": 100,
+  "statementRef": "TB-1",
+  "detectedAt": "2026-11-20T02:00:07Z",
+  "correlationId": "corr-128"
+}

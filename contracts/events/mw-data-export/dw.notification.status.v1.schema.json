@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-data-export/dw.notification.status.v1.schema.json",
+  "title": "dw.notification.status.v1",
+  "description": "DW projection of a notification status (FRS DAT-01, ticket 128). recipientToken is a token when present.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "notificationId",
+    "channel",
+    "status",
+    "sentAt"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "notificationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "channel": {
+      "type": "string",
+      "minLength": 1
+    },
+    "template": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recipientToken": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sentAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

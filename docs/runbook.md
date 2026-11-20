@@ -98,6 +98,7 @@ D3 amendment 2026-11-13).
 | 8093 | `mw-portal-api` | `MW_PORT_PORTAL_API` |
 | 8094 | `mw-crypto` (HTTPS with a mandatory client certificate, D24: `scripts/smoke.sh` shows a call; its actuator is on 8081 inside the network) | `MW_PORT_CRYPTO` |
 | 8095 | `mw-auth` public port (`/auth/v1/**` from ticket 69; its internal API 8443 needs a client certificate and is not published, its actuator is on 8081 inside the network) | `MW_PORT_AUTH` |
+| 8096 | `mw-data-export` (profile `core`; the internal API is not on the edge) | `MW_PORT_DATA_EXPORT` |
 | 3000 | `mw-admin-ui` (path `/console`) | `MW_PORT_ADMIN_UI` |
 | 3001 | `mw-test-console` (profile `tester`) | `MW_PORT_TEST_CONSOLE` |
 | 5432 | `postgres` | `MW_PORT_POSTGRES` |
@@ -480,6 +481,10 @@ class per layout).
    The second line prints the known_hosts lines for the `sftp-known-hosts` field; `partner-sftp` regenerates
    its host keys when the container is recreated, so write them again then. The lines are in the
    adapter's outbox (`mw.partner.recon.v1`) and on Kafka; their consumer, mw-recon, is ticket 88.
+
+## Data warehouse export
+
+The daily job uploads yesterday (Asia/Dhaka) at 01:10 to the SFTP folder `dw/in`: `transactions`, `wallet_snapshot`, `notifications`, `recon` and `control_<date>.json`. A day is uploaded once. An operator re-export is `POST /internal/v1/exports/YYYY-MM-DD` with header `X-Mw-Operator-Id` on the service port 8096 (not routed at the edge). That call overwrites the files and writes an audit event `dw.export.replayed`. An archived day comes back as CSV from `GET /internal/v1/archive/transactions/YYYY-MM-DD` (also `notifications` and `recon`). The dev test route `POST /test/data-export/v1/exports/today` (key-auth, test routes on, profile `tester` for the SFTP host) uploads today so the warehouse mock can check the drop.
 
 ## Gate and security runs on this host
 

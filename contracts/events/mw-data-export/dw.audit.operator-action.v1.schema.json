@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-data-export/dw.audit.operator-action.v1.schema.json",
+  "title": "dw.audit.operator-action.v1",
+  "description": "DW projection of an operator audit action (FRS DAT-01, ticket 128). The operator username stays clear. Before and after are not copied.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "auditId",
+    "correlationId",
+    "actorType",
+    "actorId",
+    "action",
+    "resource",
+    "outcome",
+    "at",
+    "service"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "auditId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actorType": {
+      "const": "user"
+    },
+    "actorId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+([._][a-z0-9]+)*$"
+    },
+    "resource": {
+      "type": "string",
+      "minLength": 1
+    },
+    "outcome": {
+      "enum": [
+        "SUCCESS",
+        "FAILURE",
+        "DENIED"
+      ]
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "service": {
+      "type": "string",
+      "pattern": "^mw-[a-z0-9-]+$"
+    }
+  }
+}

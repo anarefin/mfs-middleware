@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "correlationId": "corr-128",
+  "actorType": "user",
+  "actorId": "ops.checker1",
+  "action": "dw.export.replayed",
+  "resource": "export/2026-11-20",
+  "outcome": "SUCCESS",
+  "at": "2026-11-20T02:10:00Z",
+  "service": "mw-data-export"
+}

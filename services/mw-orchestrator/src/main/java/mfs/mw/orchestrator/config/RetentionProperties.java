@@ -17,8 +17,21 @@ import org.springframework.validation.annotation.Validated;
  * @param inbox how long inbox rows are kept
  * @param batchSize rows deleted per statement
  * @param cron Spring cron for the purge job ({@code -} switches it off)
+ * @param transactions how long a terminal transaction is kept (spec 17, about 13 months)
+ * @param sagaSteps how long a step of a terminal transaction is kept
+ * @param partnerCalls how long a partner call of a terminal transaction is kept
+ * @param coreCalls how long a core call of a terminal transaction is kept
+ * @param idempotency the idempotency window; rows are deleted once {@code expires_at} has passed
  */
 @Validated
 @ConfigurationProperties("mw.retention")
 public record RetentionProperties(
-    @NotNull Duration outbox, @NotNull Duration inbox, @Positive int batchSize, @NotBlank String cron) {}
+    @NotNull Duration outbox,
+    @NotNull Duration inbox,
+    @Positive int batchSize,
+    @NotBlank String cron,
+    @NotNull Duration transactions,
+    @NotNull Duration sagaSteps,
+    @NotNull Duration partnerCalls,
+    @NotNull Duration coreCalls,
+    @NotNull Duration idempotency) {}

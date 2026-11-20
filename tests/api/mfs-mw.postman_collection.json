@@ -4608,6 +4608,33 @@
       ]
     },
     {
+      "name": "62 DW export",
+      "description": "Ticket 128, FRS EXT-17, DAT-02: mw-data-export uploads today's drop to dw/in (test route, key-auth). The warehouse mock on partner-sftp (profile tester) checks the control file.",
+      "item": [
+        {
+          "name": "[mock] today's data warehouse export is accepted by the drop check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[mock] today's data warehouse export is accepted by the drop check\", eval(MW.forRun(\";(async (MW, S) => {\\n      const exported = await MW.http('POST', '/test/data-export/v1/exports/today', { apikey: true });\\n      S.status(200, exported);\\n      const day = exported.body && exported.body.date;\\n      S.check('the export names the day', !!day, exported.body);\\n      await MW.mock.reset('dw');\\n      const run = await MW.http('POST', '/test/mock-control/dw/run', { apikey: true });\\n      S.status(200, run);\\n      const verdict = (await MW.mock.journal('dw', { path: 'control_' + day })).pop();\\n      S.eq('the drop is accepted', verdict && verdict.headers.verdict, 'ACCEPTED');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "90 Slow",
       "description": "What stays slow (the 10,000-row payout; the full retry-to-DLQ path, slow with production retry delays; the PIN lockout escalation and the assertion expiry, ticket 76); run with ALL=1.",
       "item": [

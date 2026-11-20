@@ -1,0 +1,5 @@
+{
+  "invalid-missing.json": [
+    "/ must have required property 'exceptionId'"
+  ]
+}

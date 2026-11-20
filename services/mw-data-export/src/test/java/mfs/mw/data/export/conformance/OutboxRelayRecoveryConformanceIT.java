@@ -1,0 +1,254 @@
+package mfs.mw.data.export.conformance;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
+import mfs.mw.data.export.TestInfrastructure;
+import mfs.mw.data.export.config.OutboxProperties;
+import mfs.mw.data.export.messaging.EventMetadata;
+import mfs.mw.data.export.messaging.EventPublisher;
+import mfs.mw.data.export.messaging.Inbox;
+import mfs.mw.data.export.messaging.KafkaTestConsumer;
+import mfs.mw.data.export.messaging.KafkaTestTopics;
+import mfs.mw.data.export.messaging.OutboxRelay;
+import mfs.mw.data.export.messaging.OutboxWriter;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.json.JsonMapper;
+
+/**
+ * The outbox relay after a crash, a restart and with two instances (spec 6.4, 19.3). The relay
+ * schedule is off here (test default), so each test drives {@link OutboxRelay} itself: a relay that
+ * dies after Kafka acknowledged its batch but before its transaction committed leaves the rows
+ * unsent; the relay of the restarted service publishes it again, and the consumer's inbox
+ * applies each event once. Two relays running at once never publish a row twice.
+ */
+@Conformance
+@SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.NONE,
+    properties = "spring.kafka.consumer.group-id=" + OutboxRelayRecoveryConformanceIT.GROUP)
+@Import({TestInfrastructure.class, OutboxRelayRecoveryConformanceIT.Listeners.class})
+class OutboxRelayRecoveryConformanceIT {
+
+  static final String TOPIC = "conformance.outbox.recovery.v1";
+  static final String CONSUMER = "conformance-recovery";
+  /** Own consumer group, so this context's retry topics are its own. */
+  static final String GROUP = "mw-data-export-recovery-it";
+
+  /** The process dying between Kafka's ack and the relay's commit. */
+  static final class SimulatedCrash extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+  }
+
+  public static class EffectHandler {
+    final Inbox inbox;
+    final JdbcTemplate jdbc;
+    final Map<String, AtomicInteger> deliveries = new ConcurrentHashMap<>();
+
+    EffectHandler(Inbox inbox, JdbcTemplate jdbc) {
+      this.inbox = inbox;
+      this.jdbc = jdbc;
+    }
+
+    @KafkaListener(topics = TOPIC, groupId = "${spring.kafka.consumer.group-id}")
+    public void handle(ConsumerRecord<String, String> record, Acknowledgment ack) {
+      String eventId = JsonMapper.builder().build().readTree(record.value()).get("eventId").asString();
+      deliveries.computeIfAbsent(eventId, k -> new AtomicInteger()).incrementAndGet();
+      inbox.processOnce(
+          CONSUMER,
+          eventId,
+          () -> jdbc.update("insert into conformance_recovery_effect (event_id) values (?)", eventId));
+      ack.acknowledge();
+    }
+  }
+
+  @TestConfiguration(proxyBeanMethods = false)
+  static class Listeners {
+    /** The topics exist before the listener subscribes, as the platform declares them. */
+    @Bean
+    EffectHandler effectHandler(Inbox inbox, JdbcTemplate jdbc) {
+      KafkaTestTopics.createWithRetries(TOPIC, GROUP, 3, 1);
+      return new EffectHandler(inbox, jdbc);
+    }
+  }
+
+  private final OutboxWriter outbox;
+  private final OutboxRelay relay;
+  private final EventPublisher publisher;
+  private final OutboxProperties properties;
+  private final JsonMapper json;
+  private final JdbcTemplate jdbc;
+  private final TransactionTemplate tx;
+  private final EffectHandler handler;
+
+  @Autowired
+  OutboxRelayRecoveryConformanceIT(OutboxWriter outbox, OutboxRelay relay, EventPublisher publisher, OutboxProperties properties, JsonMapper json, JdbcTemplate jdbc, TransactionTemplate tx, EffectHandler handler) {
+    this.outbox = outbox;
+    this.relay = relay;
+    this.publisher = publisher;
+    this.properties = properties;
+    this.json = json;
+    this.jdbc = jdbc;
+    this.tx = tx;
+    this.handler = handler;
+  }
+
+  @BeforeAll
+  static void effectTable(@Autowired JdbcTemplate jdbc) {
+    jdbc.execute("create table if not exists conformance_recovery_effect (event_id text not null)");
+  }
+
+  @BeforeEach
+  void noUnsentRowsOfOtherTests() {
+    relay.relayPending();
+  }
+
+  void append(String eventId) {
+    tx.executeWithoutResult(
+        s ->
+            outbox.append(
+                TOPIC,
+                "TXN-" + eventId,
+                new EventMetadata("corr-" + eventId, "TXN-" + eventId, "idem-" + eventId, 1),
+                Map.of("schemaVersion", 1, "eventId", eventId)));
+  }
+
+  /** A relay instance whose process "dies" right after Kafka acknowledged its whole batch. */
+  OutboxRelay crashingRelay() {
+    return new OutboxRelay(jdbc, tx, publisher, json, properties) {
+      @Override
+      protected void markSent(List<Long> ids) {
+        throw new SimulatedCrash();
+      }
+    };
+  }
+
+  int unsent(String prefix) {
+    return jdbc.queryForObject(
+        "select count(*) from outbox where sent_at is null and msg_key like ?", Integer.class, "TXN-" + prefix + "%");
+  }
+
+  List<ConsumerRecord<String, String>> published(String prefix, int atLeast, Duration timeout) {
+    return KafkaTestConsumer.read(
+        TestInfrastructure.kafkaBootstrapServers(), TOPIC, atLeast, timeout, r -> r.key().startsWith("TXN-" + prefix));
+  }
+
+  /** Every record already on the topic for {@code prefix}; returns without waiting. */
+  List<ConsumerRecord<String, String>> publishedSoFar(String prefix) {
+    return KafkaTestConsumer.readToEnd(
+        TestInfrastructure.kafkaBootstrapServers(), TOPIC, r -> r.key().startsWith("TXN-" + prefix));
+  }
+
+  int effects(String eventId) {
+    return jdbc.queryForObject(
+        "select count(*) from conformance_recovery_effect where event_id = ?", Integer.class, eventId);
+  }
+
+  static void await(BooleanSupplier condition, Duration timeout) throws InterruptedException {
+    long deadline = System.nanoTime() + timeout.toNanos();
+    while (!condition.getAsBoolean()) {
+      if (System.nanoTime() > deadline) {
+        throw new AssertionError("condition not met within " + timeout);
+      }
+      Thread.sleep(100);
+    }
+  }
+
+  @Tag("slow-wait")
+  @Test
+  void pendingRowsAreRelayedAfterACrashAndRestartWithNoDuplicatePastTheInbox() throws Exception {
+    List<String> events = List.of("crash-1", "crash-2", "crash-3");
+    events.forEach(this::append);
+
+    // Crash: the whole batch reached Kafka, but the relay died before marking it sent.
+    assertThatThrownBy(() -> crashingRelay().relayBatch()).isInstanceOf(SimulatedCrash.class);
+    assertThat(unsent("crash-")).as("nothing marked sent by the crashed relay").isEqualTo(3);
+    assertThat(published("crash-", 3, Duration.ofSeconds(10))).hasSize(3);
+
+    // Restart: a fresh relay publishes every pending row, each for the second time.
+    assertThat(relay.relayPending()).isGreaterThanOrEqualTo(3);
+    assertThat(unsent("crash-")).isZero();
+    List<ConsumerRecord<String, String>> onKafka = published("crash-", 6, Duration.ofSeconds(20));
+    assertThat(onKafka).extracting(ConsumerRecord::key)
+        .containsExactlyInAnyOrder(
+            "TXN-crash-1", "TXN-crash-1", "TXN-crash-2", "TXN-crash-2", "TXN-crash-3", "TXN-crash-3");
+
+    // The consumer saw every event twice and applied each once.
+    await(() -> events.stream()
+        .allMatch(e -> handler.deliveries.getOrDefault(e, new AtomicInteger()).get() == 2), Duration.ofSeconds(30));
+    for (String e : events) {
+      assertThat(effects(e)).as("side effect of %s", e).isEqualTo(1);
+    }
+
+    // Nothing is left to relay: a later run publishes nothing more.
+    relay.relayPending();
+    assertThat(publishedSoFar("crash-")).hasSize(6);
+  }
+
+  @Tag("slow-wait")
+  @Test
+  void twoRelaysRunningAtOnceNeverPublishARowTwice() throws Exception {
+    int rows = 60;
+    for (int i = 0; i < rows; i++) {
+      append("multi-" + i);
+    }
+
+    ExecutorService pool = Executors.newFixedThreadPool(2);
+    try {
+      CountDownLatch start = new CountDownLatch(1);
+      List<Callable<Integer>> instances = new ArrayList<>();
+      for (int i = 0; i < 2; i++) {
+        instances.add(
+            () -> {
+              start.await();
+              int sent = 0;
+              while (unsent("multi-") > 0) {
+                sent += relay.relayBatch();
+              }
+              return sent;
+            });
+      }
+      List<Future<Integer>> results = new ArrayList<>();
+      for (Callable<Integer> c : instances) {
+        results.add(pool.submit(c));
+      }
+      start.countDown();
+      int total = 0;
+      for (Future<Integer> f : results) {
+        total += f.get();
+      }
+      assertThat(total).isEqualTo(rows);
+    } finally {
+      pool.shutdownNow();
+    }
+
+    // Both relays have returned and publishing is synchronous: everything sent is on Kafka now.
+    List<ConsumerRecord<String, String>> onKafka = publishedSoFar("multi-");
+    assertThat(onKafka).hasSize(rows);
+    assertThat(onKafka).extracting(ConsumerRecord::key).doesNotHaveDuplicates();
+  }
+}
