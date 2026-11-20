@@ -1,0 +1,66 @@
+{
+  "name": "test-oauth2-cc",
+  "desc": "OAuth2 client credentials (ticket 100b): partners-realm bearer token, limit keyed by the token client id. Not an HMAC callback.",
+  "uri": "/test/oauth2-cc",
+  "methods": ["GET", "POST"],
+  "plugins": {
+    "ip-restriction": {
+      "whitelist": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"]
+    },
+    "client-control": {
+      "max_body_size": 4096
+    },
+    "openid-connect": {
+      "discovery": "http://keycloak:8080/realms/partners/.well-known/openid-configuration",
+      "client_id": "mw-partner-edge",
+      "bearer_only": true,
+      "use_jwks": true,
+      "realm": "partners",
+      "iat_slack": 10,
+      "claim_validator": {
+        "issuer": {
+          "valid_issuers": ["http://keycloak:8080/realms/partners", "https://localhost/realms/partners"]
+        }
+      },
+      "set_access_token_header": false,
+      "set_userinfo_header": false,
+      "set_id_token_header": false
+    },
+    "serverless-pre-function": {
+      "phase": "access",
+      "functions": ["@lua:lua/client-id-from-jwt.lua"]
+    },
+    "limit-count": {
+      "count": 5000,
+      "time_window": 86400,
+      "key_type": "var",
+      "key": "mw_client_id",
+      "group": "test-oauth2-cc",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "redis",
+      "redis_port": 6379,
+      "redis_password": "$env://REDIS_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    },
+    "limit-req": {
+      "rate": 20,
+      "burst": 20,
+      "key_type": "var",
+      "key": "mw_client_id",
+      "rejected_code": 429
+    },
+    "proxy-rewrite": {
+      "uri": "/sim/oauth2-cc/ping"
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 10 },
+    "nodes": { "mw-simulators:8080": 1 }
+  }
+}

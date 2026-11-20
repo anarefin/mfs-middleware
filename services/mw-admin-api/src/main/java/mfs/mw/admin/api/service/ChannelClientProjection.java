@@ -2,6 +2,7 @@ package mfs.mw.admin.api.service;
 
 import java.util.Optional;
 import mfs.mw.admin.api.config.ApisixProperties;
+import mfs.mw.admin.api.dto.ChannelClientSpec;
 import mfs.mw.admin.api.exception.ApisixUnavailableException;
 import mfs.mw.admin.api.repository.ChannelClientRepository;
 import org.slf4j.Logger;
@@ -37,7 +38,13 @@ public class ChannelClientProjection {
     }
     clients.find(clientId).ifPresent(c -> {
       try {
-        ApisixConsumerSync.Outcome o = sync.apply(c);
+        // An OAUTH2_CC route is shared by every client registered for it, so one approval re-projects
+        // the whole registry's bearer routes (and will not touch a route another auth method uses).
+        ApisixConsumerSync.Outcome o = c.spec().authMethod() == ChannelClientSpec.AuthMethod.OAUTH2_CC
+            ? (sync.enforceOauthRoutes(clients.list()) > 0
+                ? ApisixConsumerSync.Outcome.WRITTEN
+                : ApisixConsumerSync.Outcome.UNCHANGED)
+            : sync.apply(c);
         log.atInfo()
             .addKeyValue("event", "apisix.consumer.synced")
             .addKeyValue("clientId", c.clientId())

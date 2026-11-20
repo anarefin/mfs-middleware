@@ -169,6 +169,12 @@ sim:
   # Simulator settings (spec 22.2). timeout-delay must exceed the caller's time limit (OCS: 20 s).
   timeout-delay: 30s
   record-limit: 1000
+  # OAuth2 client credentials for the edge route test-oauth2-cc (ticket 100b). private_key_jwt, no
+  # client secret: the key is Vault secret/mw-simulators field sim.partner-sim.private-key.
+  partner-token:
+    client-id: partner-sim
+    token-uri: http://keycloak:8080/realms/partners/protocol/openid-connect/token
+    private-key: ${sim.partner-sim.private-key:}
   # The global reset POST /mock-control/reset (ticket 103, FRS MCT-07) also resets mw-core-mock's ledger here.
   core-mock:
     base-url: http://mw-core-mock:8080

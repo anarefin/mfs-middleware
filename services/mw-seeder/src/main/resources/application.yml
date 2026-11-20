@@ -212,7 +212,10 @@ mw:
     # (ussd_<mno>, password $secret://vault/edge/ussd-<mno>/password, Vault KV v1 apisix/ synced by
     # provision from USSD_<MNO>_GATEWAY_SECRET); their route keeps its own allow-list and per-MSISDN
     # limit-count, so they get a rate limit only (a dailyQuota would replace the route's limit-count
-    # for the consumer). JWT and HMAC clients are registry rows only (100 split decision).
+    # for the consumer). JWT and HMAC clients are registry rows only (100 split decision). OAUTH2_CC
+    # (ticket 100b) has no consumer and no secret in this row: partner-sim is the Keycloak partners
+    # client (private_key_jwt, certificate from provision) and its route test-oauth2-cc gets the bearer
+    # check and a limit keyed by the token client id.
     channel-clients:
       - { client-id: customer-app, type: APP, auth-method: JWT, allowed-routes: [app-v1, auth-v1, auth-v1-keys, auth-v1-pin-resets], ip-allow-list: [] }
       - { client-id: agent-app, type: APP, auth-method: JWT, allowed-routes: [app-v1, auth-v1, auth-v1-keys, auth-v1-pin-resets], ip-allow-list: [] }
@@ -223,6 +226,7 @@ mw:
       - { client-id: ussd-teletalk, type: MNO, auth-method: BASIC, allowed-routes: [ussd-http-teletalk], ip-allow-list: [], rate-per-sec: 100 }
       - { client-id: billagg, type: PARTNER, auth-method: HMAC, allowed-routes: [partner-billagg-callback], ip-allow-list: [] }
       - { client-id: c2wbank, type: PARTNER, auth-method: HMAC, allowed-routes: [partner-c2wbank-callback], ip-allow-list: [] }
+      - { client-id: partner-sim, type: PARTNER, auth-method: OAUTH2_CC, allowed-routes: [test-oauth2-cc], ip-allow-list: [], rate-per-sec: 20, daily-quota: 5000 }
       - { client-id: merchant-demo, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }
       - { client-id: merchant-pharmacy, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }
       - { client-id: merchant-fashion, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }

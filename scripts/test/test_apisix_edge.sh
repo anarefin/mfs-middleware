@@ -58,6 +58,8 @@ class H(http.server.BaseHTTPRequestHandler):
         open("calls.txt", "a").write("GET " + self.path + "\n")
         if self.path == "/apisix/admin/consumers/ussd_gp":
             self._answer(200, b'{"key":"/apisix/consumers/ussd_gp","value":{"username":"ussd_gp","labels":{"managed-by":"mw-admin-api"}}}')
+        elif self.path == "/apisix/admin/routes/test-oauth2-cc":
+            self._answer(200, b'{"key":"/apisix/routes/test-oauth2-cc","value":{"id":"test-oauth2-cc","labels":{"managed-by":"mw-admin-api","oauth2-cc":"true"}}}')
         else:
             self._answer(404, b'{"message":"Key not found"}')
     def do_PUT(self):
@@ -85,6 +87,8 @@ EOF
   kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
   [ "$rc" = 0 ] || fail "apply failed: $OUT"
   grep -q '^PUT /apisix/admin/consumers/ussd_gp$' calls.txt && fail "the managed consumer ussd_gp was overwritten"
+  grep -q '^PUT /apisix/admin/routes/test-oauth2-cc$' calls.txt && fail "the managed OAUTH2_CC route test-oauth2-cc was overwritten"
+  grep -q '^PUT /apisix/admin/routes/healthz$' calls.txt || fail "the unmanaged route healthz was not applied"
   grep -q '^PUT /apisix/admin/consumers/ussd_robi$' calls.txt || fail "the unmanaged consumer ussd_robi was not applied"
   grep -q '^PUT /apisix/admin/secrets/vault/edge$' calls.txt || fail "secret manager vault/edge not applied"
   assert_out_contains "belongs to the mw-admin-api channel client registry"
@@ -561,9 +565,43 @@ test_every_rate_limit_is_per_route_and_keyed_per_client() {
   [ "$(printf '%s\n' "$groups" | sort -u | grep -c .)" = "$n" ] || fail "a limit-count group is shared: $(printf '%s\n' "$groups" | sort | uniq -d)"
   for f in out/routes/*.json; do
     jq -e '(.plugins["limit-count"] // .plugins["limit-req"]) as $l | $l == null
-      or ($l.key_type == "var" and ($l.key | IN("consumer_name", "mw_consumer", "mw_auth_key", "mw_ussd_msisdn", "remote_addr")))' "$f" >/dev/null \
+      or ($l.key_type == "var" and ($l.key | IN("consumer_name", "mw_consumer", "mw_client_id", "mw_auth_key", "mw_ussd_msisdn", "remote_addr")))' "$f" >/dev/null \
       || fail "$(basename "$f"): limit not keyed per client: $(jq -c '.plugins["limit-count"] // .plugins["limit-req"]' "$f")"
   done
+}
+
+# Ticket 100b: HMAC callbacks and USSD stay without a bearer token (folders 07, 08, 18, 20).
+test_hmac_callbacks_and_ussd_do_not_require_a_bearer_token() {
+  render || fail "dry run failed"
+  local r
+  for r in partner-billagg-callback partner-c2wbank-callback ussd-http-gp ussd-http-robi ussd-http-bl ussd-http-teletalk; do
+    obj routes "$r" | jq -e '(.plugins | has("openid-connect") | not) and (.plugins | has("jwt-auth") | not)' >/dev/null \
+      || fail "$r must not require a bearer token: $(obj routes "$r" | jq -c '.plugins | keys')"
+  done
+  obj routes partner-billagg-callback | jq -e '.plugins["limit-count"].key == "remote_addr"' >/dev/null \
+    || fail "billagg limit key changed"
+  obj routes partner-c2wbank-callback | jq -e '.plugins["limit-count"].key == "remote_addr"' >/dev/null \
+    || fail "c2wbank limit key changed"
+}
+
+# Ticket 100b: the OAUTH2_CC test route checks a partners-realm bearer token and limits by client id.
+test_oauth2_cc_route_checks_a_partners_bearer_and_limits_by_client_id() {
+  render || fail "dry run failed"
+  obj routes test-oauth2-cc | jq -e '.uri == "/test/oauth2-cc"
+    and .plugins["openid-connect"].bearer_only == true
+    and .plugins["openid-connect"].use_jwks == true
+    and .plugins["openid-connect"].discovery == "http://keycloak:8080/realms/partners/.well-known/openid-configuration"
+    and .plugins["openid-connect"].realm == "partners"
+    and (.plugins["openid-connect"] | has("client_secret") | not)
+    and .plugins["limit-count"].key == "mw_client_id"
+    and .plugins["limit-req"].key == "mw_client_id"
+    and .plugins["serverless-pre-function"].phase == "access"
+    and .upstream.nodes["mw-simulators:8080"] == 1' >/dev/null \
+    || fail "test-oauth2-cc: $(obj routes test-oauth2-cc | jq -c '.plugins | keys')"
+  obj routes test-oauth2-cc | jq -r '.plugins["serverless-pre-function"].functions[]' | grep -q 'mw_client_id' \
+    || fail "test-oauth2-cc does not key the limit by the token client id"
+  obj routes test-oauth2-cc | jq -r '.plugins["serverless-pre-function"].functions[]' | grep -q 'partner-sim' \
+    || fail "test-oauth2-cc bootstrap does not allow partner-sim"
 }
 
 test_app_route_limits_each_consumer_with_counters_in_redis() {

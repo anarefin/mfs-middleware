@@ -6,6 +6,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 ## Responsibilities
 
 - Partner simulators for tests only (spec 22.2, WP12), one generic contract per partner type.
+  OAuth2 client credentials (ticket 100b): `client/PartnerTokenClient` signs a `private_key_jwt`
+  assertion (no client secret) and `GET /sim/partner-token` returns the access token;
+  `GET /sim/oauth2-cc/ping` is the 204 the edge route `test-oauth2-cc` proxies to after the bearer
+  check. The key is Vault `sim.partner-sim.private-key` (`sim.partner-token.private-key`).
   Today: OCS (prepaid top-up), the utility bill aggregator `billagg` (ticket 21) and the C2W bank
   `c2wbank` (ticket 23). State is in
   memory (a restart resets it); never deployed to production projects. Outcomes are
