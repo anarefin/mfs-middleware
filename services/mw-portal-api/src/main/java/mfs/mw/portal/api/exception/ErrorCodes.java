@@ -35,6 +35,8 @@ public final class ErrorCodes {
   public static final String VAL_NOTHING_TO_RETRY = "MW-VAL-038";
   /** Retry request while one is pending, or approval while none is: HTTP 409 (ticket 129c). */
   public static final String VAL_RETRY_REQUEST = "MW-VAL-039";
+  /** An SP report range with more transactions than the report cap: HTTP 400 (ticket 129d). */
+  public static final String VAL_REPORT_TOO_LARGE = "MW-VAL-040";
   /** No valid bearer token (missing, expired, bad signature, wrong realm): HTTP 401. */
   public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
   /** Valid token, but no org (claim orgId) or not the role this operation needs: HTTP 403. */

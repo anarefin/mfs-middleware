@@ -281,6 +281,12 @@ mw:
       # Realm roles of deploy/keycloak/realms/portals-realm.json.
       maker: org-maker
       checker: org-checker
+      sp-viewer: sp-viewer
+    # The SP portal (ticket 129d): the CSV report reads the org's transactions of at most this range
+    # from the orchestrator's query API, 200 a page.
+    sp:
+      report-max-rows: 10000
+      report-max-range: 31d
 
 # Generated API document and Swagger UI (ticket 101, PLT-050..052): off by default, so a production
 # build exposes neither /v3/api-docs nor /swagger-ui; on in the dev and test profiles below (the dev

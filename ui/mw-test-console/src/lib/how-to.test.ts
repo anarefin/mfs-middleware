@@ -17,6 +17,7 @@ const SOURCES: Record<PageKey, string[]> = {
   inbox: ["inbox/inbox.tsx"],
   checkout: ["checkout/checkout-tester.tsx"],
   bulk: ["bulk/bulk-tester.tsx"],
+  sp: ["sp/sp-tester.tsx"],
   transactions: ["transactions/explorer.tsx"],
   preferences: ["preferences/preferences.tsx"],
   credentials: [],

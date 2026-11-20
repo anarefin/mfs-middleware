@@ -1244,6 +1244,15 @@ curl -sk -X POST https://localhost/test/mock-control/dw/run -H 'apikey: e2e-test
       <li>Negative: <code>sp-viewer01</code> belongs to no organisation: red ✖ HTTP 403 <code>MW-AUTH-002</code> "Token carries no organisation".</li>
     </ol>
   </div>
+  <div class="case" id="c8-4">
+    <h3><span class="id">8.4</span>SP portal (<code>/portal/sp/v1</code>, role <code>sp-viewer</code>)</h3>
+    <ol>
+      <li>Page <b>SP portal</b>, portal user <code>sp-viewer02</code> (ORG002, role <code>sp-viewer</code>), <span class="ui">List transactions</span>: ORG002's transactions only (the DESCO and Karim Traders payments of 8.3, <code>"role": "PAYEE"</code>).</li>
+      <li>Paste a txnId from the list, <span class="ui">One transaction</span>: its state changes. Another org's txnId: HTTP 404 <code>MW-VAL-003</code>.</li>
+      <li><span class="ui">CSV report</span>: the last 7 days as CSV (header <code>txnId,createdAt,txnType,role,status,amount,…</code>, party ids masked). From / To more than 31 days apart: HTTP 400 <code>MW-VAL-001</code>.</li>
+      <li>Negative: <code>org-checker02</code> (no <code>sp-viewer</code> role) and <code>sp-viewer01</code> (no organisation): HTTP 403 <code>MW-AUTH-002</code>.</li>
+    </ol>
+  </div>
 </section>
 
 <!-- ============================================================ -->

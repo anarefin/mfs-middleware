@@ -23,6 +23,7 @@ const WHERE = [
   { href: "/inbox", label: "SMS & email", what: "every notification" },
   { href: "/checkout", label: "Web checkout", what: "merchant session, OTP + PIN payment, signed redirect and IPN" },
   { href: "/bulk", label: "Bulk portal", what: "CSV upload, maker-checker, execution, result file, SP query" },
+  { href: "/sp", label: "SP portal", what: "a service provider's own transactions and CSV report (role sp-viewer)" },
   { href: "/transactions", label: "Transactions", what: "search by txnId or MSISDN: status, saga timeline, partner calls, audit trail" },
 ];
 

@@ -58,7 +58,8 @@ Dev/test stack only, never real secrets. The logins testers type are fixed, docu
 == Portal users (realm portals, client mw-portal: password + 6-digit one-time code)   password: $(v KC_PORTALS_TEST_PASSWORD)
    Every portal user has the pre-set code secret (no authenticator app needed):
      seed-org-maker, seed-org-checker (org ORG001)   code: scripts/totp.sh seed-org-maker
-     org-maker01, org-checker01, org-makerchecker01 (org ORG001), org-checker02 (other org), sp-viewer01
+     org-maker01, org-checker01, org-makerchecker01 (org ORG001), org-checker02 (other org), sp-viewer01 (no org),
+     sp-viewer02 (SP portal, org ORG002)
                                                      code: scripts/totp.sh org-maker01
 
 == Keycloak admin (no browser console at the edge; use kcadm.sh in the container)

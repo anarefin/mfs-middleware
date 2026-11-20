@@ -30,7 +30,7 @@
       },
       {
         "name": "sp-viewer",
-        "description": "Service provider transaction query"
+        "description": "Service provider portal (/portal/sp/v1, read-only)"
       }
     ]
   },
@@ -209,6 +209,35 @@
       "realmRoles": [
         "sp-viewer"
       ]
+    },
+    {
+      "username": "sp-viewer02",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Nasrin",
+      "lastName": "Akter",
+      "email": "sp-viewer02@example.test",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_PORTALS_TEST_PASSWORD}",
+          "temporary": false
+        },
+        {
+          "type": "otp",
+          "userLabel": "dev/test pre-set (KC_PORTALS_TEST_TOTP_SECRET)",
+          "secretData": "{\"value\":\"${KC_PORTALS_TEST_TOTP_SECRET}\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"counter\":0,\"period\":30,\"algorithm\":\"HmacSHA256\"}"
+        }
+      ],
+      "realmRoles": [
+        "sp-viewer"
+      ],
+      "attributes": {
+        "orgId": [
+          "ORG002"
+        ]
+      }
     }
   ],
   "components": {

@@ -25,6 +25,7 @@ endpoints, off in production.
 | mw-auth | `contracts/api/mw-auth/auth-test.v1.openapi.yaml` | test | `/test/v1/**` | `/docs/mw-auth/swagger-ui/index.html` |
 | mw-checkout | `contracts/api/mw-checkout/checkout.v1.openapi.yaml` | edge (merchants, shoppers) | `/checkout/v1/**` | `/docs/mw-checkout/swagger-ui/index.html` |
 | mw-portal-api | `contracts/api/mw-portal-api/portal-org.v1.openapi.yaml` | edge (org portal) | `/portal/org/v1/**` | `/docs/mw-portal-api/swagger-ui/index.html` |
+| mw-portal-api | `contracts/api/mw-portal-api/portal-sp.v1.openapi.yaml` | edge (SP portal, role `sp-viewer`) | `/portal/sp/v1/**` | `/docs/mw-portal-api/swagger-ui/index.html` |
 | mw-ussd | `contracts/api/mw-ussd/ussd-http.v1.openapi.yaml` | edge (MNO USSD gateways over HTTP) | `/ussd/{mno}` | `/docs/mw-ussd/swagger-ui/index.html` |
 | mw-admin-api | `contracts/api/mw-admin-api/admin.v1.openapi.yaml` | edge (ops console) | `/admin/v1/**` | `/docs/mw-admin-api/swagger-ui/index.html` |
 | mw-adapter-remit | `contracts/api/mw-adapter-remit/remit-inbound.v1.openapi.yaml` | edge (UCB IMT, inbound) | `/remit/v1/**` | none (no springdoc in the module) |

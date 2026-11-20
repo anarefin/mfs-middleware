@@ -41,6 +41,8 @@ class ApiContractsTest {
   static final String QUERY = "api/mw-orchestrator/txn-query.v1.openapi.yaml";
   static final String BATCHES = "/portal/org/v1/bulk/batches";
   static final String TXNS = "/portal/org/v1/transactions";
+  static final String SP = "api/mw-portal-api/portal-sp.v1.openapi.yaml";
+  static final String SP_TXNS = "/portal/sp/v1/transactions";
 
   static final Instant AT = Instant.parse("2026-11-05T10:00:00Z");
   static final UUID BATCH_ID = UUID.fromString("019a5b2e-1c00-7000-8000-000000000001");
@@ -147,6 +149,23 @@ class ApiContractsTest {
     assertThat(body.path("timeline")).hasSize(2);
     assertThat(body.path("timeline").get(0).has("kind")).isFalse();
     assertValid(OpenApiSchemas.response(PORTAL, TXNS + "/{txnId}", "get", "200"), detail);
+  }
+
+  /** The SP portal (ticket 129d) serves the same views under {@code portal-sp.v1}. */
+  @Test
+  void spResponsesMatchTheServedSpContract() {
+    OrgTxn collected =
+        new OrgTxn(
+            "PAYEE", TXN_ID, "MERCHANT_PAY", "COMPLETED", AT, AT, new Amount(5000L, "BDT"), null,
+            new Party("WALLET", "0171****001", "CUSTOMER"), new Party("MERCHANT", "****0001", null), null, null, null);
+    assertValid(OpenApiSchemas.response(SP, SP_TXNS, "get", "200"), new OrgTxn.Page(List.of(txn(), collected), 50, 0));
+    assertValid(
+        OpenApiSchemas.response(SP, SP_TXNS + "/{txnId}", "get", "200"),
+        new OrgTxn.Detail(txn(), List.of(new OrgTxn.Step("STATE", "RECEIVED", "COMPLETED", AT))).statesOnly());
+    assertValid(
+        OpenApiSchemas.component(SP, "ErrorEnvelope"),
+        new ErrorEnvelope("MW-VAL-040", "More than 10000 transactions: narrow the range", null, null, "corr-1", false,
+            List.of(new ErrorDetail("from", "range holds more than 10000 transactions"))));
   }
 
   @Test

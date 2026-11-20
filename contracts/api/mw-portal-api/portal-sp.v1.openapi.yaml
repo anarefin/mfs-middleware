@@ -1,0 +1,204 @@
+openapi: 3.1.0
+info:
+  title: Bits service provider portal API (mw-portal-api)
+  version: 1.0.0
+  description: |
+    Service provider (SP) portal API v1 (FRS UC-20, CH-POR-04, CH-POR-05; ticket 129d), served by
+    mw-portal-api behind APISIX route `/portal/sp/v1/*`. Bearer JWT from Keycloak realm `portals`
+    with the realm role `sp-viewer`; read-only. The SP is the organisation of the token's `orgId`
+    claim: every query is scoped by it and there is no org parameter (an `orgId` or any other
+    unknown query parameter changes nothing). The SP sees the transactions it initiated (`role`
+    INITIATOR) and those it collects as payee (payments to a biller or merchant wallet it collects
+    for, `role` PAYEE; which ones is mw-orchestrator's configuration, never a portal parameter).
+    Another org's transaction is 404, exactly like an unknown one. Customer data is masked (MSISDN
+    `0171****789`, other ids last 4). Settlements and refunds follow in a later version (ticket 129
+    split decisions, 129f).
+    Every error is the 5.3 envelope. The APISIX edge answers some errors itself, also as the
+    envelope: 401 MW-AUTH-001, 429 MW-SYS-RATE_LIMITED (per-user quota, retryable).
+servers:
+  - url: https://localhost
+security:
+  - bearer: []
+paths:
+  /portal/sp/v1/transactions:
+    get:
+      operationId: searchSpTransactions
+      summary: The SP's own transactions, newest first
+      description: >-
+        Needs role `sp-viewer`. Errors: 400 MW-VAL-001 (bad filter, `from` not before `to`); 403
+        MW-AUTH-002 (no `sp-viewer` role or no org in the token); 503 MW-SYS-040 (query temporarily
+        unavailable, retryable).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/TxnStatus" } }
+        - { name: from, in: query, description: Inclusive lower bound of createdAt, schema: { type: string, format: date-time } }
+        - { name: to, in: query, description: Exclusive upper bound of createdAt, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+      responses:
+        "200":
+          description: One page of the SP's transactions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, limit, offset]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/SpTxn" }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /portal/sp/v1/transactions/{txnId}:
+    get:
+      operationId: getSpTransaction
+      summary: One of the SP's transactions with its state changes in order
+      description: >-
+        Needs role `sp-viewer`. A transaction the SP neither initiated nor collects is 404
+        MW-VAL-003, as is an unknown one. The timeline lists state changes only. 503 MW-SYS-040
+        when the query is temporarily unavailable (retryable).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - { name: txnId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The transaction and its timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [transaction, timeline]
+                properties:
+                  transaction: { $ref: "#/components/schemas/SpTxn" }
+                  timeline:
+                    type: array
+                    items:
+                      type: object
+                      required: [from, to, at]
+                      properties:
+                        from: { $ref: "#/components/schemas/TxnStatus" }
+                        to: { $ref: "#/components/schemas/TxnStatus" }
+                        at: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /portal/sp/v1/reports:
+    get:
+      operationId: downloadSpReport
+      summary: The SP's transactions created in [from, to) as a CSV report (CH-POR-05)
+      description: >-
+        Needs role `sp-viewer`. One line per transaction, newest first, header
+        `txnId,createdAt,txnType,role,status,amount,fee,debitPartyType,debitPartyId,creditPartyType,creditPartyId,reference,errorCode`;
+        amounts in taka with two decimals; party ids masked as in the query; a cell that a
+        spreadsheet would read as a formula (`=`, `+`, `-`, `@`, tab, CR) is prefixed with `'`.
+        The range is at most 31 days. Errors: 400 MW-VAL-001 (missing or bad `from` / `to`, `from`
+        not before `to`, range over 31 days); 400 MW-VAL-040 (more than 10,000 transactions in the
+        range: narrow it); 403 MW-AUTH-002; 503 MW-SYS-040 (retryable).
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - { name: from, in: query, required: true, description: Inclusive lower bound of createdAt, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: true, description: Exclusive upper bound of createdAt, schema: { type: string, format: date-time } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/TxnStatus" } }
+      responses:
+        "200":
+          description: The report as an attachment (`Content-Disposition` names `sp-report-<from>-<to>.csv`)
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,128}$" }
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    TxnStatus:
+      type: string
+      description: Saga state of a transaction (mw.txn.status.v1).
+      enum:
+        [RECEIVED, VALIDATING, HOLDING, POSTING, PARTNER_PENDING, UNKNOWN, COMMITTING, RELEASING,
+         REVERSING, COMPLETED, FAILED, REJECTED, REVERSED, MANUAL_REVIEW]
+    SpTxn:
+      type: object
+      required: [role, txnId, txnType, status, createdAt, updatedAt, amount]
+      properties:
+        role:
+          type: string
+          enum: [INITIATOR, PAYEE]
+          description: The SP's part, INITIATOR (it initiated it) or PAYEE (it collects the payment)
+        txnId: { type: string, format: uuid }
+        txnType: { type: string }
+        status: { $ref: "#/components/schemas/TxnStatus" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        amount: { $ref: "#/components/schemas/Amount" }
+        fee: { $ref: "#/components/schemas/Amount" }
+        debitParty: { $ref: "#/components/schemas/MaskedParty" }
+        creditParty: { $ref: "#/components/schemas/MaskedParty" }
+        reversalTxnId: { type: string, format: uuid }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            messageBn: { type: string }
+            retryable: { type: boolean }
+        attributes:
+          type: object
+          description: parentTxnId, batchId, lineNo and reference of a bulk child
+          additionalProperties: { type: string }
+    MaskedParty:
+      type: object
+      properties:
+        type: { type: string }
+        id: { type: string, description: "Masked: MSISDN 0171****789, other ids last 4" }
+        walletType: { type: string }
+    Amount:
+      type: object
+      required: [valueMinor, currency]
+      properties:
+        valueMinor: { type: integer, format: int64, description: Poisha }
+        currency: { type: string, const: BDT }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        timestamp: { type: string, format: date-time, description: "When the error was built, UTC ISO-8601 to the millisecond (FRS 3.7, ticket 92)." }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }
