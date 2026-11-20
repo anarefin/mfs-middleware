@@ -71,9 +71,10 @@ class PreviewServiceTest {
   final TransactionService transactions = mock(TransactionService.class);
   final MemoryStore store = new MemoryStore();
   final BillerService billers = mock(BillerService.class);
+  final mfs.mw.app.gateway.client.BankAccountClient bank = mock(mfs.mw.app.gateway.client.BankAccountClient.class);
   final PreviewService service = new PreviewService(
       quotes, transactions, store, new PreviewProperties(Duration.ofMinutes(5), "test-only-preview-signing-key-0123456789"),
-      Clock.fixed(NOW, ZoneOffset.UTC), billers);
+      Clock.fixed(NOW, ZoneOffset.UTC), billers, bank);
 
   static Quote quote(boolean allowed, String reason) {
     return new Quote("P2P", new Quote.Money(100_000, "BDT"), new Quote.Money(1_850, "BDT"), new Quote.Money(241, "BDT"),
@@ -178,11 +179,16 @@ class PreviewServiceTest {
     when(quotes.quote(any())).thenReturn(quote(true, null));
     when(transactions.linkedAccount(eq(USER), any())).thenReturn(Optional.of(
         new LinkedAccountService.Resolved(LINKED, "dbbl", "2050123456781234", "1234")));
+    when(bank.validate("dbbl", "2050123456781234"))
+        .thenReturn(new mfs.mw.app.gateway.dto.BankAccountValidation("dbbl", "1234", "rahim uddin", null));
     Amount amount = new Amount(150_000L, "BDT");
 
     PreviewView v = service.preview(USER, "transfer-to-bank", new PreviewRequest(null, null, null, amount, "en", null, LINKED));
 
     assertThat(v.txnType()).isEqualTo("W2B");
+    // FL-09 (M9 review): a fresh AVL on the stored account, its holder shown masked to the initial
+    verify(bank).validate("dbbl", "2050123456781234");
+    assertThat(v.counterparty().name()).isEqualTo("R.");
     ArgumentCaptor<QuoteRequest> asked = ArgumentCaptor.forClass(QuoteRequest.class);
     verify(quotes).quote(asked.capture());
     assertThat(asked.getValue().counterparty()).isEqualTo(new QuoteRequest.Counterparty("BANK_ACCOUNT", "2050123456781234"));
@@ -199,6 +205,31 @@ class PreviewServiceTest {
     verify(transactions).submit(eq(USER), eq("k-1"), sent.capture(), any());
     assertThat(sent.getValue().txnType()).isEqualTo("W2B");
     assertThat(sent.getValue().linkedAccountId()).isEqualTo(LINKED);
+  }
+
+  @Test
+  void aTransferToAnAccountTheBankNoLongerAcceptsIsRefusedAtPreviewAndNothingIsKept() {
+    when(transactions.linkedAccount(eq(USER), any())).thenReturn(Optional.of(
+        new LinkedAccountService.Resolved(LINKED, "dbbl", "2050123456781234", "1234")));
+    when(bank.validate("dbbl", "2050123456781234")).thenThrow(
+        new MwException("MW-PTR-BANK_DBBL-ACCOUNT_INACTIVE", "Account closed").withStatus(org.springframework.http.HttpStatus.BAD_GATEWAY));
+
+    assertThatThrownBy(() -> service.preview(USER, "transfer-to-bank",
+            new PreviewRequest(null, null, null, new Amount(150_000L, "BDT"), "en", null, LINKED)))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-PTR-BANK_DBBL-ACCOUNT_INACTIVE"));
+    assertThat(store.kept).isEmpty();
+    verify(quotes, org.mockito.Mockito.never()).quote(any());
+  }
+
+  @Test
+  void anAddMoneyFromALinkedAccountAsksNoAvlAtPreview() {
+    when(quotes.quote(any())).thenReturn(quote(true, null));
+    when(transactions.linkedAccount(eq(USER), any())).thenReturn(Optional.of(
+        new LinkedAccountService.Resolved(LINKED, "dbbl", "2050123456781234", "1234")));
+
+    service.preview(USER, "add-money", new PreviewRequest(null, null, null, new Amount(150_000L, "BDT"), "en", null, LINKED));
+
+    org.mockito.Mockito.verifyNoInteractions(bank);
   }
 
   @Test

@@ -132,7 +132,7 @@ class BankProfileRouteIT {
     PartnerResponse ok = gateway.call(avl("bank-dbbl", ACCOUNT));
     assertThat(ok).isInstanceOfSatisfying(PartnerResponse.Success.class, s -> {
       assertThat(s.partnerRef()).isEqualTo("AVL-1");
-      assertThat(s.attributes()).containsEntry("holderName", "R.");
+      assertThat(s.attributes()).containsEntry("holderName", "R.").containsEntry("holderFullName", "rahim uddin");
     });
     assertThat(gateway.call(avl("bank-dbbl", "9999999901")))
         .isInstanceOfSatisfying(PartnerResponse.Rejected.class,
@@ -187,7 +187,7 @@ class BankProfileRouteIT {
     assertThat(gateway.call(avl("bank-sonali", ACCOUNT)))
         .isInstanceOfSatisfying(PartnerResponse.Success.class, s -> {
           assertThat(s.partnerRef()).isEqualTo("SON-AVL-1");
-          assertThat(s.attributes()).containsEntry("holderName", "K.");
+          assertThat(s.attributes()).containsEntry("holderName", "K.").containsEntry("holderFullName", "Karim Ahmed");
         });
     assertThat(gateway.call(credit("bank-sonali", ACCOUNT)))
         .isInstanceOfSatisfying(PartnerResponse.Success.class, s -> assertThat(s.partnerRef()).isEqualTo("SON-1"));

@@ -98,6 +98,22 @@ public class BankGatewayLedger implements PartyState {
     return prior != null ? prior : t;
   }
 
+  /** A transfer and whether this call applied it (false: an earlier one did). */
+  public record Applied(BankTransfer transfer, boolean fresh) {}
+
+  /**
+   * Applies a transfer once per (bank, transactionId), atomically (M9 review): {@code apply} (which
+   * moves the balance) runs at most once even for concurrent resends; the others get its record.
+   */
+  public Applied applyOnce(String bank, String transactionId, java.util.function.Supplier<BankTransfer> apply) {
+    boolean[] fresh = {false};
+    BankTransfer t = transfers.computeIfAbsent(key(bank, transactionId), k -> {
+      fresh[0] = true;
+      return apply.get();
+    });
+    return new Applied(t, fresh[0]);
+  }
+
   public Optional<BankTransfer> find(String bank, String transactionId) {
     return Optional.ofNullable(transfers.get(key(bank, transactionId)));
   }

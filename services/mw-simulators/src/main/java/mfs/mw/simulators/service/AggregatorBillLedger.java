@@ -118,10 +118,20 @@ public final class AggregatorBillLedger implements PartyState {
    */
   public synchronized Payment pay(String profile, String reference, String billerCode, String billNumber, String amount,
       String refusal, boolean pending) {
+    return pay(profile, reference, billerCode, billNumber, amount, () -> refusal, pending);
+  }
+
+  /**
+   * As above, with the refusal decided by {@code check} inside the ledger lock (M9 review): two
+   * references paying the same bill at once see each other, so only one of them succeeds.
+   */
+  public synchronized Payment pay(String profile, String reference, String billerCode, String billNumber, String amount,
+      java.util.function.Supplier<String> check, boolean pending) {
     Payment existing = payments.get(profile).get(reference);
     if (existing != null) {
       return existing;
     }
+    String refusal = check.get();
     String paymentRef = profile.toUpperCase(java.util.Locale.ROOT) + "-" + refs.incrementAndGet();
     Payment p;
     if (refusal == null) {

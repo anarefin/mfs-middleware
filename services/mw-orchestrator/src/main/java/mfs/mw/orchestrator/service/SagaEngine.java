@@ -563,6 +563,24 @@ public class SagaEngine {
     });
   }
 
+  /** Saga timer step of a merchant NOTIFY retry (M9 review); its attempt is the attempt to send. */
+  public static final String MERCHANT_NOTIFY_TIMER = "MERCHANT_NOTIFY";
+
+  /**
+   * Schedules NOTIFY attempt {@code attempt} (2 or more) after its backoff: {@code notifyBackoff}
+   * doubled for each attempt after the second. {@link SagaTimerService} sends it when it is due.
+   */
+  public void scheduleMerchantNotify(TransactionRecord rec, int attempt) {
+    Duration backoff = merchantSystems.notifyBackoff().multipliedBy(1L << Math.min(20, Math.max(0, attempt - 2)));
+    timers.armAttempt(rec.txnId(), MERCHANT_NOTIFY_TIMER, clock.instant().plus(backoff), attempt);
+    log.atInfo()
+        .addKeyValue("event", "merchant.notify.retry_scheduled")
+        .addKeyValue("txnId", rec.txnId().toString())
+        .addKeyValue("attempt", attempt)
+        .addKeyValue("backoffMs", backoff.toMillis())
+        .log("merchant payment notify retry scheduled");
+  }
+
   /**
    * The outcome of an inbound remittance back to mw-adapter-remit (ticket 119b): a PAY on {@code
    * mw.partner.request.remit.v1} with {@code attributes.outcome} CREDITED (COMPLETED), REJECTED

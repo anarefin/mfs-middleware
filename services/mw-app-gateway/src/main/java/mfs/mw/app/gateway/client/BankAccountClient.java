@@ -48,7 +48,21 @@ public class BankAccountClient {
   }
 
   public BankAccountValidation validate(String bankCode, String accountNumber) {
-    byte[] body = json.writeValueAsBytes(Map.of("bankCode", bankCode, "accountNumber", accountNumber));
+    return validate(bankCode, accountNumber, null);
+  }
+
+  /**
+   * As above, with the wallet's KYC name as {@code matchName} (M9 review owner binding): the adapter
+   * compares it with the bank's whole holder name and answers {@code nameMatch}. Never logged.
+   */
+  public BankAccountValidation validate(String bankCode, String accountNumber, String matchName) {
+    Map<String, String> fields = new java.util.LinkedHashMap<>();
+    fields.put("bankCode", bankCode);
+    fields.put("accountNumber", accountNumber);
+    if (matchName != null) {
+      fields.put("matchName", matchName);
+    }
+    byte[] body = json.writeValueAsBytes(fields);
     HttpResponse<byte[]> res = exchange(body);
     if (res.statusCode() == 401) {
       tokens.invalidate();

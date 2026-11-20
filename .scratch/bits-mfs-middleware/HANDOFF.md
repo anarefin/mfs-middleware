@@ -114,3 +114,13 @@ Stopped mid-work (worktrees under .claude/worktrees/agent-*; branches kept, unco
 Next: finish/merge those four, then M9 gate (lean: e2e first, then Newman folders 06 09 19 47-50 61 + new), then 117e, 118b, 119b, 120b, 121+.
 Gate checks to remember: test-console app-users.test.ts fails 1; USSD bill month = current Dhaka month (assumption);
 e-money total counts all wallet types but SYSTEM (kept unless user objects).
+
+## STOPPED 2026-11-20 night (usage limit; plan ~/.claude/plans/implement-pending-tickets-after-hidden-nautilus.md)
+upay-main 50d44dc8 (not pushed). Merged this session: 133a, 118b1, 117e, 121a, M9 fix A, M9 fix recon, 124a, 118b2, 121b1, 120b1, 119b, 129a, M9 fix B. Rows/splits in DEPENDENCIES.md. Review: notes/m9-review.md.
+User decisions: lean gates M9-M12 then full e2e from reset; AML tokenised (HMAC); bank link name match + rate limit (done); recon dispute/accept-as-explained always maker-checker (todo); DOB-only eKYC -> MANUAL_REVIEW (124b); core PUT /core/v1/accounts/{walletId}/kyc-level (124b).
+Stopped mid-work (branches/worktrees under .claude/worktrees/agent-*; may hold uncommitted work):
+- 119c ticket/119c-remit-lookup-suite: FIRST fix HIGH REMIT_IN assertion bypass in mw-core-mock TransferPayload (REMIT_IN may skip assertion only when debit = remittance settlement wallet).
+- 120b2 ticket/120b2-atm-token-issue: also ATM nonce purge (own expiry, DB clock), canonical Base64 nonce; NEW security: mw-auth allowed-clients gives mw-adapter-atm broad trust (restrict by path to /internal/v1/atm-tokens/verifications; InternalDeviceController app-gateway only); AtmTokenService step-up assertion not consumed on issue (compare-and-delete or idempotencyKey unique).
+- 121b2 ticket/121b2-npsb-seed-inbound-mock: incl. pacs.008 freshness window + permanent NPSB dedup.
+- 129b ticket/129b-bulk-preview. 130b ticket/130b-audit-hops.
+Then: 120b3, 121c, 122, 124b, 125, 129c-e, 133b-d, 132, 135, 100c, 134 (+recon maker-checker), 136, 137, 138; M9 gate (lean) still owed; final full e2e from deploy/reset.sh.
