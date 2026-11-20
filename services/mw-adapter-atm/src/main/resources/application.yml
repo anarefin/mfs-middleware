@@ -220,6 +220,12 @@ mw:
   # (configKey partner/<id>, same field names in camelCase) replaces or adds one without a restart.
   # Secrets are never here: a route names a field of the partner's own Vault secret
   # (secret/mw-adapter-atm/<partner>), read when the route loads.
+  atm:
+    inbound:
+      # Fail closed (ticket 120b1, M9 review): VerifyTokenAndDebit and CashIn answer the SOAP fault
+      # MW-SYS-ATM_CASH_DISABLED until the token check, the hold and the credit are built (120b2,
+      # 120b3). Never turn on before then: the switch would dispense with no wallet debited.
+      cash-enabled: false
   partners:
     # partnerId a request names -> the partner that serves it (D28; no silent default partner). The
     # orchestrator sends the ATM switch partner id (ucbatm) itself, so no alias is
