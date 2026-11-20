@@ -8,3 +8,5 @@
   contract + outbox + mw-audit-dw consumer.
 - **127c-trust-job-suite** (127b): core e-money total endpoint (core wallet contract: user decision needed), scheduled trust
   position job, Newman folder `61-recon-reports`, runbook "a day does not reconcile".
+- **User decision 2026-11-20 (127c):** add `GET /core/v1/reports/emoney-total` to the core wallet contract and the core mock;
+  the scheduled trust job calls it. Open item for Upay: the real core must provide the same endpoint.
