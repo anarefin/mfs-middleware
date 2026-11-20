@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (after merging b8b3aa63). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (after merging e5af25a4). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -15,21 +15,21 @@ Updated: 2026-11-20 (after merging b8b3aa63). Kept current after every merge/spl
 89 (ADRs/traceability), 90 (Redis 8.10.3 AGPL — written OWN-03 approval still open), 91 (HashiCorp Vault 2.2.2), 92 (contracts),
 93 (core-mock /core/v1 REST), 94 (core-mock model), 95a (orchestrator -> core over REST), 97 (adapter REVERSE + health),
 99 (duplicates/replay), 100a (client registry + APISIX sync), 101 (springdoc + drift tests), 102 (mock-control engine, a+b),
-103 (core mock-control + global reset), 110 (push notifications), 130 (audit FRS, + 3 security-fix rounds on PayloadScrub).
+103 (core mock-control + global reset), 110 (push notifications), 123 (AML/trustbank/DW file mocks), 130 (audit FRS; PayloadScrub after 4 review rounds: markup containing a secret word is stored as `****` whole, user decision).
 88 is superseded by 126/127.
 
 ## In flight when this file was written (worktrees under `.claude/worktrees/agent-*`, branch per ticket)
 - `ticket/95b-core-rest-retire-topics` — mw-auth/mw-admin-api to /core/v1, unlock endpoint, retire core command topics, legacy DROP_REPLY must also lose the REST answer.
 - `ticket/96-orchestrator-saga-frs` (doing **96a** only) — inquiry schedule 30s/2m/10m/1h -> MANUAL_REVIEW + ops alert (mw-notify migration must be V15+).
 - `ticket/105-app-preview-confirm` — app preview/confirm (API folder 46).
-- `ticket/123-file-mocks` — file mocks (API folder 44).
+- `ticket/110b-push-binding-epoch` — security follow-up: binding epoch from mw-auth through the gateway into push-token registrations.
 - `ticket/131-admin-partner-credentials` (doing **131a** only) — credentials backend (API folder 45).
 If an in-flight branch has commits, review its diff, finish it (tests first), merge `upay-main` into it, run `./gradlew :mw-x:build`
 for touched modules, merge into `upay-main`, mark its row done in DEPENDENCIES.md. If it has no commits, restart the ticket.
 
 ## Next (frontier, in priority order)
 1. 98 (routing, after 96a) -> 104 (FRS e2e harness) -> **M7 gate**.
-2. 95c, 110b (push binding epoch, security), 111, 106/107/108/109 (after 105) -> **M8 gate**.
+2. 95c, 111, 106/107/108/109 (after 105) -> **M8 gate**.
 3. Then M9–M13 per DEPENDENCIES.md (131b before 115/118–121; 100b before 118–121; 130b, 96b/96c, 100c, 131c before M13).
 
 ## Milestone gate procedure (after the last ticket of a milestone)
@@ -58,3 +58,5 @@ RetryTopicIT (admin-api/notify/telco), AuthClientIT (app-gateway/ussd), CryptoCl
 - 100a: `$secret://vault` lookup only IT-tested; live edge tests + folder 41 -> 100c.
 - 97: admin `PartnerConfigValue` lacks maintenance/healthCheck -> 131b.
 - 101: WSDL only after 108 (adapters serve no SOAP).
+
+- 123: AML file carries clear MSISDNs (watch-list rules); ticket 125 asks for masked/tokenised parties -> ask the user (security) when 125 starts. DW file layout is 123's draft; 128 must match it.
