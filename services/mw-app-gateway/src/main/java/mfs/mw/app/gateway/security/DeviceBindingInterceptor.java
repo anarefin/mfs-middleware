@@ -38,19 +38,39 @@ public class DeviceBindingInterceptor implements HandlerInterceptor {
     if (level == DeviceGate.Level.NONE) {
       return true;
     }
+    if (level == DeviceGate.Level.SIGNED) {
+      requireSigned(request);
+    } else {
+      requireSession(request);
+    }
+    return true;
+  }
+
+  /**
+   * Sensitive operation (REST confirm and balance, and the SOAP operations of the same name): a
+   * bound device, a live session, a valid signature and a fresh nonce. SOAP runs on its own servlet,
+   * so the MVC interceptor above never sees it; the SOAP endpoint calls this with the same request.
+   */
+  public void requireSigned(HttpServletRequest request) {
     Jwt jwt = jwt();
     AppUser user = users.resolve(jwt);
-    // an mw-auth token is issued to one device (ticket 69): it serves no other
+    rejectForeignToken(jwt, request);
+    devices.verifySigned(user, SignedRequests.from(request));
+  }
+
+  private void requireSession(HttpServletRequest request) {
+    Jwt jwt = jwt();
+    AppUser user = users.resolve(jwt);
+    rejectForeignToken(jwt, request);
+    devices.checkSession(user, request.getHeader(SignedRequests.DEVICE_ID));
+  }
+
+  /** An mw-auth token is issued to one device (ticket 69): it serves no other. */
+  private static void rejectForeignToken(Jwt jwt, HttpServletRequest request) {
     String tokenDevice = jwt.getClaimAsString(AppUserResolver.DEVICE_CLAIM);
     if (tokenDevice != null && !tokenDevice.equals(request.getHeader(SignedRequests.DEVICE_ID))) {
       throw new MwException(ErrorCodes.AUTH_DEVICE_NOT_BOUND, "Token not issued to this device");
     }
-    if (level == DeviceGate.Level.SIGNED) {
-      devices.verifySigned(user, SignedRequests.from(request));
-    } else {
-      devices.checkSession(user, request.getHeader(SignedRequests.DEVICE_ID));
-    }
-    return true;
   }
 
   private static Jwt jwt() {

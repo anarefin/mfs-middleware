@@ -32,17 +32,21 @@ public class DeviceBindingConfig {
   @ConditionalOnProperty(name = "mw.app-gateway.device-binding.enabled", havingValue = "true", matchIfMissing = true)
   static class Gate implements WebMvcConfigurer {
 
-    private final DeviceVerifier devices;
-    private final AppUserResolver users;
+    private final DeviceBindingInterceptor interceptor;
 
     Gate(DeviceVerifier devices, AppUserResolver users) {
-      this.devices = devices;
-      this.users = users;
+      this.interceptor = new DeviceBindingInterceptor(devices, users);
+    }
+
+    /** The SOAP facade calls the same signed check; the MVC registry alone never sees that servlet. */
+    @Bean
+    DeviceBindingInterceptor deviceBindingInterceptor() {
+      return interceptor;
     }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-      registry.addInterceptor(new DeviceBindingInterceptor(devices, users)).addPathPatterns("/app/**");
+      registry.addInterceptor(interceptor).addPathPatterns("/app/**");
     }
   }
 }
