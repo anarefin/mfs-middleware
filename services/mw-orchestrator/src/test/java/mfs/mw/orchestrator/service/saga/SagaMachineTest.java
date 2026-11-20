@@ -116,6 +116,12 @@ class SagaMachineTest {
     row(Status.MANUAL_REVIEW, new ReversalAcknowledged(), Status.REVERSED, Effect.NONE);
     row(Status.MANUAL_REVIEW, new ReversalQueryResult(true), Status.REVERSED, Effect.NONE);
 
+    // a merchant refund is its own record (ticket 116b): core reversal, then COMPLETED or REJECTED
+    row(Status.RECEIVED, new RefundStarted(), Status.REVERSING, Effect.SEND_REVERSE);
+    row(Status.REVERSING, new RefundConfirmed(), Status.COMPLETED, Effect.NONE);
+    row(Status.REVERSING, new RefundRefused(), Status.REJECTED, Effect.NONE);
+    row(Status.MANUAL_REVIEW, new RefundConfirmed(), Status.COMPLETED, Effect.NONE);
+
     // an operator's status inquiry (ticket 37): one inquiry now, the state stays
     row(Status.UNKNOWN, new ManualInquiry(), Status.UNKNOWN, Effect.SEND_INQUIRY);
     // the partner has not succeeded: the expired hold is confirmed released (ticket 95c)
@@ -137,6 +143,7 @@ class SagaMachineTest {
         new HoldCheckResult(HoldCheckResult.Hold.UNCLEAR),
         new CompensatingReleaseRetry(), new CompensatingReleaseAcknowledged(), new CompensatingReleaseRefused(),
         new ReversalRequested(), new ReversalRequested(true), new ReversalAcknowledged(), new ReversalFailed(),
+        new RefundStarted(), new RefundConfirmed(), new RefundRefused(),
         new ReversalResendsStopped(), new ReversalUnconfirmed(), new ReversalQueryResult(true), new ReversalQueryResult(false),
         new ManualCommit(), new ManualRelease(), new ManualInquiry(), new DeadlineExpired(),
         new HoldExpired(false), new HoldExpired(true),
@@ -153,7 +160,7 @@ class SagaMachineTest {
 
   @Test
   void everyListedTransitionIsTakenWithItsEffect() {
-    assertThat(TABLE).hasSize(68);
+    assertThat(TABLE).hasSize(72);
     TABLE.forEach(
         (key, expect) -> {
           Transition t = SagaMachine.apply(key.from(), key.event());

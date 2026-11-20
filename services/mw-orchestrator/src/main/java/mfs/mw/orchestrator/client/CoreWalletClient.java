@@ -42,7 +42,7 @@ import tools.jackson.databind.json.JsonMapper;
  *       /credits}: an operator's n-th forced decision ({@code :manual-<n>} commandId) sends {@code round}
  *       n, so the core decides it afresh;
  *   <li>ReverseTransaction {@code POST /reversals} under the reversal's txnId, without amount (the
- *       whole original, fee included);
+ *       whole original, fee included), or with the amount of a merchant refund (ticket 116b);
  *   <li>QueryTransaction (inquiry, HOLDING query, reversal query, credit check) {@code GET
  *       /transactions/{txnId}} (WAL-13);
  *   <li>BalanceInquiry {@code GET /balance/{walletId}?txnId=} with the assertion and {@code
@@ -243,7 +243,7 @@ public class CoreWalletClient {
   private Answer reverse(CoreCommand command) {
     ReversePayload p = (ReversePayload) command.payload();
     return send(HttpMethod.POST, "/core/v1/reversals", vars(), command,
-        new CoreCallBodies.Reversal(command.txnId(), p.originalTxnId(), p.reason()), null, null);
+        new CoreCallBodies.Reversal(command.txnId(), p.originalTxnId(), p.refund(), p.reason()), null, null);
   }
 
   private Answer balance(CoreCommand command) {
