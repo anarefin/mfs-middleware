@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import mfs.mw.checkout.dto.SessionStatus;
@@ -58,6 +59,30 @@ public class SessionRepository {
         .params(merchantId, orderId)
         .query(SessionRepository::map)
         .optional();
+  }
+
+  /**
+   * A merchant's sessions created in {@code [from, to)}, newest first (FRS CH-WEB-04, ticket 116);
+   * {@code status} null = all; OPEN and EXPIRED are told apart by {@code now} (EXPIRED is never stored).
+   */
+  public List<CheckoutSession> findByMerchant(
+      String merchantId, Instant from, Instant to, SessionStatus status, Instant now, int limit, long offset) {
+    String filter = status == null ? "" : switch (status) {
+      case OPEN -> " and status = 'OPEN' and expires_at > :now";
+      case EXPIRED -> " and status = 'OPEN' and expires_at <= :now";
+      default -> " and status = :status";
+    };
+    return jdbc.sql("select " + COLUMNS + " from session where merchant_id = :merchant and created_at >= :from"
+            + " and created_at < :to" + filter + " order by created_at desc, session_id desc limit :limit offset :offset")
+        .param("merchant", merchantId)
+        .param("from", ts(from))
+        .param("to", ts(to))
+        .param("now", ts(now))
+        .param("status", status == null ? null : status.name())
+        .param("limit", limit)
+        .param("offset", offset)
+        .query(SessionRepository::map)
+        .list();
   }
 
   public Optional<CheckoutSession> findByTxnId(UUID txnId) {

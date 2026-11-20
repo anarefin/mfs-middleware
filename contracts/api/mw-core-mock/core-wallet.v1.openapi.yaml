@@ -43,7 +43,7 @@ info:
     `HOLD_EXPIRED`, `ACCOUNT_DORMANT`, `ACCOUNT_CLOSED`, `SETTLEMENT_WALLET_NOT_FOUND`,
     `LIMIT_BELOW_MIN_PER_TXN`, `LIMIT_EXCEEDED_DAILY_COUNT`, `LIMIT_EXCEEDED_MONTHLY`,
     `LIMIT_EXCEEDED_MONTHLY_COUNT`,
-    `ORIGINAL_NOT_FOUND`, `ORIGINAL_NOT_REVERSIBLE`, `ALREADY_REVERSED`, `AMOUNT_MISMATCH`, or an
+    `ORIGINAL_NOT_FOUND`, `ORIGINAL_NOT_REVERSIBLE`, `ALREADY_REVERSED`, `AMOUNT_MISMATCH`, `REFUND_EXCEEDS`, or an
     injected fault's reason).
 
     Events stay on Kafka (D31): every money operation still writes its `core.event.v1` result
@@ -600,7 +600,7 @@ components:
         originalTxnId: { $ref: "#/components/schemas/TxnId" }
         amount:
           $ref: "#/components/schemas/Amount"
-          description: Optional; absent = the whole original. A partial amount is refused AMOUNT_MISMATCH until ticket 116
+          description: "Optional; absent = the whole original. A smaller amount is a partial reversal (a refund, ticket 116), the fee stays charged; the refunded total of an original may not exceed it (REFUND_EXCEEDS); once it reaches it, a further reversal is ALREADY_REVERSED"
         reason: { type: string, maxLength: 200 }
     BalanceAfter:
       type: object

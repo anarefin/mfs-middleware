@@ -99,6 +99,27 @@ public class LedgerRepository {
     return n != null && n > 0;
   }
 
+  /**
+   * Serialises every reversal and refund of {@code originalTxnId} until the calling transaction ends
+   * (security review of ticket 116): the refunded total and the reversed mark are read after it, so two
+   * racing refunds cannot both pass the cap.
+   */
+  public void lockReversalsOf(String originalTxnId) {
+    jdbc.queryForObject("select pg_advisory_xact_lock(hashtextextended(?, 116))::text", String.class, originalTxnId);
+  }
+
+  /** The total of the partial reversals (refunds) of {@code originalTxnId} so far (ticket 116). */
+  public long refundedMinor(String originalTxnId) {
+    Long n = jdbc.queryForObject(
+        "select coalesce(sum(amount_minor), 0) from partial_reversal where original_txn_id = ?", Long.class, originalTxnId);
+    return n == null ? 0 : n;
+  }
+
+  public void recordPartialReversal(String originalTxnId, String reversalTxnId, long amountMinor) {
+    jdbc.update("insert into partial_reversal (reversal_txn_id, original_txn_id, amount_minor) values (?, ?, ?)",
+        reversalTxnId, originalTxnId, amountMinor);
+  }
+
   public void markReversed(String originalTxnId, String reversalTxnId) {
     jdbc.update("insert into reversal (original_txn_id, reversal_txn_id) values (?, ?)", originalTxnId, reversalTxnId);
   }

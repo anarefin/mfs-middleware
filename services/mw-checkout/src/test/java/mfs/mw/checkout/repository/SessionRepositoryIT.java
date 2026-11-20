@@ -47,6 +47,46 @@ class SessionRepositoryIT {
     assertThat(sessions.findByMerchantOrder("merchant_demo", order)).contains(s);
   }
 
+  /** FRS CH-WEB-04 (ticket 116): a merchant's own payments in [from, to), newest first, by status, paged. */
+  @Test
+  void aMerchantListsOnlyItsOwnPaymentsCreatedInTheWindow() {
+    String merchant = "m-" + UUID.randomUUID();
+    Instant t0 = Instant.parse("2026-11-01T00:00:00Z");
+    CheckoutSession before = at(merchant, t0.minusSeconds(1), t0.plusSeconds(900));
+    CheckoutSession expired = at(merchant, t0, t0.plusSeconds(900));
+    CheckoutSession open = at(merchant, t0.plusSeconds(60), t0.plusSeconds(86_400));
+    CheckoutSession paid = at(merchant, t0.plusSeconds(120), t0.plusSeconds(900));
+    CheckoutSession atTo = at(merchant, t0.plusSeconds(3600), t0.plusSeconds(4500));
+    CheckoutSession other = at("m-" + UUID.randomUUID(), t0.plusSeconds(60), t0.plusSeconds(900));
+    java.util.List.of(before, expired, open, paid, atTo, other).forEach(sessions::insert);
+    UUID txn = UUID.randomUUID();
+    sessions.otpRequested(paid.sessionId(), PAYER, 3, t0.plusSeconds(130));
+    sessions.claimForPayment(paid.sessionId(), PAYER, txn, t0.plusSeconds(140));
+    sessions.finish(txn, SessionStatus.PAID, null, t0.plusSeconds(150));
+    Instant now = t0.plusSeconds(1000);
+    Instant to = t0.plusSeconds(3600);
+
+    assertThat(sessions.findByMerchant(merchant, t0, to, null, now, 10, 0))
+        .extracting(CheckoutSession::sessionId)
+        .containsExactly(paid.sessionId(), open.sessionId(), expired.sessionId());
+    assertThat(sessions.findByMerchant(merchant, t0, to, null, now, 2, 2))
+        .extracting(CheckoutSession::sessionId).containsExactly(expired.sessionId());
+    assertThat(sessions.findByMerchant(merchant, t0, to, SessionStatus.PAID, now, 10, 0))
+        .extracting(CheckoutSession::sessionId).containsExactly(paid.sessionId());
+    assertThat(sessions.findByMerchant(merchant, t0, to, SessionStatus.EXPIRED, now, 10, 0))
+        .extracting(CheckoutSession::sessionId).containsExactly(expired.sessionId());
+    assertThat(sessions.findByMerchant(merchant, t0, to, SessionStatus.OPEN, now, 10, 0))
+        .extracting(CheckoutSession::sessionId).containsExactly(open.sessionId());
+  }
+
+  private static CheckoutSession at(String merchant, Instant createdAt, Instant expiresAt) {
+    CheckoutSession f = fresh("ORD-" + UUID.randomUUID(), expiresAt);
+    return new CheckoutSession(
+        f.sessionId(), f.payToken(), merchant, f.merchantWallet(), f.orderId(), f.amountMinor(), f.currency(),
+        f.description(), f.locale(), f.successUrl(), f.failUrl(), f.cancelUrl(), f.ipnUrl(), f.status(), null, 0,
+        null, null, createdAt, expiresAt, createdAt);
+  }
+
   @Test
   void onlyOneClaimWinsAndOnlyTheClaimedTxnFinishesTheSession() {
     CheckoutSession s = fresh("ORD-" + UUID.randomUUID(), NOW.plusSeconds(900));

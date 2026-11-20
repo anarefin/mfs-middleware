@@ -145,7 +145,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-08` top-up | prepaid denominations and postpaid range landed in 112b; T1–T4 and T6–T10 are folder `tests/api/src/46-topup-operators` (112c). T5 waits out the inquiry schedule. T11 is ticket 125, T12 is ticket 127 |
 | `UC-09`, `UC-10` bills | one aggregator done; tickets 113, 114 |
 | `UC-11` merchant payment | app done (folder 04); USSD menu MERCHANT_PAY (109c); ticket 115 remains |
-| `UC-12` web checkout and refund | pay done; refund ticket 116 |
+| `UC-12` web checkout and refund | pay done; refund: core partial reversal built (116), checkout refund API open |
 | `UC-13` add money from card | ticket 118 |
 | `UC-14` add money from bank (C2W) | done (one bank); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
 | `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts, W2bFlow, app/USSD, simulator open (117b-d) |
@@ -219,8 +219,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-USSD-10 | done | ussd.customer_pref stores the SHA-256 of the MSISDN and the language, default bn (mw-ussd) |
 | CH-WEB-01 | done | mw-checkout session create with API key + HMAC |
 | CH-WEB-02 | done | checkout page flow with OTP and PIN (mw-checkout, D22) |
-| CH-WEB-03 | ticket 116 | redirect and signed IPN with retries built; 24 h retry horizon in 116 |
-| CH-WEB-04 | ticket 116 | create and status built; refund and list in 116 |
+| CH-WEB-03 | ticket 116 | redirect and signed IPN with retries built; 24 h retry horizon built (1m..24h, 116) |
+| CH-WEB-04 | ticket 116 | create, status and list by date built (116); refund API open |
 | CH-WEB-05 | done | session expiry `session-ttl: 15m` (mw-checkout `application.yml`) |
 | CH-POR-01 | ticket 129 | CSV upload and row validation built; XLSX and preview with totals in 129 |
 | CH-POR-02 | done | bulk maker-checker in mw-portal-api |
@@ -238,7 +238,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-03 | ticket 112 | postpaid quote fetches the bill once; confirm pays from the minimum due through the outstanding (112b) |
 | FL-04 | ticket 113 | two-step bill fetch then pay (billpay); the catalogue carries the amount rule (FIXED, MINIMUM, OPEN) and bill month, billpay checks field regex and `billMonth` on the fetch (`BillerCatalogTest`); mw-orchestrator projects each BILLER record (`txn.biller_rule` V17) and `BillPayFlow.amountRefusal` refuses MINIMUM below the minimum, OPEN outside its range and FIXED other than the fetched bill with `MW-VAL-032` before a hold (`BillPayFlowTest`, `BillerAmountRuleIT`, API folder `49-biller-catalogue`); FIXED is checked only when the channel attaches the fetched bill (`billOutstandingMinor`), which mw-app-gateway and mw-ussd do not do yet (113 follow-up) |
 | FL-05 | tickets 113, 132 | biller catalogue in mw-admin-api (`biller` table V16, 57-biller dev seed, `BillerChangeRequestIT`), published as `mw.config.changed.v1` BILLER; mw-adapter-billpay projection (`BillerProjectionIT`); app-gateway and USSD projections still open (113 follow-up) |
-| FL-06 | ticket 116 | refund bounds |
+| FL-06 | ticket 116 | refund bounds enforced in mw-core-mock (`MW-CORE-REFUND_EXCEEDS`, 116); checkout refund API open |
 | FL-07 | ticket 118 | card tokens only (card PAN never enters the middleware, root `CLAUDE.md`) |
 | FL-08 | ticket 117 | linked bank accounts with AVL |
 | FL-09 | ticket 117 | W2B with AVL and a hold |
@@ -269,7 +269,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-09 | ticket 114 | utility aggregator simulator (billagg) built; stateful bills and callbacks in 114 |
 | EXT-10 | ticket 114 | four bill aggregator profiles |
 | EXT-11 | ticket 115 | merchant SOAP |
-| EXT-12 | ticket 117 | partial: 20 bank profiles (REST and SOAP) generated from `deploy/partner-routes/bank/bank-profiles.csv`, AVL/W2B/STATUS/REVERSE routes (117a); bank gateway simulator open |
+| EXT-12 | ticket 117 | partial: 20 bank profiles (REST and SOAP) generated from `deploy/partner-routes/bank/bank-profiles.csv`, AVL/W2B/STATUS/REVERSE routes (117a); mw-simulators bank gateway from the same CSV, seeded accounts, trigger table, mock party `bank-<code>`, health probe (117d); AVL API, W2B flow, suite open |
 | EXT-13 | tickets 121, 122 | NPSB and BanglaQR mock switch |
 | EXT-14 | ticket 118 | CyberSource mock |
 | EXT-15 | ticket 119 | UCB IMT mock |

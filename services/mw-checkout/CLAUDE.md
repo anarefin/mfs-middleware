@@ -6,8 +6,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 ## Responsibilities
 
 - Web checkout (spec 9.3, WP21 part, ticket 31): merchant sessions, the hosted page API, one
-  MERCHANT_PAY per session, the signed redirect, the signed IPN with retries (ticket 32). Not
-  built yet: refunds (`POST /checkout/v1/refunds`), the page front-end (open point 16).
+  MERCHANT_PAY per session, the signed redirect, the signed IPN with retries (ticket 32), the
+  merchant's payment list by date (ticket 116). Not built yet: refunds (ticket 116 remainder:
+  `POST|GET /checkout/v1/payments/{id}/refunds`, the refund IPN; the core side is in mw-core-mock),
+  the page front-end (open point 16).
 - Merchant API (`controller/MerchantSessionController`, `service/MerchantSessionService`) behind the
   APISIX routes `checkout-v1-sessions` (POST, hmac-auth with body Digest, 16 KiB cap) and
   `checkout-v1-session-get` (GET, hmac-auth); APISIX forwards the consumer name in `X-Mw-Merchant-Id`
@@ -24,7 +26,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   = page-base-url + pay token, status OPEN, expiresAt = now + session-ttl (15 min)}`; one session
   per (merchant, orderId): a repeat with the same amount returns it (200), another amount
   `409 MW-IDEM-002`. `GET /checkout/v1/sessions/{id}` -> `{status, amount, txnId, payer (masked),
-  errorCode, ...}`; another merchant's session 404.
+  errorCode, ...}`; another merchant's session 404. `GET /checkout/v1/payments?from=&to=&status=&page=&size=`
+  (ticket 116, FRS CH-WEB-04; `controller/MerchantPaymentController`, APISIX route `checkout-v1-payments-get`)
+  -> `PaymentList {items: [the same view], page, size (default 50, at most 200), hasMore}`: the merchant's own
+  sessions created in `[from, to)`, newest first; `to` after `from` and at most 31 days later, else `400
+  MW-VAL-001`; `status` OPEN/EXPIRED told apart by the clock (`SessionRepository.findByMerchant`).
 - Replay protection (ticket 99, FRS PLT-008; `security/MerchantReplayInterceptor` registered by
   `config/ReplayProtectionConfig` on `POST /checkout/v1/sessions`, `service/RequestReplayGuard`,
   `repository/MerchantNonceRepository`, table `checkout.merchant_nonce` V8): the signed `Date` must be less
@@ -92,10 +98,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   against (default hostname verifier, JVM trust store bean `merchantIpnTls`); no redirects, proxy,
   cookies or retries; connect timeout, Resilience4j time limiter `merchant-ipn` 10 s). 2xx DELIVERED; else FAILED with
   `http_status`/`error` (`HTTP_<n>`, TIMEOUT, CONNECT_FAILED, TLS_FAILED, IO_ERROR, NO_SECRET, `URL_REFUSED: ...`)
-  and the next row due after `service/IpnRetrySchedule` (`retry-delays` 1m,5m,30m,2h,6h; 6 attempts).
+  and the next row due after `service/IpnRetrySchedule` (`retry-delays` 1m,5m,30m,2h,6h,12h,24h (ticket 116, FRS CH-WEB-04: about 44.6 h, so at least 24 h); 8 attempts).
   CANCELLED and EXPIRED sessions get no IPN (no payment was made; the merchant's GET shows them). Logs: `checkout.ipn.delivered|failed|
   exhausted` with the host only. Dev stack (`deploy/docker-compose.yml`): dev host `mw-simulators` (merchant IPN
-  receiver simulator) and a compressed schedule 10s,20s,30s,1m,2m.
+  receiver simulator) and a compressed schedule from `deploy/dev.env.defaults` (`MW_CHECKOUT_IPN_RETRY_DELAYS`; the compose
+  default is the production 1m,...,24h).
 - Signed result (`security/ResultSigner`, `service/ResultLinks`): PAID -> successUrl, CANCELLED ->
   cancelUrl, FAILED/EXPIRED -> failUrl, query `sessionId, orderId, status, txnId?, amount, currency,
   errorCode?, ts, signature` = hex HMAC-SHA256(merchant secret, `bits-checkout-result.v1\n` + the
@@ -161,7 +168,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   URLs; mw-auth's own OTP rules are tested in mw-auth `security/CheckoutOtpIT`);
   `client/AuthClientTest` (local HTTP server as mw-auth and Keycloak: pass-through, own-token retry only
   on `MW-AUTH-001`, fail closed, PIN key cache); `client/MtlsClientIT` (template copy); `IpnDeliveryIT` (local merchant
-  HTTP server, `MutableClock`: fail twice then 2xx on the schedule, six attempts then none, timeout,
+  HTTP server, `MutableClock`: fail twice then 2xx on the schedule, eight attempts (a day) then none, timeout,
   internal target refused); `client/MerchantIpnClientTest` (pinned address, Host kept),
   `client/MerchantIpnTlsTest` (keytool certificates: SNI and certificate checked against the name);
   `service/IpnRetryScheduleTest`, `security/IpnUrlPolicyTest` (one case per IPv6 rule),

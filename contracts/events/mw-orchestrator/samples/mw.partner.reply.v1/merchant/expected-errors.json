@@ -1,0 +1,3 @@
+{
+  "invalid-bad-error-code.json": ["/payload/errorCode must match pattern \"^MW-(PTR-[A-Z0-9_]+|TMO|SYS|VAL)-[A-Z0-9_]+$\""]
+}

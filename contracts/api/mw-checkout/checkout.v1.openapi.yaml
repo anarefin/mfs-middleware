@@ -131,6 +131,33 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/NotAMerchant" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /checkout/v1/payments:
+    get:
+      operationId: listPayments
+      summary: "The merchant's own payments (sessions) created in [from, to), newest first, paged (FRS CH-WEB-04, ticket 116)"
+      parameters:
+        - $ref: "#/components/parameters/MerchantId"
+        - { name: from, in: query, required: true, schema: { type: string, format: date-time } }
+        - name: to
+          in: query
+          required: true
+          description: After from and at most 31 days later, else 400 MW-VAL-001
+          schema: { type: string, format: date-time }
+        - name: status
+          in: query
+          required: false
+          schema: { $ref: "#/components/schemas/SessionStatus" }
+        - { name: page, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 10000, default: 0 } }
+        - { name: size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200":
+          description: One page of the merchant's payments
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentList" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/NotAMerchant" }
   /checkout/pay/v1/{token}:
     get:
       operationId: getPage
@@ -394,6 +421,14 @@ components:
         createdAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    PaymentList:
+      type: object
+      required: [items, page, size, hasMore]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/MerchantSessionView" } }
+        page: { type: integer, minimum: 0 }
+        size: { type: integer, minimum: 1 }
+        hasMore: { type: boolean }
     PageView:
       type: object
       required: [merchantName, orderId, amount, status, expiresAt]

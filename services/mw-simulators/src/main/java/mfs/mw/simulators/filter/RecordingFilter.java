@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import mfs.mw.simulators.dto.BankProfile;
 import mfs.mw.simulators.service.mockcontrol.Journal;
 import mfs.mw.simulators.service.mockcontrol.MockParties;
 import mfs.mw.simulators.util.SoapXml;
@@ -25,6 +26,7 @@ import org.springframework.web.util.ContentCachingRequestWrapper;
  */
 public class RecordingFilter extends OncePerRequestFilter {
 
+  private static final String BANK = "bank";
   private static final Set<String> SKIPPED_HEADERS = Set.of("authorization", "cookie");
 
   private final Journal journal;
@@ -35,9 +37,15 @@ public class RecordingFilter extends OncePerRequestFilter {
     this.clock = clock;
   }
 
-  private static String partnerOf(String path) {
+  /** The party of a wire path: its first segment, or {@code bank-<code>} for the bank gateway's {@code /bank/<code>/...}. */
+  static String partnerOf(String path) {
     int end = path.indexOf('/', 1);
-    return path.length() > 1 && end > 0 ? path.substring(1, end) : "";
+    String first = path.length() > 1 && end > 0 ? path.substring(1, end) : "";
+    if (BANK.equals(first)) {
+      int next = path.indexOf('/', end + 1);
+      return next > end + 1 ? BankProfile.PARTY_PREFIX + path.substring(end + 1, next) : "";
+    }
+    return first;
   }
 
   @Override

@@ -51,7 +51,7 @@ class CallbackServiceTest {
           new mfs.mw.simulators.client.CallbackSigner(new org.springframework.mock.env.MockEnvironment(), java.time.Clock.systemUTC()),
           mapper, new mfs.mw.simulators.mapper.BillAggregatorMapper(java.time.Clock.systemUTC()),
           new BankDebitLedger(), new mfs.mw.simulators.mapper.BankDebitMapper(),
-          JsonMapper.builder().build(), Runnable::run);
+          JsonMapper.builder().build(), Runnable::run, new BankGatewayLedger());
 
   private TopupRecord record() {
     TopupRecord r =

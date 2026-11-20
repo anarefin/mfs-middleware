@@ -428,7 +428,8 @@ class CoreCommandsIT {
 
     String original = txn();
     handle(cmds.post(original, A, B, 100_000));
-    assertThat(handle(cmds.reverse(txn(), original, 99_999)).reasonCode()).isEqualTo("AMOUNT_MISMATCH");
+    assertThat(handle(cmds.reverse(txn(), original, 100_001)).reasonCode()).as("more than the original (ticket 116)")
+        .isEqualTo("REFUND_EXCEEDS");
     handle(cmds.reverse(txn(), original, 100_000));
     assertThat(handle(cmds.reverse(txn(), original, 100_000)).reasonCode()).isEqualTo("ALREADY_REVERSED");
 

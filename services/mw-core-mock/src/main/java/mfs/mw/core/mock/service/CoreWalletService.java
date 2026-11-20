@@ -319,7 +319,7 @@ public class CoreWalletService {
 
   /**
    * WAL-11: ReverseTransaction. Without {@code amount} the whole original (its transfer debits); the
-   * command's rules then hold as on Kafka (a partial amount is AMOUNT_MISMATCH until ticket 116).
+   * command's rules then hold as on Kafka (a smaller amount is a partial reversal, ticket 116).
    */
   @Transactional(noRollbackFor = MwException.class)
   public OperationResult reverse(ReversalRequest req) {

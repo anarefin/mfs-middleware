@@ -104,7 +104,7 @@ test_spec_kafka_contract_matches_the_contract_schemas() {
   grep -qF '"valueMinor": { "type": "integer", "minimum": 0 }' "$REPO_DIR/contracts/common/defs.v1.schema.json" \
     || fail "Amount is no longer non-negative minor units"
   for t in reply inbound; do
-    grep -qF '"family": { "enum": ["telco", "billpay", "bank", "interop", "compliance"] }' \
+    grep -qF '"family": { "enum": ["telco", "billpay", "bank", "interop", "compliance"' \
       "$c/mw-orchestrator/mw.partner.$t.v1.schema.json" || fail "mw.partner.$t.v1 has no family enum"
   done
 }

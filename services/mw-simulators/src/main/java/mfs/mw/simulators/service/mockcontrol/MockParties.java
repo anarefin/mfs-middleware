@@ -5,11 +5,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
+import mfs.mw.simulators.dto.BankProfile;
 import mfs.mw.simulators.dto.MockBehaviour;
 import mfs.mw.simulators.dto.MockParty;
 import mfs.mw.simulators.dto.MockScenario;
 import mfs.mw.simulators.exception.ErrorCodes;
 import mfs.mw.simulators.exception.MwException;
+import mfs.mw.simulators.service.SeedFiles;
 import org.springframework.http.HttpStatus;
 
 /**
@@ -40,7 +42,7 @@ public final class MockParties {
       List.of(MockBehaviour.MISSING_FILE, MockBehaviour.LATE_FILE, MockBehaviour.DUPLICATE_FILE,
           MockBehaviour.CORRUPT_FILE, MockBehaviour.INJECTED_MISMATCH);
 
-  public static final List<MockParty> ALL =
+  public static final List<MockParty> ALL = withBanks(
       List.of(
           new MockParty("ocs", "prepaid top-up OCS (legacy single profile)", List.of("topup", "status", "reverse"), List.of("msisdn", "txnRef")),
           new MockParty("ocs-gp", "Grameenphone OCS", List.of("topup", "inquiry", "postpaid", "status", "reverse"), List.of("msisdn", "txnRef")),
@@ -76,7 +78,17 @@ public final class MockParties {
           new MockParty("trustbank", "trust bank: daily MT940 and intraday MT942 of the trust account in trustbank/out",
               List.of("mt940", "mt942"), List.of("date", "account"), FILE_BEHAVIOURS),
           new MockParty("dw", "Data Warehouse drop: validates each batch and control file in dw/in (verdict in the journal)",
-              List.of("validate"), List.of("file", "date"), List.of(MockBehaviour.SUCCESS, MockBehaviour.BUSINESS_ERROR)));
+              List.of("validate"), List.of("file", "date"), List.of(MockBehaviour.SUCCESS, MockBehaviour.BUSINESS_ERROR))));
+
+  /** The simulated bank gateway (ticket 117d): one party {@code bank-<code>} per bank of the seed file. */
+  private static List<MockParty> withBanks(List<MockParty> parties) {
+    List<MockParty> all = new java.util.ArrayList<>(parties);
+    for (BankProfile b : SeedFiles.bankProfiles(SeedFiles.VERSION)) {
+      all.add(new MockParty(b.party(), b.name() + " (bank gateway, " + b.protocol() + ", " + b.auth() + ")",
+          List.of("verify", "transfer", "status", "reverse", "health"), List.of("account", "txnRef")));
+    }
+    return List.copyOf(all);
+  }
 
   /** The kinds of INJECTED_MISMATCH (its {@code code}) per file party. */
   private static final Map<String, Set<String>> MISMATCH_KINDS = Map.of(

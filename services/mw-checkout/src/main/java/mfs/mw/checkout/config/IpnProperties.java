@@ -13,7 +13,7 @@ import org.springframework.validation.annotation.Validated;
  *
  * @param enabled whether the delivery job runs (tests switch it off and call the service)
  * @param pollPeriod how often the job looks for due attempts
- * @param retryDelays the wait after each failed attempt (1 min, 5 min, 30 min, 2 h, 6 h)
+ * @param retryDelays the wait after each failed attempt (1 min, 5 min, 30 min, 2 h, 6 h, 12 h, 24 h)
  * @param batchSize attempts per job run
  * @param connectTimeout TCP/TLS connect timeout; the whole call is bounded by the Resilience4j
  *     time limiter {@code merchant-ipn}

@@ -73,7 +73,7 @@ public class PartnerConfigService {
 
   /** The longest maintenance message per language (the adapters' rule). */
   static final int MAX_MAINTENANCE_MESSAGE = 500;
-  static final Set<String> FAMILIES = Set.of("telco", "billpay", "bank");
+  static final Set<String> FAMILIES = Set.of("telco", "billpay", "bank", "merchant");
   static final Set<String> AUTH_SCHEMES = Set.of("none", "api-key", "hmac-sha256");
   static final Set<String> DRY_RUN_OPERATIONS = Set.of("PAY", "INQUIRY", "STATUS_QUERY");
   static final Pattern MAPPING_NAME = Pattern.compile("^[A-Za-z0-9_.-]{1,64}$");

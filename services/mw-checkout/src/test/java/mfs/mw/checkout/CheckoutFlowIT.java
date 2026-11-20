@@ -394,6 +394,41 @@ class CheckoutFlowIT {
     assertThat(createSession("merchant_other", orderId, 1600)).as("orders are per merchant").hasStatus(201);
   }
 
+  /** FRS CH-WEB-04 (ticket 116): the merchant's payments by date, its own only, paged. */
+  @Test
+  void aMerchantListsItsOwnPaymentsByDate() throws Exception {
+    Instant from = clock.instant().minusSeconds(1);
+    String mine1 = body(createSession(MERCHANT, "ORD-" + UUID.randomUUID(), 1000)).path("sessionId").asString();
+    clock.advance(java.time.Duration.ofMillis(5));
+    String mine2 = body(createSession(MERCHANT, "ORD-" + UUID.randomUUID(), 2000)).path("sessionId").asString();
+    String theirs = body(createSession("merchant_other", "ORD-" + UUID.randomUUID(), 3000)).path("sessionId").asString();
+    String to = clock.instant().plusSeconds(1).toString();
+
+    JsonNode page = body(list(MERCHANT, "from=" + from + "&to=" + to + "&size=1"));
+    assertThat(page.path("items")).hasSize(1);
+    assertThat(page.path("items").get(0).path("sessionId").asString()).isEqualTo(mine2);
+    assertThat(page.path("hasMore").asBoolean()).isTrue();
+    JsonNode all = body(list(MERCHANT, "from=" + from + "&to=" + to + "&status=OPEN"));
+    assertThat(all.path("items").findValuesAsString("sessionId")).contains(mine1, mine2).doesNotContain(theirs);
+    assertThat(body(list(MERCHANT, "from=" + from + "&to=" + to + "&status=PAID")).path("items").findValuesAsString("sessionId"))
+        .doesNotContain(mine1, mine2);
+
+    assertThat(body(list(MERCHANT, "from=" + to + "&to=" + from)).path("code").asString()).isEqualTo("MW-VAL-001");
+    assertThat(list(MERCHANT, "from=" + from + "&to=" + clock.instant().plus(java.time.Duration.ofDays(32))))
+        .as("at most 31 days").hasStatus(400);
+    assertThat(list(MERCHANT, "from=" + from + "&to=" + to + "&status=NOPE")).hasStatus(400);
+    assertThat(list(null, "from=" + from + "&to=" + to)).hasStatus(401);
+    assertThat(list("merchant_nobody", "from=" + from + "&to=" + to)).hasStatus(403);
+  }
+
+  MvcTestResult list(String merchant, String query) {
+    var req = http.get().uri("/checkout/v1/payments?" + query);
+    if (merchant != null) {
+      req = req.header("X-Mw-Merchant-Id", merchant);
+    }
+    return req.exchange();
+  }
+
   @Test
   void requestsWithoutAnAuthenticatedMerchantAreRefused() throws Exception {
     MvcTestResult none = createSession(null, "ORD-1", 1000);
