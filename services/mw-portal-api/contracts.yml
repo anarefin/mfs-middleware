@@ -1,5 +1,6 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
 produces:
+  # mw.audit.event.v1: batch actions, and since ticket 130b each bulk child's CHANNEL_IN hop
   events: [events/mw-audit-dw/mw.audit.event.v1.schema.json, events/mw-orchestrator/mw.txn.request.v1.schema.json]
   apis:   [api/mw-portal-api/portal-org.v1.openapi.yaml]
 consumes:

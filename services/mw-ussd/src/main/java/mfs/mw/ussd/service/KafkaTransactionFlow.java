@@ -21,6 +21,7 @@ import mfs.mw.ussd.dto.TxnRequest;
 import mfs.mw.ussd.exception.AuthRefusedException;
 import mfs.mw.ussd.exception.ErrorCodes;
 import mfs.mw.ussd.exception.MwException;
+import mfs.mw.ussd.mapper.ChannelAuditMapper;
 import mfs.mw.ussd.mapper.TxnRequestMapper;
 import mfs.mw.ussd.messaging.EventMetadata;
 import mfs.mw.ussd.messaging.EventPublisher;
@@ -46,6 +47,7 @@ import org.springframework.stereotype.Service;
 public class KafkaTransactionFlow implements TransactionFlow {
 
   private static final Logger log = LoggerFactory.getLogger(KafkaTransactionFlow.class);
+  private static final String SERVICE = "mw-ussd";
 
   private final EventPublisher publisher;
   private final ReplyWaiters waiters;
@@ -54,6 +56,7 @@ public class KafkaTransactionFlow implements TransactionFlow {
   private final PinTransport pins;
   private final UssdProperties props;
   private final Clock clock;
+  private final ChannelAuditService audits;
 
   public KafkaTransactionFlow(
       EventPublisher publisher,
@@ -62,7 +65,8 @@ public class KafkaTransactionFlow implements TransactionFlow {
       AuthClient auth,
       PinTransport pins,
       UssdProperties props,
-      Clock clock) {
+      Clock clock,
+      ChannelAuditService audits) {
     this.publisher = publisher;
     this.waiters = waiters;
     this.mapper = mapper;
@@ -70,6 +74,7 @@ public class KafkaTransactionFlow implements TransactionFlow {
     this.pins = pins;
     this.props = props;
     this.clock = clock;
+    this.audits = audits;
   }
 
   /**
@@ -105,6 +110,7 @@ public class KafkaTransactionFlow implements TransactionFlow {
 
   @Override
   public FlowOutcome submit(FlowRequest request) {
+    long started = System.nanoTime();
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
     String key = idempotencyKey(request, txnId);
@@ -145,6 +151,12 @@ public class KafkaTransactionFlow implements TransactionFlow {
 
     StatusMessage status = await(answer, txnId);
     TerminalStatus end = status == null ? null : status.terminalStatus().orElse(null);
+    // the answer is not a payload: a BALANCE answer carries the balance (ADR D26)
+    audits.served(
+        new ChannelAuditMapper.Served(SERVICE, TxnRequestMapper.CHANNEL, txnId, correlationId, req.initiator().id(),
+            req.txnType(), end == null ? "PROCESSING" : status.status(),
+            end == null || status.error() == null ? null : status.error().code(), req, null),
+        (System.nanoTime() - started) / 1_000_000);
     if (end == null) {
       return new FlowOutcome(FlowOutcome.Kind.PROCESSING, status == null ? txnId : status.txnId(), null);
     }

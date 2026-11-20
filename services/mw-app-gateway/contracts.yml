@@ -16,6 +16,8 @@ produces:
     - events/mw-notify/mw.notify.push-token.v1.schema.json
     # ticket 111: POST /app/v1/notifications/opt-out (promotional only)
     - events/mw-notify/mw.notify.opt-out.v1.schema.json
+    # ticket 130b: the CHANNEL_IN audit hop of every transaction request served (service/ChannelAuditService)
+    - events/mw-audit-dw/mw.audit.event.v1.schema.json
   apis: [api/mw-app-gateway/app.v1.openapi.yaml]
 consumes:
   events:
