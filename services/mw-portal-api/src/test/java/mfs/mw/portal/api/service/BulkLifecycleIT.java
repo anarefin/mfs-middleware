@@ -175,7 +175,8 @@ class BulkLifecycleIT {
 
   private List<JsonNode> audits() {
     return jdbc.queryForList(
-            "select payload::text from outbox where topic = 'mw.audit.event.v1' order by id", String.class)
+            "select payload::text from outbox where topic = 'mw.audit.event.v1'"
+                + " and payload::jsonb ->> 'action' like 'bulk.batch.%' order by id", String.class)
         .stream()
         .map(json::readTree)
         .toList();

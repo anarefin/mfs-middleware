@@ -41,7 +41,20 @@ class ProducedContractsTest {
   static final Map<String, Supplier<List<Object>>> FIXTURES =
       Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests,
           "events/mw-notify/mw.notify.push-token.v1.schema.json", ProducedContractsTest::pushTokens,
-          "events/mw-notify/mw.notify.opt-out.v1.schema.json", ProducedContractsTest::optOuts);
+          "events/mw-notify/mw.notify.opt-out.v1.schema.json", ProducedContractsTest::optOuts,
+          "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::channelHops);
+
+  /** {@code ChannelAuditService.served} (ticket 130b): the CHANNEL_IN hop of every request type, answered or not. */
+  static List<Object> channelHops() {
+    return txnRequests().stream()
+        .map(r -> (mfs.mw.app.gateway.dto.TxnRequest) r)
+        .map(r -> (Object) mfs.mw.app.gateway.mapper.ChannelAuditMapper.channelIn(
+            new mfs.mw.app.gateway.mapper.ChannelAuditMapper.Served("mw-app-gateway", r.channel(), r.txnId(),
+                r.correlationId(), r.initiator().id(), r.txnType(), "PROCESSING", null, r,
+                mfs.mw.app.gateway.dto.TransactionView.processing(r.txnId())),
+            NOW, 12))
+        .toList();
+  }
 
   /** {@code PushTokenService.register} (ticket 110): what it hands the publisher, Android and iOS. */
   static List<Object> pushTokens() {

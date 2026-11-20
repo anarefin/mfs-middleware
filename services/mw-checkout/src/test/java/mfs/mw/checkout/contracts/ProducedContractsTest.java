@@ -43,7 +43,20 @@ class ProducedContractsTest {
 
   /** Fixtures per manifest entry: the messages the service sends on that topic. */
   static final Map<String, Supplier<List<Object>>> FIXTURES =
-      Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests);
+      Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests,
+          "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::channelHops);
+
+  /** {@code ChannelAuditService.served} (ticket 130b): the CHANNEL_IN hop of a payment, answered or not. */
+  static List<Object> channelHops() {
+    return txnRequests().stream()
+        .map(r -> (mfs.mw.checkout.dto.TxnRequest) r)
+        .flatMap(r -> Stream.of("COMPLETED", "PROCESSING").map(status ->
+            (Object) mfs.mw.checkout.mapper.ChannelAuditMapper.channelIn(
+                new mfs.mw.checkout.mapper.ChannelAuditMapper.Served("mw-checkout", r.channel(), r.txnId(),
+                    r.correlationId(), r.initiator().id(), r.txnType(), status, null, r, null),
+                NOW, 25)))
+        .toList();
+  }
 
   /** A compact JWS shape as mw-auth answers it (ticket 72). */
   static final String ASSERTION = "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiIwMTcxMTAwMDAwMSJ9.c2lnbmF0dXJl";

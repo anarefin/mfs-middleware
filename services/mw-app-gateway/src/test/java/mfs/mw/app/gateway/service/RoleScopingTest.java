@@ -56,7 +56,7 @@ class RoleScopingTest {
               "B2B_TRANSFER", List.of("DISTRIBUTOR", "DSO", "AGENT"),
               "BULK_DISBURSE", List.of("PARTNER"))),
       Clock.systemUTC(), mock(BillerService.class), mock(AuthClient.class), mock(IdempotentReplay.class),
-      mock(LinkedAccountService.class));
+      mock(LinkedAccountService.class), mock(ChannelAuditService.class));
 
   @Test
   void eachAppTypeCanCallOnlyItsGroups() {

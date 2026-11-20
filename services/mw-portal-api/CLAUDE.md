@@ -147,7 +147,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   by `./gradlew :contractsLint`, tested by `contracts/ProducedContractsTest` / `ConsumedContractsTest`,
   and `contracts/ApiContractsTest` for the served and called APIs; no Docker).
 - `events/mw-audit-dw/mw.audit.event.v1` (produced, own type `dto/AuditEvent`; `BulkLifecycleIT`
-  validates every batch audit event against it).
+  validates every batch audit event against it). Since ticket 130b `BulkExecutionService` also writes
+  each child's CHANNEL_IN hop (`BatchAuditMapper.childSent`: `channel.request.completed`, resource
+  `txn/<txnId>`, actor `system`/`mw-portal-api`, direction IN, payload the masked child request) in the
+  dispatch transaction (`BulkExecutionIT`).
 
 - `events/mw-orchestrator/mw.txn.request.v1` (produced, own type `dto/TxnRequest`;
   `BulkExecutionIT` validates every child against it) and `mw.txn.status.v1` (consumed, own type

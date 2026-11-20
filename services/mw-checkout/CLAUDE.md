@@ -171,6 +171,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `checkout-pay-v1-confirm.json` (`ConfirmRequest`), `checkout-v1-create-refund.json` (`RefundRequest`) (`scripts/derived-schemas.sh --write` after
   changing one; `./gradlew :contractsLint` fails on drift).
 
+- CHANNEL_IN audit hop (ticket 130b, FRS AUD-01/AUD-04): every transaction request `service/CheckoutPayService.confirm` served
+  (published and answered or timed out) writes `channel.request.completed` on `mw.audit.event.v1`
+  (`mapper/ChannelAuditMapper`, `service/ChannelAuditService`: outbox, own transaction, a failure logged
+  `channel.audit.failed` and never fails the request): hop CHANNEL_IN, direction IN, `durationMs`, actor
+  `user`/<scrubbed initiator>, `after` {channel, txnType, status, errorCode?}, outcome FAILURE for REJECTED /
+  FAILED; payload request IN the MERCHANT_PAY `TxnRequest` (no answer payload: the redirect URL is the merchant's), rendered by `MaskingPolicy.describe` (assertion blanked), 4 KB. A refusal before
+  publishing (PIN, OTP, validation) is not a hop.
+
 ## Contracts used
 
 - `contracts.yml` (module root) is the machine-readable list of the events and APIs here, checked by

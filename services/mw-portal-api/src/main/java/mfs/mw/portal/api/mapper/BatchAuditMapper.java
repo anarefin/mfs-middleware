@@ -2,9 +2,11 @@ package mfs.mw.portal.api.mapper;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import mfs.mw.portal.api.dto.AuditEvent;
+import mfs.mw.portal.api.dto.TxnRequest;
 import mfs.mw.portal.api.entity.Batch;
 import mfs.mw.portal.api.entity.BatchStatus;
 import mfs.mw.portal.api.util.MaskingPolicy;
@@ -58,5 +60,43 @@ public final class BatchAuditMapper {
         "SUCCESS",
         at,
         SERVICE);
+  }
+
+  /** A bulk child entering the middleware (ticket 130b, FRS AUD-01, AUD-04). */
+  public static final String CHILD_SENT = "channel.request.completed";
+
+  public static final String CHANNEL_IN = "CHANNEL_IN";
+
+  private static final int MAX_BODY = 4096;
+
+  /**
+   * The CHANNEL_IN hop of a bulk child sent to the orchestrator: resource {@code txn/<txnId>}, actor
+   * the service (the org authorised the batch by maker-checker), {@code after} the channel, txnType
+   * and the batch, payload IN the request rendered by {@link MaskingPolicy#describe} (party ids
+   * masked, free text scrubbed).
+   */
+  public static AuditEvent childSent(TxnRequest req, UUID batchId, Instant at) {
+    Map<String, Object> after = new LinkedHashMap<>();
+    after.put("channel", req.channel());
+    after.put("txnType", req.txnType());
+    after.put("status", "SUBMITTED");
+    after.put("batchId", batchId.toString());
+    String body = MaskingPolicy.describe(req);
+    return new AuditEvent(
+        1,
+        UUID.randomUUID().toString(),
+        req.txnId(),
+        req.correlationId(),
+        new AuditEvent.Actor("system", SERVICE),
+        CHILD_SENT,
+        "txn/" + req.txnId(),
+        null,
+        after,
+        "SUCCESS",
+        at,
+        SERVICE,
+        CHANNEL_IN,
+        "IN",
+        List.of(new AuditEvent.Payload("IN", "text/plain", body.length() <= MAX_BODY ? body : body.substring(0, MAX_BODY))));
   }
 }

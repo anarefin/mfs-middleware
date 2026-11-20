@@ -47,6 +47,23 @@ class ProducedContractsTest {
         null);
   }
 
+  static mfs.mw.portal.api.dto.TxnRequest child() {
+    return ChildRequestMapper.toRequest(
+        new PendingChild(BATCH_ID, 2, "01711000001", 150000L, "SAL-NOV-001", "ORG001", "01311000001",
+            BulkIds.parentTxnId(BATCH_ID), "BDT"),
+        AT);
+  }
+
+  @org.junit.jupiter.api.Test
+  void aChildHopIsInboundAndMasked() {
+    var e = BatchAuditMapper.childSent(child(), BATCH_ID, AT);
+    assertThat(e.hop()).isEqualTo("CHANNEL_IN");
+    assertThat(e.direction()).isEqualTo("IN");
+    assertThat(e.resource()).isEqualTo("txn/" + e.txnId());
+    assertThat(e.payload()).singleElement().satisfies(p -> assertThat(p.body()).contains("150000"));
+    assertThat(JSON.writeValueAsString(e)).doesNotContain("01711000001").doesNotContain("01311000001");
+  }
+
   /** Fixtures keyed by manifest entry: every message the module publishes on that topic. */
   static final Map<String, Supplier<List<Object>>> FIXTURES =
       Map.of(
@@ -56,7 +73,9 @@ class ProducedContractsTest {
                   BatchAuditMapper.event(pending(), "uploaded", "org-maker01", null, BatchStatus.PENDING_APPROVAL, null, "corr-1", AT),
                   BatchAuditMapper.event(approved(), "approved", "org-checker01", BatchStatus.PENDING_APPROVAL, BatchStatus.APPROVED, null, "corr-2", AT),
                   BatchAuditMapper.event(pending(), "rejected", "org-checker01", BatchStatus.PENDING_APPROVAL, BatchStatus.REJECTED, "wrong month for 01711000001", null, AT),
-                  BatchAuditMapper.event(pending(), "expired", null, BatchStatus.PENDING_APPROVAL, BatchStatus.EXPIRED, null, null, AT)),
+                  BatchAuditMapper.event(pending(), "expired", null, BatchStatus.PENDING_APPROVAL, BatchStatus.EXPIRED, null, null, AT),
+                  // ticket 130b: a child's CHANNEL_IN hop
+                  BatchAuditMapper.childSent(child(), BATCH_ID, AT)),
           "events/mw-orchestrator/mw.txn.request.v1.schema.json",
           () ->
               List.of(

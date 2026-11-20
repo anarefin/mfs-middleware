@@ -10,10 +10,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import mfs.mw.portal.api.config.PortalApiProperties;
+import mfs.mw.portal.api.dto.AuditEvent;
 import mfs.mw.portal.api.dto.StatusMessage;
 import mfs.mw.portal.api.dto.TxnRequest;
 import mfs.mw.portal.api.entity.ItemStatus;
 import mfs.mw.portal.api.entity.PendingChild;
+import mfs.mw.portal.api.mapper.BatchAuditMapper;
 import mfs.mw.portal.api.mapper.ChildRequestMapper;
 import mfs.mw.portal.api.messaging.EventMetadata;
 import mfs.mw.portal.api.messaging.OutboxWriter;
@@ -32,7 +34,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * one {@code mw.txn.request.v1} record per row to the outbox and marks the rows SUBMITTED, all in
  * one transaction: a crash leaves a row either unsent (sent later, with the same derived txnId and
  * key) or sent and recorded. Either way the orchestrator's idempotency answers a repeat with the
- * stored transaction, so no row is paid twice.
+ * stored transaction, so no row is paid twice. Each child also gets its CHANNEL_IN audit hop
+ * (ticket 130b) in that transaction.
  *
  * <p>{@link #apply(StatusMessage)} settles a row from its child's status record and completes the
  * batch once no row is unsent or running.
@@ -41,6 +44,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class BulkExecutionService {
 
   static final String REQUEST_TOPIC = "mw.txn.request.v1";
+  static final String AUDIT_TOPIC = "mw.audit.event.v1";
 
   private static final Logger log = LoggerFactory.getLogger(BulkExecutionService.class);
 
@@ -100,6 +104,8 @@ public class BulkExecutionService {
       TxnRequest req = ChildRequestMapper.toRequest(row, now);
       outbox.append(
           REQUEST_TOPIC, req.txnId(), new EventMetadata(req.correlationId(), req.txnId(), req.idempotencyKey(), 1), req);
+      AuditEvent hop = BatchAuditMapper.childSent(req, row.batchId(), now);
+      outbox.append(AUDIT_TOPIC, req.txnId(), new EventMetadata(hop.correlationId(), req.txnId(), hop.auditId(), 1), hop);
       txnIds.add(UUID.fromString(req.txnId()));
       batchIds.add(row.batchId());
     }

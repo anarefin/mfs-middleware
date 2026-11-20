@@ -4,6 +4,8 @@
 produces:
   events:
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
+    # ticket 130b: the CHANNEL_IN audit hop of every confirmed payment (service/ChannelAuditService)
+    - events/mw-audit-dw/mw.audit.event.v1.schema.json
   apis: [api/mw-checkout/checkout.v1.openapi.yaml]
 consumes:
   events: [events/mw-orchestrator/mw.txn.status.v1.schema.json]
