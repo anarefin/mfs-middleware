@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (M8 review fixes merged at 680ad323. 112a stays open. Partner BULK_DISBURSE still cannot post). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (112a merged at eba33d4b. 112b is next on the orchestrator and waits while ticket/m8-partner-disburse is in flight). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -34,6 +34,7 @@ Updated: 2026-11-20 (M8 review fixes merged at 680ad323. 112a stays open. Partne
 109c (USSD menus; fee from core charges/calculate; change-PIN stays on the maintenance text),
 110 (push notifications), 110b (binding epoch from mw-auth; notify migration V17),
 111 (notify campaigns, promotional opt-out, masked log; folder 47),
+112a (four operator OCS profiles, no amount rule),
 123 (AML/trustbank/DW file mocks),
 126 (recon matching and classification, Newman folder 60; statements and settlement lines are classified and no money moves),
 128 (mw-data-export stream, daily SFTP, PII policy, archive),
@@ -42,14 +43,16 @@ Updated: 2026-11-20 (M8 review fixes merged at 680ad323. 112a stays open. Partne
 131c (admin UI partner tabs; live Playwright not run).
 Review fix on the earlier salvage: 2308d22e (19 files +342 −57). 88 is superseded by 126/127.
 M8 review fixes merged at 680ad323 (8 files +356 −26): SOAP confirm and balance use the device gate, the USSD mini statement returns the latest movements, and XSD boolean 1 is a confirmed duplicate.
+112a merged at eba33d4b (implementer dc7c74e0): four operator OCS profiles.
 
 ## In flight when this file was written
-126 is merged. The `ticket/126-recon-matching` worktree is already removed. The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
+`ticket/m8-partner-disburse` is in flight in `/Users/ahmadnaqibularefin/Projects/mfs-worktrees/ticket-m8-partner-disburse`. Leave that worktree alone. 112b waits while it is in flight.
+126 is merged. The `ticket/126-recon-matching` worktree is already removed. The wave worktrees for 98, 100b, 111, 128 and 131c are removed. The 112a worktree stays. Other `.claude/worktrees/agent-*` trees are historical; leave them.
 
 ## Next (frontier, in priority order)
 1. **M8 gate (2026-11-20) was this run** (base d84fce30, code tip e9381fed). Passed: clean build, stack up, smoke 60/60, edge 66/66, new folders 216/0, log-scan clean. Whole suite once: 1483 assertions, 3 failed, not re-run. Folder 25 (dev PIN lock) and folder 28 (statement pages) were fixed and rechecked with folder 36 (179/0). Folder 36's replay 429 `MW-SYS-RATE_LIMITED` stays (the 60s window is not waited out). Folder 13 and folder 44 passed. ui-e2e: 21 passed and 4 failed, then those 4 passed. tester-e2e: 36 passed and 4 failed; the three USSD specs then passed. Leftover: tester top-up REJECTED `MW-SYS-PARTNER_CIRCUIT_OPEN`.
 2. **126** is merged and its worktree is removed. **106, 107, 108, and 109** are merged.
-3. **112** is split. **112a** (four OCS profiles, no amount rule) is next and is not done. The postpaid amount decision is already recorded (any amount from the minimum due through the outstanding bill). **112b** follows 112a. 113, 115, 117, 130b, 135 stay queued because they also edit the orchestrator or the same adapters. 118, 119, 120, and 121 are unblocked and wait for the same reason. 100c stays until M13. Partner BULK_DISBURSE still cannot post and is not fixed: the core wallet contract has no PARTNER wallet type.
+3. **112a** is merged (four OCS profiles, no amount rule). **112b** (postpaid amount from the minimum through the outstanding bill) is next on the orchestrator but waits while `ticket/m8-partner-disburse` is in flight. 113, 115, 117, 130b, 135 stay queued because they also edit the orchestrator or the same adapters. 118, 119, 120, and 121 are unblocked and wait for the same reason. 100c stays until M13. Partner BULK_DISBURSE still cannot post and is not fixed: the core wallet contract has no PARTNER wallet type.
 
 ## Milestone gate procedure (after the last ticket of a milestone)
 1. Code review of the milestone range; one fix pass.
