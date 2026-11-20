@@ -109,6 +109,7 @@
 112-telco-four-ocs                          97,98,102         split (112-split-decisions.md, 2026-11-20; pay from the minimum through the outstanding bill)
 112a-telco-ocs-profiles                     97,98,102         done     -        38 files +2043 −58     dc7c74e0
 112b-postpaid-amount                        112a              done     -        46 files +1372 −78     b79ccbd9
+112c-topup-matrix                           112b              done     -        31 files +1005 −27     266d341a  (T5 skipped: it only passes by waiting out the inquiry schedule. T11 is ticket 125. T12 is ticket 127)
 113-biller-catalogue                        98                open
 114-bill-aggregators                        113,97,102        open
 115-mw-adapter-merchant                     97,102            open

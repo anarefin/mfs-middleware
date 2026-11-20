@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (112b merged at c5dd4395, implementer b79ccbd9. Postpaid confirm accepts any amount from the stored minimum due through the outstanding bill. Preview returns both and confirm does not fetch again. 112c is next and not started: T1–T12 for two operators, no timer sleep). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (112c merged. Session stopped here. 113 and later are not started).
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -55,7 +55,7 @@ Partner disbursement merged at d2407234 (ccdcb713, 1bb02984, 9dd54f10): a partne
 ## Next (frontier, in priority order)
 1. **M8 gate (2026-11-20) was this run** (base d84fce30, code tip e9381fed). Passed: clean build, stack up, smoke 60/60, edge 66/66, new folders 216/0, log-scan clean. Whole suite once: 1483 assertions, 3 failed, not re-run. Folder 25 (dev PIN lock) and folder 28 (statement pages) were fixed and rechecked with folder 36 (179/0). Folder 36's replay 429 `MW-SYS-RATE_LIMITED` stays (the 60s window is not waited out). Folder 13 and folder 44 passed. ui-e2e: 21 passed and 4 failed, then those 4 passed. tester-e2e: 36 passed and 4 failed; the three USSD specs then passed. Leftover: tester top-up REJECTED `MW-SYS-PARTNER_CIRCUIT_OPEN`.
 2. **126** is merged and its worktree is removed. **106, 107, 108, and 109** are merged.
-3. **112a** is merged (four OCS profiles, no amount rule). The partner disbursement fix is merged (organisation-wallet posting, ORG seed, marked-partner login). **112b** is merged: postpaid confirm accepts any amount from the stored minimum due through the outstanding bill. Preview returns both, confirm does not fetch again, and an amount outside that range is refused before a hold. **112c** is next and not started: T1–T12 for two operators, no timer sleep. 113, 115, 117, 130b, 135 stay queued because they also edit the orchestrator or the same adapters. 118, 119, 120, and 121 stay queued behind that orchestrator work. 100c stays until M13.
+3. **112c** is merged (31 files, +1005 −27, implementer 266d341a). T5 is skipped because it only passes by waiting out the inquiry schedule. T11 is ticket 125 and T12 is ticket 127. The session stopped after this merge. 113, 115, 117, 130b, 135, and 118–121 are not started. 100c stays until M13.
 
 ## Milestone gate procedure (after the last ticket of a milestone)
 1. Code review of the milestone range; one fix pass.
