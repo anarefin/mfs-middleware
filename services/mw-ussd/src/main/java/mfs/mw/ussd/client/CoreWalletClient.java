@@ -13,7 +13,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -46,7 +48,8 @@ public class CoreWalletClient implements ChargeQuote, AccountReads {
   private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("dd/MM").withZone(ZoneOffset.UTC);
   private static final int STATEMENT_DAYS = 30;
   private static final int PAGE = 100;
-  private static final int PAGES = 3;
+  /** The statement contract's last page index ({@code page} maximum 100000). */
+  private static final int PAGE_LAST = 100_000;
   private static final int LINES = 5;
 
   private final CoreClientProperties props;
@@ -92,8 +95,9 @@ public class CoreWalletClient implements ChargeQuote, AccountReads {
   public String statement(String walletId, String language) {
     Instant to = clock.instant();
     Instant from = to.minus(Duration.ofDays(STATEMENT_DAYS));
-    List<String> lines = new ArrayList<>();
-    for (int page = 0; page < PAGES; page++) {
+    // Pages are oldest-first. Keep walking while hasMore, and keep only the latest five movements.
+    ArrayDeque<String> latest = new ArrayDeque<>(LINES);
+    for (int page = 0; page <= PAGE_LAST; page++) {
       String query =
           "?walletId=" + enc(walletId)
               + "&from=" + enc(from.toString())
@@ -103,18 +107,18 @@ public class CoreWalletClient implements ChargeQuote, AccountReads {
       JsonNode body = get("/core/v1/statements" + query);
       for (JsonNode entry : body.path("entries")) {
         if (MOVEMENTS.contains(entry.path("kind").asString())) {
-          lines.add(line(entry));
+          latest.addLast(line(entry));
+          if (latest.size() > LINES) {
+            latest.removeFirst();
+          }
         }
       }
       if (!body.path("hasMore").asBoolean(false)) {
         break;
       }
     }
-    int fromIndex = Math.max(0, lines.size() - LINES);
-    List<String> newestFirst = new ArrayList<>();
-    for (int i = lines.size() - 1; i >= fromIndex; i--) {
-      newestFirst.add(lines.get(i));
-    }
+    List<String> newestFirst = new ArrayList<>(latest);
+    Collections.reverse(newestFirst);
     return AccountScreens.statement(language, newestFirst);
   }
 

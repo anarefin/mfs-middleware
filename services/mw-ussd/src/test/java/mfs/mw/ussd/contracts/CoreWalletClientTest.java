@@ -12,6 +12,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import mfs.mw.ussd.client.CoreWalletClient;
@@ -49,6 +51,9 @@ class CoreWalletClientTest {
   HttpServer server;
   AtomicReference<String> chargeBody = new AtomicReference<>();
   AtomicInteger reads = new AtomicInteger();
+  /** When set, {@code GET /statements} answers this page instead of {@link #STATEMENT}. */
+  AtomicReference<java.util.function.IntFunction<String>> statementPages = new AtomicReference<>();
+  List<Integer> statementPageQueries = new ArrayList<>();
 
   @BeforeEach
   void start() throws IOException {
@@ -84,6 +89,34 @@ class CoreWalletClientTest {
     assertThat(reads.get()).isEqualTo(1);
   }
 
+  /**
+   * A 30-day history longer than three pages of 100 is oldest-first. The screen is the latest five
+   * movements, not the tail of the first three pages.
+   */
+  @Test
+  void aBusierMonthReturnsTheLatestMovements() {
+    statementPages.set(page -> {
+      if (page < 3) {
+        return statementPage(page, true, movement("2026-10-0" + (6 + page) + "T00:00:00Z", "DEBIT", 100));
+      }
+      return statementPage(page, false, String.join(",",
+          movement("2026-11-04T01:00:00Z", "CREDIT", 1_100),
+          movement("2026-11-04T02:00:00Z", "CREDIT", 1_200),
+          movement("2026-11-04T03:00:00Z", "CREDIT", 1_300),
+          movement("2026-11-04T04:00:00Z", "CREDIT", 1_400),
+          movement("2026-11-04T05:00:00Z", "CREDIT", 1_500)));
+    });
+
+    assertThat(client().statement("01712345678", "en")).isEqualTo("""
+        Recent
+        04/11 Cr 15.00
+        04/11 Cr 14.00
+        04/11 Cr 13.00
+        04/11 Cr 12.00
+        04/11 Cr 11.00""");
+    assertThat(statementPageQueries).contains(3);
+  }
+
   @Test
   void aRemittanceReferenceIsAnUpayTxnIdOrThereIsNone() {
     CoreWalletClient client = client();
@@ -117,7 +150,30 @@ class CoreWalletClientTest {
 
   private void statement(HttpExchange ex) throws IOException {
     reads.incrementAndGet();
-    write(ex, 200, STATEMENT);
+    int page = 0;
+    String query = ex.getRequestURI().getQuery();
+    if (query != null) {
+      for (String part : query.split("&")) {
+        if (part.startsWith("page=")) {
+          page = Integer.parseInt(part.substring("page=".length()));
+        }
+      }
+    }
+    statementPageQueries.add(page);
+    var pages = statementPages.get();
+    write(ex, 200, pages == null ? STATEMENT : pages.apply(page));
+  }
+
+  private static String statementPage(int page, boolean hasMore, String entries) {
+    return """
+        {"walletId":"01712345678","from":"2026-10-05T10:00:00Z","to":"2026-11-04T10:00:00Z",
+         "page":%d,"hasMore":%s,"entries":[%s]}""".formatted(page, hasMore, entries);
+  }
+
+  private static String movement(String at, String direction, long minor) {
+    return """
+        {"txnId":"t","walletId":"01712345678","direction":"%s","kind":"TRANSFER",
+         "amount":{"valueMinor":%d,"currency":"BDT"},"at":"%s"}""".formatted(direction, minor, at);
   }
 
   private void transaction(HttpExchange ex) throws IOException {

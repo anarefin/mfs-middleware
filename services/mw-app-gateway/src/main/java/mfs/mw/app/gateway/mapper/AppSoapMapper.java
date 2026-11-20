@@ -146,9 +146,19 @@ public class AppSoapMapper {
     return map.isEmpty() ? null : map;
   }
 
+  /** XSD boolean is {@code true}, {@code false}, {@code 1} or {@code 0}. {@code Boolean.valueOf} rejects {@code 1}. */
   private static Boolean bool(Element body, String name) {
     String value = text(body, name);
-    return value == null ? null : Boolean.valueOf(value);
+    if (value == null) {
+      return null;
+    }
+    if ("1".equals(value)) {
+      return Boolean.TRUE;
+    }
+    if ("0".equals(value)) {
+      return Boolean.FALSE;
+    }
+    return Boolean.valueOf(value);
   }
 
   private static Long longText(Element element, String name) {
