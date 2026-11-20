@@ -139,12 +139,23 @@ export default [
       const from = new Date(Date.now() - 2 * 86400000).toISOString();
       const to = new Date(Date.now() + 86400000).toISOString();
       const query = 'from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to);
-      const st = await MW.http('GET', '/app/v1/statement?' + query, { headers: await MW.app.headers('customer01') });
-      S.record(st);
-      S.status(200);
-      S.check('the transfer is a debit on the statement', (st.body.entries || []).some(e => e.txnId === id && e.direction === 'DEBIT' && e.amount.valueMinor === 1000), String(st));
+      // The core returns the oldest page first. A shared run wallet already has more than one page
+      // in this window, so walk pages until the debit is on the page (no timer).
+      const isDebit = e => e.txnId === id && e.direction === 'DEBIT' && e.amount.valueMinor === 1000;
+      let st;
+      let page = 0;
+      for (;;) {
+        st = await MW.http('GET', '/app/v1/statement?' + query + '&limit=100&page=' + page, {
+          headers: await MW.app.headers('customer01'),
+        });
+        S.record(st);
+        S.status(200);
+        if ((st.body.entries || []).some(isDebit) || st.body.hasMore !== true || page >= 20) break;
+        page += 1;
+      }
+      S.check('the transfer is a debit on the statement', (st.body.entries || []).some(isDebit), String(st));
       S.check('the statement does not carry the raw MSISDN', !JSON.stringify(st.body).includes('01711000001'), String(st));
-      const csv = await MW.http('GET', '/app/v1/statement?' + query, {
+      const csv = await MW.http('GET', '/app/v1/statement?' + query + '&limit=100&page=' + page, {
         headers: Object.assign({ Accept: 'text/csv' }, await MW.app.headers('customer01')),
       });
       S.record(csv);

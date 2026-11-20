@@ -13,8 +13,9 @@ import org.springframework.validation.annotation.Validated;
  * Per app type (ticket 106, FRS CH-APP-02, CH-APP-03, CH-APP-04, CH-APP-07): access-token life,
  * bound devices, concurrent sessions, idle timeout, and how many wrong PINs lock the PIN for how
  * long the first time. A type names only the fields it changes; the rest come from {@code defaults}.
- * The customer keeps today's PIN ladder (3 tries, then 1 h). Every other app type uses the defaults
- * (5 tries, then 24 h). Level 2 and the decay stay on {@link PinProperties}.
+ * The customer's first lock is {@code MW_AUTH_LOCK_LEVEL1} (3 tries, then 1 h unless that knob
+ * shortens it). Every other app type uses the defaults (5 tries, then 24 h). Level 2 and the decay
+ * stay on {@link PinProperties}.
  */
 @Validated
 @ConfigurationProperties("mw.auth.app-types")

@@ -269,9 +269,10 @@ mw:
       jwks-cache-ttl: 5m
       jwks-uri: ${MW_AUTH_JWKS_URI:http://mw-auth:8080/auth/v1/.well-known/jwks.json}
     # Per app type (ticket 106, FRS CH-APP-02, CH-APP-03, CH-APP-04, CH-APP-07; config/AppTypePolicy).
-    # Access token 15 min, one device, one session, idle 5 min. The customer keeps the PIN ladder's
-    # first step (3 tries, 1 h). Distributor, DSO, partner, agent and merchant use 5 tries and a 24 h
-    # first lock. MW_AUTH_ACCESS_TTL still sets the default access-token life.
+    # Access token 15 min, one device, one session, idle 5 min. The customer's first PIN lock is
+    # MW_AUTH_LOCK_LEVEL1 (default 1 h; the dev stack sets 1 min). Distributor, DSO, partner, agent
+    # and merchant use 5 tries and a 24 h first lock. MW_AUTH_ACCESS_TTL still sets the default
+    # access-token life.
     app-types:
       defaults:
         access-ttl: ${MW_AUTH_ACCESS_TTL:15m}
@@ -283,7 +284,7 @@ mw:
       types:
         CUSTOMER:
           pin-tries: 3
-          pin-lock: 1h
+          pin-lock: ${MW_AUTH_LOCK_LEVEL1:1h}
     # The PIN lifecycle (spec 18.7, D20, ticket 70; config/PinProperties): the weak-PIN rules run in
     # mw-crypto with the inputs mw-auth passes; the last `history` PINs may not be reused. Lockout: every
     # `tries` wrong PINs lock the PIN one level up (level 1 for level1, level 2 for level2, level 3 until

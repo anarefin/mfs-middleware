@@ -177,8 +177,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
     must not stop it). Order: the locks BEFORE mw-crypto (a locked wallet costs no HSM call and is no
     oracle), then mw-crypto `/pin/verify`; a wrong PIN runs one transaction under the wallet row's lock
     (`select ... for update`): a PIN lock taken meanwhile wins (not counted), else the count; the
-    `tries`-th wrong PIN moves the PIN lock one level up (level 1 `level1` 1 h, level 2 `level2` 24 h, level 3
-    until a reset), resets the count, audits `auth.pin.locked` and is answered with the new lock. A
+    `tries`-th wrong PIN moves the PIN lock one level up (level 1 is the app type's pin lock, customer
+    `MW_AUTH_LOCK_LEVEL1` default 1 h; level 2 `level2` 24 h; level 3 until a reset), resets the count,
+    audits `auth.pin.locked` and is answered with the new lock. A
     correct PIN resets the count, not the level: the `lock` row stays after its `until` as the level
     history, forgotten `decay` (30 d) after the lock was taken.
   - Policy (`service/PinService.newPin`; first PIN, change, reset): mw-crypto `/pin/derive` runs the
