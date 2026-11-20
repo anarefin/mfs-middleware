@@ -7,6 +7,8 @@ produces:
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#telco
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#billpay
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#bank
+    # merchant system VALIDATE and NOTIFY (ticket 115b)
+    - events/mw-orchestrator/mw.partner.request.v1.schema.json#merchant
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
     # REVERSAL of the test-only API (ticket 58, off unless mw.orchestrator.test-api.enabled)
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
@@ -20,6 +22,7 @@ consumes:
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#telco
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#billpay
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#bank
+    - events/mw-orchestrator/mw.partner.reply.v1.schema.json#merchant
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#telco
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#billpay
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#bank

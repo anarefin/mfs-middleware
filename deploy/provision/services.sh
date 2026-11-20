@@ -60,6 +60,8 @@ provision_mw_simulators() {
   sync_env sim.callback-secrets.billagg BILLAGG_HMAC_SECRET
   # the WS-Security UsernameToken password of the billagg SOAP front end (SOAP billers)
   sync_env sim.billagg.ws-password BILLAGG_WS_PASSWORD
+  # the WS-Security password of the merchant system SOAP mock (MerchantSoapMock, ticket 115b)
+  sync_env sim.merchant-soap.ws-password MERCHANT_SOAP_WS_PASSWORD
   sync_env sim.callback-secrets.c2wbank C2WBANK_HMAC_SECRET
   # the card acquirer's 3-D Secure webhook (CyberSourceMock, ticket 118)
   sync_env sim.callback-secrets.cybersource CYBERSOURCE_HMAC_SECRET

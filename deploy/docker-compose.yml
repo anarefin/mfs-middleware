@@ -970,8 +970,12 @@ services:
       # Dev only (A3): org ORG002 of realm portals collects for biller DESCO and merchant
       # 01911000001 (the core mock's merchant01), so the SP query shows those payments as PAYEE.
       # The main config has no org payees (JSON, as env var names would lower-case the org ids).
+      # Dev only (ticket 115b): merchant 01911000020 (merchant20) has its own merchant system, the
+      # mw-adapter-merchant partner merchant-soap (MerchantSoapMock merchant M-0001, till TILL-01): its
+      # payments are validated there first and notified after COMPLETED (API folder 50-merchant-soap).
       SPRING_APPLICATION_JSON: >-
-        {"mw":{"orchestrator":{"search":{"org-payees":{"ORG002":["BILLER:DESCO","MERCHANT:01911000001"]}}}}}
+        {"mw":{"orchestrator":{"search":{"org-payees":{"ORG002":["BILLER:DESCO","MERCHANT:01911000001"]}},
+        "merchant-systems":{"merchants":{"01911000020":{"partner-id":"merchant-soap","merchant-id":"M-0001","till-id":"TILL-01"}}}}}}
       # timers (spec 7.2, 7.4; application.yml mw.orchestrator.*): saga deadlines, the status
       # inquiry schedule of UNKNOWN outcomes and its "not found" grace, the reversal deadline
       MW_ORCHESTRATOR_HOLDINGTIMEOUT: ${MW_ORCHESTRATOR_HOLDING_TIMEOUT:-5s}
@@ -1300,7 +1304,7 @@ services:
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "2"
-      # Merchant system SOAP endpoint; the MVP stack targets mw-simulators (/merchant/v1/soap, ticket 115b).
+      # Merchant system SOAP endpoint; the MVP stack targets mw-simulators (/merchant-soap/v1/soap, ticket 115b).
       MERCHANT_SOAP_BASE_URL: ${MERCHANT_SOAP_BASE_URL:-http://mw-simulators:8080}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}

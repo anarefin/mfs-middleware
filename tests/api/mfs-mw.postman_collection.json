@@ -5664,6 +5664,75 @@
       ]
     },
     {
+      "name": "50 Merchant system over SOAP (mw-adapter-merchant)",
+      "description": "Ticket 115b (FRS UC-11, EXT-11, MCK-01 SOAP). merchant20 (01911000020) has its own merchant system in the dev stack (mw-orchestrator merchant-systems, partner merchant-soap of mw-adapter-merchant, MerchantSoapMock merchant M-0001). A MERCHANT_PAY to it is validated by the merchant system before the core is asked, and the merchant is notified after COMPLETED; a failed notify is retried and never reverses the payment. Folder 04-merchant (merchant01, no merchant system) stays validate + post.",
+      "item": [
+        {
+          "name": "[merchant frs] T1 a payment to a merchant with its own system is validated there, completes and the merchant is notified",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[merchant frs] T1 a payment to a merchant with its own system is validated there, completes and the merchant is notified\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.mockReset('merchant-soap'));\\n      await MW.mockReset('merchant-soap');\\n      await S.note(['01711000001', MERCHANT, 'FEE_INCOME']);\\n      await S.txn('customer01', 'MERCHANT_PAY', MERCHANT, 2500, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -2500, [MERCHANT]: 2500, 'FEE_INCOME': 0 });\\n      const validated = await soapCalls(MW, 'ValidateMerchant');\\n      S.check('the merchant system validated merchant M-0001 and its till', validated.some(e => String(e.body).includes('M-0001') && String(e.body).includes('TILL-01')), JSON.stringify(validated).slice(0, 400));\\n      const notified = await MW.poll(() => soapCalls(MW, 'NotifyPayment'), l => l.length > 0, 20000, 500);\\n      S.check('the merchant system received the payment notify', notified.length === 1, JSON.stringify(notified).slice(0, 400));\\n      S.check('the notify carries the amount', String((notified[0] || {}).body).includes('25.00'), JSON.stringify(notified).slice(0, 400));\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[merchant frs] T9 an inactive merchant is refused by the merchant system before any money moves",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[merchant frs] T9 an inactive merchant is refused by the merchant system before any money moves\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.mockReset('merchant-soap'));\\n      await MW.mockScenario('merchant-soap', 'validate', 'BUSINESS_ERROR', { code: '5002', nextN: 1 });\\n      await S.note(['01711000001', MERCHANT, 'FEE_INCOME']);\\n      await S.txn('customer01', 'MERCHANT_PAY', MERCHANT, 2500, MW.pin);\\n      S.status(502);\\n      S.code('MW-PTR-MERCHANT_SOAP-MERCHANT_INACTIVE');\\n      await S.noChange();\\n      const notified = await soapCalls(MW, 'NotifyPayment');\\n      S.check('no notify went to the merchant system', notified.length === 0, JSON.stringify(notified).slice(0, 400));\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[merchant frs] T3 a merchant system 5XX on the notify is retried and the payment stays COMPLETED",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[merchant frs] T3 a merchant system 5XX on the notify is retried and the payment stays COMPLETED\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.mockReset('merchant-soap'));\\n      await MW.mockReset('merchant-soap');\\n      await MW.mockScenario('merchant-soap', 'notify', 'HTTP_5XX', { nextN: 1 });\\n      await S.note(['01711000001', MERCHANT, 'FEE_INCOME']);\\n      await S.txn('customer01', 'MERCHANT_PAY', MERCHANT, 2500, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({ '01711000001': -2500, [MERCHANT]: 2500, 'FEE_INCOME': 0 });\\n      const notified = await MW.poll(() => soapCalls(MW, 'NotifyPayment'), l => l.length >= 2, 20000, 500);\\n      S.check('the failed notify was sent again', notified.length >= 2, JSON.stringify(notified).slice(0, 400));\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "60 Recon matching",
       "description": "Ticket 126, FRS REC-01, REC-04, EXT-06: an injected trust-bank line is classified MISSING_IN_UPAY. The test route is key-auth. partner-sftp is profile tester.",
       "item": [

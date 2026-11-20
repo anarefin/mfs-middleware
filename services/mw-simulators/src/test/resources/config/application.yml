@@ -26,6 +26,9 @@ sim:
     # The billagg SOAP front end's WS-Security password (stack: Vault secret/mw-simulators, never in the
     # main config); an obviously fake test value.
     ws-password: fake-billagg-ws-password-for-tests
+  merchant-soap:
+    # The merchant system SOAP mock's WS-Security password (ticket 115b); an obviously fake test value.
+    ws-password: fake-merchant-soap-ws-password-for-tests
   smsc:
     # The SMPP listener is off in tests (cached contexts would fight over the port);
     # SmscSimulatorIT switches it on with a free port.

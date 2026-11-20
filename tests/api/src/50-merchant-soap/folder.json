@@ -1,0 +1,4 @@
+{
+  "name": "50 Merchant system over SOAP (mw-adapter-merchant)",
+  "description": "Ticket 115b (FRS UC-11, EXT-11, MCK-01 SOAP). merchant20 (01911000020) has its own merchant system in the dev stack (mw-orchestrator merchant-systems, partner merchant-soap of mw-adapter-merchant, MerchantSoapMock merchant M-0001). A MERCHANT_PAY to it is validated by the merchant system before the core is asked, and the merchant is notified after COMPLETED; a failed notify is retried and never reverses the payment. Folder 04-merchant (merchant01, no merchant system) stays validate + post."
+}
