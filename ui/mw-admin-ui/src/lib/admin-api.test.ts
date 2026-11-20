@@ -128,6 +128,38 @@ describe("admin API client, change requests (tickets 41, 52)", () => {
     expect(sent[2]?.body).toBe(JSON.stringify({ action: "DISABLE", reason: "incident" }));
   });
 
+  it("reads credential metadata and files a maintenance, endpoint, error-map and upload change (ticket 131)", async () => {
+    const sent: Sent[] = [];
+    const api = createAdminApi({ baseUrl: "http://x", fetch: recorder(200, { items: [] }, sent) });
+    await api.listCredentials("tok", "ocs");
+    await api.listExpiringCredentials("tok", 30);
+    await api.requestPartnerChange("tok", "ocs", {
+      action: "SET_MAINTENANCE", reason: "window", config: { maintenance: false },
+    });
+    await api.requestPartnerChange("tok", "ocs", {
+      action: "SET_ENDPOINT", reason: "switch",
+      config: { endpoint: "MOCK", endpoints: { MOCK: "http://mw-simulators:8080", REAL: "http://mw-simulators:8080/ocs" } },
+    });
+    await api.requestErrorMapChange("tok", "ocs", {
+      action: "SET_ERROR_MAP", reason: "map", errorMap: { "2001": { suffix: "TOPUP_REJECTED" } }, ambiguousCodes: ["9876"],
+    });
+    await api.uploadCredential("tok", "ocs", "hmac-secret", {
+      action: "UPLOAD", reason: "rotate", type: "HMAC_SECRET", secret: "leaked-credential-value",
+    });
+    expect(sent.map((s) => [s.method, s.url])).toEqual([
+      ["GET", "http://x/admin/v1/credentials?partnerId=ocs"],
+      ["GET", "http://x/admin/v1/credentials/expiring?days=30"],
+      ["POST", "http://x/admin/v1/partners/ocs/change-requests"],
+      ["POST", "http://x/admin/v1/partners/ocs/change-requests"],
+      ["POST", "http://x/admin/v1/partners/ocs/error-map/change-requests"],
+      ["POST", "http://x/admin/v1/partners/ocs/credentials/hmac-secret/change-requests"],
+    ]);
+    expect(sent[5]?.body).toBe(JSON.stringify({
+      action: "UPLOAD", reason: "rotate", type: "HMAC_SECRET", secret: "leaked-credential-value",
+    }));
+    expect(sent[0]?.body).toBeNull();
+  });
+
   it("hands back the envelope of a refused write", async () => {
     const own = { code: "MW-AUTH-030", message: "The maker cannot decide", correlationId: "c", retryable: false, details: [] };
     const api = createAdminApi({ baseUrl: "http://x", fetch: recorder(403, own, []) });

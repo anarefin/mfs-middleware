@@ -80,18 +80,25 @@ export function canMakePartner(roles: readonly string[]): boolean {
   return PARTNER_MAKER_ROLES.some((r) => roles.includes(r));
 }
 
+/** Uploads a partner credential (ticket 131): integration-maker only. An ops-maker sees metadata. */
+export function canUploadCredential(roles: readonly string[]): boolean {
+  return roles.includes("integration-maker");
+}
+
 /** mw-admin-api AdminRole.KEY_ADMIN (ticket 75): key requests are decided by another security-admin. */
 export const KEY_CHECKER_ROLE = "security-admin";
 
 function checkerRoles(cr: ChangeRequest): readonly string[] {
-  if (cr.resourceType === "partner") return PARTNER_CHECKER_ROLES;
+  if (cr.resourceType === "partner" || cr.resourceType === "partner_error_map") return PARTNER_CHECKER_ROLES;
+  if (cr.resourceType === "partner_credential") return ["integration-checker"];
   if (cr.resourceType === "key") return [KEY_CHECKER_ROLE];
   return [CHECKER_ROLE];
 }
 
 /** Who decides this request, for the "waiting for ..." line. */
 export function checkerLabel(cr: ChangeRequest): string {
-  if (cr.resourceType === "partner") return "an ops-checker or integration-checker";
+  if (cr.resourceType === "partner" || cr.resourceType === "partner_error_map") return "an ops-checker or integration-checker";
+  if (cr.resourceType === "partner_credential") return "an integration-checker";
   if (cr.resourceType === "key") return "another security-admin";
   return "an ops-checker";
 }

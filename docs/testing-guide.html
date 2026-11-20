@@ -156,7 +156,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>Approvals: filters, rules, error codes</td><td><a href="#c9-7">9.7</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>Wallet unlock</td><td><a href="#c9-8">9.8</a></td><td>Both</td></tr>
       <tr><td class="tick"></td><td>Care PIN reset request (maker → checker)</td><td><a href="#c9-8b">9.8</a></td><td>Ops console</td></tr>
-      <tr><td class="tick"></td><td>Partners: disable, enable, timeouts, partner routes (submit, refuse, approve, LIVE / REJECTED; SOAP and SFTP batch optional)</td><td><a href="#c9-9">9.9</a></td><td>Ops console</td></tr>
+      <tr><td class="tick"></td><td>Partners: disable, enable, timeouts, maintenance, mock/real endpoint, credentials, error codes, partner routes (submit, refuse, approve, LIVE / REJECTED; SOAP and SFTP batch optional)</td><td><a href="#c9-9">9.9</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>USSD menu editor, preview, publish per MNO</td><td><a href="#c9-10">9.10</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>SMS and email templates: preview, publish, reject</td><td><a href="#c9-11">9.11</a></td><td>Ops console</td></tr>
       <tr><td class="tick"></td><td>What each role can and cannot do</td><td><a href="#c9-12">9.12</a></td><td>Ops console</td></tr>
@@ -1448,6 +1448,15 @@ curl -sk -X POST https://localhost/test/mock-control/dw/run -H 'apikey: e2e-test
         <code>deploy/partner-routes/examples/sftp-recon.yaml</code> (no dry-run: a batch route takes no calls), drop a CSV in
         <code>/home/bits/recon/</code>: it moves to <code>.done</code> and each line is a <code>mw.partner.recon.v1</code> event;
         a file with a wrong field count moves to <code>.error</code>.</li>
+      <li><b>Partner tabs</b> (ticket 131). On <code>ocs</code> the tab row is Config, <span class="ui">Maintenance</span>, <span class="ui">Endpoint (mock/real)</span>, <span class="ui">Credentials</span>, <span class="ui">Error codes</span>.
+        <ul>
+          <li><span class="ui">Maintenance</span>: the flag and the window (start, end, English and Bangla). A maker files <span class="ui">Request maintenance on</span> or <span class="ui">Request maintenance off</span>; a checker approves. Inside the window the adapter refuses with <code>MW-SYS-PARTNER_MAINTENANCE</code>. Leave the window in the past (or set an end in the past) so top-up keeps working. An end that is not after the start → <code>MW-VAL-001</code>.</li>
+          <li><span class="ui">Endpoint (mock/real)</span>: profile MOCK or REAL and both base URLs. Each host must be one of Allowed hosts (on the dev stack <code>mw-simulators</code>, for example <code>http://mw-simulators:8080</code>). <span class="ui">Request endpoint</span>, then approve. The route YAML is not edited; a route that calls <code>{{endpoint}}</code> is filled from the selected URL.</li>
+          <li><span class="ui">Credentials</span>: metadata only (name, type, kid, fingerprint, expiry). No secret is shown. <code>seed-ops-maker</code> has no upload form. Sign in as <code>ops-e2e-maker01</code> (integration-maker; code from <code>scripts/totp.sh ops-e2e-maker01</code>): <span class="ui">Upload credential</span>, type API key or HMAC secret, a secret of at least 16 characters, Reason. After submit the secret field is empty and the page never shows what was typed. <code>ops-e2e-checker01</code> (integration-checker) approves it; <code>seed-ops-checker</code> does not. The list stays metadata.</li>
+          <li><span class="ui">Error codes</span>: one line per partner code, <code>2001 TOPUP_REJECTED</code>, and <code>true</code> on the line when it is retryable. <span class="ui">Request error map</span> replaces the whole map; approve. Put the seeded line back afterwards. A bad suffix → <code>MW-VAL-001</code>.</li>
+        </ul>
+      </li>
+      <li>On <span class="ui">Partners</span>, the card <i>Credentials expiring</i> lists credentials whose expiry is within 30 days (expired ones included), soonest first. The same metadata, never a secret. The same screens are <code>scripts/ui-e2e.sh @credentials</code> and the API folder <code>scripts/api-test.sh 45</code>.</li>
     </ol>
   </div>
 
@@ -1520,9 +1529,9 @@ curl -sk -X POST https://localhost/test/mock-control/dw/run -H 'apikey: e2e-test
       <tr><th>User</th><th>Sees</th><th>Must not see</th></tr>
       <tr><td><code>seed-ops-viewer</code></td><td>every page, read only</td><td>any Request / Approve / Reject / Reveal button</td></tr>
       <tr><td><code>seed-ops-checker</code></td><td>Approve / Reject on others' requests</td><td>any Request form (transactions, Wallets, Partners, menus, templates)</td></tr>
-      <tr><td><code>seed-ops-maker</code></td><td>every Request form</td><td>Approve on its own requests; Reveal</td></tr>
+      <tr><td><code>seed-ops-maker</code></td><td>every Request form except a partner credential upload</td><td>Approve on its own requests; Reveal; Upload credential</td></tr>
       <tr><td><code>seed-ops-compliance</code>, <code>ops-auditor01</code></td><td>Reveal MSISDN (audited)</td><td>Request and Approve buttons</td></tr>
-      <tr><td><code>ops-admin01</code></td><td>Partners → Change and Timeouts cards</td><td>Wallets unlock, menu and template proposals, transaction actions, Approve</td></tr>
+      <tr><td><code>ops-admin01</code></td><td>Partners → Change, Timeouts, the partner tabs, and Upload credential</td><td>Wallets unlock, menu and template proposals, transaction actions, Approve</td></tr>
       <tr><td><code>seed-ops-secadmin1</code></td><td>Keys with its Request forms; Approve on the other security-admin's key requests</td><td>Approve on its own key requests; any other Request form</td></tr>
     </table></div>
   </div>
@@ -1682,7 +1691,7 @@ scripts/log-scan.sh</pre></div>
     <tr><td>9.2, 9.3 search and timeline</td><td><code>14</code></td></tr>
     <tr><td>9.5 reversal</td><td><code>12, 13</code></td></tr>
     <tr><td>9.8 wallet unlock</td><td><code>16</code></td></tr>
-    <tr><td>9.9 partners</td><td><code>15</code>; partner routes also <code>scripts/ui-e2e.sh @partners</code></td></tr>
+    <tr><td>9.9 partners</td><td><code>15</code>; partner routes <code>scripts/ui-e2e.sh @partners</code>; tabs <code>scripts/ui-e2e.sh @credentials</code> and <code>scripts/api-test.sh 45</code></td></tr>
     <tr><td>9.10, 9.11 menus and templates</td><td><code>17</code></td></tr>
     <tr><td>3.11 wallet auth (login, PIN lifecycle, assertion)</td><td><code>24, 25, 26</code> (lockout escalation and assertion expiry in <code>90</code>); test console <code>scripts/tester-e2e.sh @auth</code></td></tr>
     <tr><td>9.13 keys; payShield PVV</td><td><code>27</code> (mw-crypto's dev-only payShield test API); ops console <code>scripts/ui-e2e.sh @keys</code></td></tr>

@@ -43,6 +43,13 @@ function Resource({ cr }: { cr: ChangeRequest }) {
   if (cr.resourceType === "partner") {
     return <Link className="font-mono text-xs" href={`/partners/${encodeURIComponent(cr.resourceId)}`}>partner {cr.resourceId}</Link>;
   }
+  if (cr.resourceType === "partner_error_map") {
+    return <Link className="font-mono text-xs" href={`/partners/${encodeURIComponent(cr.resourceId)}?tab=error-codes`}>error map {cr.resourceId}</Link>;
+  }
+  if (cr.resourceType === "partner_credential") {
+    const partnerId = cr.resourceId.split("/")[0] ?? cr.resourceId;
+    return <Link className="font-mono text-xs" href={`/partners/${encodeURIComponent(partnerId)}?tab=credentials`}>credential {cr.resourceId}</Link>;
+  }
   if (cr.resourceType === "ussd_menu") {
     return <Link className="font-mono text-xs" href={`/ussd?menuId=${encodeURIComponent(cr.resourceId)}`}>ussd_menu {cr.resourceId}</Link>;
   }
@@ -72,7 +79,13 @@ function Payload({ cr }: { cr: ChangeRequest }) {
   if (typeof p.actionId === "string") parts.push(`action ${p.actionId}`);
   if (typeof p.commandId === "string") parts.push(`command ${p.commandId}`);
   if (typeof p.resetId === "string") parts.push(`reset ${p.resetId}`);
-  if (cr.resourceType === "partner" && typeof p.version === "number") parts.push(`published v${p.version}`);
+  if ((cr.resourceType === "partner" || cr.resourceType === "partner_error_map") && typeof p.version === "number") parts.push(`published v${p.version}`);
+  if (cr.resourceType === "partner_credential") {
+    const meta = p.meta;
+    if (typeof meta === "object" && meta !== null && typeof (meta as { kid?: unknown }).kid === "string") {
+      parts.push((meta as { kid: string }).kid);
+    }
+  }
   if ((cr.resourceType === "ussd_menu" || cr.resourceType === "notify_template") && typeof p.version === "number") {
     parts.push(`${cr.status === "APPROVED" ? "published" : "version"} v${p.version}`);
   }

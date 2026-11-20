@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACTION_LABELS, RESOURCE_LABELS, canMake, canMakePartner, diffLabel, mayDecide, parseReason, parseTimeouts, parseWalletId, txnActionGate, txnActionsFor } from "./approvals";
+import { ACTION_LABELS, RESOURCE_LABELS, canMake, canMakePartner, canUploadCredential, diffLabel, mayDecide, parseReason, parseTimeouts, parseWalletId, txnActionGate, txnActionsFor } from "./approvals";
 import type { ChangeRequest, Txn } from "./types";
 
 const txn = (over: Partial<Txn>): Txn => ({
@@ -133,10 +133,17 @@ describe("partner and content requests (tickets 38, 39, 42)", () => {
     expect(canMakePartner(["integration-maker"])).toBe(true);
     expect(canMakePartner(["ops-maker"])).toBe(true);
     expect(canMakePartner(["viewer", "integration-checker"])).toBe(false);
+    expect(canUploadCredential(["integration-maker"])).toBe(true);
+    expect(canUploadCredential(["ops-maker", "viewer"])).toBe(false);
     expect(mayDecide(partner, "ops-admin01", ["integration-checker"])).toBe(true);
     expect(mayDecide(menu, "ops-admin01", ["integration-checker"])).toBe(false);
     expect(mayDecide(menu, "ops-checker01", ["ops-checker"])).toBe(true);
     expect(mayDecide(cr({}), "ops-admin01", ["integration-checker"])).toBe(false);
+    const errorMap = cr({ resourceType: "partner_error_map", resourceId: "ocs", action: "SET_ERROR_MAP" });
+    const upload = cr({ resourceType: "partner_credential", resourceId: "ocs/hmac-secret", action: "UPLOAD" });
+    expect(mayDecide(errorMap, "seed-ops-checker", ["ops-checker"])).toBe(true);
+    expect(mayDecide(upload, "seed-ops-checker", ["ops-checker"])).toBe(false);
+    expect(mayDecide(upload, "ops-e2e-checker01", ["integration-checker"])).toBe(true);
   });
 
   it("shows the changed fields of a partner and the versions of a menu / template", () => {
