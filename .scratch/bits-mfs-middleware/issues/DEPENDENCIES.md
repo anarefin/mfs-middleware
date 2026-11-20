@@ -110,11 +110,11 @@
 112a-telco-ocs-profiles                     97,98,102         done     -        38 files +2043 −58     dc7c74e0
 112b-postpaid-amount                        112a              done     -        46 files +1372 −78     b79ccbd9
 112c-topup-matrix                           112b              done     -        31 files +1005 −27     266d341a  (T5 skipped: it only passes by waiting out the inquiry schedule. T11 is ticket 125. T12 is ticket 127)
-113-biller-catalogue                        98                split (113-split-decisions.md, 2026-11-20)
+113-biller-catalogue                        98                done (split 113a,113b,113c; 113-split-decisions.md)
 113a-biller-catalogue-owner                 98                done     ~45m     43 files +2020 −40     0d0f506d..a79d4435
 113b-biller-channel-projections             113a              done     25m      49 files +860 −98      fd910ff4  (fetched amount attached as billOutstandingMinor via Redis 30 min; USSD bill month = current Asia/Dhaka month, assumption; Newman 06/19/49 changed, not run live)
 113c-biller-amount-rule                     113a              done     29m      15 files +470 −9       8414700f  (orchestrator V17 biller_rule, MW-VAL-032, Newman folder 49-biller-catalogue; FIXED needs the channel to attach billOutstandingMinor -> 113b)
-114-bill-aggregators                        113,97,102        open
+114-bill-aggregators                        113,97,102        in progress
 115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
 115a-merchant-adapter                       97,102            done     31m      270 files +25395 −31   a58834bd,679349b0 (admin-api migration renumbered V17 at merge)
 115b-merchant-pay-flow                      115a,113          open   (Newman folder 49 is taken by 113c: use the next free one)
