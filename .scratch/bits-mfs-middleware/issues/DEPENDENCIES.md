@@ -102,7 +102,8 @@
 111-notify-campaign-optout-log              110               done     -        79 files +2444 −36     0a3f6bf4
 # --- M8 gate (2026-11-20, base d84fce30; code fixes 070c8217, 706941df, c95ec100, e9381fed): clean build PASS; stack up PASS; smoke 60/60; edge-test 66/66; new folders 18, 19, 20, 28, 29, 30, 43 USSD, 48, 60, 63: 216/0. Whole suite ONE run 1483 assertions, 3 failed, not re-run. Folder 25 fixed (customer first lock follows MW_AUTH_LOCK_LEVEL1) and folder 28 fixed (statement walks later pages); recheck of 25, 28, 36 was 179/0. Folder 36 replay HTTP 429 MW-SYS-RATE_LIMITED left (rate-limit window not waited out). Folders 13 and 44 passed. log-scan clean. ui-e2e 21 passed, 4 failed, then those 4 passed. tester-e2e 36 passed, 4 failed; the three USSD specs then passed. Leftover: tester top-up REJECTED MW-SYS-PARTNER_CIRCUIT_OPEN. 112+ stay open.
 # --- M8 scope: UC-02..07 on app and USSD
-112-telco-four-ocs                          97,98,102         open
+112-telco-four-ocs                          97,98,102         split (112-split-decisions.md, 2026-11-20; 112b waits on the postpaid amount)
+112a-telco-ocs-profiles                     97,98,102         open
 113-biller-catalogue                        98                open
 114-bill-aggregators                        113,97,102        open
 115-mw-adapter-merchant                     97,102            open

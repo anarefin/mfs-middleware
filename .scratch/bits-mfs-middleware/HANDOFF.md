@@ -7,7 +7,7 @@ Updated: 2026-11-20 (M8 gate was this run; code fixes end at e9381fed. Next is 1
 - Plan of this run: `~/.claude/plans/check-from-ticket-88-purrfect-dusk.md`. FRS plan: `~/.claude/plans/we-have-to-implement-harmonic-puzzle.md`.
 - Spec: `spec/FRS-Upay-Middleware.md` (+ `spec/bits-mfs-middleware-spec.md`). Repo rules: root `CLAUDE.md`, each `services/*/CLAUDE.md`.
 - Tickets: `.scratch/bits-mfs-middleware/issues/NN-*.md`; **status + order: `issues/DEPENDENCIES.md`** (authoritative).
-- Split decisions (user-approved): `issues/95-split-decisions.md`, `100-split-decisions.md`, `131-split-decisions.md`, `96-split-decisions.md`, `107-split-decisions.md`, `109-split-decisions.md`.
+- Split decisions (user-approved): `issues/95-split-decisions.md`, `100-split-decisions.md`, `131-split-decisions.md`, `96-split-decisions.md`, `107-split-decisions.md`, `109-split-decisions.md`, `112-split-decisions.md`.
 - Implementer brief (give to every implementer): `.scratch/bits-mfs-middleware/notes/implementer-brief.md`; code map: `notes/frs-run-notes.md`.
 - FRS id status per requirement: `docs/frs-traceability.md`. ADRs for this run: `docs/adr/D29..D33`.
 
@@ -48,7 +48,7 @@ Review fix on the earlier salvage: 2308d22e (19 files +342 −57). 88 is superse
 ## Next (frontier, in priority order)
 1. **M8 gate (2026-11-20) was this run** (base d84fce30, code tip e9381fed). Passed: clean build, stack up, smoke 60/60, edge 66/66, new folders 216/0, log-scan clean. Whole suite once: 1483 assertions, 3 failed, not re-run. Folder 25 (dev PIN lock) and folder 28 (statement pages) were fixed and rechecked with folder 36 (179/0). Folder 36's replay 429 `MW-SYS-RATE_LIMITED` stays (the 60s window is not waited out). Folder 13 and folder 44 passed. ui-e2e: 21 passed and 4 failed, then those 4 passed. tester-e2e: 36 passed and 4 failed; the three USSD specs then passed. Leftover: tester top-up REJECTED `MW-SYS-PARTNER_CIRCUIT_OPEN`.
 2. **126** is merged and its worktree is removed. **106, 107, 108, and 109** are merged.
-3. Next work, still open: 112, 113, 115, 117, 130b, 135. Do not mark them done. 118, 119, 120, and 121 are unblocked. 100c stays until M13. 132 can use the routing API from 98.
+3. **112** is split. **112a** (four OCS profiles, no amount rule) is next. **112b** waits on the postpaid amount decision. 113, 115, 117, 130b, 135 stay queued because they also edit the orchestrator or the same adapters. 118, 119, 120, and 121 are unblocked and wait for the same reason. 100c stays until M13.
 
 ## Milestone gate procedure (after the last ticket of a milestone)
 1. Code review of the milestone range; one fix pass.
