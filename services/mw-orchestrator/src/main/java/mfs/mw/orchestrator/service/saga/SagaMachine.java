@@ -52,6 +52,8 @@ public final class SagaMachine {
             case DeadlineExpired e -> go(from, Status.HOLDING, Effect.SEND_QUERY);
             case HoldQueryResult e when e.held() -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
             case HoldQueryResult e -> go(from, Status.REJECTED, Effect.NONE);
+            // the core released the hold before the partner was asked (ticket 95c)
+            case HoldExpired e when !e.partnerSucceeded() -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
             default -> null;
           };
       case POSTING ->
@@ -68,6 +70,8 @@ public final class SagaMachine {
             case PartnerFailed e -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
             case PartnerUnknown e -> go(from, Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);
             case DeadlineExpired e -> go(from, Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);
+            // waiting on the partner when the hold runs out (ticket 95c): the partner has not succeeded
+            case HoldExpired e when !e.partnerSucceeded() -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
             default -> null;
           };
       case UNKNOWN ->
@@ -79,6 +83,8 @@ public final class SagaMachine {
             case InquiryExhausted e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             case DeadlineExpired e -> go(from, Status.UNKNOWN, Effect.SEND_INQUIRY);
             case ManualInquiry e -> go(from, Status.UNKNOWN, Effect.SEND_INQUIRY);
+            // the partner has not succeeded, so the expired hold is confirmed released (ticket 95c)
+            case HoldExpired e when !e.partnerSucceeded() -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
             default -> null;
           };
       case COMMITTING ->
@@ -96,6 +102,8 @@ public final class SagaMachine {
             case CreditCheckResult e when e.credit() == CreditCheckResult.Credit.NOT_CREDITED ->
                 go(from, Status.COMMITTING, Effect.SEND_CREDIT);
             case CreditCheckResult e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
+            // the partner already succeeded; an expired hold cannot be committed (ticket 95c)
+            case HoldExpired e when e.partnerSucceeded() -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             default -> null;
           };
       case RELEASING ->

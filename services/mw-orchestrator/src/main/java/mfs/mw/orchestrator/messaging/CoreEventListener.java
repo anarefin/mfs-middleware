@@ -12,8 +12,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Consumes {@code core.wallet.event.v1} and {@code core.payment.event.v1} (ADR D31). Since ticket 95a
  * the saga takes the core's answers from its REST calls, so {@link CoreEventService} ignores the
- * result events the core still publishes for them; ticket 95c adds HoldExpired and wallet-state
- * changes. A failure propagates, so the retry error handler (config/KafkaConfig) parks the record on a
+ * result events the core still publishes for them and applies only HoldExpired (ticket 95c). Wallet-state
+ * events are consumed and move no saga. A failure propagates, so the retry error handler (config/KafkaConfig) parks the record on a
  * retry topic. The body is never logged.
  */
 @Component("coreEventListener")

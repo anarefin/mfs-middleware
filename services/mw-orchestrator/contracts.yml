@@ -25,8 +25,9 @@ consumes:
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#bank
     - events/mw-admin-api/mw.config.changed.v1.schema.json
     - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
-  # The core wallet over REST (ADR D31, ticket 95a; client/CoreWalletClient). The core's events on Kafka
-  # are not consumed: the core-event listener ignores the result events of its REST calls (95c adds
-  # HoldExpired and wallet-state changes).
+  # The core wallet over REST (ADR D31, ticket 95a; client/CoreWalletClient). Result events of those
+  # calls are ignored (no double apply). Ticket 95c consumes the events that answer no call.
+    - events/mw-core-mock/core.event.v1.schema.json#HoldExpired
+    - events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged
   apis:
     - api/mw-core-mock/core-wallet.v1.openapi.yaml

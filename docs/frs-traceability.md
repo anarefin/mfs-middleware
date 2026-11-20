@@ -297,7 +297,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | WAL-05 | done | `POST /core/v1/limits/check` (tickets 93, 94): the limit sheet `seed/v1/limits.csv` by txnType, customer type and KYC level; per txn min/max, daily and monthly amount and count (`service/Limits`, `LimitsTest`) |
 | WAL-06 | done | `POST /core/v1/holds` (ticket 93): the `HoldFunds` rules, `X-Txn-Assertion` |
 | WAL-07 | done | `POST /core/v1/holds/{id}/commit` (tickets 93, 94): the hold's settlement wallet, FEE_INCOME, VAT_PAYABLE, COMMISSION_PAYABLE in double entries (`LedgerInvariantIT`) |
-| WAL-08 | done | `POST /core/v1/holds/{id}/release` (ticket 93) |
+| WAL-08 | done | `POST /core/v1/holds/{id}/release` (ticket 93). A hold the core auto-releases (FRS 7.3, HoldExpired) is confirmed with that release, or left in MANUAL_REVIEW when the partner already succeeded (ticket 95c, HoldExpirySagaIT) |
 | WAL-09 | done | `POST /core/v1/transfers` (ticket 93): the `PostTransfer` rules |
 | WAL-10 | done | `POST /core/v1/credits` (tickets 93, 94): from the partner settlement wallet `settlementWallet` names (`SETTLEMENT_NPSB`, `SETTLEMENT_UCB_IMT`, ...), else `SETTLEMENT` |
 | WAL-11 | ticket 116 | `POST /core/v1/reversals` built (ticket 93, full, idempotent, once); partial reversal for refunds in 116 |
