@@ -120,6 +120,10 @@ public final class OrchestratorStub implements AutoCloseable {
     String replyTo = KafkaTestConsumer.headers(r).get("mw-reply-to");
     String txnId = req.path("txnId").asString();
     long amount = req.path("amount").path("valueMinor").asLong();
+    if ("REVERSAL".equals(req.path("txnType").asString())) {
+      refund(req, txnId, amount, replyTo);
+      return;
+    }
     if (amount == DUPLICATE_DONE || amount == DUPLICATE_RUNNING) {
       ObjectNode s = status(req, STORED_TXN_ID, amount == DUPLICATE_DONE ? "COMPLETED" : "POSTING");
       ObjectNode attrs = s.putObject("attributes");
@@ -176,6 +180,54 @@ public final class OrchestratorStub implements AutoCloseable {
     done.putObject("fee").put("valueMinor", 500).put("currency", "BDT");
     done.put("coreRef", "CORE-STUB-1");
     send(txnId, done, amount == OTHER_INSTANCE ? "some-other-instance" : replyTo);
+  }
+
+  /** Original txnId -> its amount, for the refund path (tests register the payments they made). */
+  private final Map<String, Long> payments = new java.util.concurrent.ConcurrentHashMap<>();
+  /** Original txnId -> refunded so far: the core's refunded total (ticket 116a). */
+  private final Map<String, Long> refunded = new java.util.concurrent.ConcurrentHashMap<>();
+  /** Refund idempotency key -> the first refund's final status (the orchestrator's duplicate answer). */
+  private final Map<String, ObjectNode> refundsByKey = new java.util.concurrent.ConcurrentHashMap<>();
+
+  /** A completed payment the refund path may refund (ticket 116). */
+  public void paid(String txnId, long amount) {
+    payments.put(txnId, amount);
+  }
+
+  /**
+   * A merchant refund as the orchestrator and the core answer it (tickets 116a/b): its own txnId;
+   * REVERSING then COMPLETED, or REJECTED {@code MW-CORE-REFUND_EXCEEDS} once the refunded total
+   * would pass the payment; a repeated key answers the first refund as a duplicate.
+   */
+  private void refund(JsonNode req, String txnId, long amount, String replyTo) {
+    String key = req.path("initiator").path("id").asString() + "|" + req.path("idempotencyKey").asString();
+    ObjectNode first = refundsByKey.get(key);
+    if (first != null) {
+      ObjectNode dup = first.deepCopy();
+      ObjectNode attrs = dup.putObject("attributes");
+      attrs.put("requestTxnId", txnId);
+      attrs.put("duplicate", "true");
+      send(first.path("txnId").asString(), dup, replyTo);
+      return;
+    }
+    String original = req.path("originalTxnId").asString();
+    send(txnId, status(req, txnId, "RECEIVED"), replyTo);
+    long paid = payments.getOrDefault(original, 0L);
+    long before = refunded.getOrDefault(original, 0L);
+    ObjectNode done;
+    if (paid == 0 || before + amount > paid) {
+      done = status(req, txnId, "REJECTED");
+      error(done, paid == 0 ? "MW-VAL-020" : "MW-CORE-REFUND_EXCEEDS", "Refund refused");
+    } else {
+      refunded.put(original, before + amount);
+      send(txnId, status(req, txnId, "REVERSING"), replyTo);
+      done = status(req, txnId, "COMPLETED");
+    }
+    ObjectNode attrs = done.putObject("attributes");
+    attrs.put("originalTxnId", original);
+    attrs.put("refundOf", "MERCHANT_PAY");
+    refundsByKey.put(key, done);
+    send(txnId, done, replyTo);
   }
 
   private static ObjectNode status(JsonNode req, String txnId, String status) {

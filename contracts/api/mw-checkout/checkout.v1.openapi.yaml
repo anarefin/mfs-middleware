@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits web checkout (mw-checkout)
-  version: 1.2.0
+  version: 1.3.0
   description: |
     Web checkout (spec 9.3, ticket 31). Two APIs:
 
@@ -51,18 +51,28 @@ info:
     Signed IPN (server to server, ticket 32): when a payment ends (PAID or FAILED) the middleware
     posts the `Ipn` body (webhook `ipn`) to the session's `ipnUrl`, with the headers
     `X-Bits-Ipn-Id` (the sessionId; one IPN per session, deduplicate on it), `X-Bits-Attempt`
-    (1..6), `X-Bits-Timestamp` (epoch seconds of this attempt) and `X-Bits-Signature`: lower-case
+    (1..8), `X-Bits-Timestamp` (epoch seconds of this attempt) and `X-Bits-Signature`: lower-case
     hex HMAC-SHA256, key = the merchant's checkout secret, over the UTF-8 text
 
         bits-checkout-ipn.v1\n<X-Bits-Timestamp>\n<the exact request body>
 
     Any 2xx answer acknowledges it. Otherwise (other status, no answer within 10 s, connection
-    failure) it is retried 1 min, 5 min, 30 min, 2 h and 6 h after each failed attempt; after
-    the sixth attempt it is not sent again. Every attempt carries the same body and is signed
+    failure) it is retried 1 min, 5 min, 30 min, 2 h, 6 h, 12 h and 24 h after each failed attempt
+    (ticket 116, FRS CH-WEB-04: at least 24 h); after the eighth attempt it is not sent again. Every attempt carries the same body and is signed
     afresh. Redirects are not followed. `ipnUrl` must be https and must not point at a loopback,
     private, link-local or other internal address (checked when the session is created and again
     before every attempt); plain http only for hosts a dev/test deployment explicitly allows.
     Errors are the 5.3 envelope.
+
+    Refunds (ticket 116, FRS CH-WEB-03, FL-06, UC-12): `POST /checkout/v1/payments/{paymentId}/refunds`
+    (paymentId = the sessionId of a PAID session; hmac-auth with Digest, `Date` and `X-Nonce` as on
+    session create; `Idempotency-Key` required) returns the money to the payer's wallet, the whole
+    payment or part of it (`amount`, default the whole payment). Every refund is its own transaction;
+    the refunded total never passes the payment (`MW-CORE-REFUND_EXCEEDS`, 422). The same key with the
+    same body answers the stored refund (200), with another body 409 `MW-IDEM-001`. When a refund ends
+    (COMPLETED or REJECTED) the middleware posts the signed `RefundIpn` (webhook `refundIpn`) to the
+    session's `ipnUrl`: the same headers and signature as the payment IPN, `X-Bits-Ipn-Id` = the
+    refundId, the same retry schedule.
 servers:
   - url: http://mw-checkout:8080
 paths:
@@ -158,6 +168,93 @@ paths:
         "400": { $ref: "#/components/responses/Invalid" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/NotAMerchant" }
+  /checkout/v1/payments/{paymentId}/refunds:
+    post:
+      operationId: createRefund
+      summary: Refund a paid checkout payment, whole or in part (FRS CH-WEB-03, FL-06, ticket 116)
+      description: >-
+        Another merchant's payment is 403 MW-AUTH-022; a payment that is not PAID 409 MW-VAL-021;
+        the refunded total past the payment 422 MW-CORE-REFUND_EXCEEDS (the orchestrator's and the
+        core's refusals are passed through with their code). No final answer within the reply budget:
+        202 with status PENDING (read it with the GET; the refund IPN follows).
+      parameters:
+        - $ref: "#/components/parameters/MerchantId"
+        - $ref: "#/components/parameters/PaymentId"
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,64}$" }
+        - name: Date
+          in: header
+          required: true
+          schema: { type: string }
+        - name: X-Nonce
+          in: header
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9._-]{16,128}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefundRequest" }
+      responses:
+        "201":
+          description: Refund completed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refund" }
+        "200":
+          description: The same Idempotency-Key and body again; the stored refund
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refund" }
+        "202":
+          description: Refund accepted, no final answer yet (status PENDING)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refund" }
+        "400": { $ref: "#/components/responses/Invalid" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Not a checkout merchant (MW-AUTH-002) or another merchant's payment (MW-AUTH-022)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The payment is not PAID (MW-VAL-021) or the Idempotency-Key was used with another body (MW-IDEM-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "422":
+          description: Refused by the core, e.g. MW-CORE-REFUND_EXCEEDS
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "503":
+          description: The request could not be sent (MW-SYS-010, retryable)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    get:
+      operationId: listRefunds
+      summary: The refunds of one of the merchant's payments, oldest first
+      parameters:
+        - $ref: "#/components/parameters/MerchantId"
+        - $ref: "#/components/parameters/PaymentId"
+      responses:
+        "200":
+          description: The refunds and the refunded total
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RefundList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: Not a checkout merchant (MW-AUTH-002) or another merchant's payment (MW-AUTH-022)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /checkout/pay/v1/{token}:
     get:
       operationId: getPage
@@ -298,7 +395,7 @@ webhooks:
       summary: Signed IPN the middleware posts to the session's ipnUrl (implemented by the merchant)
       parameters:
         - { name: X-Bits-Ipn-Id, in: header, required: true, schema: { type: string, format: uuid }, description: The sessionId }
-        - { name: X-Bits-Attempt, in: header, required: true, schema: { type: integer, minimum: 1, maximum: 6 } }
+        - { name: X-Bits-Attempt, in: header, required: true, schema: { type: integer, minimum: 1, maximum: 8 } }
         - { name: X-Bits-Timestamp, in: header, required: true, schema: { type: integer }, description: Epoch seconds of this attempt }
         - { name: X-Bits-Signature, in: header, required: true, schema: { type: string, pattern: "^[0-9a-f]{64}$" } }
       requestBody:
@@ -306,6 +403,23 @@ webhooks:
         content:
           application/json:
             schema: { $ref: "#/components/schemas/Ipn" }
+      responses:
+        "200":
+          description: Any 2xx acknowledges the IPN; anything else is retried
+  refundIpn:
+    post:
+      operationId: receiveRefundIpn
+      summary: Signed refund IPN the middleware posts to the session's ipnUrl when a refund ends (implemented by the merchant)
+      parameters:
+        - { name: X-Bits-Ipn-Id, in: header, required: true, schema: { type: string, format: uuid }, description: The refundId }
+        - { name: X-Bits-Attempt, in: header, required: true, schema: { type: integer, minimum: 1, maximum: 8 } }
+        - { name: X-Bits-Timestamp, in: header, required: true, schema: { type: integer }, description: Epoch seconds of this attempt }
+        - { name: X-Bits-Signature, in: header, required: true, schema: { type: string, pattern: "^[0-9a-f]{64}$" } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefundIpn" }
       responses:
         "200":
           description: Any 2xx acknowledges the IPN; anything else is retried
@@ -317,6 +431,12 @@ components:
       required: false
       description: Set by APISIX from the hmac-auth consumer name; a client's own value is stripped at the edge.
       schema: { type: string, maxLength: 64 }
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      description: The sessionId of the payment.
+      schema: { type: string, format: uuid }
     Token:
       name: token
       in: path
@@ -491,6 +611,54 @@ components:
             messageBn: { type: string }
             retryable: { type: boolean }
         redirectUrl: { type: string, format: uri }
+    RefundStatus:
+      type: string
+      enum: [PENDING, COMPLETED, REJECTED]
+    RefundRequest:
+      type: object
+      properties:
+        amount: { $ref: "#/components/schemas/Amount" }
+        reason: { type: string, maxLength: 140 }
+    Refund:
+      type: object
+      required: [refundId, paymentId, status, amount, originalTxnId, createdAt, updatedAt]
+      properties:
+        refundId: { type: string, format: uuid, description: "The refund transaction's txnId" }
+        paymentId: { type: string, format: uuid }
+        orderId: { type: string }
+        status: { $ref: "#/components/schemas/RefundStatus" }
+        amount: { $ref: "#/components/schemas/Amount" }
+        originalTxnId: { type: string, format: uuid }
+        reason: { type: string }
+        errorCode: { type: string, description: "REJECTED only, e.g. MW-CORE-REFUND_EXCEEDS" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    RefundList:
+      type: object
+      required: [items, refunded]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Refund" } }
+        refunded: { $ref: "#/components/schemas/RefundedTotal" }
+    RefundedTotal:
+      type: object
+      required: [valueMinor, currency]
+      description: The sum of the COMPLETED refunds (0 when none)
+      properties:
+        valueMinor: { type: integer, minimum: 0 }
+        currency: { type: string, enum: [BDT] }
+    RefundIpn:
+      type: object
+      required: [type, refundId, sessionId, orderId, status, originalTxnId, amount, finishedAt]
+      properties:
+        type: { type: string, enum: [REFUND] }
+        refundId: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        orderId: { type: string }
+        status: { type: string, enum: [COMPLETED, REJECTED] }
+        originalTxnId: { type: string, format: uuid }
+        amount: { $ref: "#/components/schemas/Amount" }
+        errorCode: { type: string, description: "REJECTED only" }
+        finishedAt: { type: string, format: date-time }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable]

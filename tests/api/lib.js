@@ -283,6 +283,8 @@
     },
     async ipnAcceptAll() { await http('DELETE', MC + 'merchant/scenarios', { apikey: true }); },
     async ipnReceived(ipnId) { return (await must('GET', '/test/sim/merchant/ipn/received?ipnId=' + ipnId, { apikey: true })).body || []; },
+    /** Refund IPNs only (ticket 116: the body's type REFUND; X-Bits-Ipn-Id = the refundId). */
+    async refundIpnReceived(refundId) { return (await must('GET', '/test/sim/merchant/ipn/received?type=REFUND&ipnId=' + refundId, { apikey: true })).body || []; },
   };
 
   // ---------- Tokens (Keycloak through APISIX), cached per user, refreshed with the refresh token ----------
@@ -708,6 +710,16 @@
     otp(t, wallet) { return http('POST', '/checkout/pay/v1/' + t + '/otp', { json: { wallet } }); },
     async confirm(t, otp, pin) { return http('POST', '/checkout/pay/v1/' + t + '/confirm', { json: { otp, encryptedPin: await encryptPin(pin) } }); },
     back(t) { return http('GET', '/checkout/pay/v1/' + t + '/return'); },
+    /** Ticket 116: POST /checkout/v1/payments/{id}/refunds (hmac-auth with Digest and X-Nonce, Idempotency-Key); amount omitted = the whole payment. */
+    refund(paymentId, key, amount, reason) {
+      const p = '/checkout/v1/payments/' + paymentId + '/refunds';
+      const b = {};
+      if (amount) b.amount = { valueMinor: amount, currency: 'BDT' };
+      if (reason) b.reason = reason;
+      const body = JSON.stringify(b);
+      return http('POST', p, { headers: Object.assign(checkout.signed('POST', p, body, v('checkoutSecret')), { 'Idempotency-Key': key }), raw: body });
+    },
+    refunds(paymentId) { const p = '/checkout/v1/payments/' + paymentId + '/refunds'; return http('GET', p, { headers: checkout.signed('GET', p, null, v('checkoutSecret')) }); },
     query(url) {
       const out = {};
       const q = url.indexOf('?') < 0 ? '' : url.slice(url.indexOf('?') + 1);

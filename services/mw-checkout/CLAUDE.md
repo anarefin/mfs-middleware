@@ -7,9 +7,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 
 - Web checkout (spec 9.3, WP21 part, ticket 31): merchant sessions, the hosted page API, one
   MERCHANT_PAY per session, the signed redirect, the signed IPN with retries (ticket 32), the
-  merchant's payment list by date (ticket 116). Not built yet: refunds (ticket 116 remainder:
-  `POST|GET /checkout/v1/payments/{id}/refunds`, the refund IPN; the core side is in mw-core-mock),
-  the page front-end (open point 16).
+  merchant's payment list by date and refunds with the signed refund IPN (ticket 116). Not built
+  yet: the page front-end (open point 16).
 - Merchant API (`controller/MerchantSessionController`, `service/MerchantSessionService`) behind the
   APISIX routes `checkout-v1-sessions` (POST, hmac-auth with body Digest, 16 KiB cap) and
   `checkout-v1-session-get` (GET, hmac-auth); APISIX forwards the consumer name in `X-Mw-Merchant-Id`
@@ -31,8 +30,29 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   -> `PaymentList {items: [the same view], page, size (default 50, at most 200), hasMore}`: the merchant's own
   sessions created in `[from, to)`, newest first; `to` after `from` and at most 31 days later, else `400
   MW-VAL-001`; `status` OPEN/EXPIRED told apart by the clock (`SessionRepository.findByMerchant`).
+- Refunds (ticket 116c, FRS CH-WEB-03, FL-06, UC-12; `controller/MerchantRefundController`,
+  `service/RefundService`, `service/RefundOutcomes`, `mapper/RefundMapper`, `repository/RefundRepository`, table
+  `checkout.refund` V9; APISIX `checkout-v1-refunds` (POST, hmac-auth with Digest and `x-nonce`, 4 KiB) and
+  `checkout-v1-refunds-get`): `POST /checkout/v1/payments/{paymentId}/refunds {amount? (default the whole
+  payment), reason?}` with header `Idempotency-Key` (1-64 of `A-Z a-z 0-9 . _ : -`, else `400 MW-VAL-001`);
+  paymentId = the sessionId. Another merchant's payment `403 MW-AUTH-022` (POST and GET), not PAID `409
+  MW-VAL-021`. One row per (merchant, key) with the SHA-256 of (session, amount, reason): the same key and body
+  answers the stored refund (200), another body `409 MW-IDEM-001`. A new refund is its own REVERSAL on
+  `mw.txn.request.v1` (txnId = refundId, UUIDv7; idempotency key `refund:<key>`; channel WEB_CHECKOUT, initiator
+  `{MERCHANT, merchantId}`, debit the merchant wallet MERCHANT, credit the payer wallet CUSTOMER, `originalTxnId`
+  = the payment's txnId, no assertion; the orchestrator's RefundFlow checks it again), with `mw-reply-to`, waited
+  for within `reply-budget`: COMPLETED `201`, no final answer `202` PENDING, REJECTED the refusal's code as the
+  envelope (`MW-CORE-REFUND_EXCEEDS` 422, `MW-AUTH-*` 403, `MW-VAL-*` 400). Kafka down: the row is deleted
+  (the key can be used again) and `503 MW-SYS-010`. Outcomes (`RefundOutcomes`, from the request or from
+  `StatusProjectionListener`, which sends a WEB_CHECKOUT REVERSAL here instead of `SessionOutcomes`): PENDING ->
+  COMPLETED / REJECTED, first wins, and in the same transaction attempt 1 of the signed refund IPN
+  (`dto/RefundIpnPayload` `{type REFUND, refundId, sessionId, orderId, status, originalTxnId, amount,
+  errorCode?, finishedAt}`) in `checkout.ipn_delivery` with `refund_id` set (V9), sent by the same job,
+  signature and schedule as the payment IPN, `X-Bits-Ipn-Id` = the refundId. `GET .../refunds` ->
+  `RefundList {items oldest first, refunded = the COMPLETED sum}`. The session stays PAID. Replay protection
+  covers the refund POST too.
 - Replay protection (ticket 99, FRS PLT-008; `security/MerchantReplayInterceptor` registered by
-  `config/ReplayProtectionConfig` on `POST /checkout/v1/sessions`, `service/RequestReplayGuard`,
+  `config/ReplayProtectionConfig` on `POST /checkout/v1/sessions` and the refund POST (ticket 116), `service/RequestReplayGuard`,
   `repository/MerchantNonceRepository`, table `checkout.merchant_nonce` V8): the signed `Date` must be less
   than 5 min away (`401 MW-AUTH-005`) and the signed `X-Nonce` (16-128 of `A-Z a-z 0-9 . _ -`) unused by the
   merchant within 10.5 min (`401 MW-AUTH-006`); APISIX requires `x-nonce` among the hmac-auth signed headers.
@@ -107,7 +127,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   cancelUrl, FAILED/EXPIRED -> failUrl, query `sessionId, orderId, status, txnId?, amount, currency,
   errorCode?, ts, signature` = hex HMAC-SHA256(merchant secret, `bits-checkout-result.v1\n` + the
   fields joined by `\n`); described for merchants in the contract.
-- Table `checkout.ipn_delivery` (V5): one row per IPN attempt (see above).
+- Table `checkout.ipn_delivery` (V5): one row per IPN attempt (see above); V9 adds `refund_id` (a refund's
+  IPN; unique attempt per payment and per refund).
+- Table `checkout.refund` (V9, ticket 116): one row per refund (see Refunds).
 - Table `checkout.session` (V4): token, merchant, order, amount, URLs, status, payer, OTP sends,
   txn_id, error_code, times (V7, ticket 72, dropped the OTP hash, expiry and attempts: mw-auth's now).
 - mw-auth client (ticket 72; `client/AuthClient`, `client/ServiceTokenClient` (mw-app-gateway's copy),
@@ -138,10 +160,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
 ## Contracts owned
 
 - `api/mw-checkout/checkout.v1.openapi.yaml` (merchant API, hosted page API, signed result, signed
-  IPN: webhook `ipn`, schema `Ipn`, `IpnUrl`). The service (not the edge) validates request
+  IPN: webhook `ipn`, schema `Ipn`, `IpnUrl`; refunds: `RefundRequest`, `Refund`, `RefundList`, webhook
+  `refundIpn`, schema `RefundIpn`, ticket 116). The service (not the edge) validates request
   bodies with `src/main/resources/derived-schemas/` `checkout-v1-create-session.json`
   (`CreateSessionRequest`), `checkout-pay-v1-otp.json` (`OtpRequest`) and
-  `checkout-pay-v1-confirm.json` (`ConfirmRequest`) (`scripts/derived-schemas.sh --write` after
+  `checkout-pay-v1-confirm.json` (`ConfirmRequest`), `checkout-v1-create-refund.json` (`RefundRequest`) (`scripts/derived-schemas.sh --write` after
   changing one; `./gradlew :contractsLint` fails on drift).
 
 ## Contracts used
@@ -151,7 +174,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   event built by `CheckoutMapper` validates), `contracts/ConsumedContractsTest` (every valid sample reads
   into the own DTO) and `contracts/ApiContractsTest` (checkout API responses, the IPN body, and the
   mw-auth requests and answers below).
-- `events/mw-orchestrator/mw.txn.request.v1` (produced with `assertion`; `dto/TxnRequest`, checked in `CheckoutMapperTest`).
+- `events/mw-orchestrator/mw.txn.request.v1` (produced with `assertion`; `dto/TxnRequest`, checked in `CheckoutMapperTest`;
+  the refund REVERSAL with `originalTxnId` and no assertion, checked in `ApiContractsTest`).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; `dto/StatusMessage`) and the `mw-reply-to` convention.
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (client, ticket 72: `POST /internal/v1/otp`, `POST
   /internal/v1/otp/verifications`, `POST /internal/v1/txn-authorisations`; own types `dto/AuthOtpRequest`,
@@ -177,7 +201,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `security/ResultSignerTest` (vector from openssl); `mapper/CheckoutMapperTest` (contract schemas);
   `service/SessionBodySchemaTest`, `controller/MerchantSessionControllerTest`,
   `controller/HostedPageControllerTest` (schema before the service).
-- API suite folder `09` (`tests/api/src/09-checkout/checkout.js`).
+- `CheckoutRefundIT` (PostgreSQL + Kafka, the `OrchestratorStub` refund path keeps the core's refunded total:
+  two partials then a refusal past the payment, the REVERSAL's parties, one refund IPN per refund; the same key
+  once, another body 409; no amount = whole; another merchant 403 on POST and GET; unpaid 409, key required);
+  `service/RefundArithmeticTest`; `contracts/ApiContractsTest` (refund views, list, refund IPN).
+- API suite folders `09` (`tests/api/src/09-checkout/checkout.js`) and `50` (`tests/api/src/50-checkout-refund`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

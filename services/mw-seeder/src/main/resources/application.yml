@@ -232,9 +232,9 @@ mw:
       - { client-id: billagg, type: PARTNER, auth-method: HMAC, allowed-routes: [partner-billagg-callback], ip-allow-list: [] }
       - { client-id: c2wbank, type: PARTNER, auth-method: HMAC, allowed-routes: [partner-c2wbank-callback], ip-allow-list: [] }
       - { client-id: partner-sim, type: PARTNER, auth-method: OAUTH2_CC, allowed-routes: [test-oauth2-cc], ip-allow-list: [], rate-per-sec: 20, daily-quota: 5000 }
-      - { client-id: merchant-demo, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }
-      - { client-id: merchant-pharmacy, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }
-      - { client-id: merchant-fashion, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }
+      - { client-id: merchant-demo, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get, checkout-v1-payments-get, checkout-v1-refunds, checkout-v1-refunds-get], ip-allow-list: [] }
+      - { client-id: merchant-pharmacy, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get, checkout-v1-payments-get, checkout-v1-refunds, checkout-v1-refunds-get], ip-allow-list: [] }
+      - { client-id: merchant-fashion, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get, checkout-v1-payments-get, checkout-v1-refunds, checkout-v1-refunds-get], ip-allow-list: [] }
       - { client-id: org-portal, type: PORTAL, auth-method: JWT, allowed-routes: [portal-org-v1, auth-portals-token], ip-allow-list: [] }
     # First admin versions: copies of what mw-ussd (menus/main-v4.json) and mw-notify (V5) ship,
     # so publishing them changes no text. Keep the copies identical.
