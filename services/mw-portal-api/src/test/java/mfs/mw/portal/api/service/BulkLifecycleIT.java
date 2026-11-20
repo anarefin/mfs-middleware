@@ -188,7 +188,7 @@ class BulkLifecycleIT {
 
   /** An approved batch whose rows were all sent (SUBMITTED). */
   private String submitted(int n) {
-    String id = batches.upload(MAKER, rows(n)).batchId();
+    String id = pending(n);
     batches.approve(CHECKER, id);
     clock.advance(Duration.ofSeconds(1));
     execution.dispatch();
@@ -198,13 +198,19 @@ class BulkLifecycleIT {
     return id;
   }
 
+  /** A batch uploaded and submitted by its maker, awaiting approval (ticket 129b). */
+  private String pending(int n) {
+    String id = batches.upload(MAKER, rows(n)).batchId();
+    return batches.submit(MAKER, id).batchId();
+  }
+
   // --- expiry ----------------------------------------------------------------------------------
 
   @Test
   void aBatchPendingFor72HoursExpiresAndCanNoLongerBeDecided() {
-    String old = batches.upload(MAKER, rows(2)).batchId();
+    String old = pending(2);
     clock.advance(Duration.ofHours(1));
-    String young = batches.upload(MAKER, rows(1)).batchId();
+    String young = pending(1);
 
     clock.advance(Duration.ofHours(71)); // old is exactly 72 h pending: not yet
     assertThat(expiry.expirePending()).isZero();
@@ -230,24 +236,40 @@ class BulkLifecycleIT {
     assertThat(audit.path("after").path("status").asString()).isEqualTo("EXPIRED");
   }
 
+  @Test
+  void aPreviewNeverSubmittedExpiresAndCanNoLongerBeSubmitted() {
+    String preview = batches.upload(MAKER, rows(1)).batchId();
+    clock.advance(Duration.ofHours(72).plusSeconds(1));
+    assertThat(expiry.expirePending()).isEqualTo(1);
+
+    assertThat(batches.get(MAKER, preview).status()).isEqualTo("EXPIRED");
+    assertThatThrownBy(() -> batches.submit(MAKER, preview))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-036"));
+    JsonNode audit = audits().getLast();
+    assertThat(audit.path("action").asString()).isEqualTo("bulk.batch.expired");
+    assertThat(audit.path("before").path("status").asString()).isEqualTo("PREVIEW");
+  }
+
   // --- audit -----------------------------------------------------------------------------------
 
   @Test
   void everyOperatorActionIsAuditedWithTheOperatorAsActorAndNoCustomerData() {
-    String a = batches.upload(MAKER, rows(2)).batchId();
+    String a = pending(2);
     batches.approve(CHECKER, a);
     batches.pause(CHECKER, a);
     batches.resume(CHECKER, a);
-    String r = batches.upload(MAKER, rows(1)).batchId();
+    String r = pending(1);
     batches.reject(CHECKER, r, "wrong month for 01711000001");
 
     List<JsonNode> events = audits();
     assertThat(events.stream().map(e -> e.path("action").asString()).toList())
         .containsExactly(
-            "bulk.batch.uploaded", "bulk.batch.approved", "bulk.batch.paused", "bulk.batch.resumed",
-            "bulk.batch.uploaded", "bulk.batch.rejected");
+            "bulk.batch.uploaded", "bulk.batch.submitted", "bulk.batch.approved", "bulk.batch.paused",
+            "bulk.batch.resumed", "bulk.batch.uploaded", "bulk.batch.submitted", "bulk.batch.rejected");
     assertThat(events.stream().map(e -> e.path("actor").path("id").asString()).toList())
-        .containsExactly("org-maker01", "org-checker01", "org-checker01", "org-checker01", "org-maker01", "org-checker01");
+        .containsExactly(
+            "org-maker01", "org-maker01", "org-checker01", "org-checker01", "org-checker01", "org-maker01",
+            "org-maker01", "org-checker01");
 
     Schema schema = ContractSchemas.schema(AUDIT_SCHEMA);
     for (JsonNode e : events) {
@@ -261,16 +283,19 @@ class BulkLifecycleIT {
     JsonNode upload = events.get(0);
     assertThat(upload.path("resource").asString()).isEqualTo("bulk-batch/" + a);
     assertThat(upload.has("before")).isFalse();
-    assertThat(upload.path("after").path("status").asString()).isEqualTo("PENDING_APPROVAL");
+    assertThat(upload.path("after").path("status").asString()).isEqualTo("PREVIEW");
     assertThat(upload.path("after").path("rowCount").asInt()).isEqualTo(2);
     assertThat(upload.path("after").path("orgId").asString()).isEqualTo("ORG001");
-    JsonNode approve = events.get(1);
+    JsonNode submit = events.get(1);
+    assertThat(submit.path("before").path("status").asString()).isEqualTo("PREVIEW");
+    assertThat(submit.path("after").path("status").asString()).isEqualTo("PENDING_APPROVAL");
+    JsonNode approve = events.get(2);
     assertThat(approve.path("before").path("status").asString()).isEqualTo("PENDING_APPROVAL");
     assertThat(approve.path("after").path("status").asString()).isEqualTo("APPROVED");
     assertThat(approve.path("txnId").asString()).isEqualTo(batches.get(CHECKER, a).parentTxnId());
-    assertThat(events.get(2).path("after").path("status").asString()).isEqualTo("PAUSED");
-    assertThat(events.get(3).path("after").path("status").asString()).isEqualTo("EXECUTING");
-    JsonNode reject = events.get(5);
+    assertThat(events.get(3).path("after").path("status").asString()).isEqualTo("PAUSED");
+    assertThat(events.get(4).path("after").path("status").asString()).isEqualTo("EXECUTING");
+    JsonNode reject = events.get(7);
     assertThat(reject.path("after").path("status").asString()).isEqualTo("REJECTED");
     assertThat(reject.path("after").path("reason").asString()).isEqualTo("wrong month for 0171****001");
   }

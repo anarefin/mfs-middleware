@@ -1,11 +1,18 @@
 package mfs.mw.portal.api.mapper;
 
+import java.util.List;
 import mfs.mw.portal.api.dto.Amount;
+import mfs.mw.portal.api.dto.BatchPreview;
 import mfs.mw.portal.api.dto.BatchProgress;
 import mfs.mw.portal.api.dto.BatchView;
+import mfs.mw.portal.api.dto.InvalidRow;
 import mfs.mw.portal.api.entity.Batch;
+import mfs.mw.portal.api.entity.BatchItem;
+import mfs.mw.portal.api.entity.ItemStatus;
+import mfs.mw.portal.api.util.MaskingPolicy;
+import mfs.mw.portal.api.util.SensitiveType;
 
-/** {@link Batch} -> {@link BatchView}. */
+/** {@link Batch} -> {@link BatchView}; a page of {@link BatchItem}s -> {@link BatchPreview}. */
 public final class BatchMapper {
 
   private BatchMapper() {}
@@ -29,6 +36,38 @@ public final class BatchMapper {
         b.decidedAt(),
         b.parentTxnId() == null ? null : b.parentTxnId().toString(),
         progress,
-        b.completedAt());
+        b.completedAt(),
+        b.validCount(),
+        b.invalidCount(),
+        null);
+  }
+
+  /** The upload's answer: the view plus the given invalid rows' codes. */
+  public static BatchView uploaded(Batch b, List<InvalidRow> invalid) {
+    return view(b).withRowErrors(invalid.stream().map(r -> new BatchView.RowError(r.line(), r.errors())).toList());
+  }
+
+  public static BatchPreview preview(Batch b, int offset, int limit, List<BatchItem> page) {
+    return new BatchPreview(
+        b.batchId().toString(),
+        b.status().name(),
+        b.rowCount(),
+        b.validCount(),
+        b.invalidCount(),
+        new Amount(b.totalMinor(), b.currency()),
+        offset,
+        limit,
+        page.stream().map(i -> row(i, b.currency())).toList());
+  }
+
+  private static BatchPreview.Row row(BatchItem i, String currency) {
+    boolean valid = i.status() != ItemStatus.INVALID;
+    return new BatchPreview.Row(
+        i.lineNo(),
+        i.msisdn() == null ? null : MaskingPolicy.mask(SensitiveType.MSISDN, i.msisdn()),
+        i.amountMinor() == null ? null : new Amount(i.amountMinor(), currency),
+        i.reference(),
+        valid,
+        valid ? null : i.rowErrors());
   }
 }

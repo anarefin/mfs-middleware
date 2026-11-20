@@ -4,7 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import mfs.mw.portal.api.dto.BulkRecord;
-import mfs.mw.portal.api.dto.BulkRow;
+import mfs.mw.portal.api.dto.BulkFile;
 
 /**
  * Reads a bulk disbursement CSV (spec 9.4, ticket 33). UTF-8 (a leading byte order mark is
@@ -23,7 +23,7 @@ public class BulkCsvParser {
     this.maxRows = maxRows;
   }
 
-  public List<BulkRow> parse(byte[] file) {
+  public BulkFile parse(byte[] file) {
     String text = new String(file, StandardCharsets.UTF_8);
     if (text.startsWith("﻿")) {
       text = text.substring(1);

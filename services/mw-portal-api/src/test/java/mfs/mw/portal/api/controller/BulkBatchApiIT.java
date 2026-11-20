@@ -97,20 +97,29 @@ class BulkBatchApiIT {
     return json.readTree(r.getResponse().getContentAsByteArray());
   }
 
+  MvcTestResult submit(RequestPostProcessor who, String batchId) {
+    return mvc.post().uri(BATCHES + "/{id}/submit", batchId).with(who).exchange();
+  }
+
+  /** Uploads and submits the file (ticket 129b): the batch awaits approval. */
   String uploaded(RequestPostProcessor who, String csv) {
     MvcTestResult r = upload(who, csv);
     assertThat(r).hasStatus(201);
-    return body(r).get("batchId").asString();
+    String id = body(r).get("batchId").asString();
+    assertThat(submit(who, id)).hasStatusOk();
+    return id;
   }
 
   @Test
-  void anUploadIsStoredAwaitingApproval() {
+  void anUploadIsStoredAsAPreviewAndItsMakerSubmitsIt() {
     MvcTestResult r = upload(MAKER, "msisdn,amount,reference\n01711000001,100.50,A1\n+8801811000002,20,A2\n");
     assertThat(r).hasStatus(201);
     JsonNode b = body(r);
     String id = b.get("batchId").asString();
     assertThat(r).headers().hasValue("Location", BATCHES + "/" + id);
-    assertThat(b.get("status").asString()).isEqualTo("PENDING_APPROVAL");
+    assertThat(b.get("status").asString()).isEqualTo("PREVIEW");
+    assertThat(b.get("validCount").asInt()).isEqualTo(2);
+    assertThat(b.get("invalidCount").asInt()).isZero();
     assertThat(b.get("orgId").asString()).isEqualTo("ORG001");
     assertThat(b.get("rowCount").asInt()).isEqualTo(2);
     assertThat(b.get("totalAmount").get("valueMinor").asLong()).isEqualTo(12_050L);
@@ -126,9 +135,58 @@ class BulkBatchApiIT {
                 id))
         .containsExactly("2:01711000001:10050:A1:PENDING", "3:01811000002:2000:A2:PENDING");
 
+    assertThat(approve(CHECKER, id)).hasStatus(409);
+    MvcTestResult submitted = submit(MAKER, id);
+    assertThat(submitted).hasStatusOk();
+    assertThat(body(submitted).get("status").asString()).isEqualTo("PENDING_APPROVAL");
     MvcTestResult seen = mvc.get().uri(BATCHES + "/{id}", id).with(CHECKER).exchange();
     assertThat(seen).hasStatusOk();
     assertThat(body(seen).get("status").asString()).isEqualTo("PENDING_APPROVAL");
+    MvcTestResult again = submit(MAKER, id);
+    assertThat(again).hasStatus(409);
+    assertThat(body(again).get("code").asString()).isEqualTo("MW-VAL-036");
+  }
+
+  @Test
+  void onlyTheMakerWhoUploadedSubmitsAndANoValidRowPreviewCannotBeSubmitted() {
+    String id = body(upload(MAKER, rows(1))).get("batchId").asString();
+    assertThat(submit(CHECKER, id)).hasStatus(403);
+    assertThat(submit(user("maker-2", "ORG001", "org-maker"), id)).hasStatus(403);
+    assertThat(submit(user("maker-3", "ORG002", "org-maker"), id)).hasStatus(404);
+
+    String bad = body(upload(MAKER, "msisdn,amount,reference\n0171,1.00,A1\n")).get("batchId").asString();
+    MvcTestResult r = submit(MAKER, bad);
+    assertThat(r).hasStatus(409);
+    assertThat(body(r).get("code").asString()).isEqualTo("MW-VAL-037");
+  }
+
+  @Test
+  void thePreviewPagesThroughEveryRowWithMaskedMsisdnsAndPerRowCodes() {
+    MvcTestResult up =
+        upload(MAKER, "msisdn,amount,reference\n01711000001,1.00,A1\n0171,1.00,A2\n01711000003,-5,A3\n01711000004,2.50,A4\n");
+    String id = body(up).get("batchId").asString();
+
+    MvcTestResult first = mvc.get().uri(BATCHES + "/{id}/preview?limit=2", id).with(CHECKER).exchange();
+    assertThat(first).hasStatusOk();
+    JsonNode p = body(first);
+    assertThat(p.get("status").asString()).isEqualTo("PREVIEW");
+    assertThat(p.get("rowCount").asInt()).isEqualTo(4);
+    assertThat(p.get("validCount").asInt()).isEqualTo(2);
+    assertThat(p.get("invalidCount").asInt()).isEqualTo(2);
+    assertThat(p.get("totalAmount").get("valueMinor").asLong()).isEqualTo(350L);
+    assertThat(p.get("rows")).hasSize(2);
+    assertThat(p.get("rows").get(0).get("msisdn").asString()).isEqualTo("0171****001");
+    assertThat(p.get("rows").get(1).get("valid").asBoolean()).isFalse();
+    assertThat(p.get("rows").get(1).has("msisdn")).isFalse();
+
+    JsonNode invalid = body(mvc.get().uri(BATCHES + "/{id}/preview?valid=false", id).with(MAKER).exchange());
+    List<String> lines = new ArrayList<>();
+    invalid.get("rows").forEach(row -> lines.add(row.get("line").asInt() + ":" + row.get("errors").get(0).asString()));
+    assertThat(lines).containsExactly("3:MSISDN_INVALID", "4:AMOUNT_INVALID");
+
+    assertThat(mvc.get().uri(BATCHES + "/{id}/preview?limit=201", id).with(MAKER).exchange()).hasStatus(400);
+    assertThat(mvc.get().uri(BATCHES + "/{id}/preview?offset=-1", id).with(MAKER).exchange()).hasStatus(400);
+    assertThat(mvc.get().uri(BATCHES + "/{id}/preview", id).with(OTHER_ORG_CHECKER).exchange()).hasStatus(404);
   }
 
   @Test
@@ -156,7 +214,7 @@ class BulkBatchApiIT {
             .exchange();
     assertThat(r).hasStatus(201);
     String id = body(r).get("batchId").asString();
-    assertThat(body(r).get("status").asString()).isEqualTo("PENDING_APPROVAL");
+    assertThat(body(r).get("status").asString()).isEqualTo("PREVIEW");
     assertThat(
             jdbc.queryForList(
                 "select line_no || ':' || msisdn || ':' || amount_minor || ':' || reference"
@@ -180,17 +238,33 @@ class BulkBatchApiIT {
   }
 
   @Test
-  void malformedRowsAreReportedPerLineAndNothingIsStored() {
+  void malformedRowsAreKeptAsInvalidWithTheirCodesAndNeverEchoed() {
     MvcTestResult r =
         upload(MAKER, "msisdn,amount,reference\n01711000001,1.00,A1\n0171,1.00,A2\n01711000003,-5,A3\n");
-    assertThat(r).hasStatus(400);
+    assertThat(r).hasStatus(201);
     JsonNode b = body(r);
-    assertThat(b.get("code").asString()).isEqualTo("MW-VAL-031");
-    assertThat(b.get("correlationId").asString()).isNotBlank();
-    List<String> fields = new ArrayList<>();
-    b.get("details").forEach(d -> fields.add(d.get("field").asString()));
-    assertThat(fields).containsExactly("line 3: msisdn", "line 4: amount");
-    assertThat(r).bodyText().doesNotContain("0171,");
+    assertThat(b.get("status").asString()).isEqualTo("PREVIEW");
+    assertThat(b.get("rowCount").asInt()).isEqualTo(3);
+    assertThat(b.get("invalidCount").asInt()).isEqualTo(2);
+    assertThat(b.get("totalAmount").get("valueMinor").asLong()).isEqualTo(100L);
+    List<String> errors = new ArrayList<>();
+    b.get("rowErrors").forEach(e -> errors.add(e.get("line").asInt() + ":" + e.get("errors").get(0).asString()));
+    assertThat(errors).containsExactly("3:MSISDN_INVALID", "4:AMOUNT_INVALID");
+    assertThat(r).bodyText().doesNotContain("\"0171\"").doesNotContain("\"-5\"");
+    assertThat(
+            jdbc.queryForList(
+                "select line_no || ':' || status || ':' || coalesce(msisdn, '-') from batch_item"
+                    + " where batch_id = ?::uuid order by line_no",
+                String.class,
+                b.get("batchId").asString()))
+        .containsExactly("2:PENDING:01711000001", "3:INVALID:-", "4:INVALID:-");
+  }
+
+  @Test
+  void aBadHeaderStillRefusesTheWholeFile() {
+    MvcTestResult r = upload(MAKER, "phone,amount,reference\n01711000001,1.00,A1\n");
+    assertThat(r).hasStatus(400);
+    assertThat(body(r).get("code").asString()).isEqualTo("MW-VAL-031");
     assertThat(jdbc.queryForObject("select count(*) from batch", Long.class)).isZero();
   }
 

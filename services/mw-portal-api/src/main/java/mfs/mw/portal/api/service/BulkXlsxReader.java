@@ -14,7 +14,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import javax.xml.parsers.ParserConfigurationException;
 import mfs.mw.portal.api.dto.BulkRecord;
-import mfs.mw.portal.api.dto.BulkRow;
+import mfs.mw.portal.api.dto.BulkFile;
 import mfs.mw.portal.api.dto.ErrorDetail;
 import mfs.mw.portal.api.exception.MwException;
 import org.apache.poi.openxml4j.exceptions.OpenXML4JException;
@@ -58,7 +58,7 @@ final class BulkXlsxReader {
     this.maxRows = maxRows;
   }
 
-  List<BulkRow> parse(byte[] file) {
+  BulkFile parse(byte[] file) {
     preScan(file);
     SheetHandler sheet = new SheetHandler();
     try (OPCPackage pkg = OPCPackage.open(new ByteArrayInputStream(file))) {

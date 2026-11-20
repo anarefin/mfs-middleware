@@ -4,11 +4,14 @@ import java.util.Optional;
 
 /**
  * Lifecycle of a bulk batch: upload and maker-checker (ticket 33), then execution (ticket 34):
- * PENDING_APPROVAL -> APPROVED / REJECTED / EXPIRED (72 h without a decision); APPROVED -> EXECUTING
+ * PREVIEW (uploaded, rows checked; ticket 129b) -> PENDING_APPROVAL (submitted by its maker) or
+ * EXPIRED; PENDING_APPROVAL -> APPROVED / REJECTED / EXPIRED (72 h after the upload without a
+ * decision); APPROVED -> EXECUTING
  * (first child sent) <-> PAUSED -> COMPLETED (every row settled) or COMPLETED_WITH_EXCEPTIONS
  * (every row settled or given up, at least one MANUAL_REVIEW or UNRESOLVED; M3 gate decision).
  */
 public enum BatchStatus {
+  PREVIEW,
   PENDING_APPROVAL,
   APPROVED,
   REJECTED,

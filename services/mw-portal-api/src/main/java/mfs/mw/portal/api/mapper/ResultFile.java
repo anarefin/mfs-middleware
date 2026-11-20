@@ -12,7 +12,8 @@ import mfs.mw.portal.api.util.SensitiveType;
  * line,msisdn,amount,reference,status,txnId,errorCode,batchStatus}, one line per row in file order.
  * The MSISDN is masked (18.3: the org matches rows by its own unique reference); the amount is in
  * taka with two decimals as uploaded; txnId and errorCode are empty while there is none; {@code
- * batchStatus} is the batch's status on every line, so a file of a batch that ended
+ * batchStatus} is the batch's status on every line; an INVALID row (ticket 129b, never sent) has
+ * only what passed its rules and its row error codes joined by {@code |} as errorCode; so a file of a batch that ended
  * COMPLETED_WITH_EXCEPTIONS says so (M3 gate decision) whichever line is read.
  */
 public final class ResultFile {
@@ -26,17 +27,17 @@ public final class ResultFile {
     for (BatchItem i : items) {
       b.append(i.lineNo())
           .append(',')
-          .append(MaskingPolicy.mask(SensitiveType.MSISDN, i.msisdn()))
+          .append(i.msisdn() == null ? "" : MaskingPolicy.mask(SensitiveType.MSISDN, i.msisdn()))
           .append(',')
-          .append(BigDecimal.valueOf(i.amountMinor(), 2).toPlainString())
+          .append(i.amountMinor() == null ? "" : BigDecimal.valueOf(i.amountMinor(), 2).toPlainString())
           .append(',')
-          .append(i.reference())
+          .append(i.reference() == null ? "" : i.reference())
           .append(',')
           .append(i.status().name())
           .append(',')
           .append(i.txnId() == null ? "" : i.txnId().toString())
           .append(',')
-          .append(i.errorCode() == null ? "" : i.errorCode())
+          .append(i.errorCode() != null ? i.errorCode() : String.join("|", i.rowErrors()))
           .append(',')
           .append(batchStatus.name())
           .append('\n');
