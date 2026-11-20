@@ -76,7 +76,7 @@
 98-routing-module                           96,97             open
 99-idempotency-duplicates-replay            89                done     110m     95 files +2601 −110    e3d9c7c6,45ffe6a3
 100-edge-client-registry                    90,91,99          split (100-split-decisions.md, 2026-11-20)
-100a-client-registry-apisix-sync            90,91,99          open
+100a-client-registry-apisix-sync            90,91,99          done     30m      61 files +2570 −36     cd3d58ea
 100b-oauth2-cc-clients                      100a              open   (run before 118-121)
 100c-inbound-mtls-edge-tests                100a              open   (run by M13)
 101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
