@@ -591,6 +591,19 @@ public class PartnerRouteLoader {
       }
       uri = uri.replaceFirst("([?&])" + urlParam + "=[^&]*", "$1" + urlParam + "=" + java.util.regex.Matcher.quoteReplacement(target));
       params.put(urlParam, target);
+      // ticket 139: an OAuth2 token request goes to the target too, never to the live token
+      // endpoint with the live client secret
+      String tokenUrl = params.get("tokenUrl");
+      if (!soap && tokenUrl != null && !tokenUrl.isEmpty()) {
+        String tokenTarget = dryRunUrl(calls.dryRunBase, tokenUrl);
+        if (tokenTarget == null) {
+          security.add("the dry-run target must be a plain http(s) URL: no user info, query, fragment, encoding,"
+              + " placeholder or .. segment");
+          return null;
+        }
+        uri = uri.replaceFirst("([?&])tokenUrl=[^&]*", "$1tokenUrl=" + java.util.regex.Matcher.quoteReplacement(tokenTarget));
+        params.put("tokenUrl", tokenTarget);
+      }
     }
     StringBuilder out = new StringBuilder(uri).append(q < 0 ? '?' : '&').append("partnerId=").append(calls.partnerParam);
     if (name.startsWith("mw-http-call")) {
