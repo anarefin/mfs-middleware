@@ -37,7 +37,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     reverse; keys msisdn, txnRef), the operator profiles `ocs-gp`, `ocs-robi`, `ocs-teletalk`, `ocs-bl`
     (ticket 112a; topup, inquiry, postpaid, status, reverse; keys msisdn, txnRef), `billagg` (billers,
     fetch, pay, status, reverse; biller, billNumber, txnRef; REST and SOAP
-    front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path), and the
+    front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path), `merchant-soap`
+    (validate, notify, query, refund; merchantId, txnRef; ticket 115b), and the
     SMPP / TCP parties of ticket 102b (FRS MCT-04): `smsc` (bind, submit; systemId, msisdn), `ussdgw` (bind,
     submit, enquire_link, dial; systemId, msisdn, mno), the per-MNO USSD ports `ussd-gp`, `ussd-robi`,
     `ussd-bl`, `ussd-teletalk` (bind, submit, enquire_link; systemId, msisdn), `payshield` (command; command), and `push` (send; token,
@@ -363,6 +364,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   their `httpStatus`, CONNECTION_RESET and DOWN close the connection. `GET
   /sim/merchant/ipn/received[?ipnId=][&type=PAYMENT|REFUND]` (ticket 116: a refund IPN, body `type` REFUND, is recorded with type REFUND); the old `POST /sim/merchant/ipn/scenario` and `DELETE
   /sim/merchant/ipn/received` are aliases (above).
+- Merchant system SOAP mock (ticket 115b, FRS UC-11, EXT-11, MCK-01; `controller/MerchantSoapController`,
+  `service/MerchantSoapMock`; a separate class from the IPN receiver above): `POST /merchant-soap/v1/soap` (SOAP
+  1.1, namespace `urn:merchant:v1`), the other side of mw-adapter-merchant's `merchant-soap` partner.
+  `ValidateMerchant {merchantId, tillId}` -> `{status ACTIVE, merchantRef MREF-<id>}`; seeded merchants M-0001
+  (active, TILL-01/02), M-0002 (inactive), M-0003 (active, no till); unknown fault `5001`, inactive `5002`, a till it
+  lacks `5003`. `NotifyPayment {merchantId, tillId, amount, reference}` -> `{status RECEIVED, notifyRef NTF-n, code
+  0000}` (once per reference). `QueryNotify {merchantId, reference}` -> `{status RECEIVED|NOT_FOUND, notifyRef}`.
+  `Refund {merchantId, amount, reference, refundId}` -> `{status REFUNDED, refundRef RF-n, code 0000}`, stateful:
+  once per refundId, never above the notified amount (else `5004`). WS-Security UsernameToken user `bits`, password
+  `sim.merchant-soap.ws-password` (stack `MERCHANT_SOAP_WS_PASSWORD` in Vault `secret/mw-simulators`; unset = every
+  call refused `1002`). Mock party `merchant-soap`: BUSINESS_ERROR a `soap:Client` fault with the code, HTTP_5XX a
+  `soap:Server` fault `5000` after the effect (the adapter reads it UNKNOWN), TIMEOUT holds, MALFORMED_RESPONSE cuts
+  short, MAINTENANCE `soap:Server` `5030`; the party reset forgets notifies and refunds. Test: `MerchantSoapMockIT`.
 - payShield 10K simulator (ticket 64, spec 18.8, D23; `client/PayShieldServer`, `service/PayShieldService`,
   `service/PayShieldKeys`, `util/PinBlocks`, `util/PayShieldCrypto`, `controller/PayShieldController`;
   `sim.payshield.*`): TCP on `sim.payshield.port` (1500, internal network only; off in host tests).

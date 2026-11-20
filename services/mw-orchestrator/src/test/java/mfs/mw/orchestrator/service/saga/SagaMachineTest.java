@@ -118,6 +118,10 @@ class SagaMachineTest {
 
     // a merchant refund is its own record (ticket 116b): core reversal, then COMPLETED or REJECTED
     row(Status.RECEIVED, new RefundStarted(), Status.REVERSING, Effect.SEND_REVERSE);
+    // ticket 115b: the merchant system VALIDATE before the core
+    row(Status.RECEIVED, new MerchantValidationStarted(), Status.VALIDATING, Effect.SEND_MERCHANT_VALIDATE);
+    row(Status.VALIDATING, new MerchantValidated(), Status.VALIDATING, Effect.SEND_VALIDATE);
+    row(Status.VALIDATING, new MerchantRejected(), Status.FAILED, Effect.NONE);
     row(Status.REVERSING, new RefundConfirmed(), Status.COMPLETED, Effect.NONE);
     row(Status.REVERSING, new RefundRefused(), Status.REJECTED, Effect.NONE);
     row(Status.MANUAL_REVIEW, new RefundConfirmed(), Status.COMPLETED, Effect.NONE);
@@ -144,6 +148,7 @@ class SagaMachineTest {
         new CompensatingReleaseRetry(), new CompensatingReleaseAcknowledged(), new CompensatingReleaseRefused(),
         new ReversalRequested(), new ReversalRequested(true), new ReversalAcknowledged(), new ReversalFailed(),
         new RefundStarted(), new RefundConfirmed(), new RefundRefused(),
+        new MerchantValidationStarted(), new MerchantValidated(), new MerchantRejected(),
         new ReversalResendsStopped(), new ReversalUnconfirmed(), new ReversalQueryResult(true), new ReversalQueryResult(false),
         new ManualCommit(), new ManualRelease(), new ManualInquiry(), new DeadlineExpired(),
         new HoldExpired(false), new HoldExpired(true),
@@ -160,7 +165,7 @@ class SagaMachineTest {
 
   @Test
   void everyListedTransitionIsTakenWithItsEffect() {
-    assertThat(TABLE).hasSize(72);
+    assertThat(TABLE).hasSize(75);
     TABLE.forEach(
         (key, expect) -> {
           Transition t = SagaMachine.apply(key.from(), key.event());

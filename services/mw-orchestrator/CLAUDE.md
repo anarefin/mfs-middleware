@@ -74,6 +74,28 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   (VALIDATE, POST, HOLD, CALL_PARTNER, COMMIT, RELEASE, REVERSE, QUERY, INQUIRE, BALANCE_INQUIRY; `Step.of(effect)`).
   `P2pFlow`, `CashInFlow`, `CashOutFlow`, `MerchantPayFlow` (ticket 30) = validate + post (parties as the channel set them:
   CASH_IN agent -> customer, CASH_OUT customer -> agent, MERCHANT_PAY customer -> merchant; the core enforces the wallet types).
+  Merchant system leg (ticket 115b, FRS UC-11, EXT-11; `config/MerchantSystemProperties`
+  `mw.orchestrator.merchant-systems.{merchants.<merchant wallet id>.{partner-id, merchant-id, till-id}, notify-attempts 3}`;
+  none in the main config, dev: merchant20 `01911000020` -> `merchant-soap` / `M-0001` / `TILL-01` in the compose
+  `SPRING_APPLICATION_JSON`): a MERCHANT_PAY whose credit wallet has a merchant system starts with
+  `MerchantValidationStarted` -> VALIDATING + `Effect.SEND_MERCHANT_VALIDATE` (step CALL_PARTNER, which
+  `MerchantPayFlow.steps()` lists; `partnerCall()` stays empty so an UNKNOWN posting is still inquired at the
+  core): an INQUIRY on `mw.partner.request.merchant.v1` (`MerchantPayFlow.MERCHANT`, `PartnerRequestMapper.merchantValidate`:
+  requestId `<txnId>:INQUIRY`, partner `{merchant-soap, MERCHANT}`, credit party `{MERCHANT, <merchant id>}`,
+  `attributes.tillId`, no amount, deadline the VALIDATING timeout) before any core call. `PartnerReplyService.merchantAnswer`
+  (any reply of family `merchant` for a MERCHANT_PAY): INQUIRY SUCCESS -> `MerchantValidated` (VALIDATING
+  self-transition, SEND_VALIDATE: the core's ValidateTransaction, then post as usual); FAILED / UNKNOWN / NOT_FOUND ->
+  `MerchantRejected` -> FAILED with the reply's error (fallback `MW-TMO-001`): nothing moved, no inquiry; PENDING
+  waits for the VALIDATING deadline (FAILED `MW-TMO-001`). Entering COMPLETED (not from REVERSING) sends the
+  NOTIFY (`SagaEngine.sendMerchantNotify`, a PAY with the amount, requestId `<txnId>:NOTIFY:<n>`) through the outbox,
+  so it leaves only after the completion commits. A NOTIFY answer never moves the saga: SUCCESS is logged
+  `merchant.notify.delivered`; any other answer to the LATEST attempt sends attempt n+1 at once until
+  `notify-attempts` sends, then the notify is dead-lettered: ERROR `merchant.notify.dead_lettered` and audit
+  `merchant.notify.failed` (outcome FAILURE, `after.attempts`, `after.errorCode`; visible in the console's audit
+  search), the payment stays COMPLETED. An answer to an older attempt is ignored. Deviations: the retries have no
+  back-off (the adapter's own call time spaces them) and the dead letter is the audit record, not a Kafka DLQ topic.
+  A merchant without a system is validate + post as before (folder `04-merchant`). Tests `MerchantPayNotifyIT`,
+  `SagaMachineTest`, `FlowRegistryTest`; API folder `52-merchant-soap`.
   `BulkDisburseFlow` (ticket 34, one child of an org bulk batch, sent by mw-portal-api) is validate +
   post too: debit `{ORG, <org wallet>}`, credit the customer's WALLET, **no PIN** (the org
   authorised the batch by maker-checker; the core's validate / transfer require the

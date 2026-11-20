@@ -15,7 +15,7 @@ one Gradle build, the admin console, and one hand-written compose file.
 - Why it is built this way: [docs/adr/README.md](docs/adr/README.md), one record per decision.
 - The Upay FRS build (tickets 89–138, ADRs D29–D33): [docs/frs-traceability.md](docs/frs-traceability.md)
   maps every FRS requirement id and name to the repo name, its status and the ticket. Decided there and
-  not built yet: the core over REST (D31), new services `mw-adapter-card`, `-remit`, `-interop`, `-merchant`,
+  not built yet: the core over REST (D31), new services `-remit`, `-interop`,
   `mw-compliance`, `mw-recon`, `mw-data-export` (D32) and one mock control API (D33). Until each ticket
   lands, this README describes the stack as it runs. HashiCorp Vault (D30, ticket 91) and Redis (D29, ticket 90) are built.
 - Running the MVP host: [docs/runbook.md](docs/runbook.md).
@@ -296,7 +296,8 @@ reversal of a completed top-up (ticket 96c), and since ticket 76 the
 security folders: `24` mw-auth (OTP, device binding, first PIN, login, logout, key documents), `25`
 the PIN lifecycle (policy, change, self-service and care reset, lockout, ops unlock), `26` the
 transaction assertion (PIN before the saga, reuse, USSD, checkout), `27` the payShield PVV through
-mw-crypto's dev-only test API; `90` the 10,000-row bulk payout, the retry-to-DLQ path, the PIN
+mw-crypto's dev-only test API; `52` a merchant with its own merchant system over SOAP (merchant20
+`01911000020`: validate before the core, notify after COMPLETED, a failed notify retried; ticket 115b); `90` the 10,000-row bulk payout, the retry-to-DLQ path, the PIN
 lockout escalation and the assertion expiry (slow). Folders 24-26 use fresh wallets of their own
 (core-mock customers `01711000500..01711000999` without an app PIN), never the seeded users.
 

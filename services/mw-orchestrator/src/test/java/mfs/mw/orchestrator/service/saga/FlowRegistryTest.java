@@ -40,8 +40,11 @@ class FlowRegistryTest {
     Flow flow = wired().find("MERCHANT_PAY").orElseThrow();
     assertThat(flow.txnType()).isEqualTo("MERCHANT_PAY");
     assertThat(flow.needsHold()).isFalse();
-    assertThat(flow.steps()).containsExactlyInAnyOrder(Step.VALIDATE, Step.POST);
+    // ticket 115b: CALL_PARTNER is the merchant system VALIDATE, sent only for a merchant with one;
+    // the payment itself has no partner leg (an UNKNOWN posting is inquired at the core)
+    assertThat(flow.steps()).containsExactlyInAnyOrder(Step.VALIDATE, Step.POST, Step.CALL_PARTNER);
     assertThat(flow.partnerCall()).isEmpty();
+    assertThat(MerchantPayFlow.MERCHANT.topic()).isEqualTo("mw.partner.request.merchant.v1");
   }
 
   @Test

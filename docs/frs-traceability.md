@@ -144,7 +144,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-07` B2B float | done (`B2B_TRANSFER`, `B2bTransferFlow`, folder 63) |
 | `UC-08` top-up | prepaid denominations and postpaid range landed in 112b; T1–T4 and T6–T10 are folder `tests/api/src/46-topup-operators` (112c). T5 waits out the inquiry schedule. T11 is ticket 125, T12 is ticket 127 |
 | `UC-09`, `UC-10` bills | five aggregators (billagg + ticket 114's four), catalogue 113; channel end-to-end at the gate |
-| `UC-11` merchant payment | app done (folder 04); USSD menu MERCHANT_PAY (109c); ticket 115 remains |
+| `UC-11` merchant payment | done: app (folder 04); USSD menu MERCHANT_PAY (109c); a merchant with its own system is validated over SOAP before the core and notified after COMPLETED, retried then dead-lettered (115b, folder 52) |
 | `UC-12` web checkout and refund | pay done; refund: core partial reversal built (116a), orchestrator refund as its own REVERSAL record, owning merchant only (116b), checkout refund API `POST|GET /checkout/v1/payments/{id}/refunds` with the signed refund IPN built (116c) |
 | `UC-13` add money from card | ticket 118 |
 | `UC-14` add money from bank (C2W) | done (one bank); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
@@ -268,7 +268,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-08 | ticket 112 | one OCS simulator built; four operator profiles landed in 112a (`gp-ocs`, `robi-ocs`, `teletalk-ocs`, `bl-ocs`); 112b stores the fetched bill on the quote (minimum through outstanding); T1–T4 and T6–T10 are `tests/api/src/46-topup-operators` (112c). T5 waits out the inquiry schedule |
 | EXT-09 | done | utility aggregator simulator (billagg): seeded stateful bills `seed/v1/bills/billagg.csv`, reverse, callbacks (ticket 114, `BillAggregatorMockIT`) |
 | EXT-10 | done | four bill aggregators sslcommerz, ekpay, agg3 (SOAP), agg4 as generated route records (`deploy/partner-routes/aggregators/generate.mjs`) and mock profiles (ticket 114; agg4 JSON, not form/XML: open item) |
-| EXT-11 | ticket 115 | merchant SOAP |
+| EXT-11 | done | merchant SOAP (115a, 115b): mw-adapter-merchant `merchant-soap`, mw-simulators `MerchantSoapMock`, orchestrator validate + notify |
 | EXT-12 | ticket 117 | partial: 20 bank profiles (REST and SOAP) generated from `deploy/partner-routes/bank/bank-profiles.csv`, AVL/W2B/STATUS/REVERSE routes (117a); mw-simulators bank gateway from the same CSV, seeded accounts, trigger table, mock party `bank-<code>`, health probe (117d); AVL API, W2B flow, suite open |
 | EXT-13 | tickets 121, 122 | NPSB and BanglaQR mock switch |
 | EXT-14 | ticket 118 | CyberSource mock |

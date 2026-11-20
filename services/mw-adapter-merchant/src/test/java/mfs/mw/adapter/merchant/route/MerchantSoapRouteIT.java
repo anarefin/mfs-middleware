@@ -38,7 +38,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Ticket 115 (FRS UC-11, EXT-11): the dev seed {@code merchant-soap} (application-dev.yml) maps VALIDATE
  * (INQUIRY), NOTIFY (PAY) and REFUND (REVERSE) of a MERCHANT_PAY to the merchant system's SOAP 1.1 front end
- * {@code POST /merchant/v1/soap} (namespace {@code urn:merchant:v1}) with a WS-Security UsernameToken; a
+ * {@code POST /merchant-soap/v1/soap} (namespace {@code urn:merchant:v1}) with a WS-Security UsernameToken; a
  * {@code soap:Client} fault with a code maps through the record's error map to
  * {@code MW-PTR-MERCHANT_SOAP-<suffix>}, a {@code soap:Server} fault is UNKNOWN. WireMock stands in for the
  * merchant system (mw-simulators' MerchantSoapMock comes with ticket 115b).
@@ -58,7 +58,7 @@ class MerchantSoapRouteIT {
   static final JsonMapper JSON = JsonMapper.builder().build();
   static final WireMockServer MERCHANT = new WireMockServer(WireMockConfiguration.options().dynamicPort());
   static final String NS = "urn:merchant:v1";
-  static final String SOAP = "/merchant/v1/soap";
+  static final String SOAP = "/merchant-soap/v1/soap";
   static final String MERCHANT_ID = "01911000001";
   /** {@code FakeVaultFunction}'s value of {@code secret/mw-adapter-merchant/merchant-soap#ws-password}. */
   static final String WS_PASSWORD = "fake-merchant-soap-ws-password-for-tests";
@@ -181,6 +181,31 @@ class MerchantSoapRouteIT {
 
     assertThat(reply.payload().outcome()).isEqualTo("FAILED");
     assertThat(reply.payload().errorCode()).isEqualTo("MW-PTR-MERCHANT_SOAP-REFUND_REFUSED");
+  }
+
+  @Test
+  void aStatusQueryAsksForTheNotifyByOurReference() throws Exception {
+    stub("QueryNotify", 200, envelope("<m:QueryNotifyResponse xmlns:m=\"" + NS + "\"><m:status>RECEIVED</m:status>"
+        + "<m:notifyRef>NTF-7</m:notifyRef></m:QueryNotifyResponse>"));
+    String txnId = MerchantFixtures.newTxnId();
+
+    PartnerReply reply = send("STATUS_QUERY", txnId, null);
+
+    assertThat(reply.payload().outcome()).isEqualTo("SUCCESS");
+    assertThat(reply.payload().partnerRef()).isEqualTo("NTF-7");
+    MERCHANT.verify(1, postRequestedFor(urlEqualTo(SOAP))
+        .withHeader("SOAPAction", equalTo("\"urn:merchant:v1:QueryNotify\""))
+        .withRequestBody(containing("<m:reference>BITS" + txnId.replace("-", "").toUpperCase() + "</m:reference>")));
+  }
+
+  @Test
+  void aStatusQueryForANotifyTheMerchantNeverGotIsNotFound() throws Exception {
+    stub("QueryNotify", 200, envelope("<m:QueryNotifyResponse xmlns:m=\"" + NS + "\"><m:status>NOT_FOUND</m:status>"
+        + "<m:notifyRef></m:notifyRef></m:QueryNotifyResponse>"));
+
+    PartnerReply reply = send("STATUS_QUERY", MerchantFixtures.newTxnId(), null);
+
+    assertThat(reply.payload().outcome()).isEqualTo("NOT_FOUND");
   }
 
   private PartnerReply send(String operation, String txnId, Long valueMinor) throws Exception {

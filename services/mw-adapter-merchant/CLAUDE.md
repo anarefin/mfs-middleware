@@ -17,11 +17,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.merchant`. Fo
     SUCCESS (`partnerRef` = the merchant system's merchant reference) or FAILED
     `MW-PTR-<PARTNER>-MERCHANT_NOT_FOUND|MERCHANT_INACTIVE|INVALID_TILL`.
   - **NOTIFY** = `PAY` (after COMMIT, best effort): the payment notify. A failed notify never reverses
-    the payment: the orchestrator retries it, then DLQ with console visibility (ticket 115b).
+    the payment: the orchestrator retries it (a new requestId per attempt), then dead-letters it as the audit record
+    `merchant.notify.failed` (ticket 115b).
   - **REFUND** = `REVERSE`: the refund of the original reference, idempotent on the engine's
     `reversalReference` (`reverse:<txnId>`).
-  - `STATUS_QUERY` is accepted (by our reference only); the seed has no branch for it (the engine
-    answers MISCONFIGURED, NOT_SENT).
+  - `STATUS_QUERY` (ticket 115b) = `QueryNotify {merchantId, reference}` by our reference: `RECEIVED` ->
+    SUCCESS (`partnerRef` = the notifyRef), `NOT_FOUND` -> NOT_FOUND.
   `service/MerchantPartnerService` is the copy of bank's debit service; outcomes and safety rules are
   telco's/billpay's (see mw-adapter-billpay CLAUDE.md): FAILED `MW-PTR-<PARTNER>-<suffix>` from the
   record's `error-map` (unlisted `UNMAPPED`; partner segment upper-cased, `-` -> `_`, so
@@ -49,18 +50,21 @@ resources are identical in the four adapters apart from the package
 (`PartnerGateway.inbound`, `CallbackNonces`, Flyway V7) stays in the copy unused.
 
 - **Seed** `merchant-soap` (`application-dev.yml`, dev profile only; the only dev seed): SOAP 1.1
-  `POST <base-url>/merchant/v1/soap`, namespace `urn:merchant:v1`, one branch per operation:
+  `POST <base-url>/merchant-soap/v1/soap`, namespace `urn:merchant:v1`, one branch per operation:
   INQUIRY `ValidateMerchant {merchantId, tillId}`, PAY `NotifyPayment {merchantId, tillId, amount,
-  reference}`, REVERSE `Refund {merchantId, amount, reference, refundId}` (`mw-map` -> `mw-soap-call`
+  reference}`, STATUS_QUERY `QueryNotify {merchantId, reference}`, REVERSE `Refund {merchantId, amount, reference, refundId}` (`mw-map` -> `mw-soap-call`
   with `soap.request.xsl` / `soap.response.xsl` and a WS-Security UsernameToken user `bits`, password field
   `ws-password` -> `mw-classify` `definiteStatuses=200` -> `mw-audit`). Answers: `ValidateMerchantResponse
   {status ACTIVE, merchantRef}`, `NotifyPaymentResponse {status RECEIVED, notifyRef, code}`,
-  `RefundResponse {status REFUNDED, refundRef, code}`; a `soap:Client` fault with a code is FAILED through
+  `QueryNotifyResponse {status RECEIVED|NOT_FOUND, notifyRef}`, `RefundResponse {status REFUNDED, refundRef, code}`; a `soap:Client` fault with a code is FAILED through
   the error map (`5001` MERCHANT_NOT_FOUND, `5002` MERCHANT_INACTIVE, `5003` INVALID_TILL, `5004`
   REFUND_REFUSED; `9876` ambiguous), a `soap:Server` fault or anything else UNKNOWN. Base URL
   `MERCHANT_SOAP_BASE_URL`, hosts `MW_MERCHANT_SOAP_ALLOWED_HOSTS` (floor in `application.yml`), timeout
-  10 s, resilience4j instance `merchant-soap` (8 s slow call, bulkhead 100). The simulator side
-  (mw-simulators `MerchantSoapMock`) and mw-admin-api's copy of the seed come with ticket 115b. Test:
+  10 s, resilience4j instance `merchant-soap` (8 s slow call, bulkhead 100). The simulator side is
+  mw-simulators `MerchantSoapMock` (party `merchant-soap`, ticket 115b; its WS-Security password
+  `sim.merchant-soap.ws-password` synced from `MERCHANT_SOAP_WS_PASSWORD` by `provision_mw_simulators`);
+  mw-admin-api holds the same record as its dev seed `partner-seeds/dev/merchant-soap.json` (keep both identical,
+  the URL written out). Orchestrator side: mw-orchestrator CLAUDE.md "Merchant system leg". Test:
   `route/MerchantSoapRouteIT` (WireMock).
 - **Test-only partner** `c2wbank` (`src/test/resources/config/application-dev.yml`): the REST
   async-callback record of mw-adapter-bank, kept so the shared engine tests and `MerchantRequestRouteIT`
@@ -77,8 +81,8 @@ resources are identical in the four adapters apart from the package
 - Machine-readable list: `contracts.yml` (checked by `./gradlew :contractsLint`, tested by
   `contracts/ProducedContractsTest` / `ConsumedContractsTest`). No APIs.
 - `events/mw-orchestrator/mw.partner.request.v1` (family `merchant`, shared payload; samples
-  `samples/mw.partner.request.v1/merchant`) in; own type `dto/PartnerRequest`. The orchestrator produces it
-  with ticket 115b.
+  `samples/mw.partner.request.v1/merchant`) in; own type `dto/PartnerRequest`. Produced by mw-orchestrator
+  since ticket 115b (VALIDATE and NOTIFY).
 - `events/mw-orchestrator/mw.partner.reply.v1` (family `merchant`) out; own type `dto/PartnerReply`.
 - `events/mw-audit-dw/mw.audit.event.v1` out (`partner.call.completed`).
 - `events/mw-admin-api/mw.config.changed.v1` in (PARTNER route records, family `merchant`).

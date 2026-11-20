@@ -29,6 +29,8 @@ public final class SagaMachine {
       case RECEIVED ->
           switch (event) {
             case ValidationStarted e -> go(from, Status.VALIDATING, Effect.SEND_VALIDATE);
+            // ticket 115b: the merchant system is asked first, still VALIDATING
+            case MerchantValidationStarted e -> go(from, Status.VALIDATING, Effect.SEND_MERCHANT_VALIDATE);
             // BALANCE (ADR D26): VALIDATING waits for the BalanceInquiry answer (no new status)
             case BalanceInquiryStarted e -> go(from, Status.VALIDATING, Effect.SEND_BALANCE_INQUIRY);
             case RequestRejected e -> go(from, Status.REJECTED, Effect.NONE);
@@ -42,6 +44,8 @@ public final class SagaMachine {
             case Validated e when e.needsHold() -> go(from, Status.HOLDING, Effect.SEND_HOLD);
             case Validated e -> go(from, Status.POSTING, Effect.SEND_POST);
             case ValidationRejected e -> go(from, Status.REJECTED, Effect.NONE);
+            case MerchantValidated e -> go(from, Status.VALIDATING, Effect.SEND_VALIDATE);
+            case MerchantRejected e -> go(from, Status.FAILED, Effect.NONE);
             case BalanceReported e -> go(from, Status.COMPLETED, Effect.NONE);
             case BalanceInquiryRejected e -> go(from, Status.FAILED, Effect.NONE);
             case DeadlineExpired e -> go(from, Status.FAILED, Effect.NONE);
