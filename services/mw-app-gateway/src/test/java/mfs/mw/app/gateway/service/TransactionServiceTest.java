@@ -42,6 +42,7 @@ class TransactionServiceTest {
   static final String ASSERTION = "eyJhbGciOiJFUzI1NiJ9.eyJqdGkiOiJ4In0.c2ln";
   final mfs.mw.app.gateway.client.AuthClient auth = mock(mfs.mw.app.gateway.client.AuthClient.class);
   final IdempotentReplay replay = mock(IdempotentReplay.class);
+  final LinkedAccountService linked = mock(LinkedAccountService.class);
 
   {
     org.mockito.Mockito.when(auth.authorise(any()))
@@ -60,7 +61,7 @@ class TransactionServiceTest {
                   "CASH_OUT", List.of("CUSTOMER"),
                   "MERCHANT_PAY", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth, replay);
+          billers, auth, replay, linked);
 
   static TransactionRequest body(String txnType) {
     return body(txnType, null);
@@ -95,7 +96,7 @@ class TransactionServiceTest {
               List.of("P2P", "TOPUP"), List.of("reference"), new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "TOPUP", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth, replay);
+          billers, auth, replay, linked);
 
   static TransactionRequest flow(String txnType, String creditType, TransactionRequest.Partner partner) {
     return new TransactionRequest(
@@ -146,7 +147,7 @@ class TransactionServiceTest {
               new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "BILL_PAY", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth, replay);
+          billers, auth, replay, linked);
 
   static TransactionRequest bill(String creditType, String id, TransactionRequest.Partner partner) {
     return new TransactionRequest(
@@ -208,7 +209,7 @@ class TransactionServiceTest {
               new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "ADD_MONEY_BANK", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth, replay);
+          billers, auth, replay, linked);
 
   static TransactionRequest addMoney(
       TransactionRequest.CounterParty credit, TransactionRequest.BankAccount debit, TransactionRequest.Partner partner) {
@@ -265,7 +266,7 @@ class TransactionServiceTest {
                 new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
                 Map.of("TOPUP", List.of("CUSTOMER"))),
             Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-            billers, auth, replay);
+            billers, auth, replay, linked);
     TransactionRequest topup =
         new TransactionRequest(
             "TOPUP", new TransactionRequest.CounterParty("MSISDN", "01711000002"), new Amount(100L, "BDT"),
@@ -548,6 +549,107 @@ class TransactionServiceTest {
 
     verifyNoInteractions(publisher, repo);
     assertThat(waiters.size()).isZero();
+  }
+
+  // --- W2B and add money from a linked account (ticket 117c) -----------------------------------
+
+  static final String LINKED_ID = "0b6f5a4e-3d2c-4b1a-9e8f-7d6c5b4a3f2e";
+  static final LinkedAccountService.Resolved DBBL =
+      new LinkedAccountService.Resolved(LINKED_ID, "dbbl", "2050123456781234", "1234");
+
+  final TransactionService withBank =
+      new TransactionService(
+          publisher, waiters, new RequestMapper(), repo,
+          new AppGatewayProperties(
+              Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
+              List.of("P2P", "ADD_MONEY_BANK", "W2B"), List.of("reference"),
+              new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
+              Map.of("P2P", List.of("CUSTOMER"), "ADD_MONEY_BANK", List.of("CUSTOMER"), "W2B", List.of("CUSTOMER"))),
+          Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
+          billers, auth, replay, linked);
+
+  static TransactionRequest linkedBody(
+      String txnType, String linkedId, TransactionRequest.CounterParty credit, TransactionRequest.Partner partner,
+      TransactionRequest.BankAccount debit) {
+    return new TransactionRequest(
+        txnType, credit, new Amount(150_000L, "BDT"), new EncryptedPin("k", "c"), null, null, partner, debit, null,
+        linkedId);
+  }
+
+  void assertBankRefused(TransactionRequest body, String field) {
+    assertThatThrownBy(() -> withBank.submit(USER, "key", body))
+        .isInstanceOfSatisfying(
+            MwException.class,
+            e -> {
+              assertThat(e.code()).isEqualTo("MW-VAL-001");
+              assertThat(e.details()).extracting(d -> d.field()).containsExactly(field);
+            });
+  }
+
+  @Test
+  void aTransferToBankNamesOnlyALinkedAccount() {
+    assertBankRefused(linkedBody("W2B", null, null, null, null), "linkedAccountId");
+    assertBankRefused(
+        linkedBody("W2B", LINKED_ID, new TransactionRequest.CounterParty(null, "01711000002"), null, null), "creditParty");
+    assertBankRefused(linkedBody("W2B", LINKED_ID, null, null, ACCOUNT), "debitParty");
+    assertBankRefused(linkedBody("W2B", LINKED_ID, null, TransactionRequest.Partner.bank("c2wbank"), null), "partner");
+    assertBankRefused(
+        linkedBody("ADD_MONEY_BANK", LINKED_ID, null, TransactionRequest.Partner.bank("c2wbank"), ACCOUNT),
+        "debitParty");
+    assertBankRefused(
+        linkedBody("P2P", LINKED_ID, new TransactionRequest.CounterParty(null, "01711000002"), null, null),
+        "linkedAccountId");
+    verifyNoInteractions(publisher, repo);
+  }
+
+  @Test
+  void anAccountThatIsNotLinkedToTheWalletIsNotFoundAndNothingIsPublished() {
+    org.mockito.Mockito.when(linked.resolve(USER.msisdn(), LINKED_ID)).thenReturn(java.util.Optional.empty());
+    assertThatThrownBy(() -> withBank.submit(USER, "key", linkedBody("W2B", LINKED_ID, null, null, null)))
+        .isInstanceOfSatisfying(MwException.class, e -> {
+          assertThat(e.code()).isEqualTo("MW-VAL-003");
+          assertThat(e.status().value()).isEqualTo(404);
+        });
+    verifyNoInteractions(publisher, repo, auth);
+  }
+
+  @Test
+  void aTransferToBankPaysTheStoredAccountFromTheCallersWallet() {
+    org.mockito.Mockito.when(linked.resolve(USER.msisdn(), LINKED_ID)).thenReturn(java.util.Optional.of(DBBL));
+
+    var r = withBank.submit(USER, "key", linkedBody("W2B", LINKED_ID, null, null, null));
+
+    assertThat(r.view().status()).isEqualTo("PROCESSING");
+    var sent = org.mockito.ArgumentCaptor.forClass(Object.class);
+    verify(publisher).publish(anyString(), anyString(), any(), sent.capture(), anyMap());
+    var req = (mfs.mw.app.gateway.dto.TxnRequest) sent.getValue();
+    assertThat(req.txnType()).isEqualTo("W2B");
+    assertThat(req.partner().partnerId()).isEqualTo("bank-dbbl");
+    assertThat(req.partner().productCode()).isEqualTo("W2B");
+    assertThat(req.debitParty().type()).isEqualTo("WALLET");
+    assertThat(req.debitParty().id()).isEqualTo(USER.msisdn());
+    assertThat(req.creditParty().type()).isEqualTo("BANK_ACCOUNT");
+    assertThat(req.creditParty().id()).isEqualTo("2050123456781234");
+    // the view the app gets back never carries the full number
+    var view = org.mockito.ArgumentCaptor.forClass(mfs.mw.app.gateway.dto.TransactionView.class);
+    verify(repo).insertAccepted(anyString(), anyString(), view.capture(), any());
+    assertThat(view.getValue().creditParty().id()).isEqualTo("****1234");
+  }
+
+  @Test
+  void anAddMoneyFromALinkedAccountDebitsTheStoredAccountAtItsBank() {
+    org.mockito.Mockito.when(linked.resolve(USER.msisdn(), LINKED_ID)).thenReturn(java.util.Optional.of(DBBL));
+
+    withBank.submit(USER, "key", linkedBody("ADD_MONEY_BANK", LINKED_ID, null, null, null));
+
+    var sent = org.mockito.ArgumentCaptor.forClass(Object.class);
+    verify(publisher).publish(anyString(), anyString(), any(), sent.capture(), anyMap());
+    var req = (mfs.mw.app.gateway.dto.TxnRequest) sent.getValue();
+    assertThat(req.partner().partnerId()).isEqualTo("bank-dbbl");
+    assertThat(req.partner().productCode()).isEqualTo("C2W");
+    assertThat(req.debitParty().type()).isEqualTo("BANK_ACCOUNT");
+    assertThat(req.debitParty().id()).isEqualTo("2050123456781234");
+    assertThat(req.creditParty().id()).isEqualTo(USER.msisdn());
   }
 
   @Test
