@@ -12,6 +12,7 @@ import mfs.mw.adapter.remit.messaging.EventMetadata;
 import mfs.mw.adapter.remit.messaging.Inbox;
 import mfs.mw.adapter.remit.messaging.OutboxWriter;
 import mfs.mw.adapter.remit.partner.route.PartnerGateway;
+import mfs.mw.adapter.remit.repository.RemittanceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,7 @@ public class RemitPartnerService {
   private final OutboxWriter outbox;
   private final Clock clock;
   private final Counter duplicates;
+  private final RemittanceRepository remittances;
 
   public RemitPartnerService(
       PartnerCallMapper requests,
@@ -52,7 +54,9 @@ public class RemitPartnerService {
       Inbox inbox,
       OutboxWriter outbox,
       Clock clock,
-      MeterRegistry meters) {
+      MeterRegistry meters,
+      RemittanceRepository remittances) {
+    this.remittances = remittances;
     this.requests = requests;
     this.replies = replies;
     this.references = references;
@@ -84,7 +88,27 @@ public class RemitPartnerService {
       duplicates.increment();
       return;
     }
+    recordOutcome(request);
     publish(request, replyFor(request));
+  }
+
+  /**
+   * A PAY from the orchestrator carries the REMIT_IN outcome (ticket 119b, {@code attributes.outcome}):
+   * the remittance row takes it first, so {@code GET /remit/v1/credits/{partnerRef}} answers it even
+   * when the partner confirmation call then fails.
+   */
+  private void recordOutcome(PartnerRequest request) {
+    var p = request.payload();
+    if (p == null || !"PAY".equals(p.operation()) || p.attributes() == null || p.attributes().get("outcome") == null) {
+      return;
+    }
+    boolean changed = remittances.updateStatus(request.txnId(), p.attributes().get("outcome"));
+    log.atInfo()
+        .addKeyValue("event", "remit.outcome.recorded")
+        .addKeyValue("txnId", request.txnId())
+        .addKeyValue("outcome", p.attributes().get("outcome"))
+        .addKeyValue("changed", changed)
+        .log("remittance outcome recorded");
   }
 
   private PartnerReply replyFor(PartnerRequest request) {

@@ -304,8 +304,24 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   SUCCESS / FAILURE (the state change itself is audited as usual by `SagaEngine`). An action for an
   unknown txn is logged `txn.action.unknown_txn` and dropped. Reversal is NOT an action: mw-admin-api
   sends a REVERSAL on `mw.txn.request.v1` (channel SYSTEM), handled as below.
+- Inbound remittance (ticket 119b, FRS UC-16, FL-10, 5.3 inbound template; `saga/RemitInFlow`,
+  `service/RemitInService`; `RemitInFlowIT`): a `mw.partner.inbound.v1` kind REMITTANCE of family `remit`
+  (mw-adapter-remit, inboundId stable per partner reference) is applied once through the inbox (key
+  `inboundId`) and handed to intake as a REMIT_IN request under the adapter's txnId: channel `PARTNER_API`,
+  key `remit:<partnerId>:<partnerRef>`, initiator and debit party `{BANK_ACCOUNT, <partnerId>}`, credit party
+  the beneficiary's WALLET, `attributes {partnerRef, senderCountry}` (the sender's name is never stored); no
+  business-duplicate check (the adapter and the inbox dedup on the partner reference). Steps: VALIDATE (the
+  core checks the beneficiary: exists, active, KYC per-txn limits of its REMIT_IN rule; no assertion), then
+  `SagaEvent.CreditValidated` (VALIDATING -> COMMITTING, no partner leg) and CreditWallet with
+  `settlementWallet` `SETTLEMENT_UCB_IMT` -> COMPLETED. A refused validation is REJECTED with no credit; a
+  refused credit after acceptance is MANUAL_REVIEW (5.3 step 6: never silently dropped). Every outcome goes
+  back to the adapter (`SagaEngine.sendRemitConfirmation`): a PAY on `mw.partner.request.remit.v1`, requestId
+  `<txnId>:CONFIRM:<outcome>`, `partnerTxnRef` the partner's reference, `attributes.outcome` CREDITED /
+  REJECTED / MANUAL_REVIEW; its reply never moves the transaction (`PartnerReplyService`,
+  `remit.outcome.confirmed`). AML screen: `mw.remit.aml-screen` `off` (pass-through) until mw-compliance
+  (ticket 125); `on` refuses to start. No Flyway change.
 - Partner callbacks (ticket 22, spec 11.2, `service/PartnerInboundService`, own type
-  `dto/PartnerInbound`): kind CALLBACK only, families telco/billpay/bank (REMITTANCE / NPSB_CREDIT logged
+  `dto/PartnerInbound`): kind CALLBACK, families telco/billpay/bank/card (REMITTANCE: above; NPSB_CREDIT logged
   `partner.inbound.unsupported` and dropped; C2W needs none: its confirmation is a CALLBACK of the customer's own request, decision in mw-adapter-bank's CLAUDE.md). Inbox key `inboundId` (the adapter
   derives it from partner, reference and outcome, so a duplicate callback is dropped). Ownership
   first (security review): applied only when the outcome is SUCCESS/FAILED/PENDING, the flow has

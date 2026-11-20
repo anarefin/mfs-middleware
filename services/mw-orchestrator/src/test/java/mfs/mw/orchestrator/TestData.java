@@ -112,6 +112,15 @@ public final class TestData {
         NOW);
   }
 
+  /** A REMIT_IN (ticket 119b) as {@code RemitInService} builds it: ucb-imt to customer wallet 01711000001. */
+  public static TxnRequest remitIn(String txnId, String partnerRef, long amountMinor) {
+    Party partner = new Party("BANK_ACCOUNT", "ucb-imt", null, null);
+    return new TxnRequest(
+        1, txnId, "remit:ucb-imt:" + partnerRef, "corr-" + txnId.substring(0, 8), "PARTNER_API", "REMIT_IN",
+        partner, partner, new Party("WALLET", "01711000001", null, "CUSTOMER"), Amount.bdt(amountMinor), null,
+        null, null, null, java.util.Map.of("partnerRef", partnerRef, "senderCountry", "AE"), NOW);
+  }
+
   /**
    * An ADD_MONEY_CARD (ticket 118b) of {@code amountMinor} into customer wallet 01711000001 through the
    * {@code cybersource} acquirer; the debit party is the card token placeholder the app gateway sets.

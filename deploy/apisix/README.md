@@ -179,6 +179,11 @@ Route `partner-cybersource-callback` (`/partner/cybersource/callback/*`, POST on
 `mw-adapter-card:8080`: the same four rules (own `limit-count` group); the card acquirer's 3-D Secure
 webhook after the hosted page (session id and transient token only, never card data), verified by
 mw-adapter-card (hmac-sha256 + nonce).
+Route `partner-remit-v1` (`GET|POST /remit/v1/*`, ticket 119b, M9 review) -> `mw-adapter-remit:8080`: the
+same four rules (own `limit-count` group); UCB IMT's inbound remittance API (`POST /remit/v1/credits`, `GET
+/remit/v1/credits/{partnerRef}`), verified by mw-adapter-remit (hmac-sha256 over method, path, `X-Timestamp`,
+`X-Nonce` and the body; nonce once only, timestamp within 300 s). Production: the partner's egress addresses
+in `ip-restriction` (mTLS through ticket 100's client registry when UCB IMT moves to it).
 Neither callback route uses `openid-connect`: billagg and c2wbank are HMAC clients.
 
 Route `test-oauth2-cc` (`GET|POST /test/oauth2-cc`, ticket 100b) -> `mw-simulators:8080`
