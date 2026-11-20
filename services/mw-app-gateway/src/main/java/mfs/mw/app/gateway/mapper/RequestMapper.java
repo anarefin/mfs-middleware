@@ -57,9 +57,14 @@ public class RequestMapper {
     return new PartnerRef(body.partner().partnerId(), body.partner().productCode());
   }
 
+  /** The postpaid bill the quote stored (ticket 112b). A client cannot set these. */
+  public static final String BILL_OUTSTANDING = "billOutstandingMinor";
+
+  public static final String BILL_MINIMUM = "billMinimumMinor";
+
   /** Attribute keys set by the middleware (orchestrator reply matching); never from a client. */
   public static final Set<String> RESERVED_ATTRIBUTES =
-      Set.of(StatusMessage.REQUEST_TXN_ID, StatusMessage.DUPLICATE);
+      Set.of(StatusMessage.REQUEST_TXN_ID, StatusMessage.DUPLICATE, BILL_OUTSTANDING, BILL_MINIMUM);
 
   public TxnRequest toRequest(
       AppUser user,
@@ -87,6 +92,22 @@ public class RequestMapper {
       String correlationId,
       Instant now,
       PartnerRef partner) {
+    return toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner, Map.of());
+  }
+
+  /**
+   * As above, with the postpaid bill the preview stored. Those keys are reserved, so a copy the
+   * client sent is dropped and only this map is published.
+   */
+  public TxnRequest toRequest(
+      AppUser user,
+      String idempotencyKey,
+      TransactionRequest body,
+      String txnId,
+      String correlationId,
+      Instant now,
+      PartnerRef partner,
+      Map<String, String> bill) {
     Party own = Party.wallet(user.msisdn(), user.walletType());
     boolean addMoney = ADD_MONEY_BANK.equals(body.txnType());
     boolean bulk = BULK_DISBURSE.equals(body.txnType());
@@ -113,7 +134,7 @@ public class RequestMapper {
         null,
         body.locale(),
         null,
-        forwardable(body.attributes()),
+        forwardable(body.attributes(), bill),
         now,
         Boolean.TRUE.equals(body.confirmDuplicate()) ? Boolean.TRUE : null);
   }
@@ -194,13 +215,20 @@ public class RequestMapper {
     return c;
   }
 
-  /** The app's attributes without the keys the middleware sets itself; null when none remain. */
-  private static Map<String, String> forwardable(Map<String, String> attributes) {
-    if (attributes == null) {
-      return null;
+  /** The app's attributes without the keys the middleware sets itself, then the stored bill. */
+  private static Map<String, String> forwardable(Map<String, String> attributes, Map<String, String> bill) {
+    Map<String, String> out = new LinkedHashMap<>();
+    if (attributes != null) {
+      out.putAll(attributes);
+      out.keySet().removeAll(RESERVED_ATTRIBUTES);
     }
-    Map<String, String> out = new LinkedHashMap<>(attributes);
-    out.keySet().removeAll(RESERVED_ATTRIBUTES);
+    if (bill != null) {
+      bill.forEach((key, value) -> {
+        if (value != null) {
+          out.put(key, value);
+        }
+      });
+    }
     return out.isEmpty() ? null : out;
   }
 

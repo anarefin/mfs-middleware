@@ -1,0 +1,90 @@
+openapi: 3.1.0
+info:
+  title: Bits telco internal API (mw-adapter-telco)
+  version: 1.0.0
+  description: |
+    Internal, read-only API of mw-adapter-telco (ticket 112b, FRS FL-03): the postpaid bill of one
+    operator OCS profile. Its client is mw-orchestrator, over the app zone network
+    (`http://mw-adapter-telco:8080`); it is not routed by APISIX and has no edge route. No money
+    moves here: a top-up is paid with a TOPUP transaction through Kafka. The quote stores the two
+    amounts and confirm does not call this again.
+    Every error is the 5.3 envelope. The call is idempotent and may be retried by the client.
+servers:
+  - url: http://mw-adapter-telco:8080
+paths:
+  /telco/v1/bills/fetch:
+    post:
+      operationId: fetchPostpaidBill
+      summary: Ask an operator OCS profile for the postpaid outstanding bill and the minimum due
+      description: >-
+        One INQUIRY on the named profile (gp-ocs, robi-ocs, teletalk-ocs, bl-ocs). Errors: 400
+        MW-VAL-001 (bad partner id or MSISDN); 502 MW-PTR-<PROFILE>-<suffix> (definite refusal) or
+        MW-PTR-UNKNOWN (no such profile); 503 MW-SYS-PARTNER_<reason> (not sent, including
+        MAINTENANCE; retryable); 504 MW-TMO-PARTNER_<reason> (no usable answer; retryable).
+      parameters:
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FetchPostpaidBillRequest" }
+      responses:
+        "200":
+          description: The bill, in poisha
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PostpaidBill" }
+        "400": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+        "504": { $ref: "#/components/responses/Error" }
+components:
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    FetchPostpaidBillRequest:
+      type: object
+      required: [partnerId, msisdn]
+      additionalProperties: false
+      properties:
+        partnerId: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,63}$" }
+        msisdn: { type: string, pattern: "^01[3-9][0-9]{8}$" }
+    PostpaidBill:
+      type: object
+      required: [outstanding, minimum]
+      additionalProperties: false
+      properties:
+        outstanding: { $ref: "#/components/schemas/Money" }
+        minimum: { $ref: "#/components/schemas/Money" }
+    Money:
+      type: object
+      required: [valueMinor, currency]
+      additionalProperties: false
+      properties:
+        valueMinor: { type: integer, minimum: 0 }
+        currency: { type: string, enum: [BDT] }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR(-[A-Z0-9_]+)?)(-[A-Z0-9_]+)$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        timestamp: { type: string, format: date-time }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

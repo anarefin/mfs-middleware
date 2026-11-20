@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits transaction query internal API (mw-orchestrator)
-  version: 1.4.0
+  version: 1.5.0
   description: |
     Internal, read-only API of mw-orchestrator (ticket 35, spec 15.2, 16.2): transaction search
     and the saga timeline. Clients: mw-admin-api (operators), mw-portal-api (an org sees only
@@ -315,6 +315,12 @@ components:
           properties:
             type: { type: string, enum: [WALLET, MSISDN, BILLER_ACCOUNT, BANK_ACCOUNT] }
             id: { type: string, minLength: 1, maxLength: 64 }
+        productCode:
+          type: string
+          enum: [PREPAID, POSTPAID]
+          description: >-
+            A top-up only. POSTPAID fetches the bill once and returns outstanding and minimum;
+            confirm does not fetch again. PREPAID is checked against the operator's denomination list.
     Quote:
       type: object
       required: [txnType, amount, fee, vat, commission, total, limits]
@@ -350,6 +356,12 @@ components:
             id: { type: string }
             name: { type: string }
             walletType: { type: string }
+        outstanding:
+          $ref: "#/components/schemas/Amount"
+          description: Postpaid bill fetched for this quote (ticket 112b). Confirm pays up to this amount.
+        minimum:
+          $ref: "#/components/schemas/Amount"
+          description: Minimum due of that bill. Confirm pays at least this amount.
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

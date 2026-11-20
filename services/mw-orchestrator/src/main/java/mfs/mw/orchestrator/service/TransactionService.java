@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import mfs.mw.orchestrator.config.OrchestratorProperties;
+import mfs.mw.orchestrator.config.TopupProperties;
 import mfs.mw.orchestrator.dto.Amount;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.PartnerRef;
@@ -68,6 +69,7 @@ public class TransactionService {
   private final OrchestratorProperties properties;
   private final RoutingCatalog routing;
   private final Clock clock;
+  private final TopupProperties topup;
 
   public TransactionService(
       IdempotencyRepository idempotency,
@@ -80,7 +82,8 @@ public class TransactionService {
       DuplicateGuard duplicates,
       OrchestratorProperties properties,
       RoutingCatalog routing,
-      Clock clock) {
+      Clock clock,
+      TopupProperties topup) {
     this.idempotency = idempotency;
     this.transactions = transactions;
     this.requestMapper = requestMapper;
@@ -92,6 +95,7 @@ public class TransactionService {
     this.properties = properties;
     this.routing = routing;
     this.clock = clock;
+    this.topup = topup;
   }
 
   /**
@@ -337,6 +341,9 @@ public class TransactionService {
     }
     if (req.amount().valueMinor() <= 0) {
       return new ErrorInfo(ErrorCodes.VAL_AMOUNT, "Amount must be greater than zero", null, false);
+    }
+    if ("TOPUP".equals(req.txnType())) {
+      return TopupAmount.confirm(req, routing, topup);
     }
     return null;
   }

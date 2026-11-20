@@ -142,7 +142,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-04` P2P | done (`P2P`); FRS T1–T12 ticket 104 |
 | `UC-05`, `UC-06` cash-in, cash-out | done |
 | `UC-07` B2B float | done (`B2B_TRANSFER`, `B2bTransferFlow`, folder 63) |
-| `UC-08` top-up | prepaid done (one OCS); ticket 112 |
+| `UC-08` top-up | prepaid denominations and postpaid range landed in 112b; the T1–T12 matrix is 112c |
 | `UC-09`, `UC-10` bills | one aggregator done; tickets 113, 114 |
 | `UC-11` merchant payment | app done (folder 04); USSD menu MERCHANT_PAY (109c); ticket 115 remains |
 | `UC-12` web checkout and refund | pay done; refund ticket 116 |
@@ -235,7 +235,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | --- | --- | --- |
 | FL-01 | ticket 124 | eKYC with EC, consent, KYC level |
 | FL-02 | ticket 124 | encrypted images through the mw-crypto envelope |
-| FL-03 | ticket 112 | postpaid bill fetch |
+| FL-03 | ticket 112b | postpaid quote fetches the bill once; confirm pays from the minimum due through the outstanding |
 | FL-04 | ticket 113 | two-step bill fetch then pay built (billpay); amount rules per biller in 113 |
 | FL-05 | tickets 113, 132 | biller catalogue in the database |
 | FL-06 | ticket 116 | refund bounds |
@@ -265,7 +265,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-05 | ticket 125 | mock side done (ticket 123): mw-simulators party `aml` answers each file of `aml/in` with ALERT / HOLD / BLOCK lines in `aml/out` (rules `seed/v1/aml/rules.json`, draft format `contracts/files/aml/README.md`; `AmlResponderTest`, `SftpMocksIT`, API folder 44); the feed and response handling in 125 |
 | EXT-06 | done | trust bank mock (ticket 123) and the pull (ticket 126): `mw-recon` reads MT940 and MT942 from `trustbank/out` (sshj, Prowide) and classifies them (`Mt940ParserTest`, `ReconMatchingIT`, folder 60) |
 | EXT-07 | ticket 124 | EC NID mock |
-| EXT-08 | ticket 112 | one OCS simulator built; four operator profiles landed in 112a (`gp-ocs`, `robi-ocs`, `teletalk-ocs`, `bl-ocs`); FL-03 and UC-08 stay open |
+| EXT-08 | ticket 112 | one OCS simulator built; four operator profiles landed in 112a (`gp-ocs`, `robi-ocs`, `teletalk-ocs`, `bl-ocs`); 112b stores the fetched bill on the quote (minimum through outstanding); T1–T12 stays 112c |
 | EXT-09 | ticket 114 | utility aggregator simulator (billagg) built; stateful bills and callbacks in 114 |
 | EXT-10 | ticket 114 | four bill aggregator profiles |
 | EXT-11 | ticket 115 | merchant SOAP |

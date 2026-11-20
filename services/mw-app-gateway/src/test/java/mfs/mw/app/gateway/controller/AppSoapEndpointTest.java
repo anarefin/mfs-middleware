@@ -139,7 +139,7 @@ class AppSoapEndpointTest {
         new Quote.Money(241, "BDT"), new Quote.Money(0, "BDT"), new Quote.Money(101_850, "BDT"),
         new Quote.Limits(true, null, new Quote.Remaining(null, new Quote.Money(500_000, "BDT"), null, null, null)),
         new Party("WALLET", "0171****002", "R.", "CUSTOMER")));
-    when(transactions.submit(any(), any(), any())).thenReturn(SubmitResult.done(new TransactionView(
+    when(transactions.submit(any(), any(), any(), any())).thenReturn(SubmitResult.done(new TransactionView(
         "019a0000-0000-7000-8000-000000000001", "COMPLETED", "P2P",
         Party.wallet("01711000001", "CUSTOMER"), Party.wallet("0171****002", "CUSTOMER"),
         new Amount(100_000L, "BDT"), new Amount(1_850L, "BDT"), "CORE-1", null,
@@ -179,7 +179,7 @@ class AppSoapEndpointTest {
     assertThat(confirm).doesNotContain("Fault");
     assertThat(text(confirm, "txnId")).isEqualTo("019a0000-0000-7000-8000-000000000001");
     assertThat(text(confirm, "status")).isEqualTo("COMPLETED");
-    verify(transactions).submit(any(), eq("soap-key-1"), any());
+    verify(transactions).submit(any(), eq("soap-key-1"), any(), any());
   }
 
   /** XSD boolean {@code 1} is true (a confirmed duplicate must not stay false and be refused). */
@@ -206,7 +206,7 @@ class AppSoapEndpointTest {
         """.formatted(previewId, PAYEE)));
 
     ArgumentCaptor<TransactionRequest> sent = ArgumentCaptor.forClass(TransactionRequest.class);
-    verify(transactions).submit(any(), eq("soap-dup-1"), sent.capture());
+    verify(transactions).submit(any(), eq("soap-dup-1"), sent.capture(), any());
     assertThat(sent.getValue().confirmDuplicate()).isTrue();
   }
 

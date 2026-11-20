@@ -74,6 +74,17 @@ public class RoutingCatalog {
     return current.get();
   }
 
+  /** The operator of a top-up number: an MNP override, else the longest enabled prefix (PLT-042). */
+  public Optional<String> operatorOf(String msisdn) {
+    RoutingSnapshot snap = current.get();
+    return MsisdnRouting.mno(msisdn, snap.prefixes(), snap.overrides());
+  }
+
+  /** {@code 01XXXXXXXXX}, or null when {@code msisdn} is not a mobile number. */
+  public String canonicalMsisdn(String msisdn) {
+    return MsisdnRouting.canonical(msisdn);
+  }
+
   public Decision decide(TxnRequest request) {
     return routing.decide(query(request), current.get(), clock.instant());
   }

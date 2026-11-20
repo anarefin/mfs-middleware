@@ -266,6 +266,20 @@ mw:
       enabled: true
       period: 1s
       batch-size: 50
+  # Postpaid bill and prepaid denominations (ticket 112b, FRS FL-03, UC-08). The operator is the
+  # number's prefix or MNP override. A postpaid preview fetches through that operator's OCS profile;
+  # confirm pays any amount from the stored minimum through the stored outstanding and does not
+  # fetch again. A prepaid amount is checked against denominations.<operator> when that list is set.
+  topup:
+    inquiry-partner:
+      gp: gp-ocs
+      robi: robi-ocs
+      teletalk: teletalk-ocs
+      banglalink: bl-ocs
+    bill:
+      base-url: http://mw-adapter-telco:8080
+      connect-timeout: 1s
+      read-timeout: 25s
   kafka:
     # How long EventPublisher.publish waits for Kafka's acknowledgement (just above the producer's
     # delivery.timeout.ms, so the producer decides first).

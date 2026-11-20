@@ -121,7 +121,7 @@ class DeviceBindingIT {
   void freshWallet() {
     msisdn = "0171" + String.format("%07d", (int) (Math.random() * 10_000_000));
     AllowingQuote.allow(quotes);
-    when(transactions.submit(any(), any(), any()))
+    when(transactions.submit(any(), any(), any(), any()))
         .thenReturn(SubmitResult.processing(TransactionView.processing(TXN_ID)));
     when(transactions.find(any(), any())).thenReturn(TransactionView.processing(TXN_ID));
     when(balances.check(any(), any(), any())).thenReturn(
@@ -212,7 +212,7 @@ class DeviceBindingIT {
   void aBoundDeviceSubmitsASignedP2p() throws Exception {
     Device d = bind();
     assertThat(submitSigned(d)).hasStatus(202);
-    verify(transactions, times(1)).submit(any(), any(), any());
+    verify(transactions, times(1)).submit(any(), any(), any(), any());
   }
 
   @Test
@@ -223,7 +223,7 @@ class DeviceBindingIT {
 
     assertThat(post("/app/v1/transactions", P2P, signed, key)).hasStatus(202);
     assertCode(post("/app/v1/transactions", P2P, signed, key), 401, "MW-AUTH-006");
-    verify(transactions, times(1)).submit(any(), any(), any());
+    verify(transactions, times(1)).submit(any(), any(), any(), any());
   }
 
   @Test
@@ -255,7 +255,7 @@ class DeviceBindingIT {
         .exchange();
 
     assertCode(r, 401, "MW-AUTH-004");
-    verify(transactions, times(0)).submit(any(), any(), any());
+    verify(transactions, times(0)).submit(any(), any(), any(), any());
   }
 
   @Test
@@ -273,7 +273,7 @@ class DeviceBindingIT {
         .header("Idempotency-Key", "key-" + UUID.randomUUID())
         .exchange();
     assertCode(r, 400, "MW-VAL-001");
-    verify(transactions, times(0)).submit(any(), any(), any());
+    verify(transactions, times(0)).submit(any(), any(), any(), any());
   }
 
   @Test
@@ -322,7 +322,7 @@ class DeviceBindingIT {
     sessions.clear(); // the idle timeout, or another device bound
     assertCode(status(d.id()), 401, "MW-AUTH-007");
     assertCode(submitSigned(d), 401, "MW-AUTH-007");
-    verify(transactions, times(0)).submit(any(), any(), any());
+    verify(transactions, times(0)).submit(any(), any(), any(), any());
 
     sessions.add(msisdn + ":" + d.id()); // POST /auth/v1/sessions at mw-auth
     assertThat(status(d.id())).hasStatus(200);
@@ -349,7 +349,7 @@ class DeviceBindingIT {
     Device d = bind();
     assertThat(postSoap(d, null, confirmEnvelope("ignored-preview", "soap-unsigned"))).contains("MW-AUTH-004");
     assertThat(postSoap(d, null, balanceEnvelope("bal-unsigned"))).contains("MW-AUTH-004").doesNotContain("424242");
-    verify(transactions, times(0)).submit(any(), any(), any());
+    verify(transactions, times(0)).submit(any(), any(), any(), any());
     verify(balances, times(0)).check(any(), any(), any());
 
     Device loggedOut = bind();
@@ -361,7 +361,7 @@ class DeviceBindingIT {
     assertThat(postSoap(loggedOut, sign(loggedOut, "POST", "/app/ws/v1", loggedOutBalance), loggedOutBalance))
         .contains("MW-AUTH-007")
         .doesNotContain("424242");
-    verify(transactions, times(0)).submit(any(), any(), any());
+    verify(transactions, times(0)).submit(any(), any(), any(), any());
     verify(balances, times(0)).check(any(), any(), any());
 
     String preview = postSoap(d, null, envelope("", previewBody()));
@@ -372,7 +372,7 @@ class DeviceBindingIT {
     Signed signed = sign(d, "POST", "/app/ws/v1", envelope);
     assertThat(postSoap(d, signed, envelope)).doesNotContain("Fault");
     assertThat(postSoap(d, signed, envelope)).contains("MW-AUTH-006");
-    verify(transactions, times(1)).submit(any(), any(), any());
+    verify(transactions, times(1)).submit(any(), any(), any(), any());
 
     String balance = balanceEnvelope("bal-ok");
     assertThat(postSoap(d, sign(d, "POST", "/app/ws/v1", balance), balance)).contains("424242");

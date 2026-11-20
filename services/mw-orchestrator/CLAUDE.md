@@ -82,7 +82,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   (`BulkDisburseSagaIT`); the core restricts it to ORG -> CUSTOMER. The portal derives txnId and
   key per row, so a resent child is answered from the idempotency record. The batch's parent
   BULK_DISBURSE txn is not a saga here (portal-side record, `attributes.parentTxnId`). `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,
-  `mw.partner.request.telco.v1`) + commit + release; `BillPayFlow` (ticket 21) is the same with
+  `mw.partner.request.telco.v1`) + commit + release. A postpaid preview fetches the bill once (`QuoteService` to
+  mw-adapter-telco `POST /telco/v1/bills/fetch` on the operator profile, `gp` to `gp-ocs`) and the quote stores
+  outstanding and minimum due; confirm pays any amount from the minimum through the outstanding and does not fetch
+  again. An amount outside that range is `MW-VAL-030` before a hold. A prepaid amount off `mw.topup.denominations.<operator>`
+  is `MW-VAL-031` before a hold (an operator with no list is unrestricted). `BillPayFlow` (ticket 21) is the same with
   `PartnerCall` billpay on `mw.partner.request.billpay.v1` (partner `{partnerId: <aggregator>,
   productCode: BILL, billerCode}` and credit party `BILLER_ACCOUNT` as the app gateway sets them;
   same 30 s partner deadline, TSQ on UNKNOWN and NOT_FOUND rules as TOPUP; the sync bill fetch

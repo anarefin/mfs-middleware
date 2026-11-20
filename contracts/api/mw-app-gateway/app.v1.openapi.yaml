@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.11.0
+  version: 1.12.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -1059,6 +1059,12 @@ components:
                 monthly: { $ref: "#/components/schemas/Money" }
                 dailyCount: { type: integer, minimum: 0 }
                 monthlyCount: { type: integer, minimum: 0 }
+        outstanding:
+          $ref: "#/components/schemas/Money"
+          description: Postpaid outstanding bill the quote fetched (ticket 112b). Absent for any other preview.
+        minimum:
+          $ref: "#/components/schemas/Money"
+          description: Minimum due of that bill. A confirm pays any amount from this through outstanding.
     SaveBillerRequest:
       type: object
       required: [billerCode, accountNo]

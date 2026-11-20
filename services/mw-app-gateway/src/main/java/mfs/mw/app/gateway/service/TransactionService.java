@@ -3,6 +3,7 @@ package mfs.mw.app.gateway.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -75,6 +76,11 @@ public class TransactionService {
   }
 
   public SubmitResult submit(AppUser user, String idempotencyKey, TransactionRequest body) {
+    return submit(user, idempotencyKey, body, Map.of());
+  }
+
+  public SubmitResult submit(
+      AppUser user, String idempotencyKey, TransactionRequest body, Map<String, String> bill) {
     check(user, body);
     // FRS PLT-011: a key already answered 200 gets that very body again (or 409 for other content)
     Optional<TransactionView> stored = replay.replay(user, idempotencyKey, body);
@@ -90,7 +96,7 @@ public class TransactionService {
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
     String correlationId = TxnReplyExchange.correlationId();
-    TxnRequest unauthorised = mapper.toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner);
+    TxnRequest unauthorised = mapper.toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner, bill);
     // the PIN goes to mw-auth only (ticket 72): its refusal (wrong PIN 401, lock 423, ...) is
     // answered at once and nothing is published; the request carries the assertion instead
     TxnRequest req = unauthorised.withAssertion(
