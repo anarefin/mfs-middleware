@@ -173,7 +173,7 @@
 129d-sp-portal                              129a              open
 129e-bulk-suite                             129b,129c,129d    open   (Newman 65)
 130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f
-130b-audit-hops-channels-core-notify        130               open   (CHANNEL_IN in channels, CORE_CALL in orchestrator, NOTIFICATION in mw-notify; closes AUD-01/AUD-04 with 135)
+130b-audit-hops-channels-core-notify        130               done     40m      56 files +1490 −49     3ca26066,9c0f49f8 (merge 4705cde3; AUD-01 done, AUD-04 with 135; no balance answer, checkout redirect or OTP text audited; NOTIFICATION and bulk-child hops carry no latency)
 # --- M12 gate: UC-01, UC-20..22
 131-admin-partner-credentials               91,97             split (131-split-decisions.md, 2026-11-20)
 131a-admin-credentials-backend              91,97             done     135m     59 files +3307 −41     ce25fff7
