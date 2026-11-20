@@ -189,7 +189,9 @@
 133d-template-test-send                     133a              open
 134-admin-actions-compliance-recon-ui       125,127,111       open
 135-admin-monitoring-users-audit-mock       103,130           open
-136-developer-guide-sample-connector        114,131a,131b           open
+136-developer-guide-sample-connector        114,131a,131b     split (136-split-decisions.md)
+136a-guide-sample-trigger-docs              114,131a,131b     done     32m      22 files +1931 −11     cef3880d (merge 906f72e9; docs/connectors, docs/mocks, docs/api-catalogue.md; samplebiller mock; MockTriggers registry + docs drift tests)
+136b-console-walkthrough-suite              136a,132          open   (integration-maker/checker seeded persona, e2e/94-add-biller.spec.ts, Newman 70-sample-connector, CON-06)
 137-frs-e2e-completion                      104-129(flows)    open
 138-frs-acceptance-gate                     137               open
 # --- M13 gate: FRS 10.4 acceptance criteria 1-7
