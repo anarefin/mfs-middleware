@@ -1,9 +1,11 @@
 package mfs.mw.adapter.atm.config;
 
+import java.time.Clock;
 import java.util.Objects;
 import mfs.mw.adapter.atm.controller.AtmSoap;
 import mfs.mw.adapter.atm.controller.AtmSoapEndpoint;
 import mfs.mw.adapter.atm.exception.SoapFaultResolver;
+import mfs.mw.adapter.atm.security.NonceStore;
 import mfs.mw.adapter.atm.security.WsSecurityInterceptor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
@@ -24,7 +26,7 @@ import org.springframework.xml.xsd.XsdSchema;
  * The inbound ATM SOAP servlet (ticket 120a, FRS EXT-16, PLT-050) on Spring WS, as mw-app-gateway's
  * SOAP facade (ticket 108). The WSDL is generated from the contract XSD (copied into the jar) at
  * {@code /partner/ucbatm/ws/v1/atm.wsdl}. Interceptors in order: the WS-Security UsernameToken
- * check, then schema validation of the request. No payload logging interceptor: a body carries an
+ * check (PasswordDigest, Created window, once-only nonce; ticket 120b1), then schema validation of the request. No payload logging interceptor: a body carries an
  * MSISDN and the one-time token.
  */
 @Configuration(proxyBeanMethods = false)
@@ -33,8 +35,8 @@ public class AtmWebServiceConfig {
   static final String XSD = "xsd/atm-soap.v1.xsd";
 
   @Bean
-  WsSecurityInterceptor atmWsSecurity(AtmInboundProperties properties) {
-    return new WsSecurityInterceptor(properties);
+  WsSecurityInterceptor atmWsSecurity(AtmInboundProperties properties, NonceStore nonces, Clock clock) {
+    return new WsSecurityInterceptor(properties, nonces, clock);
   }
 
   @Bean

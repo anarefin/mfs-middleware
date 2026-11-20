@@ -180,6 +180,13 @@ Route `partner-cybersource-callback` (`/partner/cybersource/callback/*`, POST on
 webhook after the hosted page (session id and transient token only, never card data), verified by
 mw-adapter-card (hmac-sha256 + nonce).
 Neither callback route uses `openid-connect`: billagg and c2wbank are HMAC clients.
+Route `partner-ucbatm-ws` (`/partner/ucbatm/ws/v1` and `/partner/ucbatm/ws/v1/*`, GET and POST, ticket
+120b1) -> `mw-adapter-atm:8080`: the UCB ATM switch's inbound SOAP API and its WSDL (GET
+`/partner/ucbatm/ws/v1/atm.wsdl`). The same four rules (own `limit-count` group, 1200 / 60 s per
+`remote_addr`); no bearer: mw-adapter-atm checks the WS-Security UsernameToken itself (PasswordDigest,
+never PasswordText, a once-only `wsse:Nonce` and `wsu:Created` within 300 s; FRS PLT-008) and answers
+the SOAP fault `MW-AUTH-001`. Production lists the switch's egress addresses; mTLS for the switch comes
+with the channel client registry's MTLS clients (ticket 100c).
 
 Route `test-oauth2-cc` (`GET|POST /test/oauth2-cc`, ticket 100b) -> `mw-simulators:8080`
 `/sim/oauth2-cc/ping` (204). An `OAUTH2_CC` client's route, not an HMAC callback:
