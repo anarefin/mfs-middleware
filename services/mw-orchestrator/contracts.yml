@@ -31,3 +31,5 @@ consumes:
     - events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged
   apis:
     - api/mw-core-mock/core-wallet.v1.openapi.yaml
+    # postpaid bill fetch at preview (ticket 112b); confirm does not call it again
+    - api/mw-adapter-telco/telco.v1.openapi.yaml

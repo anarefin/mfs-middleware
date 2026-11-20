@@ -24,14 +24,16 @@ import tools.jackson.databind.json.JsonMapper;
  * The API this module serves ({@code produces.apis}: {@code txn-query.v1}): the response bodies of
  * {@code controller/TransactionQueryController}, built from fixtures through the real view mapper
  * and serialised with the service JsonMapper (the one Spring MVC uses), validate against the
- * OpenAPI component schemas. The one API it calls ({@code consumes.apis}) is the core wallet's (ADR D31,
- * ticket 95a): {@code client/CoreWalletClientTest} checks its request bodies against that contract.
+ * OpenAPI component schemas. The APIs it calls ({@code consumes.apis}) are the core wallet (ADR D31,
+ * ticket 95a) and the telco postpaid bill (ticket 112b): {@code client/CoreWalletClientTest} checks the
+ * core request bodies against that contract.
  */
 class ApiContractsTest {
 
   private static final String API = "api/mw-orchestrator/txn-query.v1.openapi.yaml";
   private static final String TEST_API = "api/mw-orchestrator/orchestrator-test.v1.openapi.yaml";
   private static final String CORE_API = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
+  private static final String TELCO_API = "api/mw-adapter-telco/telco.v1.openapi.yaml";
   private static final JsonMapper JSON = ContractManifest.serviceJsonMapper();
   private static final RequestMapper REQUESTS = new RequestMapper(JSON);
 
@@ -54,7 +56,7 @@ class ApiContractsTest {
   @Test
   void theApiIsTheOneTheManifestSaysThisModuleServes() {
     assertThat(ContractManifest.entries("produces", "apis")).containsExactly(API, TEST_API);
-    assertThat(ContractManifest.entries("consumes", "apis")).containsExactly(CORE_API);
+    assertThat(ContractManifest.entries("consumes", "apis")).containsExactly(CORE_API, TELCO_API);
   }
 
   @Test
@@ -143,10 +145,18 @@ class ApiContractsTest {
         new mfs.mw.orchestrator.dto.QuoteRequest.Money(10_000, "BDT"),
         new mfs.mw.orchestrator.dto.QuoteRequest.Counterparty("WALLET", "01711000002"));
 
-    var quote = new mfs.mw.orchestrator.service.QuoteService(core).quote(request, "c");
+    var quote = new mfs.mw.orchestrator.service.QuoteService(
+        core,
+        org.mockito.Mockito.mock(mfs.mw.orchestrator.client.TelcoBillClient.class),
+        org.mockito.Mockito.mock(mfs.mw.orchestrator.service.routing.RoutingCatalog.class),
+        new mfs.mw.orchestrator.config.TopupProperties(java.util.Map.of(), java.util.Map.of(), null)).quote(request, "c");
 
     assertThat(OpenApiSchemas.component(API, "QuoteRequest").validate(body(request))).isEmpty();
     assertThat(OpenApiSchemas.component(API, "Quote").validate(body(quote))).isEmpty();
+    var withBill = new mfs.mw.orchestrator.dto.Quote(
+        quote.txnType(), quote.amount(), quote.fee(), quote.vat(), quote.commission(), quote.total(), quote.limits(),
+        quote.counterparty(), mfs.mw.orchestrator.dto.Amount.bdt(45_000), mfs.mw.orchestrator.dto.Amount.bdt(5_000));
+    assertThat(OpenApiSchemas.component(API, "Quote").validate(body(withBill))).isEmpty();
   }
 
   /** Guards the helper: a body that breaks the schema is reported. */

@@ -62,6 +62,13 @@ public final class ErrorCodes {
   public static final String VAL_DUPLICATE_SUSPECTED = "MW-VAL-024";
   /** Business duplicate from an API client (checkout, portal, partner): refused, not confirmable. */
   public static final String VAL_DUPLICATE_REJECTED = "MW-VAL-025";
+  /**
+   * Postpaid top-up (ticket 112b): no stored bill, or an amount outside the minimum due through the
+   * outstanding bill. Refused before a hold.
+   */
+  public static final String VAL_TOPUP_BILL = "MW-VAL-030";
+  /** Prepaid top-up: the amount is not on {@code mw.topup.denominations.<operator>}. Refused before a hold. */
+  public static final String VAL_TOPUP_DENOMINATION = "MW-VAL-031";
   /** REVERSAL from a channel outside {@code mw.orchestrator.reversal-channels}. */
   public static final String AUTH_REVERSAL_CHANNEL = "MW-AUTH-020";
   /** BULK_DISBURSE from a channel outside {@code mw.orchestrator.bulk-channels} (ticket 34). */

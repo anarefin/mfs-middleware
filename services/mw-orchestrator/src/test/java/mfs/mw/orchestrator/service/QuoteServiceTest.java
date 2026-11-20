@@ -10,13 +10,18 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.Map;
+import java.util.Optional;
 import mfs.mw.orchestrator.client.CoreWalletClient;
 import mfs.mw.orchestrator.client.CoreWalletClient.CoreRead;
+import mfs.mw.orchestrator.client.TelcoBillClient;
+import mfs.mw.orchestrator.config.TopupProperties;
 import mfs.mw.orchestrator.dto.Amount;
 import mfs.mw.orchestrator.dto.CoreCallBodies;
 import mfs.mw.orchestrator.dto.Quote;
 import mfs.mw.orchestrator.dto.QuoteRequest;
 import mfs.mw.orchestrator.exception.MwException;
+import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpStatus;
@@ -32,8 +37,14 @@ class QuoteServiceTest {
   private static final String PAYER = "01711000001";
   private static final String PAYEE = "01711000002";
 
+  private static final String GP_POSTPAID = "01711000021";
+
   private final CoreWalletClient core = mock(CoreWalletClient.class);
-  private final QuoteService service = new QuoteService(core);
+  private final TelcoBillClient bills = mock(TelcoBillClient.class);
+  private final RoutingCatalog routing = mock(RoutingCatalog.class);
+  private final QuoteService service = new QuoteService(core, bills, routing, new TopupProperties(Map.of(), Map.of(), null));
+  private final QuoteService prepaidListed = new QuoteService(core, bills, routing,
+      new TopupProperties(Map.of("gp", "gp-ocs"), Map.of("gp", java.util.List.of(1_000L, 2_000L)), null));
 
   private static CoreRead ok(String json) {
     return new CoreRead(200, null, JSON.readTree(json));
@@ -171,5 +182,49 @@ class QuoteServiceTest {
           assertThat(e.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
           assertThat(e.retryable()).isTrue();
         });
+  }
+
+  /** An amount outside the bill still returns both numbers. Confirm is what refuses it. */
+  @Test
+  void aPostpaidQuoteReturnsTheFetchedBillEvenWhenTheAmountIsOutsideIt() {
+    charges();
+    limits("{\"walletId\":\"01711000001\",\"allowed\":true,\"remaining\":{}}");
+    when(routing.canonicalMsisdn(GP_POSTPAID)).thenReturn(GP_POSTPAID);
+    when(routing.operatorOf(GP_POSTPAID)).thenReturn(Optional.of("gp"));
+    when(bills.fetch("gp-ocs", GP_POSTPAID, "c")).thenReturn(new TelcoBillClient.Bill(45_000, 5_000));
+
+    Quote q = prepaidListed.quote(new QuoteRequest(PAYER, "CUSTOMER", "TOPUP", "CUSTOMER_APP",
+        new QuoteRequest.Money(100, "BDT"), new QuoteRequest.Counterparty("MSISDN", GP_POSTPAID), "POSTPAID"), "c");
+
+    assertThat(q.outstanding()).isEqualTo(Amount.bdt(45_000));
+    assertThat(q.minimum()).isEqualTo(Amount.bdt(5_000));
+    verify(bills).fetch("gp-ocs", GP_POSTPAID, "c");
+  }
+
+  @Test
+  void aPrepaidAmountOffTheListIsRefusedBeforeTheCoreAndNeverFetchesABill() {
+    when(routing.operatorOf(GP_POSTPAID)).thenReturn(Optional.of("gp"));
+
+    assertThatThrownBy(() -> prepaidListed.quote(new QuoteRequest(PAYER, "CUSTOMER", "TOPUP", "CUSTOMER_APP",
+        new QuoteRequest.Money(3_000, "BDT"), new QuoteRequest.Counterparty("MSISDN", GP_POSTPAID), "PREPAID"), "c"))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-031"));
+
+    verify(core, never()).charges(any(), anyString());
+    verify(bills, never()).fetch(anyString(), anyString(), any());
+  }
+
+  @Test
+  void aPrepaidAmountOnTheListQuotesAndDoesNotFetchABill() {
+    charges();
+    limits("{\"walletId\":\"01711000001\",\"allowed\":true,\"remaining\":{}}");
+    when(routing.operatorOf(GP_POSTPAID)).thenReturn(Optional.of("gp"));
+
+    Quote q = prepaidListed.quote(new QuoteRequest(PAYER, "CUSTOMER", "TOPUP", "CUSTOMER_APP",
+        new QuoteRequest.Money(2_000, "BDT"), new QuoteRequest.Counterparty("MSISDN", GP_POSTPAID), "PREPAID"), "c");
+
+    assertThat(q.outstanding()).isNull();
+    assertThat(q.minimum()).isNull();
+    verify(bills, never()).fetch(anyString(), anyString(), any());
+    verify(core).charges(any(), eq("c"));
   }
 }

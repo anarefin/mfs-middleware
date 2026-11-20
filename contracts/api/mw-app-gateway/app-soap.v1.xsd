@@ -126,6 +126,8 @@
         <xs:element name="total" type="tns:Amount" minOccurs="0"/>
         <xs:element name="counterparty" type="tns:CounterParty" minOccurs="0"/>
         <xs:element name="limits" type="tns:Limits" minOccurs="0"/>
+        <xs:element name="outstanding" type="tns:Amount" minOccurs="0"/>
+        <xs:element name="minimum" type="tns:Amount" minOccurs="0"/>
       </xs:sequence>
     </xs:complexType>
   </xs:element>

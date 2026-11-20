@@ -162,11 +162,11 @@ class PreviewServiceTest {
         "P2P", new TransactionRequest.CounterParty(null, "01711000002"), amount, null, "en", null);
     assertThat(service.txnHash(lied)).isEqualTo(service.txnHash(plain));
 
-    when(transactions.submit(any(), any(), any())).thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
+    when(transactions.submit(any(), any(), any(), any())).thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
     service.confirm(USER, "send-money", "key-1", new ConfirmRequest(
         p2p.previewId(), new TransactionRequest.CounterParty("MSISDN", "01711000002"), null, null, amount,
         new EncryptedPin("pin-1", "Y2lwaGVy"), "en", null, null));
-    verify(transactions).submit(eq(USER), eq("key-1"), any());
+    verify(transactions).submit(eq(USER), eq("key-1"), any(), any());
   }
 
   @Test
@@ -186,13 +186,13 @@ class PreviewServiceTest {
   @Test
   void aConfirmOfThePreviewedTransactionIsSubmittedWithTheGroupsTypeAndThePin() {
     String id = previewed().previewId();
-    when(transactions.submit(any(), any(), any())).thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
+    when(transactions.submit(any(), any(), any(), any())).thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
 
     // the payee in another accepted form is the same payee
     service.confirm(USER, "send-money", "key-1", confirm(id, "8801711000002", 100_000, null));
 
     ArgumentCaptor<TransactionRequest> sent = ArgumentCaptor.forClass(TransactionRequest.class);
-    verify(transactions).submit(eq(USER), eq("key-1"), sent.capture());
+    verify(transactions).submit(eq(USER), eq("key-1"), sent.capture(), any());
     assertThat(sent.getValue().txnType()).isEqualTo("P2P");
     assertThat(sent.getValue().encryptedPin()).isEqualTo(new EncryptedPin("pin-1", "Y2lwaGVy"));
     assertThat(sent.getValue().amount().valueMinor()).isEqualTo(100_000);
@@ -211,7 +211,7 @@ class PreviewServiceTest {
     }
     assertThatThrownBy(() -> service.confirm(USER, "cash-out", "key-1", confirm(id, "01711000002", 100_000, null)))
         .as("another group").isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-026"));
-    verify(transactions, never()).submit(any(), any(), any());
+    verify(transactions, never()).submit(any(), any(), any(), any());
   }
 
   @Test
@@ -229,7 +229,7 @@ class PreviewServiceTest {
     store.kept.clear();
     assertThatThrownBy(() -> service.confirm(USER, "send-money", "k", confirm(id, "01711000002", 100_000, null)))
         .as("expired: gone from the store").isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-027"));
-    verify(transactions, never()).submit(any(), any(), any());
+    verify(transactions, never()).submit(any(), any(), any(), any());
   }
 
   @Test
@@ -264,7 +264,7 @@ class PreviewServiceTest {
   @Test
   void theOneShotSubmitPreviewsThenConfirmsTheSameTransaction() {
     when(quotes.quote(any())).thenReturn(quote(true, null));
-    when(transactions.submit(any(), any(), any())).thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
+    when(transactions.submit(any(), any(), any(), any())).thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
     TransactionRequest body = new TransactionRequest("P2P", new TransactionRequest.CounterParty(null, "01711000002"),
         new Amount(100_000L, "BDT"), new EncryptedPin("pin-1", "Y2lwaGVy"), "en", null);
 
@@ -272,7 +272,7 @@ class PreviewServiceTest {
 
     verify(quotes).quote(any());
     ArgumentCaptor<TransactionRequest> sent = ArgumentCaptor.forClass(TransactionRequest.class);
-    verify(transactions).submit(eq(USER), eq("key-1"), sent.capture());
+    verify(transactions).submit(eq(USER), eq("key-1"), sent.capture(), any());
     assertThat(sent.getValue().txnType()).isEqualTo("P2P");
     assertThat(sent.getValue().encryptedPin()).isEqualTo(new EncryptedPin("pin-1", "Y2lwaGVy"));
     assertThat(sent.getValue().amount().valueMinor()).isEqualTo(100_000);
@@ -287,7 +287,44 @@ class PreviewServiceTest {
 
     assertThatThrownBy(() -> service.submitOneShot(USER, "key-1", body))
         .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-CORE-LIMIT_EXCEEDED_PER_TXN"));
-    verify(transactions, never()).submit(any(), any(), any());
+    verify(transactions, never()).submit(any(), any(), any(), any());
     assertThat(store.kept).isEmpty();
+  }
+
+  @Test
+  void aPostpaidPreviewReturnsBothAmountsAndConfirmSubmitsTheStoredBillOnce() {
+    Quote.Money outstanding = new Quote.Money(45_000, "BDT");
+    Quote.Money minimum = new Quote.Money(5_000, "BDT");
+    when(quotes.quote(any())).thenReturn(new Quote("TOPUP", new Quote.Money(100, "BDT"), new Quote.Money(0, "BDT"),
+        new Quote.Money(0, "BDT"), new Quote.Money(0, "BDT"), new Quote.Money(100, "BDT"),
+        new Quote.Limits(true, null, new Quote.Remaining(null, null, null, null, null)),
+        new Party("MSISDN", "0171****021", null, null), outstanding, minimum));
+    var partner = new TransactionRequest.Partner("gp", "POSTPAID");
+    Amount amount = new Amount(100L, "BDT");
+    var payee = new TransactionRequest.CounterParty(null, "01711000021");
+    Map<String, String> lied = Map.of("billOutstandingMinor", "1", "billMinimumMinor", "1");
+
+    PreviewView view = service.preview(USER, "top-up", new PreviewRequest(payee, null, partner, amount, "en", lied));
+
+    assertThat(view.outstanding()).isEqualTo(outstanding);
+    assertThat(view.minimum()).isEqualTo(minimum);
+    PreviewStore.Stored kept = store.kept.values().iterator().next();
+    assertThat(kept.outstandingMinor()).isEqualTo(45_000L);
+    assertThat(kept.minimumMinor()).isEqualTo(5_000L);
+    ArgumentCaptor<QuoteRequest> asked = ArgumentCaptor.forClass(QuoteRequest.class);
+    verify(quotes).quote(asked.capture());
+    assertThat(asked.getValue().productCode()).isEqualTo("POSTPAID");
+
+    when(transactions.submit(any(), any(), any(), any()))
+        .thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
+    service.confirm(USER, "top-up", "key-1", new ConfirmRequest(
+        view.previewId(), payee, null, partner, amount, new EncryptedPin("pin-1", "Y2lwaGVy"), "en", null, lied));
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> bill = ArgumentCaptor.forClass(Map.class);
+    verify(transactions).submit(eq(USER), eq("key-1"), any(), bill.capture());
+    assertThat(bill.getValue()).containsExactlyInAnyOrderEntriesOf(Map.of(
+        "billOutstandingMinor", "45000", "billMinimumMinor", "5000"));
+    verify(quotes, times(1)).quote(any());
   }
 }

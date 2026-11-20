@@ -68,6 +68,8 @@ public class AppSoapMapper {
     money(root, "total", view.total());
     party(root, "counterparty", view.counterparty());
     limits(root, view.limits());
+    money(root, "outstanding", view.outstanding());
+    money(root, "minimum", view.minimum());
     return root;
   }
 

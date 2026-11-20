@@ -21,7 +21,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * mw-orchestrator's quote ({@code POST /internal/v1/quotes}, contract {@code
- * api/mw-orchestrator/txn-query.v1.openapi.yaml} 1.4.0, ticket 105): the core's charges, the payer's
+ * api/mw-orchestrator/txn-query.v1.openapi.yaml} 1.5.0, ticket 105): the core's charges, the payer's
  * limit check and the payee for the preview, always for the signed-in wallet. A read: Resilience4j
  * instance {@code orchestrator} retries it and breaks the circuit on {@link
  * OrchestratorUnavailableException} only. RestClient with a fixed URI template (no id in the path).

@@ -121,7 +121,11 @@ public class PreviewService {
     String id = UUID.randomUUID().toString();
     Instant expiresAt = clock.instant().plus(props.ttl());
     try {
-      store.save(id, new PreviewStore.Stored(scope(user), txn.txnType(), txnHash(txn)), props.ttl());
+      store.save(
+          id,
+          new PreviewStore.Stored(
+              scope(user), txn.txnType(), txnHash(txn), poisha(quote.outstanding()), poisha(quote.minimum())),
+          props.ttl());
     } catch (RuntimeException e) {
       throw new MwException(ErrorCodes.SYS_SESSION_STORE_UNAVAILABLE, "Preview temporarily unavailable, try again", e)
           .withStatus(HttpStatus.SERVICE_UNAVAILABLE)
@@ -135,7 +139,7 @@ public class PreviewService {
     return new PreviewView(
         id + "." + sign(id, user), expiresAt, txn.txnType(), quote.amount(), quote.fee(), quote.vat(),
         quote.commission(), quote.total(), quote.counterparty(),
-        new PreviewView.Limits(quote.limits().remaining()));
+        new PreviewView.Limits(quote.limits().remaining()), quote.outstanding(), quote.minimum());
   }
 
   public SubmitResult confirm(AppUser user, String group, String idempotencyKey, ConfirmRequest body) {
@@ -150,7 +154,7 @@ public class PreviewService {
       throw new MwException(ErrorCodes.VAL_PREVIEW_MISMATCH, "The transaction differs from its preview; preview again")
           .withMessageBn("লেনদেনটি প্রিভিউ থেকে ভিন্ন; আবার প্রিভিউ করুন");
     }
-    return transactions.submit(user, idempotencyKey, txn);
+    return transactions.submit(user, idempotencyKey, txn, billOf(preview));
   }
 
   /**
@@ -231,7 +235,22 @@ public class PreviewService {
     // A partner disbursement is quoted as the organisation wallet the core posts (no PARTNER
     // customer type, and no new fee: BULK_DISBURSE stays on the existing free tariff).
     String walletType = RequestMapper.BULK_DISBURSE.equals(txn.txnType()) ? "ORGANISATION" : user.walletType();
-    return new QuoteRequest(user.msisdn(), walletType, txn.txnType(), user.channel(), txn.amount(), payee);
+    String product = txn.partner() == null ? null : txn.partner().productCode();
+    return new QuoteRequest(user.msisdn(), walletType, txn.txnType(), user.channel(), txn.amount(), payee, product);
+  }
+
+  private static Long poisha(Quote.Money money) {
+    return money == null ? null : money.valueMinor();
+  }
+
+  /** The bill the quote stored, attached at confirm so the orchestrator does not fetch again. */
+  private static Map<String, String> billOf(PreviewStore.Stored preview) {
+    if (preview.outstandingMinor() == null || preview.minimumMinor() == null) {
+      return Map.of();
+    }
+    return Map.of(
+        RequestMapper.BILL_OUTSTANDING, Long.toString(preview.outstandingMinor()),
+        RequestMapper.BILL_MINIMUM, Long.toString(preview.minimumMinor()));
   }
 
   /** The payee type submit publishes. A type the client sent is ignored, so the quote cannot differ. */

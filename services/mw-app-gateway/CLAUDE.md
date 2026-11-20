@@ -8,7 +8,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, ADD_MONEY_BANK,
   TOPUP, BILL_PAY, B2B_TRANSFER and BULK_DISBURSE, `mw.app-gateway.supported-txn-types`; ticket 105 runs preview then confirm on that body),
   `POST /app/v1/{group}/preview` and `POST /app/v1/{group}/confirm` (groups send-money, cash-in, cash-out, payment,
-  bill-pay, top-up, add-money, b2b, disburse; preview moves nothing and needs no PIN), `GET /app/v1/transactions` (wallet history, ADR D25),
+  bill-pay, top-up, add-money, b2b, disburse; preview moves nothing and needs no PIN; a postpaid top-up preview
+  returns the outstanding bill and the minimum due, and confirm sends those stored amounts, ticket 112b), `GET /app/v1/transactions` (wallet history, ADR D25),
   `GET /app/v1/transactions/{txnId}`, `POST /app/v1/balance` (ADR D26), `GET /app/v1/pin-key`,
   `GET /app/v1/billers`, `POST /app/v1/billers/{code}/fetch-bill` and `GET /app/v1/merchant/collections` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only against mw-auth's

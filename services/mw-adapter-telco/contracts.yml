@@ -7,7 +7,8 @@ produces:
     - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
     # ticket 86: the lines of a partner's SFTP reconciliation file (messaging/PartnerReconPublisher)
     - events/mw-adapter-billpay/mw.partner.recon.v1.schema.json
-  apis: []
+  apis:
+    - api/mw-adapter-telco/telco.v1.openapi.yaml
 consumes:
   events:
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#telco
