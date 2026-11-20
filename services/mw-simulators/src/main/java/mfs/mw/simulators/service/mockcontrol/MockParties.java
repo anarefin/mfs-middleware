@@ -71,6 +71,8 @@ public final class MockParties {
               List.of("session", "authenticate", "capture", "status", "refund"), List.of("txnRef", "session")),
           new MockParty("ucb-imt", "UCB IMT inbound remittance: pushes a signed credit to the middleware on demand",
               List.of("trigger", "confirm", "status"), List.of("msisdn", "partnerRef")),
+          new MockParty("ec", "Election Commission NID service: verify an NID (REST and SOAP)",
+              List.of("verify"), List.of("nid")),
           new MockParty("ucbatm", "UCB ATM switch: dispense status of a cardless cash-out",
               List.of("status"), List.of("txnRef")),
           // ticket 121a: the participant list; the ISO 20022 transfer, status, return and inbound push follow in 121b

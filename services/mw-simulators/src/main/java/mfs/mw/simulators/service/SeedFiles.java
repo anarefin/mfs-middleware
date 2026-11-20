@@ -99,6 +99,13 @@ public final class SeedFiles {
     return List.copyOf(out);
   }
 
+  /** The citizens of the simulated EC NID service (ticket 124b, {@code ec/nid.json}). */
+  public static List<JsonNode> ecCitizens(String version) {
+    List<JsonNode> out = new ArrayList<>();
+    json(version, "ec/nid.json").path("records").forEach(out::add);
+    return List.copyOf(out);
+  }
+
   private static JsonNode json(String version, String file) {
     String path = "seed/" + version + "/" + file;
     try (InputStream in = SeedFiles.class.getClassLoader().getResourceAsStream(path)) {

@@ -37,7 +37,7 @@ Compliance domain service (ADR D32; no Camel: outbound calls are `RestClient` + 
   no operator write path (`KycAccessTest.theUnscopedCallerMayOnlyRead`).
 - NID reuse: in the submit transaction, under an advisory lock on the token, an NID another wallet holds
   (EC_CALLED, MATCHED, APPROVED) makes the application MANUAL_REVIEW, reason NID_IN_USE: no EC call, no level.
-- Planned: ticket 124b/124c (channel routes in mw-app-gateway, EC mock in mw-simulators,
+- Planned: ticket 124b/124c (channel routes in mw-app-gateway,
   compose/provision/Keycloak/mw-crypto authz wiring, Newman folder 64); ticket 125 the AML feed (parties
   HMAC-SHA256-tokenised under a Vault key: add `/internal/v1/hmac/sign` to `client/CryptoClient`).
 
@@ -55,7 +55,7 @@ Compliance domain service (ADR D32; no Camel: outbound calls are `RestClient` + 
   `MW-SYS-002` (503, retryable), a refusal `MW-CORE-KYC_LEVEL_REFUSED` (422).
 - `api/mw-crypto/crypto-internal.v1.openapi.yaml`: `/tokens` (TOKENISE_NID), `/envelope/encrypt|decrypt`
   (KEK_COLUMN); own DTOs `dto/Crypto*`.
-- EC NID service (no contract file yet; 124b adds it with the mock): `POST /ec/v1/nid/verify`
+- `api/mw-simulators/ec-nid.v1.openapi.yaml` (the EC mock's contract, ticket 124b): `POST /ec/v1/nid/verify`
   `{nid, dob, consentId, requestId}` with HTTP Basic, 200 `{nid, dob, nameEn, nameBn, fatherName,
   motherName, address}`, 404 unknown NID (`client/EcNidClient`). Read timeout `mw.compliance.ec.timeout`;
   retry `ec-nid` only on connection failure or 5xx (never after a timeout); breaker `ec-nid`. Timeout is
