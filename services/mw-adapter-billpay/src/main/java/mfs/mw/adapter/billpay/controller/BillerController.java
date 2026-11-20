@@ -37,6 +37,6 @@ public class BillerController {
   public BillView fetch(
       @PathVariable @Pattern(regexp = "[A-Z0-9_]{1,32}") String code,
       @Valid @RequestBody FetchBillRequest body) {
-    return service.fetch(code, body.billNumber());
+    return service.fetch(code, body.billNumber(), body.billMonth());
   }
 }

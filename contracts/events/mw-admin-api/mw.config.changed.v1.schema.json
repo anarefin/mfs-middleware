@@ -61,7 +61,7 @@
               "name": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9]{0,31}$" },
               "labelEn": { "type": "string", "minLength": 1, "maxLength": 100 },
               "labelBn": { "type": "string", "minLength": 1, "maxLength": 100 },
-              "regex": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "regex": { "type": "string", "minLength": 1, "maxLength": 200, "description": "Java regex in a safe subset (mw-admin-api refuses backreferences, lookarounds, nested and stacked quantifiers); consumers match at most 64 characters of input." },
               "required": { "type": "boolean" }
             }
           }

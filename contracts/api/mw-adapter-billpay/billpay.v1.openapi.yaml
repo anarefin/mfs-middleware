@@ -56,6 +56,15 @@ paths:
               required: [billNumber]
               properties:
                 billNumber: { type: string, pattern: "^[0-9A-Za-z-]{1,32}$" }
+                billMonth:
+                  type: string
+                  pattern: "^[0-9]{4}(0[1-9]|1[0-2])$"
+                  description: >-
+                    YYYYMM (ticket 113); required for a biller whose billMonthRequired is true
+                    (else 400 MW-VAL-001). The bill number must also match the regex of the
+                    biller's first required field (400 MW-VAL-001). A disabled biller is 503
+                    MW-SYS-BILLER_DISABLED (not retryable) with its maintenance text in message
+                    and messageBn (FRS PLT-043).
       responses:
         "200":
           description: The bill
@@ -99,6 +108,26 @@ components:
         partnerId:
           type: string
           description: The partner instance (aggregator) that serves the biller; the canonical partner.partnerId of a BILL_PAY.
+        nameBn: { type: string, description: "Ticket 113: the catalogue fields below come from mw-admin-api's catalogue (mw.config.changed.v1 BILLER); a static seed entry has none of them." }
+        fallbackPartnerId: { type: string }
+        fields:
+          type: array
+          items:
+            type: object
+            required: [name, labelEn, labelBn, regex, required]
+            properties:
+              name: { type: string }
+              labelEn: { type: string }
+              labelBn: { type: string }
+              regex: { type: string }
+              required: { type: boolean }
+        amountRule: { enum: [FIXED, MINIMUM, OPEN] }
+        minAmountMinor: { type: integer, minimum: 0 }
+        maxAmountMinor: { type: integer, minimum: 0 }
+        billMonthRequired: { type: boolean }
+        enabled: { type: boolean }
+        maintenanceEn: { type: string }
+        maintenanceBn: { type: string }
     Bill:
       type: object
       required: [billerCode, billNumber, amount]

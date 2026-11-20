@@ -430,6 +430,27 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   after; approved by a `PARTNER_CHECKER` through `service/PartnerErrorMapChangeHandler` = exactly
   `PartnerChangeHandler` (version + 1, `mw.config.changed.v1`). `ErrorMapping.retryable` is optional
   (default false). Tests in `PartnerConfigApiIT`.
+- Biller catalogue (ticket 113, FRS FL-04, FL-05, ADM-05, PLT-043; `controller/BillerController` ->
+  `service/BillerCatalogService` (reads, maker, seed) and `service/BillerChangeHandler` (approval) ->
+  `repository/BillerRepository`, table `admin.biller` V16; value rules `service/BillerRules`): `GET
+  /admin/v1/billers` (`READ_PARTNERS`); `POST /admin/v1/billers/{code}/change-requests {action
+  UPSERT|ENABLE|DISABLE, value?, maintenanceEn?, maintenanceBn?, reason}` (`PARTNER_MAKER`) -> resourceType
+  `biller`, resourceId the code (`^[A-Z0-9_]{2,32}$`), diff `{before, after}`; approved by a
+  `PARTNER_CHECKER` (never the maker): the entry stored as version + 1 and `mw.config.changed.v1` BILLER
+  (key `biller/<code>`, value the full `BillerValue` of the contract) in the decision transaction; ENABLE /
+  DISABLE apply to the entry as it is at approval. Rules (`400 MW-VAL-001`, one detail per problem):
+  names, category UTILITY|OTHER, aggregator ids, fallback differs from primary, up to 10 fields whose
+  regex compiles **and stays in the safe subset** (`BillerRules.safe`, security review: no
+  backreference, lookaround or other `(?` construct but `(?:`, no quantified group holding a quantifier,
+  no stacked quantifier; the channels match customer input against it), amount rule FIXED|MINIMUM|OPEN
+  (MINIMUM needs `minAmountMinor`, max >= min), a disabled biller needs bn and en maintenance text;
+  nothing changed `409 MW-VAL-030`. Dev seed: `mw.billers.seeds` (`config/BillerSeedProperties`, only
+  `application-dev.yml`) -> `scheduler/BillerSeedJob` reads `biller-seeds/dev/billers.csv` (57 billers:
+  17 UTILITY, 40 OTHER on billagg, sslcommerz, ekpay, agg3, agg4; `;` separated, one input field each)
+  at start-up and stores and publishes (version 1, changedBy `seed`) every code not in the catalogue
+  yet; a re-run stores nothing. Decision: the seed is applied here (like the partner seeds), not by
+  mw-seeder, since only this service may write the table and the outbox. Test `BillerChangeRequestIT`,
+  `BillerRulesTest`.
 - Internal API identity (M3 gate decision; `client/ServiceTokenClient`, `client/InternalApiCaller`):
   Keycloak realm `services` client `mw-admin-api` (client credentials, HTTP Basic, token carries
   audiences mw-orchestrator and mw-audit-dw), cached until 30 s before `expires_in`, dropped on a

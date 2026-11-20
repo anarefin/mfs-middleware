@@ -45,7 +45,7 @@ class ApiContractsTest {
             return answer;
           }
         };
-    return new BillFetchService(BILLERS, new PartnerCallMapper(), gateway);
+    return new BillFetchService(new mfs.mw.adapter.billpay.service.BillerCatalog(BILLERS), new PartnerCallMapper(), gateway);
   }
 
   static JsonNode json(Object body) {

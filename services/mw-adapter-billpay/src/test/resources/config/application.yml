@@ -4,6 +4,10 @@ spring:
     # The tests run on the dev seed partners (application-dev.yml); prod config has none.
     active: dev
 mw:
+  biller-catalog:
+    consumer:
+      # Off in tests like the partner config consumer; BillerProjectionIT switches it on.
+      enabled: false
   billpay:
     request-consumer:
       # Off by default in tests for the same reason as the relay: a cached context would compete

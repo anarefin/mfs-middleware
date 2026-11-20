@@ -80,6 +80,9 @@ final class BillerRules {
       } else {
         try {
           Pattern.compile(r);
+          if (!safe(r)) {
+            out.add("fields[" + i + "].regex uses a backreference, lookaround or nested quantifier");
+          }
         } catch (PatternSyntaxException e) {
           out.add("fields[" + i + "].regex is not a valid regular expression");
         }
@@ -88,6 +91,108 @@ final class BillerRules {
         out.add("fields[" + i + "].required is true or false");
       }
     }
+  }
+
+  /**
+   * Whether a field regex stays in the safe subset (security review of ticket 113: the channels
+   * match customer input against it, so no catastrophic backtracking): literals, escapes,
+   * character classes, anchors, alternation, plain groups {@code (...)} / {@code (?:...)} and
+   * quantifiers on atoms. Refused: backreferences ({@code \1}, {@code \k<..>}), lookarounds and
+   * other {@code (?} constructs, a quantified group that contains a quantifier ({@code (a+)+},
+   * {@code (.*)*}), and stacked quantifiers ({@code a**}, {@code a{2}{3}}; a lazy {@code ?} is
+   * allowed). Called after the pattern compiled.
+   */
+  static boolean safe(String regex) {
+    java.util.ArrayDeque<boolean[]> groups = new java.util.ArrayDeque<>();
+    boolean lastQuantified = false; // the previous token was a quantifier
+    boolean lastWasGroupWithQuantifier = false; // the previous token closed a group holding one
+    int i = 0;
+    int n = regex.length();
+    while (i < n) {
+      char c = regex.charAt(i);
+      if (c == '\\') {
+        if (i + 1 < n) {
+          char e = regex.charAt(i + 1);
+          if (Character.isDigit(e) && e != '0' || e == 'k') {
+            return false;
+          }
+        }
+        i += 2;
+        lastQuantified = false;
+        lastWasGroupWithQuantifier = false;
+        continue;
+      }
+      if (c == '[') {
+        i = classEnd(regex, i);
+        lastQuantified = false;
+        lastWasGroupWithQuantifier = false;
+        continue;
+      }
+      if (c == '(') {
+        if (i + 1 < n && regex.charAt(i + 1) == '?') {
+          if (i + 2 >= n || regex.charAt(i + 2) != ':') {
+            return false;
+          }
+          i += 3;
+        } else {
+          i++;
+        }
+        groups.push(new boolean[] {false});
+        lastQuantified = false;
+        lastWasGroupWithQuantifier = false;
+        continue;
+      }
+      if (c == ')') {
+        boolean[] g = groups.isEmpty() ? new boolean[] {false} : groups.pop();
+        lastWasGroupWithQuantifier = g[0];
+        if (g[0] && !groups.isEmpty()) {
+          groups.peek()[0] = true;
+        }
+        lastQuantified = false;
+        i++;
+        continue;
+      }
+      if (c == '*' || c == '+' || c == '{' || c == '?') {
+        int end = c == '{' ? regex.indexOf('}', i) + 1 : i + 1;
+        if (lastQuantified) {
+          if (c != '?') {
+            return false;
+          }
+          lastQuantified = false; // lazy marker, not a new quantifier
+          i = end;
+          continue;
+        }
+        if (lastWasGroupWithQuantifier) {
+          return false;
+        }
+        if (!groups.isEmpty()) {
+          groups.peek()[0] = true;
+        }
+        lastQuantified = true;
+        lastWasGroupWithQuantifier = false;
+        i = end;
+        continue;
+      }
+      lastQuantified = false;
+      lastWasGroupWithQuantifier = false;
+      i++;
+    }
+    return true;
+  }
+
+  /** The index after the character class starting at {@code start}. */
+  private static int classEnd(String regex, int start) {
+    int i = start + 1;
+    if (i < regex.length() && regex.charAt(i) == '^') {
+      i++;
+    }
+    if (i < regex.length() && regex.charAt(i) == ']') {
+      i++;
+    }
+    while (i < regex.length() && regex.charAt(i) != ']') {
+      i += regex.charAt(i) == '\\' ? 2 : 1;
+    }
+    return i + 1;
   }
 
   private static void amount(Map<String, Object> v, List<String> out) {

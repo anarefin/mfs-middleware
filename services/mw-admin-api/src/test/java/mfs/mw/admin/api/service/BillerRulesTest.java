@@ -37,6 +37,20 @@ class BillerRulesTest {
   }
 
   @Test
+  void aCatastrophicRegexIsRefusedAndASafeOneAccepted() {
+    for (String bad : List.of("(a+)+$", "^(.*)*$", "^([0-9]+){2,}$", "^(a|aa)+\\1$", "^(?=a)[0-9]{8}$", "^a**$")) {
+      Map<String, Object> v = biller();
+      v.put("fields", List.of(Map.of("name", "accountNo", "labelEn", "A", "labelBn", "B", "regex", bad, "required", true)));
+      assertThat(BillerRules.problems(v)).as(bad).anyMatch(p -> p.contains("regex"));
+    }
+    for (String good : List.of("^[0-9]{8,12}$", "^(01|02)[0-9]{9}$", "^[A-Za-z0-9-]{4,20}$", "^(?:SA|SB)-[0-9]+$")) {
+      Map<String, Object> v = biller();
+      v.put("fields", List.of(Map.of("name", "accountNo", "labelEn", "A", "labelBn", "B", "regex", good, "required", true)));
+      assertThat(BillerRules.problems(v)).as(good).isEmpty();
+    }
+  }
+
+  @Test
   void amountBoundsFollowTheRule() {
     Map<String, Object> open = biller();
     open.put("amountRule", "OPEN");
