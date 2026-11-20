@@ -46,20 +46,34 @@ public class RefundOutcomes {
   }
 
   /**
-   * Applies a final status of a refund transaction; anything else is ignored. A duplicate answer
-   * (a repeated key) describes the stored refund: it settles the refund of the stored txnId, else the
-   * one of {@code attributes.requestTxnId} (M9 review, FL-06); the first outcome wins either way.
+   * The projection path: applies a final status of a refund transaction; a duplicate answer and
+   * anything else is ignored.
    */
   @Transactional
   public void apply(StatusMessage status) {
-    if (!status.terminal() || status.txnId() == null) {
+    if (status.duplicate()) {
       return;
     }
-    UUID refundId = uuid(status.txnId());
-    if (status.duplicate() && (refundId == null || refunds.findById(refundId).isEmpty())) {
-      refundId = uuid(status.awaitedTxnId());
+    settle(status, uuid(status.txnId()));
+  }
+
+  /**
+   * The request path: the answer to the REVERSAL sent for {@code sentRefundId}. A duplicate answer (a
+   * repeated key) settles it only when it describes that very refund, i.e. its stored txnId is the
+   * refundId sent (a retry resends the PENDING refund under its own refundId, M9 review FL-06); a
+   * duplicate naming another transaction settles nothing and the refund stays PENDING (security review).
+   */
+  @Transactional
+  public void applyAnswer(StatusMessage status, UUID sentRefundId) {
+    UUID stored = uuid(status.txnId());
+    if (stored == null || !stored.equals(sentRefundId)) {
+      return;
     }
-    if (refundId == null) {
+    settle(status, stored);
+  }
+
+  private void settle(StatusMessage status, UUID refundId) {
+    if (!status.terminal() || refundId == null) {
       return;
     }
     Refund.Status outcome =

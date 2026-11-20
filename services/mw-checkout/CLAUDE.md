@@ -45,8 +45,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   envelope (`MW-CORE-REFUND_EXCEEDS` 422, `MW-AUTH-*` 403, `MW-VAL-*` 400). Send failed (Kafka down, or the
   send timed out after Kafka stored it): the row stays PENDING and `503 MW-SYS-010` (M9 review, FL-06); a retry
   with the same key sends the PENDING refund again under the same refundId and key (the orchestrator
-  deduplicates on the key), and a final status, a duplicate answer included (by its txnId, else
-  `attributes.requestTxnId`), settles the row. A PENDING row counts against the refundable amount. Outcomes (`RefundOutcomes`, from the request or from
+  deduplicates on the key), and a final status settles the row; on the request path a duplicate answer
+  settles it only when its stored txnId is the refundId sent (`RefundOutcomes.applyAnswer`; one naming another
+  transaction settles nothing), and the projection ignores duplicates (`RefundOutcomesTest`). A PENDING row counts against the refundable amount. Outcomes (`RefundOutcomes`, from the request or from
   `StatusProjectionListener`, which sends a WEB_CHECKOUT REVERSAL here instead of `SessionOutcomes`): PENDING ->
   COMPLETED / REJECTED, first wins, and in the same transaction attempt 1 of the signed refund IPN
   (`dto/RefundIpnPayload` `{type REFUND, refundId, sessionId, orderId, status, originalTxnId, amount,

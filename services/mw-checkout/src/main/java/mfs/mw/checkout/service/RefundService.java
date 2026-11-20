@@ -147,7 +147,7 @@ public class RefundService {
         .log("checkout refund request published");
     StatusMessage status = await(answer, txn.txnId());
     if (status != null && status.terminal()) {
-      outcomes.apply(status);
+      outcomes.applyAnswer(status, r.refundId());
     }
     Refund after = refunds.findById(r.refundId()).orElseThrow();
     return answerOf(after, s);
