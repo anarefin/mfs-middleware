@@ -284,6 +284,8 @@ provision_mw_adapter_remit() {
   gen_once spring.datasource.password 40
   # HMAC key of the remittance fingerprint (M9 review: never a plain hash of the MSISDN); created once
   gen_once mw.remit.fingerprint-key 48
+  # realm services client secret of the beneficiary lookup's core account read (ticket 119c)
+  sync_env mw.remit.core.client-secret KC_MW_ADAPTER_REMIT_SECRET
   KV="secret/$SVC/ucb-imt"
   sync_env hmac-secret UCB_IMT_HMAC_SECRET
   KV="secret/$SVC"

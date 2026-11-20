@@ -71,6 +71,7 @@ secrets=(
   "kcOpsTotpSecret=$(env_value KC_OPS_TEST_TOTP_SECRET)"
   "kcPortalsTotpSecret=$(env_value KC_PORTALS_TEST_TOTP_SECRET)"
   "billaggSecret=$(env_value BILLAGG_HMAC_SECRET)"
+  "ucbImtSecret=$(env_value UCB_IMT_HMAC_SECRET)"
   "checkoutSecret=$(env_value CHECKOUT_DEMO_MERCHANT_SECRET)"
 )
 for s in "${secrets[@]}"; do
@@ -118,7 +119,7 @@ npx --yes "$newman" run "$collection" -e "$state" "${args[@]}" "${env_args[@]}" 
 # Keep the run state, never the secrets.
 node -e '
   const fs = require("fs"); const p = process.argv[1]; const env = JSON.parse(fs.readFileSync(p, "utf8"));
-  const secret = new Set(["e2eApiKey","appPin","kcPortalsPassword","kcOpsPassword","kcOpsTotpSecret","kcPortalsTotpSecret","billaggSecret","checkoutSecret"]);
+  const secret = new Set(["e2eApiKey","appPin","kcPortalsPassword","kcOpsPassword","kcOpsTotpSecret","kcPortalsTotpSecret","billaggSecret","ucbImtSecret","checkoutSecret"]);
   for (const v of env.values) if (secret.has(v.key)) v.value = "";
   fs.writeFileSync(p, JSON.stringify(env, null, 2) + "\n");' "$state"
 exit $status

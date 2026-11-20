@@ -23,6 +23,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.remit`. Follo
   (ticket 119b) arrives as a PAY with `attributes.outcome` CREDITED / REJECTED / MANUAL_REVIEW:
   `RemitPartnerService` records it on the row first (the status API answers it), then confirms to the partner.
   Edge: APISIX route `partner-remit-v1` (`/remit/v1/*`, `deploy/apisix/README.md`).
+- Beneficiary lookup (ticket 119c, `POST /remit/v1/beneficiary-lookup`, `service/BeneficiaryLookupService`):
+  signed like a credit, then counted against the partner's quota (`service/LookupRateLimiter`,
+  `mw.remit.lookup.max-per-window` per `mw.remit.lookup.window`, default 60 a minute, per instance; 429
+  `MW-SYS-RATE_LIMITED`), then the wallet is read from the core (`client/CoreAccountClient`, WAL-01 `GET
+  /core/v1/accounts/{msisdn}`, Resilience4j `core`; a realm `services` client-credentials token of client
+  `mw-adapter-remit` from `client/ServiceTokenClient`, secret `mw.remit.core.client-secret` in Vault from
+  `KC_MW_ADAPTER_REMIT_SECRET`; mw-core-mock lets this client read accounts only). The answer is `{maskedName,
+  maskedMsisdn, eligible}`: the first initial padded with `*`, the number as `0171****789`, and whether the
+  wallet is an ACTIVE customer. Not a customer wallet: 404 `MW-VAL-003`; core unreachable: 503
+  `MW-SYS-CORE_UNAVAILABLE`, retryable.
 - Outbound (`messaging/RemitRequestHandler` on `mw.partner.request.remit.v1`, off in tests with
   `mw.remit.request-consumer.enabled=false`): PAY confirms the outcome back to the partner and
   STATUS_QUERY reads it (`service/RemitPartnerService`). The call runs on `remitCallExecutor`, never on
@@ -53,7 +63,8 @@ the package (`scripts/test/test_partner_engine_copies.sh`): a fix goes into ever
 
 ## Contracts owned
 
-- `api/mw-adapter-remit/remit-inbound.v1.openapi.yaml` (the partner's inbound credit and status API).
+- `api/mw-adapter-remit/remit-inbound.v1.openapi.yaml` (the partner's inbound credit, status and
+  beneficiary lookup API).
 
 ## Contracts used
 
@@ -65,6 +76,7 @@ the package (`scripts/test/test_partner_engine_copies.sh`): a fix goes into ever
   Samples `samples/mw.partner.request.v1/remit`. The orchestrator produces the requests in ticket 119b.
 - `events/mw-orchestrator/mw.partner.reply.v1` (family `remit`) out; own type `dto/PartnerReply`.
 - `events/mw-audit-dw/mw.audit.event.v1` out (`partner.call.completed`).
+- `api/mw-core-mock/core-wallet.v1.openapi.yaml`: `GET /core/v1/accounts/{msisdn}` only (the lookup, ticket 119c).
 - `events/mw-admin-api/mw.config.changed.v1` in (PARTNER route records, family `remit`).
 - `events/mw-adapter-billpay/mw.partner.route.status.v1` and `mw.partner.recon.v1` out (owner
   mw-adapter-billpay; family `remit` added to their enums).

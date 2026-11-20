@@ -32,3 +32,21 @@ test console and Newman 54: far over one sitting. Split:
   orchestrator Flyway V. Turn on `cash-enabled`. Add the PENDING answer, `AtmCashOutIT`, T1-T12,
   the test-console mock ATM page (UcbAtmMock sends PasswordDigest SOAP), Newman folder
   `54-atm-cash`, and the README / testing-guide.
+
+# 120b2 remainder (2026-11-20, implementer)
+
+120b2 built the token in code: `POST /app/v1/atm/tokens` (mw-app-gateway), the issue/verify in
+mw-auth with the step-up spent by an atomic compare-and-delete, the per-path caller rules
+(mw-adapter-atm reaches only `/internal/v1/atm-tokens/verifications`; the device/session lookups
+are mw-app-gateway's only), and the adapter's `client/AtmTokenClient` answering DECLINED on a
+refused token. Cash stays off (`cash-enabled: false`), so nothing calls mw-auth from the adapter in
+the stack yet. Left for a new slice, before 120b3 turns cash on:
+
+- **120b2b-atm-auth-wiring** (120b2): the dev stack path from mw-adapter-atm to mw-auth's internal
+  mTLS port: a Keycloak realm `services` client `mw-adapter-atm` (secret `KC_MW_ADAPTER_ATM_SECRET`
+  in `deploy/dev.env.defaults`, keycloak/provision compose env), `provision_mw_adapter_atm` syncing
+  it to `secret/mw-adapter-atm` field `auth-client-secret`, a client certificate with CN
+  `mw-adapter-atm` from the services PKI exposed as the Spring SSL bundle named by
+  `MW_ATM_AUTH_SSL_BUNDLE` (or the ServiceCertificateManager copy the channels use), and the shell
+  tests that list the realm clients (`scripts/test/test_provision.sh`, `test_vault.sh`,
+  `test_platform_compose.sh`). Verify with `:scriptTests`, `:composeCheck`.

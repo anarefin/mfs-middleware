@@ -12,9 +12,11 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+import mfs.mw.portal.api.dto.BulkFile;
 import mfs.mw.portal.api.dto.BulkFileFormat;
 import mfs.mw.portal.api.dto.BulkRow;
 import mfs.mw.portal.api.dto.ErrorDetail;
+import mfs.mw.portal.api.dto.InvalidRow;
 import mfs.mw.portal.api.exception.MwException;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -67,7 +69,7 @@ class BulkFileParserTest {
     List<BulkRow> fromCsv =
         parser.parse(
             csv("msisdn,amount,reference\n01711000001,100.50,SAL-1\n\n+8801811000002,25,SAL-2\n"),
-            BulkFileFormat.CSV);
+            BulkFileFormat.CSV).rows();
     List<BulkRow> fromXlsx =
         parser.parse(
             xlsx(
@@ -75,7 +77,7 @@ class BulkFileParserTest {
                 row("01711000001", "100.50", "SAL-1"),
                 null,
                 row("+8801811000002", "25", "SAL-2")),
-            BulkFileFormat.XLSX);
+            BulkFileFormat.XLSX).rows();
     assertThat(fromXlsx)
         .isEqualTo(fromCsv)
         .containsExactly(
@@ -102,26 +104,27 @@ class BulkFileParserTest {
       wb.write(out);
       file = out.toByteArray();
     }
-    assertThat(parser.parse(file, BulkFileFormat.XLSX))
+    assertThat(parser.parse(file, BulkFileFormat.XLSX).rows())
         .containsExactly(
             new BulkRow(2, "01711000001", 150_050L, "R1"), new BulkRow(3, "01711000002", 1_000_000_000L, "R2"));
   }
 
   @Test
-  void badXlsxRowsAreReportedByLineAsForCsv() {
-    MwException e =
-        rejected(
+  void badXlsxRowsAreKeptByLineWithTheirCodesAsForCsv() {
+    BulkFile file =
+        parser.parse(
             xlsx(
                 row("msisdn", "amount", "reference"),
                 row("0171100000", "10.00", "R1"),
                 row("01711000002", "0", "R2"),
                 row("01711000003", "1.00", "R1", "extra")),
             BulkFileFormat.XLSX);
-    assertThat(e.code()).isEqualTo("MW-VAL-031");
-    assertThat(e.details())
-        .extracting(ErrorDetail::field)
-        .containsExactly("line 2: msisdn", "line 3: amount", "line 4");
-    assertThat(e.details()).allSatisfy(d -> assertThat(d.issue()).doesNotContain("0171100000"));
+    assertThat(file.rows()).isEmpty();
+    assertThat(file.invalid())
+        .containsExactly(
+            new InvalidRow(2, 1_000L, "R1", List.of("MSISDN_INVALID")),
+            new InvalidRow(3, null, "R2", List.of("AMOUNT_INVALID")),
+            new InvalidRow(4, null, null, List.of("FIELD_COUNT")));
   }
 
   @Test
@@ -160,7 +163,7 @@ class BulkFileParserTest {
   }
 
   @Test
-  void aCellFarOutsideTheThreeColumnsIsRefused() {
+  void aCellFarOutsideTheThreeColumnsMakesTheRowInvalid() {
     String[] wide = new String[30];
     wide[0] = "01711000001";
     wide[1] = "1.00";
@@ -169,9 +172,8 @@ class BulkFileParserTest {
       wide[i] = "";
     }
     wide[29] = "x";
-    MwException e = rejected(xlsx(row("msisdn", "amount", "reference"), wide), BulkFileFormat.XLSX);
-    assertThat(e.code()).isEqualTo("MW-VAL-031");
-    assertThat(e.details()).extracting(ErrorDetail::field).containsExactly("line 2");
+    BulkFile file = parser.parse(xlsx(row("msisdn", "amount", "reference"), wide), BulkFileFormat.XLSX);
+    assertThat(file.invalid()).containsExactly(new InvalidRow(2, null, null, List.of("FIELD_COUNT")));
   }
 
   @Test
@@ -219,11 +221,10 @@ class BulkFileParserTest {
       file = out.toByteArray();
     }
     byte[] hostile = rewrite(file, "xl/worksheets/sheet1.xml", "<v>9.87654321E8</v>", "<v>1E999999999</v>");
-    MwException e =
+    BulkFile read =
         org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(
-            java.time.Duration.ofSeconds(2), () -> rejected(hostile, BulkFileFormat.XLSX));
-    assertThat(e.code()).isEqualTo("MW-VAL-031");
-    assertThat(e.details()).extracting(ErrorDetail::field).containsExactly("line 2: amount");
+            java.time.Duration.ofSeconds(2), () -> parser.parse(hostile, BulkFileFormat.XLSX));
+    assertThat(read.invalid()).containsExactly(new InvalidRow(2, null, "R1", List.of("AMOUNT_INVALID")));
   }
 
   @Test

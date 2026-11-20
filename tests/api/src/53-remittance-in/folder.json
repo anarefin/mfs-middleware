@@ -1,0 +1,4 @@
+{
+  "name": "53 Inbound remittance",
+  "description": "Tickets 119b/119c (FRS UC-16, EXT-15, FL-10 push, PLT-008). The suite plays the remittance partner UCB IMT: every request to /remit/v1/* goes through APISIX (route partner-remit-v1) to mw-adapter-remit, signed with the partner's HMAC secret (UCB_IMT_HMAC_SECRET, run.sh variable ucbImtSecret) over method, path, X-Timestamp, X-Nonce and the body hash. The beneficiary lookup answers the masked name and number and whether the wallet can receive; a credit is accepted (202), mw-orchestrator's REMIT_IN flow validates the receiving customer at the core (limit sheet v1: 2,00,000 Tk per remittance) and credits it from SETTLEMENT_UCB_IMT, and the partner's status query answers CREDITED or REJECTED. AML screening (T11) waits on ticket 125."
+}

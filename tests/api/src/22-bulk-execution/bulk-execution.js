@@ -11,6 +11,8 @@ export default [
       const refs = csv.trim().split('\n').slice(1).map(l => l.split(',')[2]);
       const up = S.record(await MW.portal.upload('org-maker01', csv));
       S.status(201);
+      S.record(await MW.portal.submit('org-maker01', up.body.batchId));
+      S.status(200);
       await S.note(['01311000001', '01711000002']);
       S.record(await MW.portal.approve('org-checker01', up.body.batchId));
       const done = await MW.poll(() => MW.portal.get('org-checker01', up.body.batchId), r => r.body && r.body.status === 'COMPLETED', 120000, 1000);
@@ -30,6 +32,8 @@ export default [
       await MW.portal.idle('org-checker01');
       const up = S.record(await MW.portal.upload('org-maker01', MW.portal.payoutFile(1000, '1.00')));
       S.status(201);
+      S.record(await MW.portal.submit('org-maker01', up.body.batchId));
+      S.status(200);
       const id = up.body.batchId;
       await S.note(['01311000001']);
       S.record(await MW.portal.approve('org-checker01', id));

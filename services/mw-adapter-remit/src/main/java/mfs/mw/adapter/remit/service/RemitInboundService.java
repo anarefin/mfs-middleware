@@ -104,7 +104,7 @@ public class RemitInboundService {
 
   /** A credit request (POST /remit/v1/credits). */
   public RemitCreditAck credit(InboundCall call) {
-    InboundResult result = verify(call);
+    InboundResult result = authenticate(call);
     Credit credit = validate(result);
     Instant now = clock.instant();
     String partnerId = call.partnerId();
@@ -175,7 +175,7 @@ public class RemitInboundService {
 
   /** A status query (GET /remit/v1/credits/{partnerRef}). */
   public RemitCreditAck status(InboundCall call, String partnerRef) {
-    verify(call);
+    authenticate(call);
     return remittances
         .find(call.partnerId(), partnerRef)
         .map(r -> new RemitCreditAck(r.partnerRef(), r.txnId(), r.status(), false))
@@ -183,7 +183,8 @@ public class RemitInboundService {
             .withStatus(HttpStatus.NOT_FOUND));
   }
 
-  private InboundResult verify(InboundCall call) {
+  /** Verifies a partner request (signature, timestamp, once-only nonce) and reads its body with the record's mapping; 401 / 400 otherwise. */
+  public InboundResult authenticate(InboundCall call) {
     try {
       return partners.inbound(call);
     } catch (PartnerAuthenticationException e) {

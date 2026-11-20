@@ -1,8 +1,7 @@
 package mfs.mw.portal.api.service;
 
-import java.util.List;
 import mfs.mw.portal.api.dto.BulkFileFormat;
-import mfs.mw.portal.api.dto.BulkRow;
+import mfs.mw.portal.api.dto.BulkFile;
 
 /**
  * Reads a bulk disbursement file in either accepted format (ticket 129, CH-POR-01): CSV through
@@ -20,7 +19,7 @@ public class BulkFileParser {
     this.xlsx = new BulkXlsxReader(maxRows);
   }
 
-  public List<BulkRow> parse(byte[] file, BulkFileFormat format) {
+  public BulkFile parse(byte[] file, BulkFileFormat format) {
     return format == BulkFileFormat.XLSX ? xlsx.parse(file) : csv.parse(file);
   }
 }

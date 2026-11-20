@@ -27,6 +27,7 @@ export const PLATFORM_SECRETS: readonly SecretGroup[] = [
       { env: "CHECKOUT_DEMO_MERCHANT_SECRET", label: "Checkout merchant merchant_demo (hmac-auth)" },
       { env: "BILLAGG_HMAC_SECRET", label: "Bill aggregator callbacks (HMAC-SHA256)" },
       { env: "C2WBANK_HMAC_SECRET", label: "Bank C2W callbacks (HMAC-SHA256)" },
+      { env: "UCB_IMT_HMAC_SECRET", label: "Remittance partner ucb-imt requests (HMAC-SHA256)" },
     ],
   },
   {

@@ -67,6 +67,11 @@ public final class ErrorCodes {
   /** A refresh token already rotated or revoked was used again; its whole family is revoked: 401. */
   public static final String AUTH_REFRESH_REUSED = "MW-AUTH-048";
   /**
+   * No live PIN step-up assertion for exactly this ATM token (wallet, amount, idempotency key):
+   * ticket 120b2, 401.
+   */
+  public static final String AUTH_STEP_UP_REQUIRED = "MW-AUTH-049";
+  /**
    * The idempotency key of a live transaction assertion was sent with another transaction (ticket
    * 71): 409.
    */

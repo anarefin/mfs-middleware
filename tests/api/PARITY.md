@@ -51,14 +51,14 @@ Changes that apply to every row:
 | bulk-execution.feature | a 10,000-row batch completes, the result file matches and the org balance is correct | 90 | [bulk] a 10,000-row batch completes, the result file matches and the org balance is correct | mapped | moved to folder 90 Slow (run with `ALL=1`): minutes even with the test timers |
 | bulk-execution.feature | a row the core refuses is reported in the result file and costs the org nothing | 22 | [bulk] a row the core refuses is reported in the result file and costs the org nothing | mapped | references unique per run instead of the fixed OK-1 / NOPE-2 |
 | bulk-execution.feature | a paused batch sends nothing until it is resumed, then completes | 22 | [bulk] a paused batch sends nothing until it is resumed, then completes | mapped | batch audit as above; keeps the 3 s negative window of "sends no more rows"; 1,000 rows instead of 2,000 (20 s at the 50 rows/s dispatch rate) |
-| bulk-upload.feature | a valid file is stored awaiting approval and a different checker approves it | 21 | [bulk] a valid file is stored awaiting approval and a different checker approves it | mapped | batch audit through `GET /test/audit-dw/v1/audit/events?resource=bulk-batch/<id>` (was psql) |
+| bulk-upload.feature | a valid file is stored awaiting approval and a different checker approves it | 21 | [bulk] a valid file is stored as a preview, its maker submits it and a different checker approves it | mapped | batch audit through `GET /test/audit-dw/v1/audit/events?resource=bulk-batch/<id>` (was psql) |
 | bulk-upload.feature | a checker rejects a batch | 21 | [bulk] a checker rejects a batch | mapped | batch audit as above |
 | bulk-upload.feature | the maker cannot approve their own batch, even with the checker role | 21 | [bulk] the maker cannot approve their own batch, even with the checker role | mapped |  |
 | bulk-upload.feature | another org cannot see or approve the batch | 21 | [bulk] another org cannot see or approve the batch | mapped |  |
 | bulk-upload.feature | the org lists its batches by any batch status, the M3 ones included | 21 | [bulk] the org lists its batches by any batch status, the M3 ones included | mapped |  |
 | bulk-upload.feature | 10,000 rows are accepted | 21 | [bulk] 10,000 rows are accepted | mapped |  |
 | bulk-upload.feature | 10,001 rows are rejected | 21 | [bulk] 10,001 rows are rejected | mapped |  |
-| bulk-upload.feature | malformed rows are reported per line and nothing is stored | 21 | [bulk] malformed rows are reported per line and nothing is stored | mapped |  |
+| bulk-upload.feature | malformed rows are reported per line and nothing is stored | 21 | [bulk] malformed rows are kept as invalid with their codes in the preview and never paid | mapped | ticket 129b: a bad row no longer refuses the file |
 | cash.feature | an agent cash-in moves the amount from the agent's float to the customer | 03 | [cash] an agent cash-in moves the amount from the agent's float to the customer | mapped |  |
 | cash.feature | a customer cash-out pays the agent, the fee goes to the pool | 03 | [cash] a customer cash-out pays the agent, the fee goes to the pool | mapped |  |
 | cash.feature | a cash-in the agent's float cannot cover is rejected and moves no money | 03 | [cash] a cash-in the agent's float cannot cover is rejected and moves no money | mapped |  |

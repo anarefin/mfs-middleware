@@ -138,12 +138,13 @@
 119-mw-adapter-remit                        95,97,102         split (119-split-decisions.md, 2026-11-20)
 119a-remit-adapter                          95,97,102         done     -        286 files +26376 −36   bfa47ddf  (admin-api V19 remit; host port 8101. RemitInFlow, Newman 53, lookup -> 119b)
 119b-remit-flow                             119a              done     45m      34 files +647 −57      2323f101  (REMIT_IN flow once per inbound id; adapter outbox; APISIX partner-remit-v1; HMAC fingerprint; core-mock REMIT_IN validate without assertion)
-119c-remit-lookup-suite                     119b              open   (POST /remit/v1/beneficiary-lookup masked; test console Send remittance; REMIT_IN limit row in core-mock limits.csv (mock: 200,000 Tk per txn); Newman 53-remittance-in)
+119c-remit-lookup-suite                     119b              done     60m      53 files +1446 −24     987406f0..37a9818b (merge 43ed7190; REMIT_IN without assertion only SETTLEMENT* -> customer; core account-clients: mw-adapter-remit GET accounts only; KC_MW_ADAPTER_REMIT_SECRET (re-copy .env); Newman 53 not run live)
 120-mw-adapter-atm                          95,97,102         split (120-split-decisions.md, 2026-11-20)
 120a-atm-adapter-inbound                    95,97,102         done     -        283 files +26354 −31   372dceb2  (admin-api V20 atm; host port 8100. Inbound SOAP recorded locally; publish, token, cash flows, Newman 54 -> 120b)
 120b-atm-token-flows                        120a              split (120-split-decisions.md, 1 h cap)
 120b1-atm-inbound-hardening                 120a              done     55m      22 files +755 −122     490f8531  (cash ops fail closed behind mw.atm.inbound.cash-enabled; state CAS + HMAC fingerprint, atm V9; APISIX partner-ucbatm-ws; PasswordDigest + nonce/Created)
-120b2-atm-token-issue                       120b1             open   (POST /app/v1/atm/tokens, PIN step-up, HMAC via mw-crypto, lockout)
+120b2-atm-token-issue                       120b1             done     ~60m     71 files +2475 −158    dd71de9b,b896926e,ca777d53,f9de8c2d (merge 6bf20664; app.v1 1.18.0; mw-auth per-path caller rules, step-up compare-and-delete MW-AUTH-049; adapter DECLINED on bad token)
+120b2b-atm-auth-wiring                      120b2             open   (Keycloak services client mw-adapter-atm + secret, Vault provision, mTLS client cert, shell tests; before 120b3; after 124b to avoid Keycloak/provision conflicts)
 120b3-atm-cash-flows                        120b2             open   (atm branch of mw.partner.inbound.v1, ATM_CASH_OUT/IN flows, cash-enabled on, mock ATM page signs digest, AtmCashOutIT, Newman 54)
 # --- M10 gate: UC-13..17
 121-mw-adapter-interop                      92,97,102         split (121-split-decisions.md, 2026-11-20)
@@ -167,7 +168,7 @@
 128-mw-data-export                          123               done     -        189 files +12102 −46   9a1ccad6
 129-portal-bulk-sp                          95,116            split (129-split-decisions.md, 1 h cap)
 129a-bulk-xlsx-upload                       95,116            done     75m      18 files +1013 −114    a1acfbd1,fba3ae6b  (poi-ooxml 6.0.0; bounded zip/shared strings/number reader; path stays /bulk/batches)
-129b-bulk-preview                           129a              open
+129b-bulk-preview                           129a              done     25m      48 files +1137 −236    dd3083e3,e2de20a5 (merge e7d1d038; portal-api V7; PREVIEW expires 72 h; MW-VAL-036/037; Newman 21/22/23/90 submit after upload, not run live)
 129c-bulk-balance-retry                     129b              open   (check orchestrator replay of a FAILED idempotency key before retry; a row must never pay twice)
 129d-sp-portal                              129a              open
 129e-bulk-suite                             129b,129c,129d    open   (Newman 65)

@@ -223,9 +223,20 @@ mw:
   atm:
     inbound:
       # Fail closed (ticket 120b1, M9 review): VerifyTokenAndDebit and CashIn answer the SOAP fault
-      # MW-SYS-ATM_CASH_DISABLED until the token check, the hold and the credit are built (120b2,
-      # 120b3). Never turn on before then: the switch would dispense with no wallet debited.
+      # MW-SYS-ATM_CASH_DISABLED until the hold and the credit are built (120b3; the token check is
+      # 120b2's). Never turn on before then: the switch would dispense with no wallet debited.
       cash-enabled: false
+    # mw-auth's ATM token check (ticket 120b2, client/AtmTokenClient): POST
+    # /internal/v1/atm-tokens/verifications, the only mw-auth path this client may call. Client
+    # credentials of realm services (secret from Vault); mTLS through ssl-bundle when set.
+    auth:
+      base-url: ${MW_AUTH_URL:https://mw-auth:8443}
+      token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
+      client-id: ${spring.application.name}
+      client-secret: ${auth-client-secret:}
+      ssl-bundle: ${MW_ATM_AUTH_SSL_BUNDLE:}
+      connect-timeout: 1s
+      read-timeout: 2s
   partners:
     # partnerId a request names -> the partner that serves it (D28; no silent default partner). The
     # orchestrator sends the ATM switch partner id (ucbatm) itself, so no alias is

@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.17.0
+  version: 1.18.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -39,6 +39,10 @@ info:
     Balance (1.6.0, ADR D26): POST /app/v1/balance answers the signed-in wallet's available balance
     from the core after the PIN check; nothing moves and the gateway never stores it (it is not in
     the history).
+
+    ATM cash-out token (1.18.0, ticket 120b2, FRS FL-11, UC-17): POST /app/v1/atm/tokens {amount,
+    encryptedPin} after the PIN step-up answers a 6-digit token valid 10 min for exactly that amount,
+    typed at a UCB ATM with the wallet's MSISDN. Single use; wrong tokens lock it like an OTP.
 
     Push token (1.8.0, ticket 110): PUT /app/v1/notifications/push-token registers the app's FCM /
     APNs device token for the signed-in wallet's bound device; mw-notify then pushes transaction
@@ -879,6 +883,54 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /app/v1/atm/tokens:
+    post:
+      operationId: issueAtmToken
+      summary: A one-time ATM cash-out token for an amount (PIN required)
+      description: >-
+        Ticket 120b2 (FRS FL-11, UC-17). Customer role only (403 MW-AUTH-002). Signed and authorised
+        like a transaction submit: the PIN step-up is mw-auth's assertion for an ATM_CASH_OUT of this
+        amount from the token's wallet to PARTNER `ucbatm` with this Idempotency-Key; mw-auth's refusals
+        as for a submit (401 MW-AUTH-040 wrong PIN, 423 MW-AUTH-041/042 locked). One PIN entry issues
+        one token: a second issue with the same key asks for the PIN again. Answers 6 digits, valid 10
+        min, single use, bound to the wallet and exactly this amount; a new token replaces the earlier
+        one. Wrong tokens typed at the ATM are counted and lock the token like an OTP. The token is
+        shown once and never stored in clear.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, pattern: "^[\\x21-\\x7E]{1,64}$" }
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/Timestamp" }
+        - { $ref: "#/components/parameters/Nonce" }
+        - { $ref: "#/components/parameters/Signature" }
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,128}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AtmTokenRequest" }
+      responses:
+        "201":
+          description: The token, shown once
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AtmToken" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "423":
+          description: The PIN is locked at mw-auth
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /app/v1/add-money/card/sessions:
     post:
       operationId: startAddMoneyCard
@@ -1442,6 +1494,26 @@ components:
             keyId: { type: string, minLength: 1, maxLength: 128 }
             ciphertext: { type: string, minLength: 1, maxLength: 4096 }
         locale: { type: string, enum: [bn, en] }
+    AtmTokenRequest:
+      type: object
+      required: [amount, encryptedPin]
+      additionalProperties: false
+      properties:
+        amount: { $ref: "#/components/schemas/Amount" }
+        encryptedPin:
+          type: object
+          required: [keyId, ciphertext]
+          description: As in TransactionRequest; passed to mw-auth untouched, never published.
+          properties:
+            keyId: { type: string, minLength: 1, maxLength: 128 }
+            ciphertext: { type: string, minLength: 1, maxLength: 4096 }
+    AtmToken:
+      type: object
+      required: [token, expiresAt, amount]
+      properties:
+        token: { type: string, pattern: "^[0-9]{6}$", description: Typed at the ATM with the amount }
+        expiresAt: { type: string, format: date-time }
+        amount: { $ref: "#/components/schemas/Money" }
     CardSessionRequest:
       type: object
       required: [amount, encryptedPin]

@@ -147,12 +147,12 @@ class KeyServiceIT {
 
     List<String> created = bootstrap.ensureKeys();
 
-    assertThat(created).hasSize(10).doesNotContain("JWT_SIGN");
+    assertThat(created).hasSize(11).doesNotContain("JWT_SIGN");
     assertThat(keys.list().items())
         .extracting(KeyView::purpose)
         .containsExactlyInAnyOrder(
             "PIN_TRANSPORT", "PIN_HMAC", "JWT_SIGN", "ASSERTION_SIGN", "AUDIT_ANCHOR_SIGN", "TOKENISE_MSISDN",
-            "TOKENISE_NID", "TOKENISE_ACCOUNT", "KEK_COLUMN", "KEK_FILE", "XMLDSIG");
+            "TOKENISE_NID", "TOKENISE_ACCOUNT", "KEK_COLUMN", "KEK_FILE", "XMLDSIG", "HMAC_ATMTOKEN");
     assertThat(bootstrap.ensureKeys()).isEmpty();
   }
 
@@ -162,7 +162,7 @@ class KeyServiceIT {
     assertThat(bootstrap.ensureKeys()).isEmpty();
     assertThat(keys.list().items()).isEmpty();
     hsm.down(false);
-    assertThat(bootstrap.ensureKeys()).hasSize(11);
+    assertThat(bootstrap.ensureKeys()).hasSize(12);
   }
 
   private static Throwable catchThrown(Runnable r) {

@@ -107,6 +107,19 @@ class ApiContractsTest {
   }
 
   @Test
+  void theAtmTokenBodiesMatchTheInternalContract() {
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "AtmTokenRequest"),
+        new mfs.mw.auth.dto.AtmTokenRequest("01711000001", "CUSTOMER_APP", "device-0001", 200000, "BDT",
+            "3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d", "eyJhbGciOiJFUzI1NiJ9.eyJzdWIiOiJ4In0.c2ln"));
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "AtmTokenIssued"),
+        new mfs.mw.auth.dto.AtmTokenIssued("123456", NOW.plusSeconds(600)));
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "AtmTokenVerification"),
+        new mfs.mw.auth.dto.AtmTokenVerification("01711000001", 200000, "BDT", "123456"));
+    assertValid(OpenApiSchemas.component(INTERNAL_API, "AtmTokenVerified"),
+        new mfs.mw.auth.dto.AtmTokenVerified("01711000001"));
+  }
+
+  @Test
   void theChannelPinKeyMatchesTheInternalContract() {
     assertValid(OpenApiSchemas.component(INTERNAL_API, "ChannelPinKey"),
         mfs.mw.auth.dto.InternalPinKey.of(new mfs.mw.auth.dto.PinKey(

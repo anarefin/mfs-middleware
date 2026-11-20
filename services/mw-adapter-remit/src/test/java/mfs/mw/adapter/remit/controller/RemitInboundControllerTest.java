@@ -13,6 +13,8 @@ import mfs.mw.adapter.remit.exception.GlobalExceptionHandler;
 import mfs.mw.adapter.remit.exception.MwException;
 import mfs.mw.adapter.remit.mapper.InboundCallMapper;
 import mfs.mw.adapter.remit.partner.InboundCall;
+import mfs.mw.adapter.remit.dto.BeneficiaryLookupResult;
+import mfs.mw.adapter.remit.service.BeneficiaryLookupService;
 import mfs.mw.adapter.remit.service.RemitInboundService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -35,6 +37,7 @@ class RemitInboundControllerTest {
   private final MockMvcTester mvc;
 
   @MockitoBean RemitInboundService service;
+  @MockitoBean BeneficiaryLookupService lookups;
 
   @Autowired
   RemitInboundControllerTest(MockMvcTester mvc) {
@@ -101,5 +104,47 @@ class RemitInboundControllerTest {
     assertThat(mvc.get().uri("/remit/v1/credits/IMT-1").header("X-Partner-Id", "ucb-imt"))
         .hasStatus(200)
         .bodyJson().extractingPath("status").isEqualTo("ACCEPTED");
+  }
+
+  // --- beneficiary lookup (ticket 119c) -------------------------------------------------------
+
+  static final String LOOKUP = "/remit/v1/beneficiary-lookup";
+  static final String LOOKUP_BODY = "{\"beneficiaryMsisdn\":\"01711000001\"}";
+
+  @Test
+  void aLookupIs200WithTheMaskedNameAndTheSignedRequestReachesTheService() {
+    when(lookups.lookup(any())).thenReturn(new BeneficiaryLookupResult("R**********", "0171****001", true));
+
+    var res = mvc.post().uri(LOOKUP).header("X-Partner-Id", "ucb-imt").contentType(MediaType.APPLICATION_JSON)
+        .content(LOOKUP_BODY).exchange();
+
+    assertThat(res).hasStatus(200);
+    assertThat(res).bodyJson().extractingPath("maskedName").isEqualTo("R**********");
+    assertThat(res).bodyJson().extractingPath("maskedMsisdn").isEqualTo("0171****001");
+    assertThat(res).bodyJson().extractingPath("eligible").isEqualTo(true);
+    ArgumentCaptor<InboundCall> call = ArgumentCaptor.forClass(InboundCall.class);
+    verify(lookups).lookup(call.capture());
+    assertThat(call.getValue().pathAndQuery()).isEqualTo(LOOKUP);
+    assertThat(new String(call.getValue().body())).isEqualTo(LOOKUP_BODY);
+  }
+
+  @Test
+  void aLookupOverTheQuotaIs429WithTheEnvelope() {
+    when(lookups.lookup(any()))
+        .thenThrow(new MwException(ErrorCodes.SYS_RATE_LIMITED, "Too many lookups")
+            .withStatus(HttpStatus.TOO_MANY_REQUESTS).withRetryable(true));
+
+    var res = mvc.post().uri(LOOKUP).header("X-Partner-Id", "ucb-imt").contentType(MediaType.APPLICATION_JSON)
+        .content(LOOKUP_BODY).exchange();
+
+    assertThat(res).hasStatus(429);
+    assertThat(res).bodyJson().extractingPath("code").isEqualTo("MW-SYS-RATE_LIMITED");
+    assertThat(res).bodyJson().extractingPath("retryable").isEqualTo(true);
+  }
+
+  @Test
+  void aLookupWithoutAPartnerIdNeverReachesTheService() {
+    assertThat(mvc.post().uri(LOOKUP).contentType(MediaType.APPLICATION_JSON).content(LOOKUP_BODY)).hasStatus(400);
+    verify(lookups, never()).lookup(any());
   }
 }
