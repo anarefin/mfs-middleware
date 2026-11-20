@@ -81,6 +81,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   (`WalletRepository.emoneyByType`); only an `azp` of `mw.internal-auth.report-clients` (mw-recon, its trust position
   job), a list apart from `allowed-clients`, so a mw-recon token reaches no other `/core/**` operation (403). Open item for Upay: the real
   core must provide the same endpoint.
+- **Account readers (ticket 119c):** `mw.internal-auth.account-clients` (mw-adapter-remit's beneficiary lookup) may
+  call only `GET /core/v1/accounts/{msisdn}` (WAL-01), a list apart from `allowed-clients`; any other `/core/**`
+  operation is 403 (`CoreWalletRestIT.aMwAdapterRemitTokenReadsAnAccountAndNothingElse`).
 - **The Kafka command side is gone (ticket 95b):** `messaging/CoreCommandListener`, the topics
   `core.wallet.command.v1` / `core.payment.command.v1` (`deploy/kafka/topics.txt`) and the contract
   `core.command.v1` (files and samples) are retired; this module consumes no Kafka topic. The internal
