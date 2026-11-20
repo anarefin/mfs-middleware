@@ -24,8 +24,12 @@ test("@ussd USSD robi: option 5 shows the balance after the PIN", async ({ page 
   await page.goto("ussd");
   await page.getByTestId("ussd-mno").selectOption("robi");
   await page.getByTestId("ussd-send").click();
-  await expect(page.getByTestId("ussd-screen")).toContainText("5 ব্যালেন্স");
-  for (const k of ["9", "5", "13579"]) await press(page, k);
+  const screen = page.getByTestId("ussd-screen");
+  // The main menu pages (option 5 is on the next page) and language is remembered.
+  // 9 toggles, so press it only when the dial-in is still Bangla. 5 selects Balance either page.
+  await expect(screen).toContainText("Bits");
+  if (!(await screen.innerText()).includes("Send Money")) await press(page, "9");
+  for (const k of ["5", "13579"]) await press(page, k);
   await expect(page.getByTestId("ussd-transcript")).toContainText("Your balance is Tk ");
   await expect(page.getByTestId("ussd-transcript")).toContainText("[END]");
   await expect(page.getByTestId("ussd-transcript")).not.toContainText("you typed: 13579");
@@ -73,5 +77,8 @@ test("@ussd USSD: End hangs up and Dial starts a new session", async ({ page }) 
   await expect(page.getByTestId("ussd-send")).toHaveText("Dial");
   await page.getByTestId("ussd-send").click();
   await expect(page.getByTestId("ussd-status")).toHaveText("session open");
-  await expect(page.getByTestId("ussd-screen")).toContainText("5 ব্যালেন্স");
+  // A new session opens on the first page of the main menu. Option 5 is on the next page,
+  // and the language is whichever the previous session remembered.
+  await expect(page.getByTestId("ussd-screen")).toContainText("Bits");
+  await expect(page.getByTestId("ussd-screen")).toContainText(/0\. Next|0\. পরবর্তী/);
 });

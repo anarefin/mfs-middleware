@@ -68,8 +68,11 @@ test.describe("@auth wallet authentication", () => {
     await page.goto("ussd");
     await page.getByTestId("ussd-mno").selectOption("robi");
     await page.getByTestId("ussd-send").click();
-    await expect(page.getByTestId("ussd-screen")).toContainText("Bits");
-    for (const k of ["9", "1", "01711000002", "10", "1", "97531"]) await press(page, k);
+    const screen = page.getByTestId("ussd-screen");
+    await expect(screen).toContainText("Bits");
+    // 9 toggles a remembered language. Press it only while the dial-in is Bangla.
+    if (!(await screen.innerText()).includes("Send Money")) await press(page, "9");
+    for (const k of ["1", "01711000002", "10", "1", "97531"]) await press(page, k);
     await expect(page.getByTestId("ussd-screen")).toContainText("Wrong PIN. 2 tries left.");
     await press(page, "13579");
     await expect(page.getByTestId("ussd-transcript")).toContainText("[END]");
