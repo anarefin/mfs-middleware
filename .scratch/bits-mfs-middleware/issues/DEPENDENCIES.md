@@ -142,7 +142,10 @@
 120a-atm-adapter-inbound                    95,97,102         done     -        283 files +26354 −31   372dceb2  (admin-api V20 atm; host port 8100. Inbound SOAP recorded locally; publish, token, cash flows, Newman 54 -> 120b)
 120b-atm-token-flows                        120a              open
 # --- M10 gate: UC-13..17
-121-mw-adapter-interop                      92,97,102         open
+121-mw-adapter-interop                      92,97,102         split (121-split-decisions.md, 2026-11-20)
+121a-interop-adapter-module                 92,97,102         done     90m      270 files +25086 −28   80896661  (admin-api V21 interop; host port 8102; NPSB participant mock; no npsb seed yet)
+121b-npsb-iso20022-wire                     121a              open   (Prowide, XSD, XML-DSig via mw-crypto, npsb seed, inbound endpoint, stateful mock)
+121c-npsb-flows-api                         121b              open   (orchestrator flows, app preview/confirm, Newman 57-npsb)
 122-banglaqr                                121               open
 # --- M11 gate: UC-18, UC-19
 123-file-mocks                              102,94            done     90m      72 files +3401 −39     57a73927
