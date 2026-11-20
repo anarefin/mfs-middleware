@@ -70,9 +70,10 @@ class PreviewServiceTest {
   final OrchestratorQuoteClient quotes = mock(OrchestratorQuoteClient.class);
   final TransactionService transactions = mock(TransactionService.class);
   final MemoryStore store = new MemoryStore();
+  final BillerService billers = mock(BillerService.class);
   final PreviewService service = new PreviewService(
       quotes, transactions, store, new PreviewProperties(Duration.ofMinutes(5), "test-only-preview-signing-key-0123456789"),
-      Clock.fixed(NOW, ZoneOffset.UTC));
+      Clock.fixed(NOW, ZoneOffset.UTC), billers);
 
   static Quote quote(boolean allowed, String reason) {
     return new Quote("P2P", new Quote.Money(100_000, "BDT"), new Quote.Money(1_850, "BDT"), new Quote.Money(241, "BDT"),
@@ -357,5 +358,46 @@ class PreviewServiceTest {
     assertThat(bill.getValue()).containsExactlyInAnyOrderEntriesOf(Map.of(
         "billOutstandingMinor", "45000", "billMinimumMinor", "5000"));
     verify(quotes, times(1)).quote(any());
+  }
+
+  @Test
+  void aBillPayPreviewKeepsTheFetchedAmountAndConfirmAttachesItNotTheClients() {
+    when(quotes.quote(any())).thenReturn(quote(true, null));
+    when(billers.fetchedAmount(USER, "DESCO", "12345678")).thenReturn(Optional.of(66_700L));
+    var partner = new TransactionRequest.Partner(null, null, "DESCO");
+    Amount amount = new Amount(66_000L, "BDT");
+    var payee = new TransactionRequest.CounterParty("BILLER_ACCOUNT", "12345678");
+    Map<String, String> lied = Map.of("billOutstandingMinor", "66000");
+
+    PreviewView view = service.preview(USER, "bill-pay", new PreviewRequest(payee, null, partner, amount, "en", lied));
+    when(transactions.submit(any(), any(), any(), any()))
+        .thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
+    service.confirm(USER, "bill-pay", "key-1", new ConfirmRequest(
+        view.previewId(), payee, null, partner, amount, new EncryptedPin("pin-1", "Y2lwaGVy"), "en", null, lied));
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> bill = ArgumentCaptor.forClass(Map.class);
+    verify(transactions).submit(eq(USER), eq("key-1"), any(), bill.capture());
+    assertThat(bill.getValue()).containsExactlyEntriesOf(Map.of("billOutstandingMinor", "66700"));
+  }
+
+  @Test
+  void aBillPayWithoutAFetchAttachesNothing() {
+    when(quotes.quote(any())).thenReturn(quote(true, null));
+    when(billers.fetchedAmount(any(), any(), any())).thenReturn(Optional.empty());
+    var partner = new TransactionRequest.Partner(null, null, "DESCO");
+    var payee = new TransactionRequest.CounterParty("BILLER_ACCOUNT", "12345678");
+    Amount amount = new Amount(66_000L, "BDT");
+
+    PreviewView view = service.preview(USER, "bill-pay", new PreviewRequest(payee, null, partner, amount, "en", null));
+    when(transactions.submit(any(), any(), any(), any()))
+        .thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
+    service.confirm(USER, "bill-pay", "key-1", new ConfirmRequest(
+        view.previewId(), payee, null, partner, amount, new EncryptedPin("pin-1", "Y2lwaGVy"), "en", null, null));
+
+    @SuppressWarnings("unchecked")
+    ArgumentCaptor<Map<String, String>> bill = ArgumentCaptor.forClass(Map.class);
+    verify(transactions).submit(eq(USER), eq("key-1"), any(), bill.capture());
+    assertThat(bill.getValue()).isEmpty();
   }
 }

@@ -15,4 +15,9 @@ public interface BillDirectory {
   List<Biller> billers();
 
   Bill fetch(String billerCode, String billNumber);
+
+  /** The bill of {@code billMonth} (YYYYMM, ticket 113b) for a biller that needs one. */
+  default Bill fetch(String billerCode, String billNumber, String billMonth) {
+    return fetch(billerCode, billNumber);
+  }
 }

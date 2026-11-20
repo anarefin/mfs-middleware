@@ -110,19 +110,19 @@
 112a-telco-ocs-profiles                     97,98,102         done     -        38 files +2043 −58     dc7c74e0
 112b-postpaid-amount                        112a              done     -        46 files +1372 −78     b79ccbd9
 112c-topup-matrix                           112b              done     -        31 files +1005 −27     266d341a  (T5 skipped: it only passes by waiting out the inquiry schedule. T11 is ticket 125. T12 is ticket 127)
-113-biller-catalogue                        98                split (113-split-decisions.md, 2026-11-20)
+113-biller-catalogue                        98                done (split 113a,113b,113c; 113-split-decisions.md)
 113a-biller-catalogue-owner                 98                done     ~45m     43 files +2020 −40     0d0f506d..a79d4435
-113b-biller-channel-projections             113a              open
+113b-biller-channel-projections             113a              done     25m      49 files +860 −98      fd910ff4  (fetched amount attached as billOutstandingMinor via Redis 30 min; USSD bill month = current Asia/Dhaka month, assumption; Newman 06/19/49 changed, not run live)
 113c-biller-amount-rule                     113a              done     29m      15 files +470 −9       8414700f  (orchestrator V17 biller_rule, MW-VAL-032, Newman folder 49-biller-catalogue; FIXED needs the channel to attach billOutstandingMinor -> 113b)
-114-bill-aggregators                        113,97,102        open
+114-bill-aggregators                        113,97,102        in progress
 115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
 115a-merchant-adapter                       97,102            done     31m      270 files +25395 −31   a58834bd,679349b0 (admin-api migration renumbered V17 at merge)
 115b-merchant-pay-flow                      115a,113          open   (Newman folder 49 is taken by 113c: use the next free one)
 139-dry-run-oauth2-isolation                115a              done     12m      20 files +648 −28      901630b7  (open: token cache entries not evicted on route discard)
 116-checkout-refund-list                    95,96             split (116-split-decisions.md, 2026-11-20)
 116a-core-partial-reversal-list             95,96             done     32m      ~32 files +500 −35     d42c5172,2bc20979
-116b-orchestrator-refund-flow               116a              in progress
-116c-checkout-refund-api                    116b              open
+116b-orchestrator-refund-flow               116a              done     35m      17 files +640 −15      369d1af6,5eb639c1  (open: SYSTEM full reversal after a partial refund -> MANUAL_REVIEW)
+116c-checkout-refund-api                    116b              in progress
 # --- M9 gate: UC-08..12
 117-bank-avl-w2b                            97,98,102         split (117-split-decisions.md, 2026-11-20)
 117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069
@@ -145,8 +145,8 @@
 126-mw-recon-matching                       123,95            done     -        150 files, +10903 −38  62f06496
 127-mw-recon-reports                        126               split (127-split-decisions.md, 2026-11-20)
 127a-recon-reports-queue                    126               done     18m      24 files +1281 −11     9ac2723a,aaf3660d
-127b-recon-exception-actions                127a              in progress (started 15:45)
-127c-trust-job-suite                        127b              open
+127b-recon-exception-actions                127a              done     34m      62 files +2139 −41     29d8922b,da80afa9  (recon /internal needs mw-admin-api service JWT; open: post-approval recon call not retried; FORCE_COMMIT that fails stays ACTIONED; data-export DW schema needs txnId)
+127c-trust-job-suite                        127b              in progress
 128-mw-data-export                          123               done     -        189 files +12102 −46   9a1ccad6
 129-portal-bulk-sp                          95,116            open
 130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f

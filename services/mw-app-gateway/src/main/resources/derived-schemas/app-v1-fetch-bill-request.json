@@ -7,6 +7,11 @@
   "properties": {
     "billNumber": {
       "type": "string"
+    },
+    "billMonth": {
+      "type": "string",
+      "minLength": 6,
+      "maxLength": 6
     }
   }
 }

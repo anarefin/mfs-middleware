@@ -15,6 +15,7 @@ import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.CoreTxnStatus;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.PendingLeg;
+import mfs.mw.orchestrator.service.saga.RefundFlow;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
@@ -123,6 +124,9 @@ public class CoreReplyService {
       drop(reply, "core.reply.unmapped", "core answer not used by any wired flow");
       return;
     }
+    if (isRefund(rec)) {
+      saga = saga.map(CoreReplyService::refundEvent);
+    }
     ErrorInfo error = errorFor(reply, saga.get());
     TransactionRecord current = rec.withCore(mapper.coreRef(reply), mapper.feeMinor(reply)).withHold(mapper.holdId(reply));
     try {
@@ -224,8 +228,13 @@ public class CoreReplyService {
    */
   private void reversalAnswer(TransactionRecord rec, CoreReply reply) {
     boolean reversed = "REVERSED".equals(mapper.txnStatus(reply));
+    SagaEvent event = new SagaEvent.ReversalQueryResult(reversed);
+    if (reversed && isRefund(rec)) {
+      // asked under the refund's own txnId: the core booked it (ticket 116b)
+      event = new SagaEvent.RefundConfirmed();
+    }
     try {
-      engine.fire(rec, new SagaEvent.ReversalQueryResult(reversed), reversed ? null : REVERSAL_NOT_APPLIED);
+      engine.fire(rec, event, reversed ? null : REVERSAL_NOT_APPLIED);
     } catch (InvalidTransitionException e) {
       drop(reply, "saga.event.ignored", "reversal query answer does not fit the transaction's state; ignored");
     }
@@ -269,6 +278,20 @@ public class CoreReplyService {
           "The core did not confirm the reversal in time; operations will review it",
           null,
           false);
+
+  /** A merchant refund record (ticket 116b): the reversal's answer is about the record itself. */
+  private static boolean isRefund(TransactionRecord rec) {
+    return RefundFlow.TXN_TYPE.equals(rec.request().txnType());
+  }
+
+  /** The core's reversal answer on a refund record: COMPLETED when booked, REJECTED when refused. */
+  private static SagaEvent refundEvent(SagaEvent event) {
+    return switch (event) {
+      case SagaEvent.ReversalAcknowledged e -> new SagaEvent.RefundConfirmed();
+      case SagaEvent.ReversalFailed e -> new SagaEvent.RefundRefused();
+      default -> event;
+    };
+  }
 
   /** States a transaction ends in without ever using a hold (REJECTED, FAILED). */
   private static boolean gaveUp(Status status) {

@@ -78,6 +78,11 @@ public final class ErrorCodes {
   public static final String AUTH_REVERSAL_CHANNEL = "MW-AUTH-020";
   /** BULK_DISBURSE from a channel outside {@code mw.orchestrator.bulk-channels} (ticket 34). */
   public static final String AUTH_BULK_CHANNEL = "MW-AUTH-021";
+  /**
+   * Merchant refund (ticket 116b): the refund's merchant is not the one that owns the payment, or the
+   * payment was not made on the refund's channel.
+   */
+  public static final String AUTH_REFUND_NOT_OWNER = "MW-AUTH-022";
   /** The core did not confirm ReverseTransaction within {@code reversing-timeout}: MANUAL_REVIEW. */
   public static final String TMO_CORE_REVERSE = "MW-TMO-020";
   /**

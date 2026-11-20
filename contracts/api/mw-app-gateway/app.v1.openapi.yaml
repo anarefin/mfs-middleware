@@ -44,6 +44,15 @@ info:
     APNs device token for the signed-in wallet's bound device; mw-notify then pushes transaction
     notices to it (SMS is always sent too). A new device binding drops the old device's token.
 
+    Biller catalogue (1.14.0, ticket 113b, FRS FL-04, FL-05, PLT-043): GET /app/v1/billers lists
+    mw-admin-api's catalogue as this gateway projects it, with each biller's bn name, input fields
+    (name, bn/en label, regex), amount rule (FIXED, MINIMUM, OPEN) and bounds in poisha, whether a bill
+    month is needed, and enabled with the bn/en maintenance text of a disabled biller. fetch-bill
+    takes billMonth (YYYYMM) for a biller that needs it. Paying a disabled biller is 503
+    MW-SYS-BILLER_DISABLED with its maintenance text (message, messageBn). A bill-pay preview of a bill
+    this wallet fetched carries the fetched amount to the payment; a FIXED biller's payment must equal
+    it.
+
     Linked bank accounts (1.13.0, ticket 117b, FRS FL-08): POST /app/v1/bank-accounts {bankCode,
     accountNumber} runs the bank's account validation (AVL, mw-adapter-bank) first and links the
     account only when the bank accepts it; GET lists and DELETE /app/v1/bank-accounts/{id} removes the
@@ -935,6 +944,25 @@ components:
         code: { $ref: "#/components/schemas/BillerCode" }
         name: { type: string }
         category: { type: string, description: e.g. ELECTRICITY, WATER, GAS }
+        nameBn: { type: string, description: "1.14.0: the catalogue fields below are absent while the gateway has no catalogue entry for the biller" }
+        fields:
+          type: array
+          items:
+            type: object
+            required: [name, labelEn, labelBn, regex, required]
+            properties:
+              name: { type: string }
+              labelEn: { type: string }
+              labelBn: { type: string }
+              regex: { type: string, description: The input the biller accepts (Java regex, safe subset) }
+              required: { type: boolean }
+        amountRule: { enum: [FIXED, MINIMUM, OPEN] }
+        minAmountMinor: { type: integer, minimum: 0 }
+        maxAmountMinor: { type: integer, minimum: 0 }
+        billMonthRequired: { type: boolean }
+        enabled: { type: boolean }
+        maintenanceEn: { type: string }
+        maintenanceBn: { type: string }
     BillerList:
       type: object
       required: [billers]
@@ -947,6 +975,7 @@ components:
       required: [billNumber]
       properties:
         billNumber: { $ref: "#/components/schemas/BillNumber" }
+        billMonth: { type: string, minLength: 6, maxLength: 6, description: "YYYYMM (1.14.0), for a biller whose billMonthRequired is true" }
     Bill:
       type: object
       required: [billerCode, billNumber, amount]

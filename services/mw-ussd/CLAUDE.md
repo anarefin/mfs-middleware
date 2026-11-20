@@ -121,6 +121,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   page, and `00` on the first page returns to the previous node (a stack of node ids on the session).
   A screen that already fits is sent as it is. The PIN input is not pushed, so `00` there returns to
   the screen before it.
+  Biller catalogue (ticket 113b, FRS FL-05, PLT-043): `messaging/ConfigChangedListener` also hands every
+  record to `service/BillerCatalog`, which stores BILLER entries in `ussd.biller_catalog` (V7: code, admin
+  version, value jsonb; an older version never replaces a newer one, DELETE removes, an unparsable value is
+  logged `biller.config_refused` and dropped). Once it has entries `BillPayDirectory.billers()` serves them
+  instead of the adapter's list (the categories are then UTILITY and OTHER, labelled in
+  `mw.ussd.biller-categories`, first in `CATEGORY_ORDER`). The bill-number INPUT (lookup `bill`) asks with the
+  biller's first required field label ("Enter Account number" / "হিসাব নম্বর দিন", `DynamicLists.billPrompt`),
+  else the node's text. The `bill` lookup refuses a disabled biller with its bn/en maintenance text
+  (`MW-SYS-BILLER_DISABLED`) before any fetch, asks a biller with `billMonthRequired` for the current month's
+  bill (YYYYMM, Asia/Dhaka: a handset has no bill-month screen), and adds `billOutstandingMinor` (the fetched
+  amount, poisha) to the session; a BILL_PAY carries it as `attributes.billOutstandingMinor`
+  (`TxnRequestMapper`), so the orchestrator checks a FIXED biller's amount. Tests `service/BillerCatalogIT`,
+  `UssdMenuWalkTest`, `TxnRequestMapperTest`, `BillPayDirectoryTest`.
   DYNAMIC sources (`service/DynamicLists.items(source, inputs)`): `billers` = mw-adapter-billpay's live
   catalogue (`service/BillPayDirectory`, sorted by code, label = code, cached `catalogue-ttl` 60 s and kept
   through an outage), only the billers of the session input `category` when it is set;

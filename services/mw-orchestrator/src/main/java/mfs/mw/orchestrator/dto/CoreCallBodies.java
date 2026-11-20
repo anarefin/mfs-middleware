@@ -20,9 +20,12 @@ public final class CoreCallBodies {
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record Credit(String txnId, String txnType, Party creditParty, Amount amount, Integer round) {}
 
-  /** {@code ReversalRequest}: no amount, so the whole original (fee included) is reversed. */
+  /**
+   * {@code ReversalRequest}: no amount reverses the whole original (fee included); an amount is a
+   * merchant refund (ticket 116b), partial or whole, the fee stays charged.
+   */
   @JsonInclude(JsonInclude.Include.NON_NULL)
-  public record Reversal(String txnId, String originalTxnId, String reason) {}
+  public record Reversal(String txnId, String originalTxnId, Amount amount, String reason) {}
 
   /** {@code HoldActionRequest} of a commit or release; {@code round} an operator's decision (absent: the saga's). */
   @JsonInclude(JsonInclude.Include.NON_NULL)

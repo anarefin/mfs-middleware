@@ -62,7 +62,7 @@ class BillPayDirectoryTest {
 
   final ScriptedClient client = new ScriptedClient();
   final MovableClock clock = new MovableClock();
-  final BillPayDirectory directory = new BillPayDirectory(client, PROPS, clock);
+  final BillPayDirectory directory = new BillPayDirectory(client, PROPS, clock, emptyProjection());
 
   @Test
   void billersAreSortedByCodeAndThoseWithoutAnAggregatorLeftOut() {
@@ -106,5 +106,20 @@ class BillPayDirectoryTest {
   void withoutAnyCatalogueAnOutageIsThrown() {
     client.next = null;
     assertThatThrownBy(directory::billers).isInstanceOf(BillPayUnavailableException.class);
+  }
+
+  static BillerCatalog emptyProjection() {
+    BillerCatalog none = org.mockito.Mockito.mock(BillerCatalog.class);
+    org.mockito.Mockito.when(none.list()).thenReturn(List.of());
+    return none;
+  }
+
+  @Test
+  void theCatalogueProjectionWinsOverTheAdaptersListOnceItHasEntries() {
+    BillerCatalog projection = org.mockito.Mockito.mock(BillerCatalog.class);
+    List<Biller> projected = List.of(new Biller("DESCO", "Dhaka Electric", "UTILITY", "billagg"));
+    org.mockito.Mockito.when(projection.list()).thenReturn(projected);
+    BillPayDirectory fromProjection = new BillPayDirectory(client, PROPS, clock, projection);
+    assertThat(fromProjection.billers()).isEqualTo(projected);
   }
 }

@@ -63,7 +63,7 @@ class BillerControllerTest {
 
   @Test
   void fetchesABill() {
-    when(service.fetch("DESCO", "1234567"))
+    when(service.fetch(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("DESCO"), org.mockito.ArgumentMatchers.eq("1234567"), org.mockito.ArgumentMatchers.isNull()))
         .thenReturn(new Bill("DESCO", "1234567", new Amount(66_700L, "BDT"), "2026-11-14", "2026-11"));
     MvcTestResult r = fetch(customer(), "DESCO", "{\"billNumber\":\"1234567\"}");
     assertThat(r).hasStatusOk();
@@ -76,7 +76,7 @@ class BillerControllerTest {
     assertThat(fetch(customer(), "DESCO", "{\"billNumber\":\"\"}")).hasStatus(400);
     assertThat(fetch(customer(), "DESCO", "{\"billNumber\":\"12 34\"}")).hasStatus(400);
     assertThat(fetch(customer(), "desco!", "{\"billNumber\":\"1234567\"}")).hasStatus(400);
-    verify(service, never()).fetch(anyString(), anyString());
+    verify(service, never()).fetch(org.mockito.ArgumentMatchers.any(), anyString(), anyString(), org.mockito.ArgumentMatchers.any());
   }
 
   /** The contract-derived schema runs on the received bytes before binding (A6): 400 MW-VAL-001. */
@@ -90,12 +90,12 @@ class BillerControllerTest {
       assertThat(fetch(customer(), "DESCO", body)).as(body).hasStatus(400)
           .bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
     }
-    verify(service, never()).fetch(anyString(), anyString());
+    verify(service, never()).fetch(org.mockito.ArgumentMatchers.any(), anyString(), anyString(), org.mockito.ArgumentMatchers.any());
   }
 
   @Test
   void aMappedPartnerErrorIsTheEnvelope() {
-    when(service.fetch("DESCO", "1234404"))
+    when(service.fetch(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("DESCO"), org.mockito.ArgumentMatchers.eq("1234404"), org.mockito.ArgumentMatchers.isNull()))
         .thenThrow(new MwException("MW-PTR-BILLAGG-BILL_NOT_FOUND", "Bill not found").withStatus(HttpStatus.BAD_GATEWAY));
     MvcTestResult r = fetch(customer(), "DESCO", "{\"billNumber\":\"1234404\"}");
     assertThat(r).hasStatus(502);
