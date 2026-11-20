@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import mfs.mw.data.export.TestInfrastructure;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -45,6 +46,7 @@ class ArchivalIT {
   private final JdbcTemplate jdbc;
   private final ArchivalJob job;
 
+  @Autowired
   ArchivalIT(JdbcTemplate jdbc, ArchivalJob job) {
     this.jdbc = jdbc;
     this.job = job;

@@ -13,6 +13,7 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -58,6 +59,7 @@ class DwStreamIT {
 
   private final JdbcTemplate jdbc;
 
+  @Autowired
   DwStreamIT(JdbcTemplate jdbc) {
     this.jdbc = jdbc;
   }
