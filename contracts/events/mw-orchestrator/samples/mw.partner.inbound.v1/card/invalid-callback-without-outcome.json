@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "inboundId": "7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2f",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7b03",
+  "correlationId": "corr-0120",
+  "partnerId": "cybersource",
+  "family": "card",
+  "partnerRef": "sess-0003",
+  "receivedAt": "2026-11-20T10:00:07Z",
+  "payload": { "kind": "CALLBACK", "partnerCode": "100" }
+}

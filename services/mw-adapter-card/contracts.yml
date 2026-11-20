@@ -2,6 +2,8 @@
 produces:
   events:
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#card
+    # ticket 118b: the verified, deduplicated 3-D Secure webhook (controller/PartnerCallbackController)
+    - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#card
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
     # ticket 84: LIVE / REJECTED of each partner record version (messaging/PartnerRouteStatusPublisher)
     - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
