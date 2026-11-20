@@ -28,6 +28,8 @@ public class CoreCommandMapper {
   public static final String STEP_QUERY = "query";
   public static final String STEP_REVERSE = "reverse";
   public static final String STEP_REVERSE_QUERY = "reverse-query";
+  /** QueryTransaction after a confirmed partner REVERSE: does the hold still exist? (ticket 96b). */
+  public static final String STEP_HOLD_CHECK = "hold-check";
   public static final String STEP_CREDIT_CHECK = "credit-check";
   public static final String STEP_BALANCE = "balance";
 
@@ -167,6 +169,23 @@ public class CoreCommandMapper {
   /** True for the commandId of a {@link #reversalQuery}. */
   public boolean isReversalQuery(String commandId) {
     return commandId != null && commandId.contains(":" + STEP_REVERSE_QUERY + ":");
+  }
+
+  /**
+   * QueryTransaction after the partner confirmed REVERSE (ticket 96b): whether the hold remains.
+   * Fresh commandId {@code <txnId>:hold-check:<epoch ms>}, so the answer is not a HOLDING query
+   * and not a reversal query.
+   */
+  public CoreCommand holdCheck(TransactionRecord rec, Instant now, Duration ttl) {
+    String txnId = rec.txnId().toString();
+    return new CoreCommand(
+        1, "QueryTransaction", commandId(txnId, STEP_HOLD_CHECK) + ":" + now.toEpochMilli(), txnId,
+        rec.request().correlationId(), now, now.plus(ttl), new QueryPayload(null));
+  }
+
+  /** True for the commandId of a {@link #holdCheck}. */
+  public boolean isHoldCheck(String commandId) {
+    return commandId != null && commandId.contains(":" + STEP_HOLD_CHECK + ":");
   }
 
   private CoreCommand onHold(String type, String step, TransactionRecord rec, Instant now, Duration ttl) {

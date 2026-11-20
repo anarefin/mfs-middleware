@@ -214,15 +214,16 @@ class AddMoneyBankSagaIT {
   }
 
   @Test
-  void aCoreRefusalToCreditGoesToManualReview() {
+  void aCoreRefusalToCreditStartsPartnerReverse() {
     String txn = toPartnerPending();
     inbound.handle(callback(txn, "SUCCESS", "C2W-1", null));
 
     coreEvents.answer(event("CreditRejected", txn, txn + ":credit", "FAILURE", "CREDIT_ACCOUNT_BLOCKED"));
 
-    assertThat(statuses(txn)).endsWith("COMMITTING", "MANUAL_REVIEW");
+    assertThat(statuses(txn)).endsWith("COMMITTING", "REVERSING");
     assertThat(last("mw.txn.status.v1", txn).path("error").path("code").asString())
         .isEqualTo("MW-CORE-CREDIT_ACCOUNT_BLOCKED");
+    assertThat(last(PARTNER_TOPIC, txn).path("payload").path("operation").asString()).isEqualTo("REVERSE");
     assertAllValid(txn);
   }
 

@@ -139,10 +139,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   ignored. HoldRejected -> REJECTED (`MW-CORE-*`). The deadline resends CommitHold / ReleaseHold
   until the core answers (7.2 "retry until acknowledged"; still unanswered 60 s after entering the
   state: WARN `txn.commit.unacknowledged` / `txn.release.unacknowledged` + counter, once); a definite
-  refusal (CommitFailed: partner paid but the hold is gone; ReleaseFailed: hold already
-  committed) goes to MANUAL_REVIEW with `MW-CORE-<reason>` (`CommitRefused` / `ReleaseRefused`;
-  deviation from the 7.2 table, which lists no exit for a refusal), alerted ERROR `txn.commit.failed`
-  (severity SEV-1; CreditRejected too) / `txn.release.failed` + counters.
+  release refusal (ReleaseFailed: hold already committed) goes to MANUAL_REVIEW with
+  `MW-CORE-<reason>` (`ReleaseRefused`; deviation from the 7.2 table, which lists no exit for a
+  refusal), alerted ERROR `txn.release.failed`. A definite commit refusal (CommitFailed or
+  CreditRejected, ERROR `txn.commit.failed` Sev-1, `MW-CORE-<reason>`) on a flow with a partner leg
+  does not stop there when it is the saga's own commit: see "Partner reversal after a refused
+  commit" below. A refusal of an operator round (`:manual-n`), or a commit with no partner leg,
+  still goes to MANUAL_REVIEW.
 - Alerts (S4, `service/SagaAlerts`, spec 6.3/7.2/21): stable `event` log lines and Micrometer meters
   `mw.txn.commit.unacknowledged`, `mw.txn.release.unacknowledged`, `mw.txn.commit.failed`,
   `mw.txn.release.failed`, `mw.txn.reversal.retry.exhausted` (counters) and
@@ -273,8 +276,26 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   Each transaction is reversed once: a further REVERSAL of a transaction already
   REVERSING/REVERSED/MANUAL_REVIEW (after a reversal), under any key, gets the original's current
   status as a duplicate answer (`attributes.duplicate`, `requestTxnId`) and changes nothing; the
-  idempotency key is stored with the ORIGINAL's txnId. Reversal is core-only: no partner REVERSE
-  is sent (a reversed TOPUP gives the money back, not the airtime).
+  idempotency key is stored with the ORIGINAL's txnId. A reversal of a completed transaction is
+  core-only: no partner REVERSE is sent (a reversed TOPUP gives the money back, not the airtime;
+  partner-first reversal of a completed TOPUP or bill payment is ticket 96c). A refused commit is
+  different, below.
+- Partner reversal after a refused commit (ticket 96b, FRS PLT-022, PLT-025): CommitFailed or
+  CreditRejected on a flow with a partner leg (`CommitRefused(compensatePartner=true)`) moves
+  COMMITTING to REVERSING and sends `REVERSE` on `mw.partner.request.<family>.v1`. An operator's
+  forced commit or credit that the core refuses again stays MANUAL_REVIEW. The request id
+  is the name-based UUID of `reverse:<txnId>` (the same key on every resend; amount and
+  `originalPartnerRef` are the PAY's). `transaction.pending_leg` names the leg:
+  `PARTNER_REVERSE`, then `HOLD_QUERY`, then `HOLD_RELEASE`; a completed-transaction reversal leaves
+  it null, so its deadline still runs the core reversal above. The partner leg is resent every
+  `retry-timeout` until `reversing-timeout` (60 s); no definite answer by then is MANUAL_REVIEW
+  `MW-TMO-022`. A definite FAILED ends FAILED (`PartnerReverseRefused`) and does not touch the hold.
+  SUCCESS (`PartnerReverseConfirmed`) asks the core, commandId `<txnId>:hold-check:<epoch ms>`:
+  `HELD` releases the hold and HoldReleased ends REVERSED; `RELEASED`, `NOT_FOUND`, `REJECTED` or
+  `REVERSED` ends REVERSED with nothing to release; any other status, or no answer by
+  `retry-timeout`, is MANUAL_REVIEW `MW-TMO-021`. ReleaseHold of a hold that remains is resent
+  every `retry-timeout` (the release-unacknowledged alert); ReleaseFailed is MANUAL_REVIEW. A
+  duplicate REVERSE ack is dropped by the inbox (`requestId:outcome`). `PartnerReversalIT`.
 - Audit (ticket 12, spec 14.3): one `mw.audit.event.v1` per state a transaction passes through
   (`mapper/AuditMapper`, own type `dto/AuditEvent`), through the outbox in the same transaction:
   action `txn.state.changed`, resource `txn/<txnId>`, actor `system`/`mw-orchestrator`, `before`

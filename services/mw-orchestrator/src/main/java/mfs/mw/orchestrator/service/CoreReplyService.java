@@ -14,6 +14,7 @@ import mfs.mw.orchestrator.repository.CoreCallRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.saga.CoreTxnStatus;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
+import mfs.mw.orchestrator.service.saga.PendingLeg;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
@@ -90,7 +91,16 @@ public class CoreReplyService {
       // the saga timeline shows every answer, also one the state machine then ignores (B13)
       coreCalls.answered(reply.commandId(), result, mapper.outcome(reply), mapper.reasonCode(reply), clock.instant());
     }
+    if (rec.pendingLeg() == PendingLeg.HOLD_RELEASE
+        && ("HoldReleased".equals(result) || "ReleaseFailed".equals(result))) {
+      compensatingRelease(rec, reply, "HoldReleased".equals(result));
+      return;
+    }
     boolean status = "TransactionStatus".equals(result);
+    if (status && commands.isHoldCheck(reply.commandId())) {
+      holdCheckAnswer(rec, reply);
+      return;
+    }
     if (status && commands.isReversalQuery(reply.commandId())) {
       reversalAnswer(rec, reply);
       return;
@@ -106,6 +116,9 @@ public class CoreReplyService {
     boolean needsHold = flows.find(rec.request().txnType()).map(f -> f.needsHold()).orElse(false);
     boolean inbound = flows.find(rec.request().txnType()).map(f -> f.creditsWallet()).orElse(false);
     Optional<SagaEvent> saga = mapper.toSagaEvent(reply, needsHold, inbound);
+    if (saga.isPresent() && saga.get() instanceof SagaEvent.CommitRefused && compensate(rec, reply)) {
+      saga = Optional.of(new SagaEvent.CommitRefused(true));
+    }
     if (saga.isEmpty()) {
       drop(reply, "core.reply.unmapped", "core answer not used by any wired flow");
       return;
@@ -154,6 +167,56 @@ public class CoreReplyService {
     }
     inquiries.coreAnswer(rec.withCore(mapper.coreRef(reply), null), mapper.txnStatus(reply));
   }
+
+  /**
+   * The saga's own commit was refused on a flow with a partner leg (ticket 96b). An operator
+   * round ({@code :manual-n}) stays MANUAL_REVIEW: the operator decides whether to try again.
+   */
+  private boolean compensate(TransactionRecord rec, CoreReply reply) {
+    String commandId = reply.commandId();
+    boolean operatorRound = commandId != null && commandId.contains(":manual-");
+    return !operatorRound && flows.find(rec.request().txnType()).flatMap(f -> f.partnerCall()).isPresent();
+  }
+
+  /**
+   * After the partner confirmed REVERSE: HELD still has a hold to release, RELEASED / NOT_FOUND /
+   * REJECTED / REVERSED has nothing left to release, and any other status (including no answer's
+   * deadline, which does not come here) is unclear and goes to MANUAL_REVIEW.
+   */
+  private void holdCheckAnswer(TransactionRecord rec, CoreReply reply) {
+    SagaEvent.HoldCheckResult.Hold hold =
+        switch (CoreTxnStatus.parse(mapper.txnStatus(reply)).orElse(null)) {
+          case HELD -> SagaEvent.HoldCheckResult.Hold.EXISTS;
+          case RELEASED, NOT_FOUND, REJECTED, REVERSED -> SagaEvent.HoldCheckResult.Hold.GONE;
+          case null, default -> SagaEvent.HoldCheckResult.Hold.UNCLEAR;
+        };
+    try {
+      engine.fire(
+          rec.withHold(mapper.holdId(reply)), new SagaEvent.HoldCheckResult(hold),
+          hold == SagaEvent.HoldCheckResult.Hold.UNCLEAR ? HOLD_UNCLEAR : null);
+    } catch (InvalidTransitionException e) {
+      drop(reply, "saga.event.ignored", "hold check answer does not fit the transaction's state; ignored");
+    }
+  }
+
+  /** ReleaseHold of the hold that remained after the partner confirmed REVERSE. */
+  private void compensatingRelease(TransactionRecord rec, CoreReply reply, boolean released) {
+    try {
+      engine.fire(
+          rec,
+          released ? new SagaEvent.CompensatingReleaseAcknowledged() : new SagaEvent.CompensatingReleaseRefused(),
+          released ? null : mapper.error(reply));
+    } catch (InvalidTransitionException e) {
+      drop(reply, "saga.event.ignored", "compensating release answer does not fit the transaction's state; ignored");
+    }
+  }
+
+  static final ErrorInfo HOLD_UNCLEAR =
+      new ErrorInfo(
+          ErrorCodes.TMO_HOLD_UNCLEAR,
+          "The core's status of the hold fits no outcome of the partner reversal; operations will review it",
+          null,
+          false);
 
   /**
    * WAL-13 asked once every reversal resend had expired (S1): REVERSED ends it REVERSED, anything else
