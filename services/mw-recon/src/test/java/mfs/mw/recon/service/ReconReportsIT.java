@@ -108,8 +108,12 @@ class ReconReportsIT {
         .replace("2610051005", "2610071007").getBytes(StandardCharsets.UTF_8), true);
     LocalDate day = DAY.plusDays(2);
     UUID open = trust.compute(day, 1L).exceptionId();
-    UUID resolved = trust.compute(day, 2L).exceptionId();
-    jdbc.update("update recon_exception set state = 'RESOLVED', explanation = 'settled' where id = ?", resolved);
+    assertThat(trust.compute(day, 2L).exceptionId()).as("a re-run reuses the day's open exception").isEqualTo(open);
+    UUID resolved = UUID.randomUUID();
+    jdbc.update("""
+        insert into recon_exception (id, class, detail, owner, partner_id, state, created_at, explanation)
+        values (?, 'AMOUNT_MISMATCH', 'TRUST_POSITION', 'finance', 'trustbank', 'RESOLVED', now(), 'settled')
+        """, resolved);
 
     queue.explain(open, "timing difference", "seed-recon-maker");
     queue.explain(open, "timing difference, bank confirmed", "seed-recon-maker");

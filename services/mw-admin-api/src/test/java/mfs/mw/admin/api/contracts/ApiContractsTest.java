@@ -108,7 +108,7 @@ class ApiContractsTest {
         + "\"detail\":\"LEDGER_MISSING\",\"owner\":\"ops\",\"partnerId\":\"billagg\",\"txnId\":\"" + TXN_ID + "\","
         + "\"partnerRef\":null,\"reference\":null,\"fileAmountMinor\":null,\"upayAmountMinor\":5000,"
         + "\"ledgerAmountMinor\":null,\"state\":\"ACTIONED\",\"createdAt\":\"2026-11-19T20:00:00Z\",\"ageHours\":14,"
-        + "\"suggestedAction\":\"FORCE_COMPLETE\",\"explanation\":null,\"explainedBy\":null,\"explainedAt\":null,"
+        + "\"suggestedAction\":\"FORCE_COMMIT\",\"explanation\":null,\"explainedBy\":null,\"explainedAt\":null,"
         + "\"action\":\"FORCE_COMMIT\",\"changeRequestId\":\"0196a1b2-0000-7000-8000-00000127b002\","
         + "\"actionedBy\":\"recon-checker01\"}";
     assertThat(OpenApiSchemas.component("api/mw-recon/recon.v1.openapi.yaml", "ReconException")

@@ -48,7 +48,7 @@ public class TrustPositionJob {
   }
 
   @Scheduled(cron = "${mw.recon.trust.position-cron:0 45 0 * * *}", zone = "${mw.recon.trust.zone}")
-  @SchedulerLock(name = "recon-trust-position")
+  @SchedulerLock(name = "recon-trust-position", lockAtLeastFor = "PT5M")
   public void run() {
     LocalDate yesterday = LocalDate.now(clock.withZone(zone)).minusDays(1);
     for (LocalDate missed : missedDays(yesterday)) {

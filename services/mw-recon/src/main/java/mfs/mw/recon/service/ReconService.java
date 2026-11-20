@@ -411,7 +411,7 @@ public class ReconService {
     put(body, "detail", finding.detail());
     put(body, "txnId", uuidText(finding.txnId()));
     put(body, "partnerRef", finding.partnerRef());
-    put(body, "reference", finding.reference());
+    put(body, "reference", ExceptionEvents.bounded(mfs.mw.recon.util.MaskingPolicy.scrub(finding.reference())));
     put(body, "fileAmountMinor", finding.fileAmountMinor());
     put(body, "upayAmountMinor", finding.upayAmountMinor());
     put(body, "ledgerAmountMinor", finding.ledgerAmountMinor());

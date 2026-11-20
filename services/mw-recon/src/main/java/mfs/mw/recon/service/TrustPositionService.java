@@ -67,7 +67,11 @@ public class TrustPositionService {
     return store.trustPositionKnown(day);
   }
 
-  /** Computes and stores the position; a second run for the same day replaces the row. */
+  /**
+   * Computes and stores the position; a second run for the same day replaces the row and never duplicates the day's
+   * exception (M9 review): a gap again updates the day's OPEN or EXPLAINED exception, a clean re-run resolves it as
+   * superseded. Each change goes out on {@code mw.recon.exception.v1}.
+   */
   @Transactional
   public TrustPosition compute(LocalDate businessDate, long emoneyTotalMinor) {
     Long trust = store.trustClosing(businessDate, ReconService.MT940);
@@ -76,12 +80,19 @@ public class TrustPositionService {
     }
     long difference = trust - emoneyTotalMinor;
     Instant now = clock.instant();
+    UUID open = store.openTrustException(businessDate);
     UUID exceptionId = null;
-    if (difference != 0) {
+    if (difference != 0 && open != null) {
+      exceptionId = open;
+      store.updateStandaloneAmounts(open, trust, emoneyTotalMinor);
+      events.changed(open, null, now);
+    } else if (difference != 0) {
       exceptionId = UUID.randomUUID();
       store.insertStandaloneException(exceptionId, ReconClass.AMOUNT_MISMATCH.name(), DETAIL, OWNER, trustPartnerId,
           trust, emoneyTotalMinor, now);
       events.changed(exceptionId, null, now);
+    } else if (open != null && store.supersede(open, now) == 1) {
+      events.changed(open, null, now);
     }
     store.saveTrustPosition(businessDate, emoneyTotalMinor, trust, difference, exceptionId, now);
     return new TrustPosition(businessDate, emoneyTotalMinor, trust, difference, exceptionId);

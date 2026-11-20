@@ -122,7 +122,7 @@ class ExceptionActionIT {
     }
     respond(ex, 200, """
         {"id":"%s","reconClass":"STATUS_MISMATCH","detail":"LEDGER_MISSING","owner":"ops","partnerId":"billagg",
-         "txnId":"%s","state":"%s","createdAt":"2026-11-19T20:00:00Z","ageHours":14,"suggestedAction":"FORCE_COMPLETE"}
+         "txnId":"%s","state":"%s","createdAt":"2026-11-19T20:00:00Z","ageHours":14,"suggestedAction":"FORCE_COMMIT"}
         """.formatted(id, TXN, state));
   }
 

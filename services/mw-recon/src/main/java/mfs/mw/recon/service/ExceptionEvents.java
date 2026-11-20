@@ -7,6 +7,7 @@ import java.util.UUID;
 import mfs.mw.recon.messaging.EventMetadata;
 import mfs.mw.recon.messaging.OutboxWriter;
 import mfs.mw.recon.repository.ReconStore;
+import mfs.mw.recon.util.MaskingPolicy;
 import org.slf4j.MDC;
 import org.springframework.stereotype.Component;
 
@@ -58,9 +59,9 @@ public class ExceptionEvents {
     if (row.txnId() != null) {
       body.put("txnId", row.txnId().toString());
     }
-    body.put("amountMinor", Math.abs(firstNonNull(row.fileAmountMinor(), row.upayAmountMinor(),
-        row.ledgerAmountMinor())));
-    body.put("statementRef", firstText(row.partnerRef(), row.reference(), row.id().toString()));
+    body.put("amountMinor", amountInQuestion(row));
+    body.put("statementRef", firstText(row.partnerRef(), row.txnId() == null ? null : row.txnId().toString(),
+        bounded(MaskingPolicy.scrub(row.reference())), row.id().toString()));
     if (row.action() != null) {
       body.put("action", row.action());
     }
@@ -74,6 +75,29 @@ public class ExceptionEvents {
     body.put("changedAt", at.toString());
     body.put("correlationId", correlation);
     return body;
+  }
+
+  /** The longest free text an exception carries out (the contract's {@code statementRef} bound). */
+  static final int MAX_TEXT = 255;
+
+  /** Masked free text (MT940 {@code :86:} narratives, explanations) cut to {@link #MAX_TEXT}. */
+  static String bounded(String text) {
+    if (text == null || text.length() <= MAX_TEXT) {
+      return text;
+    }
+    return text.substring(0, MAX_TEXT);
+  }
+
+  /**
+   * DAT-01: the amount in question. A trust position gap is the difference of the two balances, never a whole
+   * balance; anything else is the file amount, else the Upay amount, else the ledger amount.
+   */
+  static long amountInQuestion(ReconStore.ExceptionRow row) {
+    if (TrustPositionService.DETAIL.equals(row.detail()) && row.fileAmountMinor() != null
+        && row.upayAmountMinor() != null) {
+      return Math.abs(row.fileAmountMinor() - row.upayAmountMinor());
+    }
+    return Math.abs(firstNonNull(row.fileAmountMinor(), row.upayAmountMinor(), row.ledgerAmountMinor()));
   }
 
   private static long firstNonNull(Long... values) {

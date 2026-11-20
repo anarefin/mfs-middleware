@@ -348,6 +348,27 @@ public class ReconStore {
         .findFirst().orElse(null);
   }
 
+  /** The OPEN or EXPLAINED exception the stored trust position of {@code day} points at, or null. */
+  public UUID openTrustException(LocalDate day) {
+    return jdbc.query("""
+        select e.id from trust_position p join recon_exception e on e.id = p.exception_id
+        where p.business_date = ? and e.state in ('OPEN', 'EXPLAINED')
+        """, (rs, n) -> rs.getObject(1, UUID.class), day).stream().findFirst().orElse(null);
+  }
+
+  /** The amounts of a run-less exception after a re-computation. */
+  public void updateStandaloneAmounts(UUID id, Long fileAmountMinor, Long upayAmountMinor) {
+    jdbc.update("update recon_exception set file_amount_minor = ?, upay_amount_minor = ? where id = ?",
+        fileAmountMinor, upayAmountMinor, id);
+  }
+
+  /** OPEN or EXPLAINED -> RESOLVED because a later computation no longer shows the difference; 0 rows otherwise. */
+  public int supersede(UUID id, Instant at) {
+    return jdbc.update("""
+        update recon_exception set state = 'RESOLVED', resolved_at = ? where id = ? and state in ('OPEN', 'EXPLAINED')
+        """, Timestamp.from(at), id);
+  }
+
   /** A run-less exception (the trust position, REC-07). */
   public void insertStandaloneException(UUID id, String reconClass, String detail, String owner, String partnerId,
       Long fileAmountMinor, Long upayAmountMinor, Instant at) {

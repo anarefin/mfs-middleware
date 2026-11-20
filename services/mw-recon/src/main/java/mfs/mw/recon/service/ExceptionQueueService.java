@@ -13,6 +13,7 @@ import mfs.mw.recon.exception.MwException;
 import mfs.mw.recon.messaging.EventMetadata;
 import mfs.mw.recon.messaging.OutboxWriter;
 import mfs.mw.recon.repository.ReconStore;
+import mfs.mw.recon.util.MaskingPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -144,7 +145,7 @@ public class ExceptionQueueService {
   }
 
   /**
-   * Advice for the workbench. A missing core posting suggests FORCE_COMPLETE, a completed transaction the partner
+   * Advice for the workbench. A missing core posting suggests FORCE_COMMIT, a completed transaction the partner
    * does not carry suggests REVERSE, money the partner reports without a Upay transaction or a wrong amount suggests
    * RAISE_DISPUTE, and a trust position gap is investigated and then accepted as explained.
    */
@@ -153,7 +154,7 @@ public class ExceptionQueueService {
       return "ACCEPT_AS_EXPLAINED";
     }
     return switch (reconClass) {
-      case "STATUS_MISMATCH" -> "FORCE_COMPLETE";
+      case "STATUS_MISMATCH" -> "FORCE_COMMIT";
       case "MISSING_IN_PARTNER" -> "REVERSE";
       case "MISSING_IN_UPAY", "AMOUNT_MISMATCH" -> "RAISE_DISPUTE";
       default -> "ACCEPT_AS_EXPLAINED";
@@ -163,10 +164,15 @@ public class ExceptionQueueService {
   private static ExceptionView view(ReconStore.ExceptionRow row, Instant now) {
     long age = Math.max(0, Duration.between(row.createdAt(), now).toHours());
     return new ExceptionView(row.id().toString(), row.reconClass(), row.detail(), row.owner(), row.partnerId(),
-        row.txnId() == null ? null : row.txnId().toString(), row.partnerRef(), row.reference(), row.fileAmountMinor(),
+        row.txnId() == null ? null : row.txnId().toString(), row.partnerRef(), masked(row.reference()), row.fileAmountMinor(),
         row.upayAmountMinor(), row.ledgerAmountMinor(), row.state(), row.createdAt(), age,
-        suggestedAction(row.reconClass(), row.detail()), row.explanation(), row.explainedBy(), row.explainedAt(),
+        suggestedAction(row.reconClass(), row.detail()), masked(row.explanation()), row.explainedBy(), row.explainedAt(),
         row.action(), row.changeRequestId() == null ? null : row.changeRequestId().toString(), row.actionedBy());
+  }
+
+  /** Free text the queue shows (an MT940 narrative, an operator explanation): masked and bounded (18.3). */
+  private static String masked(String text) {
+    return ExceptionEvents.bounded(MaskingPolicy.scrub(text));
   }
 
   private static String blankToNull(String value) {
