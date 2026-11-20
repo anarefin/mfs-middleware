@@ -26,6 +26,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class BillFetchService {
 
+  private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(BillFetchService.class);
+
+  /** Not-sent reasons that move a bill fetch to the catalogue's fallback aggregator (ticket 114). */
+  private static final java.util.Set<PartnerResponse.NotSentReason> FAILOVER = java.util.EnumSet.of(
+      PartnerResponse.NotSentReason.CIRCUIT_OPEN, PartnerResponse.NotSentReason.CONNECT_FAILED,
+      PartnerResponse.NotSentReason.DISABLED, PartnerResponse.NotSentReason.MAINTENANCE,
+      PartnerResponse.NotSentReason.BULKHEAD_FULL);
+
   private final BillerCatalog billers;
   private final PartnerCallMapper calls;
   private final PartnerGateway partners;
@@ -80,6 +88,23 @@ public class BillFetchService {
     String partnerId = biller.partnerId();
     PartnerResponse response =
         partners.call(calls.fetchCall(partnerId, billerCode, billNumber, MDC.get("correlationId")));
+    String fallback = biller.fallbackPartnerId();
+    if (response instanceof PartnerResponse.NotSent n && FAILOVER.contains(n.reason())
+        && fallback != null && !fallback.isBlank() && !fallback.equals(partnerId)) {
+      // Ticket 114 (FRS PLT-032, T8): the primary aggregator's circuit is open, it is DOWN, disabled or
+      // in maintenance, and nothing was sent: the bill fetch (a read) asks the catalogue's fallback
+      // once. A payment is never moved here: it goes through the orchestrator to one aggregator.
+      log.atInfo()
+          .addKeyValue("event", "billpay.fetch.failover")
+          .addKeyValue("partnerId", fallback)
+          .log("bill fetch for {} not sent to {} ({}); asking the fallback", billerCode, partnerId, n.reason());
+      partnerId = fallback;
+      response = partners.call(calls.fetchCall(partnerId, billerCode, billNumber, MDC.get("correlationId")));
+    }
+    return answer(billerCode, billNumber, partnerId, response);
+  }
+
+  private static BillView answer(String billerCode, String billNumber, String partnerId, PartnerResponse response) {
     return switch (response) {
       case PartnerResponse.Success s -> bill(billerCode, billNumber, s);
       case PartnerResponse.Rejected r ->

@@ -121,4 +121,53 @@ class BillFetchServiceTest {
     assertThat(refusal(new PartnerResponse.Pending("x", null)).code()).isEqualTo("MW-TMO-PARTNER_MALFORMED_REPLY");
     assertThat(refusal(new PartnerResponse.NotFound("x", null)).code()).isEqualTo("MW-TMO-PARTNER_MALFORMED_REPLY");
   }
+
+  /** Ticket 114 (FRS PLT-032, T8): a catalogue biller with a fallback aggregator. */
+  BillFetchService withFallback() {
+    BillerCatalog catalog = new BillerCatalog(new BillerProperties(Map.of()));
+    catalog.apply(BillerCatalogTest.event(1, BillerCatalogTest.desco(true)));
+    return new BillFetchService(catalog, new PartnerCallMapper(), gateway);
+  }
+
+  static PartnerResponse.Success bill() {
+    return new PartnerResponse.Success("12345678", "000", Map.of("amount", "100.00", "dueDate", "2026-12-01"));
+  }
+
+  @Test
+  void anInquiryNotSentToTheBillersAggregatorIsAskedOfTheCatalogueFallback() {
+    for (NotSentReason reason : new NotSentReason[] {NotSentReason.CIRCUIT_OPEN, NotSentReason.DISABLED,
+        NotSentReason.MAINTENANCE, NotSentReason.CONNECT_FAILED}) {
+      org.mockito.Mockito.reset(gateway);
+      when(gateway.call(any())).thenAnswer(inv -> "billagg".equals(((PartnerCall) inv.getArgument(0)).partnerId())
+          ? new PartnerResponse.NotSent(reason) : bill());
+
+      BillView view = withFallback().fetch("DESCO", "12345678", "202611");
+
+      assertThat(view.amount().valueMinor()).as(reason.name()).isEqualTo(10_000L);
+      ArgumentCaptor<PartnerCall> calls = ArgumentCaptor.forClass(PartnerCall.class);
+      org.mockito.Mockito.verify(gateway, org.mockito.Mockito.times(2)).call(calls.capture());
+      assertThat(calls.getAllValues()).extracting(PartnerCall::partnerId).containsExactly("billagg", "ekpay");
+      assertThat(calls.getAllValues()).extracting(PartnerCall::operation).containsOnly("INQUIRY");
+    }
+  }
+
+  @Test
+  void anAnsweredOrUncertainInquiryIsNeverAskedAgainElsewhere() {
+    for (PartnerResponse answer : new PartnerResponse[] {
+        new PartnerResponse.Rejected("3001", "Bill not found", "BILL_NOT_FOUND", false),
+        new PartnerResponse.Unknown(UnknownReason.TIMEOUT)}) {
+      org.mockito.Mockito.reset(gateway);
+      when(gateway.call(any())).thenReturn(answer);
+      assertThatThrownBy(() -> withFallback().fetch("DESCO", "12345678", "202611")).isInstanceOf(MwException.class);
+      org.mockito.Mockito.verify(gateway, org.mockito.Mockito.times(1)).call(any());
+    }
+  }
+
+  @Test
+  void aFallbackThatIsNotSentEitherIsTheFallbacksError() {
+    when(gateway.call(any())).thenReturn(new PartnerResponse.NotSent(NotSentReason.CIRCUIT_OPEN));
+    assertThatThrownBy(() -> withFallback().fetch("DESCO", "12345678", "202611"))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-SYS-PARTNER_CIRCUIT_OPEN"));
+    org.mockito.Mockito.verify(gateway, org.mockito.Mockito.times(2)).call(any());
+  }
 }
