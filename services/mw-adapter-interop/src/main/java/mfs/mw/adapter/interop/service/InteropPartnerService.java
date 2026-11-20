@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.util.Optional;
+import mfs.mw.adapter.interop.client.CryptoXmlSigner;
 import mfs.mw.adapter.interop.dto.PartnerReply;
 import mfs.mw.adapter.interop.dto.PartnerRequest;
 import mfs.mw.adapter.interop.mapper.PartnerCallMapper;
@@ -11,6 +12,9 @@ import mfs.mw.adapter.interop.mapper.PartnerReplyMapper;
 import mfs.mw.adapter.interop.messaging.EventMetadata;
 import mfs.mw.adapter.interop.messaging.Inbox;
 import mfs.mw.adapter.interop.messaging.OutboxWriter;
+import mfs.mw.adapter.interop.exception.MwException;
+import mfs.mw.adapter.interop.partner.PartnerCall;
+import mfs.mw.adapter.interop.partner.PartnerResponse;
 import mfs.mw.adapter.interop.partner.route.PartnerGateway;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,6 +43,7 @@ public class InteropPartnerService {
   private final PartnerReplyMapper replies;
   private final PartnerReferenceService references;
   private final PartnerGateway partners;
+  private final NpsbWireService npsb;
   private final Inbox inbox;
   private final OutboxWriter outbox;
   private final Clock clock;
@@ -49,6 +54,7 @@ public class InteropPartnerService {
       PartnerReplyMapper replies,
       PartnerReferenceService references,
       PartnerGateway partners,
+      NpsbWireService npsb,
       Inbox inbox,
       OutboxWriter outbox,
       Clock clock,
@@ -57,6 +63,7 @@ public class InteropPartnerService {
     this.replies = replies;
     this.references = references;
     this.partners = partners;
+    this.npsb = npsb;
     this.inbox = inbox;
     this.outbox = outbox;
     this.clock = clock;
@@ -99,7 +106,26 @@ public class InteropPartnerService {
     }
     String partnerId = request.payload().partner().partnerId();
     String ref = references.referenceFor(request.txnId(), partnerId);
-    return replies.toReply(request, ref, partners.call(requests.toCall(request, ref)));
+    PartnerCall call = requests.toCall(request, ref);
+    if (!npsb.handles(request)) {
+      return replies.toReply(request, ref, partners.call(call));
+    }
+    // NPSB (ticket 121b): the ISO 20022 message is built and signed here, around the shared engine
+    PartnerCall signed;
+    try {
+      signed = npsb.outbound(call, request, ref);
+    } catch (MwException e) {
+      log.atWarn()
+          .addKeyValue("event", "partner.npsb.not_sent")
+          .addKeyValue("txnId", request.txnId())
+          .addKeyValue("errorCode", e.code())
+          .log("NPSB message not built or signed; nothing sent");
+      return replies.toReply(request, ref, new PartnerResponse.NotSent(
+          CryptoXmlSigner.CRYPTO_UNAVAILABLE.equals(e.code())
+              ? PartnerResponse.NotSentReason.CONNECT_FAILED
+              : PartnerResponse.NotSentReason.MISCONFIGURED));
+    }
+    return replies.toReply(request, ref, npsb.resolve(request, ref, partners.call(signed)));
   }
 
   private void publish(PartnerRequest request, PartnerReply reply) {

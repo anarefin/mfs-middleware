@@ -41,13 +41,16 @@ public final class PartnerTestSeeds {
     return Binder.get(environment).bind("mw.partners", PartnerProperties.class).get();
   }
 
-  /** The adapter's one dev seed partner (telco {@code ocs}, billpay {@code billagg}, bank {@code c2wbank}). */
+  /**
+   * The engine tests' partner: the test-only REST record {@code c2wbank} (ticket 121b: the dev seed
+   * {@code npsb} carries an ISO 20022 document the service layer builds, not a REST call to map).
+   */
   public static Map.Entry<String, PartnerConfig> devSeed() {
-    Map<String, PartnerConfig> seeds = properties(Map.of()).instances();
-    if (seeds.size() != 1) {
-      throw new IllegalStateException("expected one dev seed partner, found " + seeds.keySet());
+    PartnerConfig c2wbank = properties(Map.of()).instances().get("c2wbank");
+    if (c2wbank == null) {
+      throw new IllegalStateException("no test-only c2wbank record in config/application-dev.yml");
     }
-    return seeds.entrySet().iterator().next();
+    return Map.entry("c2wbank", c2wbank);
   }
 
   /** The dev seed of partner {@code id}. */

@@ -175,6 +175,10 @@ sim:
     client-id: partner-sim
     token-uri: http://keycloak:8080/realms/partners/protocol/openid-connect/token
     private-key: ${sim.partner-sim.private-key:}
+  # The NPSB switch mock signs its pacs.002 / camt.029 answers and inbound pacs.008 pushes (XML-DSig,
+  # ticket 121b) with the dev switch key: Vault secret/mw-simulators field sim.npsb.signing-key (PKCS#8
+  # PEM), created once by provision, whose certificate mw-adapter-interop trusts; Vault binds it to the
+  # property of the same name (service/NpsbSigner). Unset: unsigned.
   # The global reset POST /mock-control/reset (ticket 103, FRS MCT-07) also resets mw-core-mock's ledger here.
   core-mock:
     base-url: http://mw-core-mock:8080

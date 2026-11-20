@@ -6,7 +6,7 @@
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
 PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t BANK_GATEWAY_HMAC_SECRET=bankgw-t MERCHANT_SOAP_WS_PASSWORD=merchant-ws-t CYBERSOURCE_HMAC_SECRET=cybersource-t UCB_IMT_HMAC_SECRET=ucb-imt-t UCBATM_HMAC_SECRET=ucbatm-t UCBATM_WS_PASSWORD=ucbatm-ws-t PUSH_API_KEY=push-t
-  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_DATA_EXPORT_SECRET=data-export-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t KC_MW_RECON_SECRET=recon-t KC_MW_ADAPTER_REMIT_SECRET=adapter-remit-t KC_MW_SIMULATORS_SECRET=simulators-t SFTP_DEV_PASSWORD=sftp-t
+  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_DATA_EXPORT_SECRET=data-export-t KC_MW_ADAPTER_INTEROP_SECRET=adapter-interop-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t KC_MW_RECON_SECRET=recon-t KC_MW_ADAPTER_REMIT_SECRET=adapter-remit-t KC_MW_SIMULATORS_SECRET=simulators-t SFTP_DEV_PASSWORD=sftp-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
   APISIX_VAULT_TOKEN=apisix-vault-t APISIX_ADMIN_KEY=apisix-admin-t
@@ -235,6 +235,24 @@ test_provision_makes_the_partner_sim_key_once_and_registers_its_certificate_at_k
   assert_ok run_provision
   grep -q 'req -x509' .openssl-calls && fail "partner-sim key regenerated"
   [ "$(cat .kc-uploaded-cert)" = PARTNER-CERT-PEM ] || fail "certificate not registered again"
+  return 0
+}
+
+# Ticket 121b: the NPSB switch mock signs its ISO 20022 messages with a dev switch key. Provision makes the
+# key pair once (secret/mw-simulators) and copies the certificate on every run to mw-adapter-interop,
+# which verifies the switch's XML-DSig under it (npsb-certificate-pem).
+test_provision_makes_the_npsb_switch_key_once_and_gives_interop_its_certificate() {
+  provision_fixture
+  assert_ok run_provision
+  [ "$(kv mw-simulators sim.npsb.signing-key)" = PARTNER-KEY-PEM ] || fail "NPSB switch key not in secret/mw-simulators"
+  [ "$(kv mw-simulators sim.npsb.certificate)" = PARTNER-CERT-PEM ] || fail "NPSB switch certificate not in secret/mw-simulators"
+  [ "$(kv mw-adapter-interop npsb-certificate-pem)" = PARTNER-CERT-PEM ] || fail "interop does not trust the switch certificate"
+  grep -q '^openssl req -x509 -newkey rsa:2048 .*-subj /CN=npsb-switch' .openssl-calls || fail "no NPSB key + certificate: $(cat .openssl-calls)"
+  [ -e .kv/secret/mw-adapter-interop/sim.npsb.signing-key ] && fail "the switch's private key reached mw-adapter-interop"
+  : >.openssl-calls; rm -f .kv/secret/mw-adapter-interop/npsb-certificate-pem
+  assert_ok run_provision
+  grep -q 'CN=npsb-switch' .openssl-calls && fail "NPSB switch key regenerated"
+  [ "$(kv mw-adapter-interop npsb-certificate-pem)" = PARTNER-CERT-PEM ] || fail "certificate not copied again"
   return 0
 }
 
