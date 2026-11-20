@@ -86,7 +86,7 @@ mw:
               ? {"outcome": "FAILED", "code": body.code, "message": body.message}
             : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
           "[PAY.request]": |
-            {"transactionId": reference, "accountNumber": debitParty.id, "amount": amount.major}
+            {"transactionId": reference, "accountNumber": creditParty.id, "amount": amount.major}
           "[PAY.response]": |
             status = 200
               ? (body.status = "SUCCESS" and $type(body.debitRef) = "string" and body.debitRef != ""

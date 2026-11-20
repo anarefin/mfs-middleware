@@ -1,6 +1,7 @@
 package mfs.mw.adapter.remit.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolationException;
 import java.util.List;
 import mfs.mw.adapter.remit.dto.ErrorDetail;
 import mfs.mw.adapter.remit.dto.ErrorEnvelope;
@@ -15,6 +16,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -47,6 +49,19 @@ public class GlobalExceptionHandler {
     return validation(ErrorCodes.VAL_INVALID, "Request validation failed", details, req, e);
   }
 
+  /**
+   * {@code @Validated} on the controller runs Bean Validation through the AOP interceptor, which
+   * throws this rather than {@link HandlerMethodValidationException} (a bad {@code X-Partner-Id}).
+   */
+  @ExceptionHandler(ConstraintViolationException.class)
+  ResponseEntity<ErrorEnvelope> constraint(ConstraintViolationException e, HttpServletRequest req) {
+    List<ErrorDetail> details =
+        e.getConstraintViolations().stream()
+            .map(v -> new ErrorDetail(v.getPropertyPath().toString(), v.getMessage()))
+            .toList();
+    return validation(ErrorCodes.VAL_INVALID, "Request validation failed", details, req, e);
+  }
+
   @ExceptionHandler(HandlerMethodValidationException.class)
   ResponseEntity<ErrorEnvelope> invalidParams(
       HandlerMethodValidationException e, HttpServletRequest req) {
@@ -66,6 +81,7 @@ public class GlobalExceptionHandler {
 
   @ExceptionHandler({
     MissingServletRequestParameterException.class,
+    MissingRequestHeaderException.class,
     MethodArgumentTypeMismatchException.class
   })
   ResponseEntity<ErrorEnvelope> badParam(Exception e, HttpServletRequest req) {

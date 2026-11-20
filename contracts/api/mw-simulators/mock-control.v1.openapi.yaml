@@ -355,6 +355,44 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /mock-control/ucb-imt/trigger:
+    post:
+      operationId: triggerUcbImtCredit
+      summary: UCB IMT pushes one inbound remittance to the middleware (ticket 119, MCK-06)
+      description: |
+        Posts a signed credit to `sim.ucb-imt.credit-url` (default `http://mw-adapter-remit:8080/remit/v1/credits`)
+        as partner `ucb-imt`. A DUPLICATE_CALLBACK scenario sends the same body twice (fresh nonce each time);
+        LATE_CALLBACK waits `delayMs` first; NO_CALLBACK sends nothing. Answers how many copies were sent and
+        the target status of the last one (-1 when nothing was sent or the target was unreachable).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, msisdn, sender, country]
+              properties:
+                amount: { type: string, pattern: "^[0-9]{1,12}(\\.[0-9]{1,2})?$" }
+                msisdn: { type: string }
+                sender: { type: string }
+                country: { type: string, pattern: "^[A-Z]{2}$" }
+      responses:
+        "200":
+          description: What was pushed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [copies, targetStatus]
+                properties:
+                  partnerRef: { type: string, nullable: true }
+                  copies: { type: integer }
+                  targetStatus: { type: integer }
+        "400":
+          description: A field is not valid (MW-VAL-001)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
 components:
   parameters:
     Party:
