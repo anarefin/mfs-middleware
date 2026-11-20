@@ -286,9 +286,7 @@ public class UssdEngine {
     Map<String, String> inputs = new HashMap<>(s.inputs());
     inputs.put(node.store(), valid.get());
     if (node.lookup() != null) {
-      Map<String, String> args = new HashMap<>();
-      node.mapping().forEach((arg, inputName) -> args.put(arg, inputs.get(inputName)));
-      LookupOutcome found = lookups.run(node.lookup(), args);
+      LookupOutcome found = lookups.run(node.lookup(), lookupArgs(node, inputs, s.language()));
       switch (found.kind()) {
         case FOUND -> inputs.putAll(found.values());
         case REFUSED -> {
@@ -318,13 +316,42 @@ public class UssdEngine {
     return show(menu, next, prefix + "\n" + render(node, next, Map.of()), false);
   }
 
-  /** Arrives at the session's node: runs an ACTION, shows anything else. */
+  /** Arrives at the session's node: quotes a fee or reads an account screen, runs an ACTION, shows anything else. */
   private UssdResponse enter(Menu menu, UssdSession s, Map<String, String> vars, EncryptedPin pin) {
     MenuNode node = menu.node(s.nodeId());
+    if (node.lookup() != null && node.type() != NodeType.INPUT) {
+      LookupOutcome found = lookups.run(node.lookup(), lookupArgs(node, s.inputs(), s.language()));
+      switch (found.kind()) {
+        case FOUND -> {
+          Map<String, String> inputs = new HashMap<>(s.inputs());
+          inputs.putAll(found.values());
+          s = s.at(s.nodeId(), s.path(), inputs, s.language());
+        }
+        case REFUSED, UNAVAILABLE -> {
+          return endWith(menu, s, Menu.UNAVAILABLE);
+        }
+      }
+    }
     if (node.type() == NodeType.ACTION) {
       return act(menu, s, node, pin);
     }
     return show(menu, s, render(node, s, vars), node.type() == NodeType.END);
+  }
+
+  /** Lookup arguments: a mapping value {@code =VALUE} is that literal, otherwise the named input. */
+  private static Map<String, String> lookupArgs(MenuNode node, Map<String, String> inputs, String language) {
+    Map<String, String> args = new HashMap<>();
+    node.mapping().forEach((arg, source) -> {
+      if (source == null) {
+        return;
+      }
+      String value = source.startsWith(LITERAL) ? source.substring(LITERAL.length()) : inputs.get(source);
+      if (value != null) {
+        args.put(arg, value);
+      }
+    });
+    args.put("language", language);
+    return args;
   }
 
   private UssdResponse act(Menu menu, UssdSession s, MenuNode node, EncryptedPin pin) {

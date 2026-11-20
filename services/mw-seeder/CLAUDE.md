@@ -73,7 +73,7 @@ this file says what is specific to this module.
      (a daily quota would replace their route's per-MSISDN limit-count).
   7. `seed-admin-content`: the USSD menu `main` (all four MNOs) and the SMS templates
      `TXN_P2P_RECEIVED` bn/en, proposed and approved through mw-admin-api, so the console has a first
-     admin-made version. The values are copies of what mw-ussd (`menus/main-v3.json` ->
+     admin-made version. The values are copies of what mw-ussd (`menus/main-v4.json` ->
      `src/main/resources/seed-content/menus/main.json`) and mw-notify (V5 rows, in `application.yml`)
      ship, so publishing changes no text a test reads: keep the copies identical. Content with any
      PUBLISHED admin version is left alone; a version the seed maker left PENDING is approved.

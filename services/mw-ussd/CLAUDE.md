@@ -71,22 +71,29 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   version it started on); versions are immutable and cached once parsed. `service/MenuValidator`
   refuses a tree with dangling references, missing fields, an unknown validator/flow, a regex that
   does not compile, or a PIN input that is stored or does not lead straight to an ACTION.
-  `service/MenuSeeder` stores the dev seed `menus/main-v3.json` (`mw.ussd.seed-menu`, blank = off)
+  `service/MenuSeeder` stores the dev seed `menus/main-v4.json` (`mw.ussd.seed-menu`, blank = off)
   and activates it for every configured MNO without a menu or still on an older version of the
-  seed (v1/v2 -> v3; another menu is never replaced; `main-v2.json` stays as shipped). Seed (ticket 28): 1 Send Money (P2P), 2 Cash Out (customer to agent), 3 Mobile
+  seed (v1/v2/v3 -> v4; another menu is never replaced; `main-v2.json` and `main-v3.json` stay as shipped).
+  mw-seeder's `seed-content/menus/main.json` is the same tree. Seed (ticket 28, menus ticket 109c): 1 Send Money (P2P), 2 Cash Out (customer to agent), 3 Mobile
   Recharge (1 own number: option `set` stores `{msisdn}` / `{mno}` as target and operator; 2 other
   number + DYNAMIC `operators`; product `=PREPAID`), 4 Pay Bill (DYNAMIC `bp.category` source
   `biller-categories` store `category` "Select category" -> DYNAMIC `bp.biller` source `billers` (that
   category's billers), bill number INPUT with `lookup: bill`, CONFIRM with the fetched amount; en screens
   "Select category\n1 Electricity\n2 Water\n3 Gas\n4 Telecom\n5 Internet", after 3 "Select biller\n1 JGTDSL\n2
-  KGDCL\n3 TITAS"; the same nodes in `main-v2.json` and mw-seeder's `seed-content/menus/main.json`), 5 Balance (v3, ADR D26: `bal.pin` ->
-  ACTION `bal.check` flow BALANCE, empty mapping -> `bal.done` "Tk {balance}" / `bal.failed`), 9 language
-  (v3 labels option 3 "রিচার্জ" / "Recharge" so the main screen stays within 70 UCS-2 characters).
-  `w2b.maintenance` is an END node ("Transfer to bank is under maintenance." / the Bangla line) until
-  ticket 117; the main screen is already 70 UCS-2 characters, so the node is not a numbered row on
-  that screen (a row would push "9 English" onto the next page). Messages `more` are "0. পরবর্তী" /
-  "0. Next" and `back` are "00. পেছনে" / "00. Back". Every Bangla screen of
-  the seed fits 70 UCS-2 characters (`UssdMenuWalkTest`).
+  KGDCL\n3 TITAS"), 5 Balance (ADR D26: `bal.pin` ->
+  ACTION `bal.check` flow BALANCE, empty mapping -> `bal.done` "Tk {balance}" / `bal.failed`), 6 Payment
+  (MERCHANT_PAY to the merchant wallet), 7 Add Money (ADD_MONEY_BANK, debit the entered bank account,
+  partner `c2wbank` product `C2W`), 8 My Account (balance, mini statement, change PIN, language),
+  9 language, 11 Remittance status. The main screen pages (keys still select an option on a later page).
+  A CONFIRM quotes the fee with core `POST /core/v1/charges/calculate` (WAL-04, lookup `charges`) before
+  the PIN; the test double uses the dev tariff. The mini statement is core `GET /core/v1/statements`
+  (WAL-12, lookup `statement`, no PIN): the latest five TRANSFER, REVERSAL or ADJUSTMENT lines.
+  Remittance status is core `GET /core/v1/transactions/{txnId}` (WAL-13) when the reference is an Upay
+  txn id, otherwise the not-found sentence; there is no remittance partner call (ticket 119).
+  Change PIN is `pin.maintenance` ("Change PIN is under maintenance." / the Bangla line) and does not
+  call mw-auth. `w2b.maintenance` stays an END node and is not a main-menu row.
+  Messages `more` are "0. পরবর্তী" / "0. Next" and `back` are "00. পেছনে" / "00. Back". Every Bangla
+  screen of the seed fits 70 UCS-2 characters (`UssdMenuWalkTest`).
 - Published menus (ticket 39, spec 9.2, 20.4): mw-admin-api's approved versions arrive on
   `mw.config.changed.v1` (compacted; `messaging/ConfigChangedListener`, a retried `@KafkaListener`, group
   mw-ussd, earliest offset, retry topics then DLQ, tombstones skipped) and
@@ -186,7 +193,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   blocks). COMPLETED -> the node's `onSuccess`; FAILED/REJECTED -> `onFailure` with the status
   error's text (messageBn in bn); no final status in time -> the menu's `processing` text ("being
   processed", the result by SMS once mw-notify sends it); publish failure -> `unavailable`.
-  Flows: P2P, CASH_OUT, TOPUP, BILL_PAY, BALANCE (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
+  Flows: P2P, CASH_OUT, TOPUP, BILL_PAY, MERCHANT_PAY, ADD_MONEY_BANK, BALANCE (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
   app, not over USSD.
 - Business duplicate (ticket 99, FRS PLT-013): a FAILED `MW-VAL-024` from the orchestrator is the confirm
   node: the engine goes back to the PIN input with the menu's `duplicateSuspected` text (optional, built-in

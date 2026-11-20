@@ -39,7 +39,8 @@ class ScreenTimeoutIT {
     UssdEngine engine = new UssdEngine(
         catalog, sessions, new InputValidator(), new ScreenFormatter(), new UssdEngineTest.ScriptedFlow(),
         TestPinTransport.create(), new DynamicLists(props, UssdEngineTest.BILLS),
-        new Lookups(UssdEngineTest.BILLS), props, Clock.systemUTC(), new OpenShortCodes(), new MemoryPrefs(),
+        new Lookups(UssdEngineTest.BILLS, new mfs.mw.ussd.client.StubCoreReads(), new mfs.mw.ussd.client.StubCoreReads()),
+        props, Clock.systemUTC(), new OpenShortCodes(), new MemoryPrefs(),
         new FixedAccounts());
 
     UssdResponse started = engine.handle(

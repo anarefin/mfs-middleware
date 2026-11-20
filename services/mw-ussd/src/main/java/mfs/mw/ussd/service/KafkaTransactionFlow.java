@@ -90,13 +90,17 @@ public class KafkaTransactionFlow implements TransactionFlow {
           TxnRequestMapper.CHANNEL, request.session().msisdn(), session, request.menuPath(), TxnRequestMapper.BALANCE,
           txnId);
     }
+    String target =
+        TxnRequestMapper.ADD_MONEY_BANK.equals(request.flow())
+            ? request.fields().get(FlowRequest.DEBIT_PARTY)
+            : request.fields().get(FlowRequest.CREDIT_PARTY);
     return IdempotencyKeys.derive(
         TxnRequestMapper.CHANNEL,
         request.session().msisdn(),
         session,
         request.menuPath(),
         amountMinor,
-        request.fields().get(FlowRequest.CREDIT_PARTY));
+        target);
   }
 
   @Override

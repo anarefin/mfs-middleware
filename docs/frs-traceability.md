@@ -137,19 +137,19 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FRS | Repo / tickets |
 | --- | --- |
 | `UC-01` registration with eKYC | ticket 124 |
-| `UC-02` login, device binding, PIN change | mw-auth (D20–D22); app types ticket 106, USSD ticket 109 |
-| `UC-03` balance and statement | balance done (D26); statement tickets 107, 109 |
+| `UC-02` login, device binding, PIN change | mw-auth (D20–D22); app types ticket 106. USSD change PIN stays on the maintenance text (109c) |
+| `UC-03` balance and statement | balance done (D26); app statement ticket 107; USSD mini statement is core WAL-12 (109c) |
 | `UC-04` P2P | done (`P2P`); FRS T1–T12 ticket 104 |
 | `UC-05`, `UC-06` cash-in, cash-out | done |
 | `UC-07` B2B float | ticket 106 |
 | `UC-08` top-up | prepaid done (one OCS); ticket 112 |
 | `UC-09`, `UC-10` bills | one aggregator done; tickets 113, 114 |
-| `UC-11` merchant payment | ticket 115 |
+| `UC-11` merchant payment | app done (folder 04); USSD menu MERCHANT_PAY (109c); ticket 115 remains |
 | `UC-12` web checkout and refund | pay done; refund ticket 116 |
 | `UC-13` add money from card | ticket 118 |
-| `UC-14` add money from bank (C2W) | done (one bank); ticket 117 |
+| `UC-14` add money from bank (C2W) | done (one bank); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
 | `UC-15` W2B with AVL | ticket 117 |
-| `UC-16` remittance | ticket 119 |
+| `UC-16` remittance | USSD status by Upay txn id is core WAL-13 (109c); inbound credit is ticket 119 |
 | `UC-17` ATM | ticket 120 |
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |

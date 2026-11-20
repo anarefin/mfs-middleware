@@ -39,10 +39,17 @@ public final class MenuValidator {
           "CASH_OUT", BASE,
           "TOPUP", Set.of("creditParty", "amount", "partnerId", "productCode"),
           "BILL_PAY", Set.of("creditParty", "amount", "partnerId", "billerCode"),
+          "MERCHANT_PAY", BASE,
+          "ADD_MONEY_BANK", Set.of("debitParty", "amount", "partnerId"),
           "BALANCE", Set.of()); // ADR D26: the customer's own wallet, amount 0, nothing to map
 
-  /** mw-ussd's INPUT lookups and their arguments (its {@code Lookups.ARGUMENTS}). */
-  static final Map<String, Set<String>> LOOKUPS = Map.of("bill", Set.of("billerCode", "billNumber"));
+  /** mw-ussd's lookups and their arguments (its {@code Lookups.ARGUMENTS}). */
+  static final Map<String, Set<String>> LOOKUPS =
+      Map.of(
+          "bill", Set.of("billerCode", "billNumber"),
+          "charges", Set.of("txnType", "amount"),
+          "statement", Set.of("walletId"),
+          "remit", Set.of("reference"));
 
   private MenuValidator() {}
 
@@ -79,6 +86,9 @@ public final class MenuValidator {
         for (MenuOption o : n.options()) {
           ref(id, "option " + o.key(), o.next(), nodes, p);
         }
+        if (n.type() == NodeType.CONFIRM) {
+          lookup(id, n, false, p);
+        }
       }
       case INPUT -> {
         ValidatorSpec v = n.validator();
@@ -101,13 +111,7 @@ public final class MenuValidator {
         } else if (n.store() == null || n.store().isBlank()) {
           p.add(id + ": store is required");
         }
-        if (n.lookup() != null) {
-          if (v.isPin() || !LOOKUPS.containsKey(n.lookup())) {
-            p.add(id + ": lookup must be one of " + new TreeSet<>(LOOKUPS.keySet()));
-          } else {
-            missing(id, "lookup " + n.lookup(), LOOKUPS.get(n.lookup()), n, p);
-          }
-        }
+        lookup(id, n, v.isPin(), p);
       }
       case ACTION -> {
         if (!FLOW_FIELDS.containsKey(n.flow())) {
@@ -124,9 +128,7 @@ public final class MenuValidator {
         }
         ref(id, "next", n.next(), nodes, p);
       }
-      case END -> {
-        // text checked below
-      }
+      case END -> lookup(id, n, false, p);
       default -> p.add(id + ": unknown type");
     }
   }
@@ -154,6 +156,17 @@ public final class MenuValidator {
 
   private static boolean complete(Text t) {
     return t != null && t.bn() != null && !t.bn().isBlank() && t.en() != null && !t.en().isBlank();
+  }
+
+  private static void lookup(String id, MenuNode n, boolean pin, List<String> p) {
+    if (n.lookup() == null) {
+      return;
+    }
+    if (pin || !LOOKUPS.containsKey(n.lookup())) {
+      p.add(id + ": lookup must be one of " + new TreeSet<>(LOOKUPS.keySet()));
+    } else {
+      missing(id, "lookup " + n.lookup(), LOOKUPS.get(n.lookup()), n, p);
+    }
   }
 
   private static void missing(String id, String what, Set<String> needed, MenuNode n, List<String> p) {

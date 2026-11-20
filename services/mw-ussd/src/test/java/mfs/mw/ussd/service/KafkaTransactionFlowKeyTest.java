@@ -50,4 +50,17 @@ class KafkaTransactionFlowKeyTest {
         .isNotEqualTo(KafkaTransactionFlow.idempotencyKey(balance, "t-2"))
         .isEqualTo(KafkaTransactionFlow.idempotencyKey(balance, "t-1"));
   }
+
+  @Test
+  void twoBankAccountsOfOneSessionAreDifferentAddMoneyKeys() {
+    assertThat(KafkaTransactionFlow.idempotencyKey(addMoney("1234567890123"), "t-1"))
+        .isNotEqualTo(KafkaTransactionFlow.idempotencyKey(addMoney("1234567890124"), "t-1"));
+  }
+
+  static FlowRequest addMoney(String account) {
+    UssdSession s = new UssdSession("gp", "smpp-7-ab", "01711000001", "main", 4, "en", "am.send",
+        List.of("main:7"), Map.of(), 0, List.of(), false, T0);
+    return new FlowRequest("ADD_MONEY_BANK", s, "main:7",
+        Map.of("debitParty", account, "amount", "500.00", "partnerId", "c2wbank"), PIN);
+  }
 }

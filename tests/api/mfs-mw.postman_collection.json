@@ -2541,7 +2541,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd p2p] a P2P over USSD in English completes and moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 1, 01711000002, 10, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Enter recipient Bits number',\\n        'Enter amount (Tk)',\\n        'Send Tk 10.00 to 01711000002?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
+                  "MW.run(\"[ussd p2p] a P2P over USSD in English completes and moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 1, 01711000002, 10, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n0. পরবর্তী\\\\n00. পেছনে',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n0. Next\\\\n00. Back',\\n        'Enter recipient Bits number',\\n        'Enter amount (Tk)',\\n        'Send Tk 10.00 to 01711000002?\\\\nFee Tk 5.00\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -2652,7 +2652,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd topup] a top-up of the own number over USSD in English completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 3, 1, 20, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Mobile Recharge\\\\n1 Own number\\\\n2 Other number',\\n        'Enter recharge amount (Tk)',\\n        'Recharge Tk 20.00 to 01711000001?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 20.00 recharged to 01711000001. TxnID ');\\n      await S.changedBy({ '01711000001': -2200, '01811000001': 0, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[ussd topup] a top-up of the own number over USSD in English completes\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 3, 1, 20, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n0. পরবর্তী\\\\n00. পেছনে',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n0. Next\\\\n00. Back',\\n        'Mobile Recharge\\\\n1 Own number\\\\n2 Other number',\\n        'Enter recharge amount (Tk)',\\n        'Recharge Tk 20.00 to 01711000001?\\\\nFee Tk 2.00\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 20.00 recharged to 01711000001. TxnID ');\\n      await S.changedBy({ '01711000001': -2200, '01811000001': 0, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -2715,7 +2715,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd billpay] a bill pay over USSD in English fetches the bill and pays it\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 4, 1, 2, 1234567, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Select category\\\\n1 Electricity\\\\n2 Water\\\\n3 Gas\\\\n4 Telecom\\\\n5 Internet',\\n        'Select biller\\\\n1 BREB\\\\n2 DESCO\\\\n3 DPDC',\\n        'Enter DESCO bill number',\\n        'Pay Tk 667.00 for DESCO bill 1234567?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 667.00 paid for DESCO bill 1234567. TxnID ');\\n      await S.changedBy({ '01711000001': -67000, '01811000001': 0, 'SETTLEMENT': 66700, 'FEE_INCOME': 261 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                  "MW.run(\"[ussd billpay] a bill pay over USSD in English fetches the bill and pays it\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01811000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '9, 4, 1, 2, 1234567, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n0. পরবর্তী\\\\n00. পেছনে',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n0. Next\\\\n00. Back',\\n        'Select category\\\\n1 Electricity\\\\n2 Water\\\\n3 Gas\\\\n4 Telecom\\\\n5 Internet',\\n        'Select biller\\\\n1 BREB\\\\n2 DESCO\\\\n3 DPDC',\\n        'Enter DESCO bill number',\\n        'Pay Tk 667.00 for DESCO bill 1234567?\\\\nFee Tk 3.00\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 667.00 paid for DESCO bill 1234567. TxnID ');\\n      await S.changedBy({ '01711000001': -67000, '01811000001': 0, 'SETTLEMENT': 66700, 'FEE_INCOME': 261 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
                 ]
               }
             }
@@ -2805,7 +2805,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[ussd smpp p2p] a P2P over SMPP USSD walks the same menu and moves the money once\", eval(MW.forRun(\"async function bound(MW, S) {\\n  const b = await MW.poll(() => MW.sim.smppBinds(), x => x.bound >= 1, 90000, 1000);\\n  S.check('mw-ussd is bound to the SMPP USSD gateway', b.bound >= 1, b);\\n  S.bindsBefore = b.binds;\\n  S.refusedBefore = b.refused;\\n}\\n;(async (MW, S) => {\\n      await bound(MW, S);\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('gp', '01711000001', '*268#', '9, 1, 01711000002, 10, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Enter recipient Bits number',\\n        'Enter amount (Tk)',\\n        'Send Tk 10.00 to 01711000002?\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
+                  "MW.run(\"[ussd smpp p2p] a P2P over SMPP USSD walks the same menu and moves the money once\", eval(MW.forRun(\"async function bound(MW, S) {\\n  const b = await MW.poll(() => MW.sim.smppBinds(), x => x.bound >= 1, 90000, 1000);\\n  S.check('mw-ussd is bound to the SMPP USSD gateway', b.bound >= 1, b);\\n  S.bindsBefore = b.binds;\\n  S.refusedBefore = b.refused;\\n}\\n;(async (MW, S) => {\\n      await bound(MW, S);\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      await S.dial('gp', '01711000001', '*268#', '9, 1, 01711000002, 10, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n0. পরবর্তী\\\\n00. পেছনে',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n0. Next\\\\n00. Back',\\n        'Enter recipient Bits number',\\n        'Enter amount (Tk)',\\n        'Send Tk 10.00 to 01711000002?\\\\nFee Tk 5.00\\\\n1 Confirm\\\\n2 Cancel',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Tk 10.00 sent to 01711000002. TxnID ');\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
                 ]
               }
             }
@@ -3678,7 +3678,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[balance ussd] option 5 asks for the PIN and shows the available balance in English; no money moves\", eval(MW.forRun(\"function tk(minor) {\\n    const s = String(Math.floor(minor / 100)).replace(/\\\\B(?=(\\\\d{3})+(?!\\\\d))/g, ',');\\n    return s + '.' + String(minor % 100).padStart(2, '0');\\n  }\\n;(async (MW, S) => {\\n      await S.note(['01711000001']);\\n      const available = (await MW.core.wallet('01711000001')).availableMinor;\\n      await S.dial('robi', '01711000001', '*269#', '9, 5, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n5 ব্যালেন্স\\\\n9 English',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n5 Balance\\\\n9 বাংলা',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Your balance is Tk ' + tk(available));\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[balance ussd] option 5 asks for the PIN and shows the available balance in English; no money moves\", eval(MW.forRun(\"function tk(minor) {\\n    const s = String(Math.floor(minor / 100)).replace(/\\\\B(?=(\\\\d{3})+(?!\\\\d))/g, ',');\\n    return s + '.' + String(minor % 100).padStart(2, '0');\\n  }\\n;(async (MW, S) => {\\n      await S.note(['01711000001']);\\n      const available = (await MW.core.wallet('01711000001')).availableMinor;\\n      await S.dial('robi', '01711000001', '*269#', '9, 5, ' + MW.pin);\\n      S.ussdScreens([\\n        'Bits\\\\n1 সেন্ড মানি\\\\n2 ক্যাশ আউট\\\\n3 রিচার্জ\\\\n4 বিল পে\\\\n0. পরবর্তী\\\\n00. পেছনে',\\n        'Bits\\\\n1 Send Money\\\\n2 Cash Out\\\\n3 Recharge\\\\n4 Pay Bill\\\\n0. Next\\\\n00. Back',\\n        'Enter your PIN',\\n      ]);\\n      S.ussdEnds('Your balance is Tk ' + tk(available));\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -4630,6 +4630,117 @@
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
                   "MW.run(\"[notify] a push token with an unknown platform is refused 400 MW-VAL-001\", eval(MW.forRun(\";(async (MW, S) => {\\n      const r = await MW.app.pushToken('customer01', 'api-push-' + MW.uuid(), 'WINDOWS');\\n      S.status(400, r);\\n      S.eq('the code is MW-VAL-001', r.body && r.body.code, 'MW-VAL-001');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "43 USSD FRS menus (payment, add money, statement, PIN, remittance)",
+      "description": "Ticket 109c. The live menu's Payment, Add Money, mini statement, change-PIN maintenance text and remittance status. Fee on a confirm is the core charge quote; change PIN does not call mw-auth.",
+      "item": [
+        {
+          "name": "[ussd frs] a payment to a merchant over USSD shows a free fee and moves the money once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[ussd frs] a payment to a merchant over USSD shows a free fee and moves the money once\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', '01911000001', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '6, 01911000001, 25, 1, ' + MW.pin);\\n      S.ussdScreens([\\n        PAGE,\\n        'মার্চেন্টের Bits নম্বর দিন',\\n        'টাকার পরিমাণ দিন',\\n        '01911000001 মার্চেন্টে 25.00 টাকা, ফি 0.00?\\\\n1 নিশ্চিত করুন\\\\n2 বাতিল',\\n        'আপনার পিন দিন',\\n      ]);\\n      S.ussdEnds('01911000001 মার্চেন্টকে 25.00 টাকা দেওয়া হয়েছে।');\\n      await S.changedBy({ '01711000001': -2500, '01911000001': 2500, 'FEE_INCOME': 0 });\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[ussd frs] add money from a bank account over USSD credits the wallet once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[ussd frs] add money from a bank account over USSD credits the wallet once\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.sim.reset('c2wbank'));\\n      await MW.callbacks.bankCallbacks('ONCE');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.dial('robi', '01711000001', '*269#', '7, 1234567890123, 500, 1, ' + MW.pin);\\n      S.ussdEnds('500.00 টাকা যোগ হয়েছে।');\\n      await S.changedBy({ '01711000001': 50000, 'SETTLEMENT': -50000, 'FEE_INCOME': 0 });\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[ussd frs] my account shows a mini statement and does not move money",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[ussd frs] my account shows a mini statement and does not move money\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001']);\\n      await S.dial('robi', '01711000001', '*269#', '8, 2');\\n      const last = S.session.screens[S.session.screens.length - 1];\\n      const message = last.message || '';\\n      S.check('the mini statement ends', S.session.ended === true && last.flag === 'END'\\n        && (message.startsWith('সাম্প্রতিক') || message.startsWith('কোনো লেনদেন')), S.session.screens);\\n      await S.noChange();\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[ussd frs] change PIN on USSD stays on the maintenance text and moves nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[ussd frs] change PIN on USSD stays on the maintenance text and moves nothing\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001']);\\n      await S.dial('robi', '01711000001', '*269#', '8, 3');\\n      S.ussdEnds('পিন পরিবর্তন এখন বন্ধ।');\\n      await S.noChange();\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[ussd frs] a remittance reference that is not an Upay txn id says there is none",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[ussd frs] a remittance reference that is not an Upay txn id says there is none\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.dial('robi', '01711000001', '*269#', '11, ABC12345');\\n      S.ussdEnds('এই রেফারেন্সে রেমিট্যান্স নেই।');\\n    })\")), null);"
                 ]
               }
             }

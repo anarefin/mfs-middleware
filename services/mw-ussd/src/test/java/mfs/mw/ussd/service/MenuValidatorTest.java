@@ -19,6 +19,7 @@ class MenuValidatorTest {
   @Test
   void theSeededMenuIsValid() {
     assertThat(MenuValidator.problems(MenuParser.parseResource(JSON, "menus/main-v3.json"))).isEmpty();
+    assertThat(MenuValidator.problems(MenuParser.parseResource(JSON, "menus/main-v4.json"))).isEmpty();
   }
 
   @Test
@@ -90,12 +91,14 @@ class MenuValidatorTest {
                 + "\"d\":{\"type\":\"END\",\"text\":{\"en\":\"x\"}}");
     assertThat(MenuValidator.problems(m))
         .containsExactlyInAnyOrder(
-            "a: lookup bill needs a mapping for [billerCode]", "b: lookup must be one of [bill]");
+            "a: lookup bill needs a mapping for [billerCode]",
+            "b: lookup must be one of [bill, charges, remit, statement]");
   }
 
   @Test
   void aPublishedMenuNeedsEveryTextInBothLanguages() {
     assertThat(MenuValidator.publishProblems(MenuParser.parseResource(JSON, "menus/main-v3.json"))).isEmpty();
+    assertThat(MenuValidator.publishProblems(MenuParser.parseResource(JSON, "menus/main-v4.json"))).isEmpty();
     Menu m =
         menu(
             "\"a\":{\"type\":\"MENU\",\"text\":{\"en\":\"A\"},"

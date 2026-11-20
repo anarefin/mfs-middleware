@@ -17,6 +17,8 @@ public record FlowRequest(
     @Sensitive(SensitiveType.SECRET) EncryptedPin pin) {
 
   public static final String CREDIT_PARTY = "creditParty";
+  /** ADD_MONEY_BANK: the linked bank account the money is drawn from. */
+  public static final String DEBIT_PARTY = "debitParty";
   public static final String AMOUNT = "amount";
   /** TOPUP: the operator; BILL_PAY: the aggregator serving the biller. */
   public static final String PARTNER_ID = "partnerId";

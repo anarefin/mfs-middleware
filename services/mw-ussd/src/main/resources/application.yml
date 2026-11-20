@@ -265,7 +265,7 @@ mw:
     status-topic: mw.txn.status.v1
     # Dev seed: stored in ussd.menu and activated for MNOs without a menu or still on an older
     # version of the seed (service/MenuSeeder).
-    seed-menu: menus/main-v3.json
+    seed-menu: menus/main-v4.json
     # mw-adapter-billpay internal API (DYNAMIC billers, bill lookup; read-only), over the app zone
     # network. Short read timeout: the MNO holds the USSD step open while the bill is fetched.
     billpay:

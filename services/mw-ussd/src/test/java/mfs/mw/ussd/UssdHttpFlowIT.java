@@ -132,11 +132,11 @@ class UssdHttpFlowIT {
     List<String> screens = walkToPin(session, true, "10");
     assertThat(screens)
         .containsExactly(
-            "Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English",
-            "Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা",
+            "Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n0. পরবর্তী\n00. পেছনে",
+            "Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n0. Next\n00. Back",
             "Enter recipient Bits number",
             "Enter amount (Tk)",
-            "Send Tk 10.00 to 01812345678?\n1 Confirm\n2 Cancel",
+            "Send Tk 10.00 to 01812345678?\nFee Tk 5.00\n1 Confirm\n2 Cancel",
             "Enter your PIN");
 
     JsonNode done = step(session, "CONTINUE", PIN);
@@ -267,7 +267,6 @@ class UssdHttpFlowIT {
       String session = "it-" + UUID.randomUUID();
       String menu = step(session, "BEGIN", "").path("message").asString();
       if (menu.contains("সেন্ড")) {
-        assertThat(menu).contains("5 ব্যালেন্স");
         step(session, "CONTINUE", "9");
       }
       assertThat(step(session, "CONTINUE", "5").path("message").asString()).isEqualTo("Enter your PIN");

@@ -109,7 +109,8 @@ class UssdEngineTest {
     };
     return new UssdEngine(
         catalog, sessions, new InputValidator(), new ScreenFormatter(), flow,
-        TestPinTransport.create(), new DynamicLists(p, BILLS), new Lookups(BILLS), p, clock, codes, language,
+        TestPinTransport.create(), new DynamicLists(p, BILLS),
+        new Lookups(BILLS, new mfs.mw.ussd.client.StubCoreReads(), new mfs.mw.ussd.client.StubCoreReads()), p, clock, codes, language,
         core);
   }
 
@@ -717,7 +718,8 @@ class UssdEngineTest {
     engine = new UssdEngine(
         catalog, sessions, new InputValidator(), new ScreenFormatter(), flow, TestPinTransport.create(),
         new DynamicLists(props(UssdProperties.Overflow.PAGE, 182), BILLS),
-        new Lookups(BILLS), props(UssdProperties.Overflow.PAGE, 182), clock, new OpenShortCodes(), prefs, accounts);
+        new Lookups(BILLS, new mfs.mw.ussd.client.StubCoreReads(), new mfs.mw.ussd.client.StubCoreReads()),
+        props(UssdProperties.Overflow.PAGE, 182), clock, new OpenShortCodes(), prefs, accounts);
     assertThat(dial("w2b").text()).isEqualTo("Bits\n1 ব্যাংক");
     UssdResponse shown = send("w2b", "1");
     assertThat(shown.end()).isTrue();

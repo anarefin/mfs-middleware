@@ -81,11 +81,11 @@ public abstract class UssdMenuWalkSuite {
 
     assertThat(w.screens().subList(0, 6))
         .containsExactly(
-            "Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English",
-            "Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা",
+            "Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n0. পরবর্তী\n00. পেছনে",
+            "Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n0. Next\n00. Back",
             "Enter recipient Bits number",
             "Enter amount (Tk)",
-            "Send Tk 10.00 to 01812345678?\n1 Confirm\n2 Cancel",
+            "Send Tk 10.00 to 01812345678?\nFee Tk 5.00\n1 Confirm\n2 Cancel",
             "Enter your PIN");
     assertThat(w.ended()).isTrue();
     assertThat(w.last()).startsWith("Tk 10.00 sent to 01812345678. TxnID ");
@@ -109,7 +109,7 @@ public abstract class UssdMenuWalkSuite {
         .containsExactly(
             "Mobile Recharge\n1 Own number\n2 Other number",
             "Enter recharge amount (Tk)",
-            "Recharge Tk 10.00 to 01712345678?\n1 Confirm\n2 Cancel");
+            "Recharge Tk 10.00 to 01712345678?\nFee Tk 2.00\n1 Confirm\n2 Cancel");
   }
 
   @Test
