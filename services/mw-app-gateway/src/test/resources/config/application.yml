@@ -15,6 +15,9 @@ mw:
     # Obviously fake test value; the real key is in Vault (ticket 105).
     preview:
       signing-key: test-only-preview-signing-key-not-a-secret
+    # Obviously fake test value; the real key is in Vault (ticket 117b).
+    linked-accounts:
+      encryption-key: test-only-linked-account-key-not-a-secret
   outbox:
     relay:
       # Off by default in tests: Spring caches test contexts, and a relay left running in one

@@ -240,7 +240,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-05 | tickets 113, 132 | biller catalogue in the database |
 | FL-06 | ticket 116 | refund bounds |
 | FL-07 | ticket 118 | card tokens only (card PAN never enters the middleware, root `CLAUDE.md`) |
-| FL-08 | ticket 117 | linked bank accounts with AVL |
+| FL-08 | ticket 117 | linked bank accounts with AVL: done (117b: `/app/v1/bank-accounts`, AVL API `/bank/v1/accounts/validate`) |
 | FL-09 | ticket 117 | W2B with AVL and a hold |
 | FL-10 | ticket 119 | IMT push and lookup |
 | FL-11 | ticket 120 | ATM one-time token |

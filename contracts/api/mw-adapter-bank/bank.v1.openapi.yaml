@@ -1,0 +1,102 @@
+openapi: 3.1.0
+info:
+  title: Bits bank internal API (mw-adapter-bank)
+  version: 1.0.0
+  description: |
+    Internal, synchronous API of mw-adapter-bank (ticket 117b, FRS UC-14 AVL, FL-08). One account
+    validation (AVL) on a bank profile `bank-<code>`: the bank checks the account and answers its
+    holder name. No money moves and nothing is stored here. Its client is mw-app-gateway (linking a
+    bank account, `POST /app/v1/bank-accounts`), over the app zone network
+    (`http://mw-adapter-bank:8080`); it is not routed by APISIX and has no edge route.
+    The account number is never echoed: the answer carries its last 4 digits only, and the holder
+    name only as its first initial (`MaskingPolicy`), so neither the full name nor the full number
+    leaves the adapter. Every error is the 5.3 envelope. The call is a read and may be retried.
+servers:
+  - url: http://mw-adapter-bank:8080
+security:
+  - internalClientCredentials: []
+paths:
+  /bank/v1/accounts/validate:
+    post:
+      operationId: validateBankAccount
+      summary: Ask a bank profile whether an account exists and is active, and who holds it
+      description: >-
+        One INQUIRY on the profile `bank-<bankCode>`. Errors: 400 MW-VAL-001 (bad bank code or
+        account number); 401 MW-AUTH-001 (no or bad token); 403 MW-AUTH-002 (a client that may not
+        call); 502 MW-PTR-BANK_<CODE>-<suffix> (the bank refused: closed, unknown or blocked account)
+        or MW-PTR-UNKNOWN (no such profile); 503 MW-SYS-PARTNER_<reason> (not sent, including
+        MAINTENANCE; retryable); 504 MW-TMO-PARTNER_<reason> (no usable answer; retryable).
+      parameters:
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ValidateAccountRequest" }
+      responses:
+        "200":
+          description: The account is valid; masked holder name and last 4 digits
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountValidation" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+        "504": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    internalClientCredentials:
+      type: oauth2
+      description: >-
+        Keycloak realm `services` client-credentials JWT (spec 18.2): signature, expiry, exact
+        issuer, `aud` contains `mw-adapter-bank`, `azp` one of the allowed clients
+        (`mw.internal-auth.allowed-clients`: mw-app-gateway).
+      flows:
+        clientCredentials:
+          tokenUrl: http://keycloak:8080/realms/services/protocol/openid-connect/token
+          scopes: {}
+  responses:
+    Error:
+      description: Error envelope (spec 5.3)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    ValidateAccountRequest:
+      type: object
+      required: [bankCode, accountNumber]
+      additionalProperties: false
+      properties:
+        bankCode: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,40}$", description: "The profile is bank-<bankCode>" }
+        accountNumber: { type: string, pattern: "^[0-9]{6,20}$" }
+    AccountValidation:
+      type: object
+      required: [bankCode, accountLast4, holderName]
+      additionalProperties: false
+      properties:
+        bankCode: { type: string }
+        accountLast4: { type: string, pattern: "^[0-9]{4}$" }
+        holderName: { type: string, description: "First initial only, e.g. R." }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR(-[A-Z0-9_]+)?)(-[A-Z0-9_]+)$" }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        timestamp: { type: string, format: date-time }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

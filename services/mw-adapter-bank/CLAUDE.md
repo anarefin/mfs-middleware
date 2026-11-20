@@ -24,6 +24,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   `attributes.holderName`, the holder's first initial only, masked in the route's JSONata so the whole
   name never leaves the adapter). The call input carries `account` and `direction` (`DEBIT` C2W,
   `CREDIT` W2B). Card, UCB ATM / IMT and CyberSource are later tickets.
+- Account validation API (ticket 117b, FRS UC-14, FL-08; `controller/AccountValidationController`,
+  `service/AccountValidationService`, `config/SecurityConfig` + `InternalAuthProperties` copied from
+  mw-core-mock): `POST /bank/v1/accounts/validate {bankCode, accountNumber}` runs one INQUIRY on
+  `bank-<bankCode>` through `PartnerGateway.call` on the request thread (input `account` + `creditParty
+  {BANK_ACCOUNT}`, as a Kafka INQUIRY) and answers `{bankCode, accountLast4, holderName}` (first initial,
+  masked again here); never the full number. Errors as telco's bill fetch: `MW-PTR-BANK_<CODE>-<suffix>`
+  502, `MW-PTR-UNKNOWN` 502, `MW-SYS-PARTNER_*` 503, `MW-TMO-PARTNER_*` 504. Auth: a Keycloak realm
+  `services` client-credentials JWT (`mw.internal-auth.*`: JWKS, exact issuer, audience `mw-adapter-bank`,
+  `azp` in `allowed-clients` = `mw-app-gateway`), 401 `MW-AUTH-001` / 403 `MW-AUTH-002`; only `/bank/**` is
+  protected, callbacks and the actuator stay open. Plain HTTP on the app network (as core-mock's wallet API):
+  the adapter has no TLS server chassis yet, so mTLS on this port is an open item. Not routed by APISIX.
+  Tests `service/AccountValidationServiceTest`, `controller/AccountValidationControllerTest`.
 - Stable partner reference (`service/PartnerReferenceService`, table `partner_reference` in own
   schema `bank_ref`): `BITS` + txnId hex, stored on first use, sent as the bank's
   `transactionId`; a repeated one returns the original outcome.
@@ -142,12 +154,12 @@ fresh UUID per send). Identical in the three adapters (telco has no callback end
 
 ## Contracts owned
 
-- None.
+- `api/mw-adapter-bank/bank.v1.openapi.yaml` (ticket 117b): the account validation API; client mw-app-gateway.
 
 ## Contracts used
 
 - Machine-readable list: `contracts.yml` (checked by `./gradlew :contractsLint`, tested by
-  `contracts/ProducedContractsTest` / `ConsumedContractsTest`). No APIs served or called with a contract file (the partner callback endpoint and the bank wire format have none).
+  `contracts/ProducedContractsTest` / `ConsumedContractsTest`). The only API with a contract file is the account validation it serves (the partner callback endpoint and the bank wire format have none).
 - `events/mw-audit-dw/mw.audit.event.v1` out (`partner.call.completed`, `messaging/PartnerAuditPublisher`);
   own type `dto/AuditEvent`.
 - `events/mw-orchestrator/mw.partner.request.v1` (family `bank`, shared payload) in; own type
