@@ -118,6 +118,57 @@ class PayloadScrubTest {
   }
 
   @Test
+  void compoundLowerCaseKeysAreSecretToo() {
+    for (String key :
+        java.util.List.of(
+            "pincipher", "pinciphertext", "newpin", "encryptedpin", "userpassword", "walletpin", "txnpin",
+            "oldpasscode", "currentotp", "mpinblock", "otpcode", "NEWPIN", "encrypted_pinciphertext")) {
+      assertThat(PayloadScrub.isSecretKey(key)).as(key).isTrue();
+      String out = PayloadScrub.scrub("application/json", "{\"" + key + "\":\"S3CR3TVALUE\"}");
+      assertThat(out).as(key).doesNotContain("S3CR3TVALUE");
+    }
+    for (String key : java.util.List.of("spinner", "shipping", "opinion", "options", "topping", "pinnacle", "happiness")) {
+      assertThat(PayloadScrub.isSecretKey(key)).as(key).isFalse();
+    }
+  }
+
+  @Test
+  void deepNestingFailsClosed() {
+    String open = "<a>".repeat(40);
+    String close = "</a>".repeat(40);
+    String out = PayloadScrub.scrub("application/xml", "<req>" + open + "<pin>2468</pin>" + close + "</req>");
+
+    assertThat(out).doesNotContain("2468");
+    String unclosed = PayloadScrub.scrub("application/xml", "<req><pin>1357<a>9</a>");
+    assertThat(unclosed).doesNotContain("1357");
+  }
+
+  @Test
+  void adversarialXmlFinishesFast() {
+    String[] inputs = {
+      "<pin>".repeat(20_000),
+      "<a>".repeat(20_000) + "x",
+      "<a b=\"".repeat(20_000),
+      "<x>" + "<y>a</x>".repeat(10_000),
+      "<" + "a".repeat(60_000),
+    };
+    for (String in : inputs) {
+      long start = System.nanoTime();
+      String out = PayloadScrub.scrub("application/xml", in);
+      long ms = (System.nanoTime() - start) / 1_000_000;
+      assertThat(ms).as("input of %d chars took %d ms", in.length(), ms).isLessThan(1_000);
+      assertThat(out).isNotNull();
+    }
+  }
+
+  @Test
+  void anOversizedBodyIsBlankedWhole() {
+    String big = "{\"note\":\"" + "x".repeat(PayloadScrub.MAX_SCAN) + "\"}";
+
+    assertThat(PayloadScrub.scrub("application/json", big)).isEqualTo("****");
+  }
+
+  @Test
   void nullAndEmptyStayAsTheyAre() {
     assertThat(PayloadScrub.scrub("application/json", null)).isNull();
     assertThat(PayloadScrub.scrub("text/plain", "")).isEmpty();
