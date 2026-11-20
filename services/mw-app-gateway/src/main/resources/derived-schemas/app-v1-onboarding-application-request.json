@@ -1,0 +1,46 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/OnboardingApplicationRequest",
+  "type": "object",
+  "required": [
+    "nid",
+    "dob",
+    "consent"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "walletId": {
+      "type": "string"
+    },
+    "nid": {
+      "type": "string"
+    },
+    "dob": {
+      "type": "string"
+    },
+    "nameEn": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "nameBn": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "consent": {
+      "type": "object",
+      "required": [
+        "purpose"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "grantedAt": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

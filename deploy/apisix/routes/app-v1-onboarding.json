@@ -1,0 +1,59 @@
+{
+  "name": "app-v1-onboarding",
+  "desc": "eKYC onboarding (ticket 124b, UC-01): as app-v1 (mw-auth token, consumer key, Redis quota, own group) with a 3 MiB body cap for the base64 NID and selfie images",
+  "uri": "/app/v1/onboarding/*",
+  "methods": [
+    "GET",
+    "POST"
+  ],
+  "plugins": {
+    "client-control": {
+      "max_body_size": 3145728
+    },
+    "openid-connect": {
+      "discovery": "http://mw-auth:8080/auth/v1/.well-known/openid-configuration",
+      "client_id": "mw-app",
+      "bearer_only": true,
+      "use_jwks": true,
+      "realm": "mw-app",
+      "iat_slack": 10,
+      "set_access_token_header": false,
+      "set_userinfo_header": false,
+      "set_id_token_header": false
+    },
+    "serverless-pre-function": {
+      "phase": "access",
+      "functions": [
+        "@lua:lua/consumer-from-jwt.lua"
+      ]
+    },
+    "limit-count": {
+      "count": 30,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "mw_consumer",
+      "group": "app-v1-onboarding",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "redis",
+      "redis_port": 6379,
+      "redis_password": "$env://REDIS_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": {
+      "connect": 5,
+      "send": 10,
+      "read": 35
+    },
+    "nodes": {
+      "mw-app-gateway:8080": 1
+    }
+  }
+}

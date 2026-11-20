@@ -1,7 +1,6 @@
 # Contracts this module produces and consumes (tickets 53, 124); paths relative to contracts/.
 # `./gradlew :contractsLint` checks every entry exists; the module's build.gradle.kts tracks the listed
-# contracts as test inputs. The EC NID service has no contract file yet: its REST shape is written in
-# client/EcNidClient and becomes a contract with the mw-simulators EC mock (ticket 124b).
+# contracts as test inputs. The EC NID wire (client/EcNidClient) is the EC mock's contract (ticket 124b).
 produces:
   events:
     - events/mw-compliance/mw.kyc.completed.v1.schema.json
@@ -10,4 +9,6 @@ produces:
 consumes:
   events: []
   apis:
+    - api/mw-core-mock/core-wallet.v1.openapi.yaml
     - api/mw-crypto/crypto-internal.v1.openapi.yaml
+    - api/mw-simulators/ec-nid.v1.openapi.yaml

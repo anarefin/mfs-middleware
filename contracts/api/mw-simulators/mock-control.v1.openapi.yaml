@@ -441,7 +441,7 @@ components:
       name: party
       in: path
       required: true
-      schema: { type: string, examples: [ocs, billagg, c2wbank, merchant, cybersource, ucb-imt, ucbatm, npsb, smsc, ussdgw, payshield, push, aml, trustbank, dw] }
+      schema: { type: string, examples: [ocs, billagg, c2wbank, merchant, cybersource, ucb-imt, ec, ucbatm, npsb, smsc, ussdgw, payshield, push, aml, trustbank, dw] }
   schemas:
     Behaviour:
       type: string

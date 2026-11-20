@@ -35,3 +35,6 @@ consumes:
     - api/mw-notify/notify-internal.v1.openapi.yaml
     # ticket 107b: profile (WAL-01), limits (WAL-05) and the statement (WAL-12), asked for the token's MSISDN
     - api/mw-core-mock/core-wallet.v1.openapi.yaml
+    # ticket 124b: eKYC onboarding (POST/GET /app/v1/onboarding/applications...), over mTLS with the subject
+    # headers from the app token (client/ComplianceClient)
+    - api/mw-compliance/compliance.v1.openapi.yaml

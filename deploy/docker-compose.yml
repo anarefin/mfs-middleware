@@ -34,7 +34,7 @@
 # ops = Keycloak, Vault, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
-# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8102), the
+# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8103), the
 # two consoles (3000, 3001) and the platform (postgres 5432, redis 6379, kafka 9094, keycloak 8180,
 # vault 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
 # (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
@@ -423,6 +423,8 @@ services:
       KC_MW_ADAPTER_REMIT_SECRET: ${KC_MW_ADAPTER_REMIT_SECRET:?cp dev.env.defaults .env}
       # mw-simulators' trust bank mock reads mw-core-mock's /core/v1/statements (ticket 123)
       KC_MW_SIMULATORS_SECRET: ${KC_MW_SIMULATORS_SECRET:?cp dev.env.defaults .env}
+      # mw-compliance: mw-crypto (NID tokens, PII envelopes) and the core's KYC level (ticket 124b)
+      KC_MW_COMPLIANCE_SECRET: ${KC_MW_COMPLIANCE_SECRET:?cp dev.env.defaults .env}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
@@ -749,6 +751,7 @@ services:
       KC_MW_ADAPTER_REMIT_SECRET: ${KC_MW_ADAPTER_REMIT_SECRET:?cp dev.env.defaults .env}
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_SIMULATORS_SECRET: ${KC_MW_SIMULATORS_SECRET:?cp dev.env.defaults .env}
+      KC_MW_COMPLIANCE_SECRET: ${KC_MW_COMPLIANCE_SECRET:?cp dev.env.defaults .env}
       SFTP_DEV_PASSWORD: ${SFTP_DEV_PASSWORD:?cp dev.env.defaults .env}
       USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
@@ -1092,20 +1095,43 @@ services:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
-  # Customer eKYC (ticket 124a, profile core): internal API only, not published, not on the edge. Ticket
-  # 124b adds its Keycloak client, mw-crypto binding, mTLS, the EC mock and the app-gateway routes.
+  # Customer eKYC (tickets 124a, 124b; profile core): internal API /internal/v1/kyc/** only, not on the
+  # edge. mTLS (D24): 8080 (and the published 8103) needs a client certificate of pki_int, issued at start
+  # (pki_int/issue/mw-compliance, provision); probes on the plain management port 8081, inside the network
+  # only. Calls mw-crypto (TOKENISE_NID, KEK_COLUMN), the EC NID mock of mw-simulators and the core's
+  # PUT /core/v1/accounts/{walletId}/kyc-level with its realm services client (KC_MW_COMPLIANCE_SECRET).
   mw-compliance:
     <<: *app
     profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_COMPLIANCE:-8103}:8080"
     image: mfs-mw/mw-compliance:local
     build: { context: ../services/mw-compliance, args: *jvm-build-args }
     depends_on:
       <<: *infra-deps
+      mw-crypto: { condition: service_healthy }
     volumes:
       - compliance-approle:/run/mw/approle:ro
     environment:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      MW_TLS_ENABLED: "true"
+      MANAGEMENT_SERVER_PORT: "8081"
+      MANAGEMENT_SERVER_SSL_ENABLED: "false"
+    healthcheck:
+      test:
+        - CMD
+        - bash
+        - -c
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8081 &&
+          printf 'GET /actuator/health/readiness HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status":"UP"' <&3
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      start_interval: 1s
+      retries: 3
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }

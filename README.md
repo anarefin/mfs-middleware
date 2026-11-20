@@ -418,6 +418,7 @@ https://localhost on 443. Production stays edge-only (ADR D3 amendment).
 | 8095 | `mw-auth`, wallet authentication: its public port (`MW_PORT_AUTH`; the mTLS internal API 8443 is not published) |
 | 8096 | `mw-data-export` (`MW_PORT_DATA_EXPORT`) |
 | 8097 | `mw-recon` (`MW_PORT_RECON`) |
+| 8103 | `mw-compliance`, customer eKYC: HTTPS with a mandatory client certificate (`MW_PORT_COMPLIANCE`) |
 | 3000 | `mw-admin-ui`, path `/console` (`MW_PORT_ADMIN_UI`) |
 | 3001 | `mw-test-console`, profile `tester` (`MW_PORT_TEST_CONSOLE`) |
 | 5432 | `postgres` (`MW_PORT_POSTGRES`) |

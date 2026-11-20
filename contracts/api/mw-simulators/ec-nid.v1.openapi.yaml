@@ -1,0 +1,106 @@
+openapi: 3.1.0
+info:
+  title: Election Commission NID service v1 (mw-simulators EC mock, test-only)
+  version: 1.0.0
+  description: |
+    The EC NID verify wire as mw-compliance's `client/EcNidClient` calls it (ticket 124, 124b; FRS EXT-07), served
+    by the mw-simulators EC mock (mock party `ec`, operation `verify`, key `nid`). The real EC is reached with
+    the same request and configuration only (base URL and credentials from Vault). HTTP Basic is required (the
+    mock checks presence only). The mock answers from `seed/v1/ec/nid.json` (fake citizens, Bangla and English
+    names). Magic values on the NID: ending `000` not found, `999` the answer held past the caller's timeout,
+    `111` the record with a date of birth a year after the one asked (DOB mismatch). Mock control
+    (`/mock-control/ec/...`) decides first. A SOAP 1.1 front end (`POST /ec/v1/soap`, namespace `urn:ec:nid:v1`,
+    body element `VerifyNid` with `nid` and `dob`) answers the same record as `VerifyNidResponse` (each field an
+    element) or a fault whose detail carries `ec:code`.
+servers:
+  - url: http://mw-simulators:8080
+paths:
+  /ec/v1/nid/verify:
+    post:
+      operationId: verifyNid
+      summary: The citizen's record of one NID
+      security:
+        - basic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VerifyRequest" }
+      responses:
+        "200":
+          description: The record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Citizen" }
+        "401":
+          description: No credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refusal" }
+        "404":
+          description: The EC does not know the NID (code NID_NOT_FOUND)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refusal" }
+        "500":
+          description: EC failure (mock control HTTP_5XX)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refusal" }
+        "503":
+          description: EC in maintenance (mock control switch) or HTTP_5XX with that status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Refusal" }
+  /ec/v1/soap:
+    post:
+      operationId: verifyNidSoap
+      summary: SOAP 1.1 VerifyNid (urn:ec:nid:v1)
+      security:
+        - basic: []
+      requestBody:
+        required: true
+        content:
+          text/xml:
+            schema: { type: string }
+      responses:
+        "200":
+          description: VerifyNidResponse
+          content:
+            text/xml:
+              schema: { type: string }
+        "500":
+          description: SOAP fault (unknown NID, no credentials, EC failure)
+          content:
+            text/xml:
+              schema: { type: string }
+components:
+  securitySchemes:
+    basic: { type: http, scheme: basic }
+  schemas:
+    VerifyRequest:
+      type: object
+      required: [nid, dob]
+      properties:
+        nid: { type: string, pattern: "^(\\d{10}|\\d{13}|\\d{17})$" }
+        dob: { type: string, format: date }
+        consentId: { type: string, description: The mw-compliance consent row the call is made under (CMP-04) }
+        requestId: { type: string, description: The application id; the call is idempotent per request id }
+    Citizen:
+      type: object
+      required: [nid, dob, nameEn, nameBn]
+      properties:
+        nid: { type: string }
+        dob: { type: string, format: date }
+        nameEn: { type: string }
+        nameBn: { type: string }
+        fatherName: { type: string }
+        motherName: { type: string }
+        address: { type: string }
+        photo: { type: string, description: "A placeholder reference (placeholder:selfie-NNN); no image" }
+    Refusal:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }

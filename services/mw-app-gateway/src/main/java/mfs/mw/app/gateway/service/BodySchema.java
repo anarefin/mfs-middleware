@@ -56,6 +56,10 @@ public class BodySchema {
   public static final String CARD_SESSION = "derived-schemas/app-v1-card-session-request.json";
   /** {@code POST /app/v1/atm/tokens}, from {@code AtmTokenRequest} (ticket 120b2). */
   public static final String ATM_TOKEN = "derived-schemas/app-v1-atm-token-request.json";
+  /** {@code POST /app/v1/onboarding/applications} (ticket 124b). */
+  public static final String ONBOARDING_APPLICATION = "derived-schemas/app-v1-onboarding-application-request.json";
+  /** {@code POST /app/v1/onboarding/applications/{id}/documents} (ticket 124b). */
+  public static final String ONBOARDING_DOCUMENT = "derived-schemas/app-v1-onboarding-document-request.json";
 
   private final ObjectReader reader;
   private final Schema schema;

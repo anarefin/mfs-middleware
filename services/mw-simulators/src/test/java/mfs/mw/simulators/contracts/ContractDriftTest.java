@@ -22,7 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
  * profile {@code test}), which {@link ContractDrift} compares with the {@code produces.apis} files of
  * {@code contracts.yml} under {@code mwContractsDir}. An endpoint in code but not in a contract (or
  * the reverse), a required parameter or a response code on one side only fails; only the {@code
- * /mock-control/} paths are compared (ticket 102b), and the profile {@code mock-control} is on. Conditional
+ * /mock-control/} paths (ticket 102b) and the EC NID wire {@code /ec/} (ticket 124b) are compared, and the profile {@code mock-control} is on. Conditional
  * controllers (test-only APIs) are switched on in {@code properties} so the whole surface is compared.
  */
 @WebMvcTest(properties = {"spring.test.mockmvc.print=none"})
@@ -52,7 +52,7 @@ class ContractDriftTest {
   }
 
   // The partner wire formats (/ocs, /billagg, /c2wbank, ...) and the deprecated /sim/* aliases stay
-  // simulator-owned, not in contracts/ (CLAUDE.md); the owned surface is the mock-control API.
+  // simulator-owned, not in contracts/ (CLAUDE.md); the owned surface is the mock-control API and the EC NID wire.
   @Test
   void theCodeMatchesTheOwnedContracts() {
     List<JsonNode> contracts = ContractDrift.ownedApis().stream().map(ContractDrift::contract).toList();
@@ -67,7 +67,8 @@ class ContractDriftTest {
   static JsonNode mockControlOnly(JsonNode doc) {
     ObjectNode copy = (ObjectNode) doc.deepCopy();
     ObjectNode paths = (ObjectNode) copy.path("paths");
-    paths.propertyNames().stream().filter(p -> !p.startsWith("/mock-control/")).toList().forEach(paths::remove);
+    paths.propertyNames().stream().filter(p -> !p.startsWith("/mock-control/") && !p.startsWith("/ec/")).toList()
+        .forEach(paths::remove);
     return copy;
   }
 

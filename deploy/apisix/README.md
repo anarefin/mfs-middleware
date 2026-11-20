@@ -119,6 +119,12 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
    see "Rate-limiter degradation alert" below). A perf run with one test user needs more users
    or a higher count.
 
+Route `app-v1-onboarding` (`GET|POST /app/v1/onboarding/*`, ticket 124b, FRS UC-01) -> `mw-app-gateway:8080`:
+the same `openid-connect`, consumer key and Redis `limit-count` as `app-v1` (30 / 60 s, own group
+`app-v1-onboarding`), with `client-control` `max_body_size` 3 MiB for the NID and selfie images (2 MB decoded,
+base64 in JSON). mw-app-gateway keeps the same 3 MiB cap on the image upload only, checks the decoded size
+and the type (JPEG or PNG) and forwards to mw-compliance with the end user from the token.
+
 Route `app-ws-v1` (`/app/ws/v1` and `/app/ws/v1/*`, ticket 108) -> `mw-app-gateway:8080`: the same
 `client-control`, `openid-connect`, consumer key and Redis `limit-count` as `app-v1`, with its own
 group `app-ws-v1` (a shared group is refused by `scripts/test/test_apisix_edge.sh`). POST is the SOAP
@@ -375,6 +381,8 @@ service; each keeps its own body cap, 413 `MW-VAL-BODY_TOO_LARGE`). Every public
 | `app-v1` | `POST /app/v1/billers/{code}/fetch-bill` | mw-app-gateway, as above | `app-v1-fetch-bill-request.json` (`FetchBillRequest`) |
 | `app-v1` | `POST /app/v1/saved-billers` | mw-app-gateway, as above | `app-v1-save-biller-request.json` (`SaveBillerRequest`) |
 | `app-v1` | `POST /app/v1/favourites` | mw-app-gateway, as above | `app-v1-save-favourite-request.json` (`SaveFavouriteRequest`) |
+| `app-v1-onboarding` | `POST /app/v1/onboarding/applications` | mw-app-gateway, as above | `app-v1-onboarding-application-request.json` (`OnboardingApplicationRequest`) |
+| `app-v1-onboarding` | `POST /app/v1/onboarding/applications/{id}/documents` | mw-app-gateway, as above | `app-v1-onboarding-document-request.json` (`OnboardingDocumentRequest`) |
 | `auth-v1` | `POST /auth/v1/otp` | mw-auth: `BodySchemaInterceptor` (cached bytes, the ones the device signs) | `auth-v1-otp-request.json` (`OtpRequest`) |
 | `auth-v1` | `POST /auth/v1/devices` | mw-auth, as above | `auth-v1-device-binding-request.json` (`DeviceBindingRequest`) |
 | `auth-v1` | `POST /auth/v1/sessions` | mw-auth, as above | `auth-v1-login-request.json` (`LoginRequest`) |
@@ -386,7 +394,7 @@ service; each keeps its own body cap, 413 `MW-VAL-BODY_TOO_LARGE`). Every public
 | `portal-org-v1` | `POST /portal/org/v1/bulk/batches/{batchId}/reject` | mw-portal-api: `BodySchemaAdvice` | `portal-org-v1-reject-request.json` (inline reject body) |
 | `ussd-http-<mno>` | `POST /ussd/{mno}` | mw-ussd: `BodySchemaAdvice` | `ussd-http-v1-step.json` (`UssdStep`) |
 
-No body, so no schema: `POST /auth/v1/sessions/logout`, `POST /checkout/pay/v1/{token}/cancel`, portal
+No body, so no schema: `POST /auth/v1/sessions/logout`, `POST /app/v1/onboarding/applications/{id}/submit`, `POST /checkout/pay/v1/{token}/cancel`, portal
 approve/pause/resume. Not JSON: the portal CSV upload (`POST /portal/org/v1/bulk/batches`, `text/csv`),
 checked by mw-portal-api's `BulkCsvParser` (header, rows, row and byte caps). Partner callbacks
 (`partner-billagg-callback`, `partner-c2wbank-callback`) have a partner-specific wire format, not a

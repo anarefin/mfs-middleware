@@ -641,6 +641,52 @@ class CoreWalletRestIT {
     assertThat(getAs("mw-adapter-remit", "/core/v1/accounts/" + PAYER)).hasStatus(200);
   }
 
+  // --- KYC level (ticket 124b: mw-compliance sets the level after an eKYC match, and nothing else) ---
+
+  private MvcTestResult putKycLevel(String client, String walletId, String level) {
+    return mvc.put().uri("/core/v1/accounts/" + walletId + "/kyc-level").header("Authorization", InternalTokens.bearer(client))
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"kycLevel\":\"%s\",\"applicationId\":\"%s\"}".formatted(level, UUID.randomUUID())).exchange();
+  }
+
+  private String kycLevel(String walletId) {
+    return jdbc.queryForObject("select kyc_level from wallet where id = ?", String.class, walletId);
+  }
+
+  @Test
+  void mwComplianceSetsTheKycLevelAndTheWalletStateIsAnnounced() {
+    jdbc.update("update wallet set kyc_level = 'BASIC' where id = ?", PAYER);
+    JsonNode body = served(putKycLevel("mw-compliance", PAYER, "FULL"), "/core/v1/accounts/{walletId}/kyc-level", "put", 200);
+    assertThat(body.path("walletId").asString()).isEqualTo(PAYER);
+    assertThat(body.path("kycLevel").asString()).isEqualTo("FULL");
+    assertThat(kycLevel(PAYER)).isEqualTo("FULL");
+    assertThat(jdbc.queryForObject("select count(*) from outbox where topic = 'core.wallet.event.v1' and msg_key = ?",
+        Integer.class, PAYER)).isEqualTo(1);
+
+    assertThat(served(putKycLevel("mw-compliance", PAYER, "FULL"), "/core/v1/accounts/{walletId}/kyc-level", "put", 200)
+        .path("kycLevel").asString()).as("a repeat answers the same").isEqualTo("FULL");
+    assertThat(jdbc.queryForObject("select count(*) from outbox where topic = 'core.wallet.event.v1' and msg_key = ?",
+        Integer.class, PAYER)).as("an unchanged level announces nothing").isEqualTo(1);
+  }
+
+  @Test
+  void aKycLevelOfAnUnknownWalletOrAnUnknownLevelIsRefused() {
+    assertThat(served(putKycLevel("mw-compliance", "01799999999", "FULL"), "/core/v1/accounts/{walletId}/kyc-level", "put", 422)
+        .path("code").asString()).isEqualTo("MW-CORE-WALLET_NOT_FOUND");
+    assertThat(putKycLevel("mw-compliance", PAYER, "PLATINUM")).hasStatus(400);
+  }
+
+  @Test
+  void onlyMwComplianceSetsTheKycLevelAndItCallsNothingElse() {
+    jdbc.update("update wallet set kyc_level = 'BASIC' where id = ?", PAYER);
+    assertThat(putKycLevel("mw-orchestrator", PAYER, "FULL")).hasStatus(403);
+    assertThat(putKycLevel("mw-admin-api", PAYER, "FULL")).hasStatus(403);
+    assertThat(kycLevel(PAYER)).isEqualTo("BASIC");
+    assertThat(getAs("mw-compliance", "/core/v1/accounts/" + PAYER)).hasStatus(403);
+    assertThat(getAs("mw-compliance", "/core/v1/balance/" + PAYER)).hasStatus(403);
+    assertThat(postAs("mw-compliance", "/core/v1/credits", "{}")).hasStatus(403);
+  }
+
   // --- account unlock and KYC factors (ticket 95b: mw-admin-api and mw-auth over REST) ---
 
   private MvcTestResult postAs(String client, String uri, String body) {

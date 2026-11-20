@@ -77,6 +77,8 @@ files:
   api/mw-core-mock/core-mock-seed.v1.openapi.yaml: mw-core-mock
   # test-only mock-control API of every mock party (ADR D33, ticket 102); not a product contract
   api/mw-simulators/mock-control.v1.openapi.yaml: mw-simulators
+  # the EC NID verify wire (FRS EXT-07, ticket 124b), served by the EC mock; consumed by mw-compliance
+  api/mw-simulators/ec-nid.v1.openapi.yaml: mw-simulators
   # the core wallet over REST (FRS 7.2, ADR D31, ticket 93); consumed by mw-orchestrator from ticket 95
   api/mw-core-mock/core-wallet.v1.openapi.yaml: mw-core-mock
   # test-only mock-control API of the core party and the core's global reset (ADR D33, ticket 103)
