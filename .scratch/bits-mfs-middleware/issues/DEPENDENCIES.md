@@ -121,7 +121,7 @@
 130b-audit-hops-channels-core-notify        130               open   (CHANNEL_IN in channels, CORE_CALL in orchestrator, NOTIFICATION in mw-notify; closes AUD-01/AUD-04 with 135)
 # --- M12 gate: UC-01, UC-20..22
 131-admin-partner-credentials               91,97             split (131-split-decisions.md, 2026-11-20)
-131a-admin-credentials-backend              91,97             open
+131a-admin-credentials-backend              91,97             done     135m     59 files +3307 −41     ce25fff7
 131b-maintenance-endpoint-profile           97,131a           open   (run before 115, 118-121; routing part after 98)
 131c-admin-ui-partner-tabs                  131a,131b         open
 132-admin-routing-billers-clients-ui        98,100a,113        open
