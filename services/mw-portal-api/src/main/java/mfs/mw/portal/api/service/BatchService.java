@@ -7,9 +7,11 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import mfs.mw.portal.api.config.PortalApiProperties;
+import mfs.mw.portal.api.dto.BatchPreview;
 import mfs.mw.portal.api.dto.BatchView;
 import mfs.mw.portal.api.dto.BulkFileFormat;
-import mfs.mw.portal.api.dto.BulkRow;
+import mfs.mw.portal.api.dto.BulkFile;
+import mfs.mw.portal.api.dto.InvalidRow;
 import mfs.mw.portal.api.dto.PortalUser;
 import mfs.mw.portal.api.entity.Batch;
 import mfs.mw.portal.api.entity.BatchStatus;
@@ -28,8 +30,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Org bulk disbursement, upload and maker-checker (spec 9.4, ticket 33). A file is validated in
- * full and stored only when every row is valid, as one {@code PENDING_APPROVAL} batch. A user of
+ * Org bulk disbursement, upload and maker-checker (spec 9.4, ticket 33). A file is read in full and
+ * stored as one {@code PREVIEW} batch with every row, the invalid ones excluded from execution
+ * (ticket 129b); its maker submits it ({@code PENDING_APPROVAL}). A user of
  * the same org with the checker role, who is not the batch's maker, approves or rejects it once.
  * Another org's batch is never visible (404).
  */
@@ -38,6 +41,9 @@ public class BatchService {
 
   static final String CURRENCY = "BDT";
   static final int LIST_LIMIT = 50;
+  /** Invalid rows listed in the upload's answer; the preview pages through all of them. */
+  static final int MAX_ROW_ERRORS = 100;
+  static final int PREVIEW_MAX_LIMIT = 200;
 
   private static final Logger log = LoggerFactory.getLogger(BatchService.class);
 
@@ -62,7 +68,11 @@ public class BatchService {
     return upload(maker, file, BulkFileFormat.CSV);
   }
 
-  /** Validates a CSV or XLSX file (ticket 129) and stores it as one batch awaiting approval. */
+  /**
+   * Reads a CSV or XLSX file (ticket 129) and stores it as one PREVIEW batch (ticket 129b) with
+   * every row, the invalid ones with their error codes; the answer lists the first {@link
+   * #MAX_ROW_ERRORS} invalid rows. The maker then submits it ({@link #submit}).
+   */
   @Transactional
   public BatchView upload(PortalUser maker, byte[] file, BulkFileFormat format) {
     require(maker, props.roles().maker());
@@ -71,24 +81,68 @@ public class BatchService {
           ErrorCodes.VAL_BULK_TOO_LARGE,
           "File is larger than " + props.bulk().maxBytes().toKilobytes() + " KB");
     }
-    List<BulkRow> rows = parser.parse(file, format);
-    long total = 0;
-    for (BulkRow r : rows) {
-      total = Math.addExact(total, r.amountMinor());
-    }
+    BulkFile parsed = parser.parse(file, format);
     Batch batch =
         new Batch(
-            UuidV7.next(clock), maker.orgId(), BatchStatus.PENDING_APPROVAL, rows.size(), total, CURRENCY,
-            sha256(file), maker.subject(), maker.username(), null, null, null, clock.instant(), null);
-    batches.insert(batch, rows);
-    audit.record(batch, "uploaded", maker.username(), null, BatchStatus.PENDING_APPROVAL, null);
+            UuidV7.next(clock), maker.orgId(), BatchStatus.PREVIEW, parsed.rowCount(), parsed.totalMinor(), CURRENCY,
+            sha256(file), maker.subject(), maker.username(), null, null, null, clock.instant(), null, null, null,
+            null, parsed.invalid().size());
+    batches.insert(batch, parsed);
+    audit.record(batch, "uploaded", maker.username(), null, BatchStatus.PREVIEW, null);
     log.atInfo()
         .addKeyValue("event", "bulk.batch.uploaded")
         .addKeyValue("batchId", batch.batchId())
         .addKeyValue("orgId", batch.orgId())
         .addKeyValue("rowCount", batch.rowCount())
-        .log("Bulk batch uploaded, awaiting approval");
-    return BatchMapper.view(batch);
+        .addKeyValue("invalidCount", batch.invalidCount())
+        .log("Bulk batch uploaded, in preview");
+    List<InvalidRow> invalid = parsed.invalid();
+    return BatchMapper.uploaded(batch, invalid.subList(0, Math.min(invalid.size(), MAX_ROW_ERRORS)));
+  }
+
+  /**
+   * Sends a PREVIEW batch for approval (ticket 129b): only its valid rows will ever be executed. Only
+   * the maker who uploaded it; not a PREVIEW {@code 409 MW-VAL-036}, no valid row {@code 409
+   * MW-VAL-037}. One conditional UPDATE, so a batch is submitted once.
+   */
+  @Transactional
+  public BatchView submit(PortalUser maker, String batchId) {
+    require(maker, props.roles().maker());
+    Batch batch = load(maker, batchId);
+    if (!batch.makerSub().equals(maker.subject())) {
+      throw PortalUserResolver.forbidden("Only the maker who uploaded the batch can submit it");
+    }
+    if (batch.status() != BatchStatus.PREVIEW) {
+      throw new MwException(ErrorCodes.VAL_BATCH_NOT_PREVIEW, "The batch is no longer in preview")
+          .withStatus(HttpStatus.CONFLICT);
+    }
+    if (batch.validCount() == 0) {
+      throw new MwException(ErrorCodes.VAL_BATCH_NO_VALID_ROWS, "The batch has no valid row to pay")
+          .withStatus(HttpStatus.CONFLICT);
+    }
+    if (!batches.submit(batch.batchId(), maker.orgId())) {
+      throw new MwException(ErrorCodes.VAL_BATCH_NOT_PREVIEW, "The batch is no longer in preview")
+          .withStatus(HttpStatus.CONFLICT);
+    }
+    Batch submitted = load(maker, batchId);
+    audit.record(submitted, "submitted", maker.username(), BatchStatus.PREVIEW, BatchStatus.PENDING_APPROVAL, null);
+    logControl("bulk.batch.submitted", submitted, maker);
+    return BatchMapper.view(submitted);
+  }
+
+  /**
+   * One page of the batch's rows in file order with its totals (ticket 129b), maker or checker, in
+   * any status: {@code limit} 1..{@link #PREVIEW_MAX_LIMIT}, {@code offset} from 0, else {@code 400
+   * MW-VAL-001}; {@code valid} true or false keeps only the valid or invalid rows.
+   */
+  @Transactional(readOnly = true)
+  public BatchPreview preview(PortalUser user, String batchId, int offset, int limit, Boolean valid) {
+    requireAny(user);
+    if (offset < 0 || limit < 1 || limit > PREVIEW_MAX_LIMIT) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "offset must be 0 or more, limit 1 to " + PREVIEW_MAX_LIMIT);
+    }
+    Batch batch = load(user, batchId);
+    return BatchMapper.preview(batch, offset, limit, batches.page(batch.batchId(), valid, offset, limit));
   }
 
   @Transactional(readOnly = true)

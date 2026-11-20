@@ -662,6 +662,8 @@
     async upload(user, csv) { return http('POST', B, { headers: await portals(user), raw: csv, contentType: 'text/csv' }); },
     async get(user, id) { return http('GET', B + '/' + id, { headers: await portals(user) }); },
     async list(user, status) { return http('GET', B + (status ? '?status=' + status : ''), { headers: await portals(user) }); },
+    async preview(user, id, query) { return http('GET', B + '/' + id + '/preview' + (query ? '?' + query : ''), { headers: await portals(user) }); },
+    async submit(user, id) { return http('POST', B + '/' + id + '/submit', { headers: await portals(user), raw: '' }); },
     async approve(user, id) { return http('POST', B + '/' + id + '/approve', { headers: await portals(user), raw: '' }); },
     async reject(user, id, reason) { return http('POST', B + '/' + id + '/reject', { headers: await portals(user), json: { reason } }); },
     async pause(user, id) { return http('POST', B + '/' + id + '/pause', { headers: await portals(user), raw: '' }); },

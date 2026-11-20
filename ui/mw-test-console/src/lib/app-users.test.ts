@@ -56,9 +56,16 @@ describe("appUsers", () => {
     expect(usersOf(users, "merchant").map((u) => u.user)).toEqual(["merchant01", "seed-merchant01"]);
   });
 
-  it("without a manifest: the core-mock personas only", () => {
+  it("without a manifest: the core-mock personas and the seeded app-type personas", () => {
     expect(appUsers(null).map((u) => u.user)).toEqual([
-      "customer01", "customer02", "agent01", "merchant01", "merchant02", "seed-distributor01", "seed-dso01", "seed-partner01",
+      "customer01",
+      "customer02",
+      "agent01",
+      "merchant01",
+      "merchant02",
+      "seed-distributor01",
+      "seed-dso01",
+      "seed-partner01",
     ]);
   });
 

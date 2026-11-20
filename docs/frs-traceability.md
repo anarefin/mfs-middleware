@@ -222,7 +222,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-WEB-03 | ticket 116 | redirect and signed IPN with retries built; 24 h retry horizon built (1m..24h, 116) |
 | CH-WEB-04 | ticket 116 | create, status and list by date built (116); refund API and refund IPN built (116c) |
 | CH-WEB-05 | done | session expiry `session-ttl: 15m` (mw-checkout `application.yml`) |
-| CH-POR-01 | ticket 129 | 129a done: CSV and XLSX upload (`BulkFileParser`, bounded XLSX reader) and row validation built; preview with totals in 129b |
+| CH-POR-01 | ticket 129 | 129a done: CSV and XLSX upload (`BulkFileParser`, bounded XLSX reader) and row validation built; 129b done: upload as PREVIEW with totals and per-row error codes, `GET .../preview`, `POST .../submit` (`BulkPreviewTest`, `BulkBatchApiIT`) |
 | CH-POR-02 | done | bulk maker-checker in mw-portal-api |
 | CH-POR-03 | ticket 129 | async execution, throttle, per-row status, result file built; retry of failed rows in 129 |
 | CH-POR-04 | ticket 129 | balance check before execution |

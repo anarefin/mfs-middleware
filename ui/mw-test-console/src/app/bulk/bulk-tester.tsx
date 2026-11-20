@@ -15,6 +15,7 @@ export function BulkTester() {
   const [csv, setCsv] = useState("");
   const [batchId, setBatchId] = useState("");
   const [user, setUser] = useState("org-maker01");
+  const previewLines = Array.isArray(state?.data?.previewRows) ? (state.data.previewRows as string[]) : [];
   // a generated sample or a new batch id lands in its field once, when that answer arrives
   useEffect(() => {
     const data = state?.data ?? {};
@@ -42,10 +43,13 @@ export function BulkTester() {
           </Row>
           <Field label="CSV (msisdn,amount,reference)"><Textarea name="csv" value={csv} onChange={(e) => setCsv(e.target.value)} data-testid="bulk-csv" className="min-h-32 font-mono text-sm" /></Field>
           <Button type="submit" name="op" value="upload" disabled={pending} data-testid="bulk-upload"><Upload />Upload as {user}</Button>
+          <Hint>The upload is a PREVIEW: invalid rows are listed with their codes and never paid. Check it, then submit it for approval as the same maker.</Hint>
         </Panel>
-        <Panel title="2. Decide and follow (checker)" icon={ClipboardCheck}>
+        <Panel title="2. Submit, decide and follow" icon={ClipboardCheck}>
           <Field label="Batch id"><Input name="batchId" value={batchId} onChange={(e) => setBatchId(e.target.value)} data-testid="bulk-batch" className="font-mono" /></Field>
           <Row>
+            <Button type="submit" name="op" value="preview" variant="outline" disabled={pending} data-testid="bulk-preview">Preview</Button>
+            <Button type="submit" name="op" value="submit" disabled={pending} data-testid="bulk-submit">Submit (maker)</Button>
             <Button type="submit" name="op" value="approve" disabled={pending} data-testid="bulk-approve">Approve</Button>
             <Button type="submit" name="op" value="reject" variant="outline-destructive" disabled={pending}>Reject</Button>
             <Button type="submit" name="op" value="pause" variant="outline" disabled={pending}>Pause</Button>
@@ -58,13 +62,20 @@ export function BulkTester() {
             <Button type="submit" name="op" value="txns" variant="outline" disabled={pending}>Transactions</Button>
             <Button type="submit" name="op" value="list" variant="outline" disabled={pending}>List batches</Button>
           </Row>
-          <Hint>Switch the user to org-checker01 to approve org-maker01&apos;s upload. SP query: org-checker02 (ORG002 collects for DESCO and Karim Traders), empty batch id, Transactions.</Hint>
+          <Hint>Submit as org-maker01, then switch the user to org-checker01 to approve the upload. SP query: org-checker02 (ORG002 collects for DESCO and Karim Traders), empty batch id, Transactions.</Hint>
         </Panel>
       </form>
       </div>
       <div className="flex min-w-0 flex-col gap-5">
         {pending ? <Busy>working…</Busy> : null}
-        {state ? <Panel title="Result" icon={ListChecks}><Result state={state} /></Panel> : <EmptyResult>Generate a sample file, upload it as the maker, approve it as the checker.</EmptyResult>}
+        {previewLines.length > 0 ? (
+          <Panel title="Preview rows" icon={ListChecks}>
+            <ul className="font-mono text-sm" data-testid="bulk-preview-rows">
+              {previewLines.map((l) => <li key={l} className={l.includes(": invalid") ? "text-destructive" : undefined}>{l}</li>)}
+            </ul>
+          </Panel>
+        ) : null}
+        {state ? <Panel title="Result" icon={ListChecks}><Result state={state} /></Panel> : <EmptyResult>Generate a sample file, upload it as the maker, check the preview and submit it, approve it as the checker.</EmptyResult>}
       </div>
     </TwoColumns>
   );
