@@ -152,6 +152,15 @@ resilience4j:
       ucb-imt:
         base-config: default
         slow-call-duration-threshold: 8s
+      # The core wallet read of the beneficiary lookup (ticket 119c, client/CoreAccountClient).
+      core:
+        base-config: default
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        slow-call-duration-threshold: 1500ms
+        wait-duration-in-open-state: 10s
+        record-exceptions: mfs.mw.adapter.remit.client.CoreUnavailableException
   bulkhead:
     configs:
       default:
@@ -178,6 +187,11 @@ resilience4j:
         exponential-max-wait-duration: 1s
         enable-randomized-wait: true
         randomized-wait-factor: 0.5
+    instances:
+      # An idempotent read (ticket 119c): retried only when the core could not answer.
+      core:
+        base-config: default
+        retry-exceptions: mfs.mw.adapter.remit.client.CoreUnavailableException
 
 logging:
   structured:
@@ -214,6 +228,22 @@ management:
       type: w3c
 
 mw:
+  remit:
+    # Beneficiary lookup (ticket 119c, POST /remit/v1/beneficiary-lookup): the core wallet API's WAL-01
+    # account read with a Keycloak realm services client-credentials token (client mw-adapter-remit,
+    # audience mw-core-mock). The secret only from Vault secret/mw-adapter-remit
+    # (mw.remit.core.client-secret, provision from KC_MW_ADAPTER_REMIT_SECRET), never here.
+    core:
+      base-url: ${MW_CORE_BASE_URL:http://mw-core-mock:8080}
+      token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
+      client-id: mw-adapter-remit
+      client-secret: ""
+      connect-timeout: 1s
+      read-timeout: 2s
+    # Lookups per partner and fixed window (per instance; the edge quota is per address on top).
+    lookup:
+      max-per-window: ${MW_REMIT_LOOKUP_MAX_PER_WINDOW:60}
+      window: 1m
   # Partner engine (ADR D28, package partner): a partner is a record holding its Camel YAML DSL
   # route (built from the mw-* Kamelets in classpath:kamelets), its JSONata mappings, the hosts it may
   # call and its error-code map. These are seeds (version 0); a mw.config.changed.v1 PARTNER record

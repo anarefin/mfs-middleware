@@ -27,7 +27,9 @@ info:
     `txnHash`). Missing or refused (signature, `aud` core, `exp`, `sub` the payer, `txnHash`, a
     `jti` another transaction used): `401 MW-AUTH-046`. A `BULK_DISBURSE` row needs none (the org
     authorised the batch by maker-checker), nor does a `REMIT_IN` validation (ticket 119b: the partner's
-    money for a beneficiary who authorises nothing; the receiving wallet is still checked). Credits need none (money in from a settlement wallet).
+    money for a beneficiary who authorises nothing; the receiving wallet is still checked; a REMIT_IN hold or
+    transfer whose payer is not a SYSTEM `SETTLEMENT*` wallet or whose payee is not a CUSTOMER is refused
+    `422 MW-CORE-INVALID_COUNTERPARTY`). Credits need none (money in from a settlement wallet).
     Balance reads (ticket 95a): the orchestrator reads a customer's balance for the customer only, with
     the BALANCE check's `txnId`, its assertion and the `Idempotency-Key` it was signed over; ops callers
     (mw-admin-api, mw-auth) and system wallets read without.
@@ -68,6 +70,9 @@ paths:
     get:
       operationId: getAccount
       summary: "WAL-01: account info, type, status, KYC level and holder name (wallet id or MSISDN)"
+      description: >-
+        Besides the allowed clients, the account readers (`mw.internal-auth.account-clients`: mw-adapter-remit's
+        beneficiary lookup, ticket 119c) may call this read and nothing else of `/core/**` (`403 MW-AUTH-002`).
       responses:
         "200":
           description: The account

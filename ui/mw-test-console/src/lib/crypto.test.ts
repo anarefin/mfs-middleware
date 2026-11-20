@@ -1,7 +1,7 @@
 import { createHash, createHmac, generateKeyPairSync, privateDecrypt, constants, verify, createPublicKey } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
-  canonical, checkoutHeaders, encryptPin, httpDate, newDeviceKey, queryOf, sha256Hex, signCanonical, totp, verifyCheckoutResult, verifyIpn,
+  canonical, checkoutHeaders, encryptPin, httpDate, newDeviceKey, partnerHeaders, queryOf, sha256Hex, signCanonical, totp, verifyCheckoutResult, verifyIpn,
 } from "./crypto";
 
 describe("device signature", () => {
@@ -97,5 +97,24 @@ describe("portal TOTP", () => {
   it("matches the RFC 6238 SHA-256 vectors", () => {
     expect(totp("12345678901234567890123456789012", 59_000)).toBe("119246");
     expect(totp("12345678901234567890123456789012", 1_111_111_109_000)).toBe("084774");
+  });
+});
+
+describe("remittance partner signature (mw-adapter-remit, ticket 119c)", () => {
+  it("signs method, path, timestamp, nonce and the body hash as Base64 HMAC-SHA256, as the adapter verifies", () => {
+    const body = '{"beneficiaryMsisdn":"01711000001"}';
+    const h = partnerHeaders("ucb-imt", "POST", "/remit/v1/beneficiary-lookup", body, "s3cret", "1700000000", "nonce-0123456789ab");
+    const expected = createHmac("sha256", "s3cret")
+      .update(["POST", "/remit/v1/beneficiary-lookup", "1700000000", "nonce-0123456789ab", sha256Hex(body)].join("\n"), "utf8")
+      .digest("base64");
+    expect(h).toEqual({ "X-Partner-Id": "ucb-imt", "X-Signature": expected, "X-Timestamp": "1700000000", "X-Nonce": "nonce-0123456789ab" });
+  });
+
+  it("uses a fresh nonce and the current time when none is given", () => {
+    const a = partnerHeaders("ucb-imt", "GET", "/remit/v1/credits/R1", "", "s");
+    const b = partnerHeaders("ucb-imt", "GET", "/remit/v1/credits/R1", "", "s");
+    expect(a["X-Nonce"]).not.toBe(b["X-Nonce"]);
+    expect(a["X-Nonce"]).toMatch(/^[A-Za-z0-9._-]{16,128}$/);
+    expect(Math.abs(Number(a["X-Timestamp"]) - Date.now() / 1000)).toBeLessThan(5);
   });
 });

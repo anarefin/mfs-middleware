@@ -198,4 +198,25 @@ class RemitInboundIT {
 
     assertThat(none.status()).as(none.toString()).isEqualTo(404);
   }
+
+  // --- beneficiary lookup (ticket 119c); the core answers are BeneficiaryLookupServiceTest's -----
+
+  static final String LOOKUP = "/remit/v1/beneficiary-lookup";
+  static final String LOOKUP_BODY = "{\"beneficiaryMsisdn\":\"01711000001\"}";
+
+  @Test
+  void aLookupIsSignedLikeACreditAndAnUnreachableCoreIs503() throws Exception {
+    assertThat(send("POST", LOOKUP, LOOKUP_BODY, "not-the-secret", nonce()).status()).isEqualTo(401);
+
+    String n = nonce();
+    // no core in this test: the signed lookup gets as far as the core and fails closed, retryable
+    Answer first = send("POST", LOOKUP, LOOKUP_BODY, SECRET, n);
+    assertThat(first.status()).as(first.toString()).isEqualTo(503);
+    assertThat(first.body().path("code").asString()).isEqualTo("MW-SYS-CORE_UNAVAILABLE");
+    assertThat(first.body().path("retryable").asBoolean()).isTrue();
+    assertThat(first.body().toString()).doesNotContain("01711000001");
+
+    assertThat(send("POST", LOOKUP, LOOKUP_BODY, SECRET, n).status()).as("replayed nonce").isEqualTo(401);
+    assertThat(send("POST", LOOKUP, "{\"beneficiaryMsisdn\":\"123\"}", SECRET, nonce()).status()).isEqualTo(400);
+  }
 }
