@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (partner disbursement merged at d2407234. 112b is unblocked: postpaid confirm accepts any amount from the minimum due through the outstanding bill, stored on the quote. 112b is not done). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (112b merged at c5dd4395, implementer b79ccbd9. Postpaid confirm accepts any amount from the stored minimum due through the outstanding bill. Preview returns both and confirm does not fetch again. 112c is next and not started: T1–T12 for two operators, no timer sleep). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -35,6 +35,7 @@ Updated: 2026-11-20 (partner disbursement merged at d2407234. 112b is unblocked:
 110 (push notifications), 110b (binding epoch from mw-auth; notify migration V17),
 111 (notify campaigns, promotional opt-out, masked log; folder 47),
 112a (four operator OCS profiles, no amount rule),
+112b (postpaid amount from the stored minimum due through the outstanding bill; preview returns both, confirm does not fetch again, out of range refused before a hold),
 123 (AML/trustbank/DW file mocks),
 126 (recon matching and classification, Newman folder 60; statements and settlement lines are classified and no money moves),
 128 (mw-data-export stream, daily SFTP, PII policy, archive),
@@ -45,15 +46,16 @@ Review fix on the earlier salvage: 2308d22e (19 files +342 −57). 88 is superse
 M8 review fixes merged at 680ad323 (8 files +356 −26): SOAP confirm and balance use the device gate, the USSD mini statement returns the latest movements, and XSD boolean 1 is a confirmed duplicate.
 112a merged at eba33d4b (implementer dc7c74e0): four operator OCS profiles.
 Partner disbursement merged at d2407234 (ccdcb713, 1bb02984, 9dd54f10): a partner disbursement posts as an organisation wallet, wallet 01412000001 is seeded ORG, and a seeder-marked organisation wallet logs in as a partner. An unmarked organisation wallet gets no app token. No PARTNER core wallet type.
+112b merged at c5dd4395 (implementer b79ccbd9, 46 files +1372 −78): postpaid confirm accepts any amount from the stored minimum due through the outstanding bill. Preview returns both, confirm does not fetch again, and an amount outside that range is refused before a hold.
 
 ## In flight when this file was written
-`ticket/m8-partner-disburse` is merged. Its worktree stays at `/Users/ahmadnaqibularefin/Projects/mfs-worktrees/ticket-m8-partner-disburse`. Leave that worktree alone. 112b is unblocked and is not done.
+`ticket/m8-partner-disburse` is merged. Its worktree stays at `/Users/ahmadnaqibularefin/Projects/mfs-worktrees/ticket-m8-partner-disburse`. Leave that worktree alone. `ticket/112b-postpaid-amount` is merged. Its worktree stays at `/Users/ahmadnaqibularefin/Projects/mfs-worktrees/ticket-112b`. Leave that worktree alone. 112c is next and not started.
 126 is merged. The `ticket/126-recon-matching` worktree is already removed. The wave worktrees for 98, 100b, 111, 128 and 131c are removed. The 112a worktree stays. Other `.claude/worktrees/agent-*` trees are historical; leave them.
 
 ## Next (frontier, in priority order)
 1. **M8 gate (2026-11-20) was this run** (base d84fce30, code tip e9381fed). Passed: clean build, stack up, smoke 60/60, edge 66/66, new folders 216/0, log-scan clean. Whole suite once: 1483 assertions, 3 failed, not re-run. Folder 25 (dev PIN lock) and folder 28 (statement pages) were fixed and rechecked with folder 36 (179/0). Folder 36's replay 429 `MW-SYS-RATE_LIMITED` stays (the 60s window is not waited out). Folder 13 and folder 44 passed. ui-e2e: 21 passed and 4 failed, then those 4 passed. tester-e2e: 36 passed and 4 failed; the three USSD specs then passed. Leftover: tester top-up REJECTED `MW-SYS-PARTNER_CIRCUIT_OPEN`.
 2. **126** is merged and its worktree is removed. **106, 107, 108, and 109** are merged.
-3. **112a** is merged (four OCS profiles, no amount rule). The partner disbursement fix is merged (organisation-wallet posting, ORG seed, marked-partner login). **112b** is unblocked and next on the orchestrator: postpaid confirm accepts any amount from the minimum due through the outstanding bill, stored on the quote. 112b is not done. 113, 115, 117, 130b, 135 stay queued because they also edit the orchestrator or the same adapters. 118, 119, 120, and 121 stay queued behind that orchestrator work. 100c stays until M13.
+3. **112a** is merged (four OCS profiles, no amount rule). The partner disbursement fix is merged (organisation-wallet posting, ORG seed, marked-partner login). **112b** is merged: postpaid confirm accepts any amount from the stored minimum due through the outstanding bill. Preview returns both, confirm does not fetch again, and an amount outside that range is refused before a hold. **112c** is next and not started: T1–T12 for two operators, no timer sleep. 113, 115, 117, 130b, 135 stay queued because they also edit the orchestrator or the same adapters. 118, 119, 120, and 121 stay queued behind that orchestrator work. 100c stays until M13.
 
 ## Milestone gate procedure (after the last ticket of a milestone)
 1. Code review of the milestone range; one fix pass.

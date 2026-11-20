@@ -104,9 +104,11 @@
 # --- M8 review fixes merged (2026-11-20, 680ad323, 8 files +356 −26): SOAP confirm and balance use the device gate; the USSD mini statement returns the latest movements; XSD boolean 1 is a confirmed duplicate. Partner BULK_DISBURSE still cannot post and is not fixed: the core wallet contract has no PARTNER wallet type. 112a stays open.
 # --- 112a merged (2026-11-20, eba33d4b, implementer dc7c74e0, 38 files +2043 −58): four operator OCS profiles. 112b (postpaid amount from the minimum through the outstanding bill) is next on the orchestrator and waits while ticket/m8-partner-disburse is in flight.
 # --- M8 partner disbursement merged (2026-11-20, d2407234, 34 files +615 −47; ccdcb713, 1bb02984, 9dd54f10): a partner disbursement posts as an organisation wallet. Wallet 01412000001 is seeded ORG. A seeder-marked organisation wallet logs in as a partner; an unmarked organisation wallet gets no app token. No PARTNER core wallet type. 112b is unblocked and is not done: postpaid confirm accepts any amount from the minimum due through the outstanding bill, stored on the quote.
+# --- 112b merged (2026-11-20, c5dd4395, implementer b79ccbd9, 46 files +1372 −78): postpaid confirm accepts any amount from the stored minimum due through the outstanding bill. Preview returns both and confirm does not fetch again. An amount outside that range is refused before a hold. The four OCS profiles, organisation-wallet disbursement, and marked-partner login stay. 112c (T1–T12 for two operators, no timer sleep) is next and not started.
 # --- M8 scope: UC-02..07 on app and USSD
 112-telco-four-ocs                          97,98,102         split (112-split-decisions.md, 2026-11-20; pay from the minimum through the outstanding bill)
 112a-telco-ocs-profiles                     97,98,102         done     -        38 files +2043 −58     dc7c74e0
+112b-postpaid-amount                        112a              done     -        46 files +1372 −78     b79ccbd9
 113-biller-catalogue                        98                open
 114-bill-aggregators                        113,97,102        open
 115-mw-adapter-merchant                     97,102            open
