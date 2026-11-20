@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (109a, 109b and 109c merged). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (96c merged; 108 still in flight on ticket/108-app-soap). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -17,6 +17,7 @@ Updated: 2026-11-20 (109a, 109b and 109c merged). Kept current after every merge
 95b (mw-auth and mw-admin-api on /core/v1; `core.command.v1` retired; DROP_REPLY and NO_CALLBACK lose the REST answer),
 96a (inquiry schedule + ops alert),
 96b (partner REVERSE after a refused commit; :mw-orchestrator:build passed; the live suite was not run),
+96c (completed TOPUP or BILL_PAY: partner REVERSE first, core reversal only after the partner accepts; a partner refusal ends MANUAL_REVIEW and leaves the posting),
 97 (adapter REVERSE + health),
 98 (routing in mw-orchestrator, including top-up operator resolution and maintenance),
 99 (duplicates/replay), 100a (client registry + APISIX sync), 100b (OAUTH2_CC bearer check; inbound mTLS stays 100c),
@@ -37,11 +38,11 @@ Updated: 2026-11-20 (109a, 109b and 109c merged). Kept current after every merge
 Review fix on the earlier salvage: 2308d22e (19 files +342 −57). 88 is superseded by 126/127.
 
 ## In flight when this file was written
-None. The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
+108 on `ticket/108-app-soap` (not merged). The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
 
 ## Next (frontier, in priority order)
 1. **M7 gate (2026-11-20).** Passed: clean build, smoke 60/60, edge 65/65, folder 41 (54), log-scan, ui-e2e 25/25, tester-e2e 40/40. The whole API suite failed 2 of 1386 (folder 13 audit change-request id scrubbed; folder 44 AML journal first WRITE was another file) and was not re-run. The gate fixes are commit 784285bb. The live suite was not re-run after 107 or 109.
-2. Orchestrator queue, one at a time: **96c** then **95c**. While the orchestrator is busy, **108** (app gateway is free).
+2. Orchestrator queue, one at a time: **95c** next (96c is merged). **108** is still in flight on `ticket/108-app-soap` and is not merged.
 3. Then 106, 112, 113, 115, 117, 130b, 135, still module-disjoint, max five at once. **M8 gate** after 106 and 108 (107 and 109 are in).
 4. 118–121 still name parent ticket 95, and 95c is open. 100c stays until M13. 132 can use the routing API from 98.
 
