@@ -352,6 +352,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   role `mw-app-gateway`. Keycloak realm `services` client `mw-app-gateway` (audiences `mw-auth`, ADR D25
   `mw-orchestrator`, `mw-notify` for the inbox, and `mw-core-mock` for profile, limits and the statement): a running stack
   needs `deploy/reset.sh` to import it. Compose waits for a healthy mw-auth.
+- eKYC onboarding (ticket 124b, app.v1 1.18.0, FRS UC-01): `POST /app/v1/onboarding/applications`, `POST
+  .../{id}/documents`, `POST .../{id}/submit`, `GET .../{id}` (`controller/OnboardingController`,
+  `service/OnboardingService`, `client/ComplianceClient`). Customer, DSO and Agent apps only (else 403
+  MW-AUTH-002). The end user comes from the token only and goes to mw-compliance in `X-Mw-Subject-Type` /
+  `X-Mw-Subject-Id`: customer `WALLET`/own MSISDN (channel `APP`, its own wallet only), DSO and agent
+  `AGENT`/own MSISDN (channel `DSO`/`AGENT`, agent id the same, the customer's wallet from the body). Images
+  JPEG or PNG, at most 2 MB decoded (`mw.app-gateway.compliance.*`), checked before forwarding; the upload is
+  the one `/app/**` body allowed up to 3 MiB (`CachedBodyRequest.MAX_DOCUMENT_BODY`, APISIX route
+  `app-v1-onboarding`). mw-compliance over mTLS with the client-credentials token (Keycloak client
+  `mw-app-gateway` audience `mw-compliance`); its envelope passes through, else 503 MW-SYS-017 (breaker
+  `mw-compliance`). Nothing of the bodies is logged.
 
 ## Contracts owned
 
@@ -371,6 +382,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (client; own types `dto/Biller`, `dto/Bill`).
 - `api/mw-adapter-bank/bank.v1.openapi.yaml` (client, ticket 117b: `POST /bank/v1/accounts/validate`; own type
   `dto/BankAccountValidation`).
+- `api/mw-compliance/compliance.v1.openapi.yaml` (client, ticket 124b: the eKYC applications, with the subject
+  headers; the request body and answer checked in `contracts/ApiContractsTest`).
 - `api/mw-notify/notify-internal.v1.openapi.yaml` (client, ticket 107a: `GET /internal/v1/inbox` and
   `POST /internal/v1/inbox/{id}/read` for the token's MSISDN; own type `dto/InboxMessage`).
 - `api/mw-core-mock/core-wallet.v1.openapi.yaml` (client, ticket 107b: WAL-01, WAL-05, WAL-12 for the

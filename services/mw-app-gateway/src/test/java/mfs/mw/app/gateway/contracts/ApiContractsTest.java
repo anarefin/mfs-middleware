@@ -67,6 +67,7 @@ class ApiContractsTest {
   static final String NOTIFY_API = "api/mw-notify/notify-internal.v1.openapi.yaml";
   static final String CORE_API = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
   static final String BANK_API = "api/mw-adapter-bank/bank.v1.openapi.yaml";
+  static final String COMPLIANCE_API = "api/mw-compliance/compliance.v1.openapi.yaml";
   static final String TXN_ID = "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d";
   static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
   static final Instant NOW = Instant.parse("2026-11-04T06:00:00Z");
@@ -76,7 +77,42 @@ class ApiContractsTest {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(APP_API);
     assertThat(manifest.consumedApis())
-        .containsExactly(BILLPAY_API, BANK_API, AUTH_API, AUTH_PUBLIC_API, QUERY_API, NOTIFY_API, CORE_API);
+        .containsExactly(BILLPAY_API, BANK_API, AUTH_API, AUTH_PUBLIC_API, QUERY_API, NOTIFY_API, CORE_API, COMPLIANCE_API);
+  }
+
+  // ---- eKYC onboarding (ticket 124b) ----
+
+  @Test
+  void onboardingSendsWhatMwComplianceReadsAndServesWhatItAnswers() {
+    mfs.mw.app.gateway.client.ComplianceClient client =
+        org.mockito.Mockito.mock(mfs.mw.app.gateway.client.ComplianceClient.class);
+    var props = new mfs.mw.app.gateway.config.ComplianceClientProperties(
+        java.net.URI.create("https://mw-compliance:8080"), java.time.Duration.ofSeconds(1),
+        java.time.Duration.ofSeconds(20), 2 * 1024 * 1024, java.util.Set.of("image/jpeg", "image/png"));
+    var service = new mfs.mw.app.gateway.service.OnboardingService(client, props);
+    var dso = new mfs.mw.app.gateway.dto.AppUser("01811000017", "DSO_APP", "DSO", "device-1");
+    var request = new mfs.mw.app.gateway.dto.OnboardingApplicationRequest("01711000001", "1990123456789",
+        java.time.LocalDate.parse("1990-05-17"), "Rahim Uddin", "রহিম উদ্দিন",
+        new mfs.mw.app.gateway.dto.OnboardingApplicationRequest.Consent("EKYC_ONBOARDING", NOW));
+    assertValid(OpenApiSchemas.component(APP_API, "OnboardingApplicationRequest"), request);
+
+    service.create(dso, request);
+    org.mockito.ArgumentCaptor<Object> sent = org.mockito.ArgumentCaptor.forClass(Object.class);
+    org.mockito.Mockito.verify(client).post(org.mockito.ArgumentMatchers.eq("/internal/v1/kyc/applications"),
+        sent.capture(), org.mockito.ArgumentMatchers.any());
+    assertValid(OpenApiSchemas.component(COMPLIANCE_API, "CreateApplication"), sent.getValue());
+
+    var document = new mfs.mw.app.gateway.dto.OnboardingDocumentRequest("SELFIE", "image/png", "iVBORw0KGgo=");
+    assertValid(OpenApiSchemas.component(APP_API, "OnboardingDocumentRequest"), document);
+    assertValid(OpenApiSchemas.component(COMPLIANCE_API, "DocumentUpload"), document);
+
+    String answer = "{\"applicationId\":\"11111111-1111-4111-8111-111111111111\",\"walletId\":\"01711000001\","
+        + "\"channel\":\"DSO\",\"agentId\":\"01811000017\",\"consentId\":\"22222222-2222-4222-8222-222222222222\","
+        + "\"status\":\"APPROVED\",\"nidMasked\":\"****789\",\"matchScore\":1.0,\"kycLevel\":\"FULL\","
+        + "\"retryable\":false,\"documents\":[\"SELFIE\"],\"createdAt\":\"2026-11-04T06:00:00Z\","
+        + "\"updatedAt\":\"2026-11-04T06:00:00Z\"}";
+    assertThat(OpenApiSchemas.component(COMPLIANCE_API, "Application").validate(JSON.readTree(answer))).isEmpty();
+    assertThat(OpenApiSchemas.component(APP_API, "OnboardingApplication").validate(JSON.readTree(answer))).isEmpty();
   }
 
   // ---- linked bank accounts (ticket 117b) ----

@@ -37,8 +37,9 @@ Compliance domain service (ADR D32; no Camel: outbound calls are `RestClient` + 
   no operator write path (`KycAccessTest.theUnscopedCallerMayOnlyRead`).
 - NID reuse: in the submit transaction, under an advisory lock on the token, an NID another wallet holds
   (EC_CALLED, MATCHED, APPROVED) makes the application MANUAL_REVIEW, reason NID_IN_USE: no EC call, no level.
-- Planned: ticket 124b/124c (channel routes in mw-app-gateway,
-  compose/provision/Keycloak/mw-crypto authz wiring, Newman folder 64); ticket 125 the AML feed (parties
+- Callers (ticket 124b): mw-app-gateway's `/app/v1/onboarding/*` (Customer, DSO and Agent apps, the subject
+  from the app token), wired in compose, provision, Keycloak and mw-crypto's purposes. Planned: ticket 124c
+  (the SMS and audit consumers of `mw.kyc.completed.v1`, Newman folder 64); ticket 125 the AML feed (parties
   HMAC-SHA256-tokenised under a Vault key: add `/internal/v1/hmac/sign` to `client/CryptoClient`).
 
 ## Contracts owned

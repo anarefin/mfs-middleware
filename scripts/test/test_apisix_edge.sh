@@ -368,6 +368,8 @@ test_every_public_json_body_has_a_derived_schema_in_its_service() {
     "mw-app-gateway/app-v1-fetch-bill-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/FetchBillRequest|billNumber" \
     "mw-app-gateway/app-v1-save-biller-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/SaveBillerRequest|billerCode" \
     "mw-app-gateway/app-v1-save-favourite-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/SaveFavouriteRequest|msisdn" \
+    "mw-app-gateway/app-v1-onboarding-application-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/OnboardingApplicationRequest|nid" \
+    "mw-app-gateway/app-v1-onboarding-document-request.json|api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/OnboardingDocumentRequest|content" \
     "mw-checkout/checkout-v1-create-session.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/CreateSessionRequest|orderId" \
     "mw-checkout/checkout-pay-v1-otp.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/OtpRequest|wallet" \
     "mw-checkout/checkout-pay-v1-confirm.json|api/mw-checkout/checkout.v1.openapi.yaml#/components/schemas/ConfirmRequest|encryptedPin" \
@@ -695,6 +697,24 @@ test_app_route_leaves_the_signed_body_untouched() {
     || fail "a plugin rewrites the app body"
   printf '%s' "$r" | jq -e '.plugins["client-control"].max_body_size > 0' >/dev/null || fail "no body size cap"
   [ -f "$REPO_DIR/services/mw-app-gateway/src/main/resources/derived-schemas/app-v1-transaction-request.json" ] || fail "mw-app-gateway has no derived submit schema"
+}
+
+# Ticket 124b: the onboarding images (2 MB decoded, base64 in JSON) need a larger cap than app-v1's 64 KiB,
+# on that route only, with app-v1's token check, consumer key and Redis quota (own group).
+test_onboarding_route_takes_the_images_behind_the_app_token() {
+  render || fail "dry run failed"
+  local r
+  r="$(obj routes app-v1-onboarding)"
+  [ -n "$r" ] || fail "no app-v1-onboarding route rendered"
+  printf '%s' "$r" | jq -e --argjson app "$(obj routes app-v1)" '.uri == "/app/v1/onboarding/*"
+    and .methods == ["GET", "POST"]
+    and .plugins["client-control"].max_body_size == 3145728
+    and .plugins["openid-connect"] == $app.plugins["openid-connect"]
+    and .plugins["serverless-pre-function"] == $app.plugins["serverless-pre-function"]
+    and .plugins["limit-count"].key == "mw_consumer" and .plugins["limit-count"].group == "app-v1-onboarding"
+    and (.plugins | has("request-validation") or has("body-transformer") | not)
+    and .upstream.nodes == {"mw-app-gateway:8080": 1}' >/dev/null \
+    || fail "app-v1-onboarding: $(printf '%s' "$r" | jq -c '{uri, methods, plugins: (.plugins | keys)}')"
 }
 
 # Ticket 68: the device API moved from /app/v1/devices* to mw-auth's /auth/v1/* (public port 8080,

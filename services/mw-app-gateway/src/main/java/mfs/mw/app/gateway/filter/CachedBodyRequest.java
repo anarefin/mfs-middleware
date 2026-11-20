@@ -26,6 +26,11 @@ public class CachedBodyRequest extends HttpServletRequestWrapper {
   /** 64 KiB, the edge's {@code client-control max_body_size} on {@code /app/v1/*}. */
   public static final int MAX_BODY = 64 * 1024;
 
+  /**
+   * 3 MiB, the edge's cap on the onboarding image route (ticket 124b): a 2 MB image in base64 with its JSON.
+   */
+  public static final int MAX_DOCUMENT_BODY = 3 * 1024 * 1024;
+
   private final byte[] body;
 
   /** Reads the body; a body over {@code limit} bytes is an {@link MwException} answered 413. */

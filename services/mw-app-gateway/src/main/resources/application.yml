@@ -142,6 +142,17 @@ resilience4j:
         wait-duration-in-open-state: 10s
         ignore-exceptions:
           - org.springframework.web.client.HttpClientErrorException
+      # mw-compliance's eKYC API (client/ComplianceClient, ticket 124b): counts calls like mw-auth; a
+      # 4xx is mw-compliance's answer, not an outage. Onboarding answers 503 MW-SYS-017 while open.
+      mw-compliance:
+        base-config: default
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        slow-call-duration-threshold: 15s
+        wait-duration-in-open-state: 10s
+        ignore-exceptions:
+          - org.springframework.web.client.HttpClientErrorException
       # mw-orchestrator's query API (client/OrchestratorQueryClient, wallet history, ADR D25): counts
       # calls like mw-auth; only unavailability counts. The history answers 503 MW-SYS-013 while open.
       orchestrator:
@@ -349,6 +360,16 @@ mw:
       base-url: ${MW_BANK_BASE_URL:http://mw-adapter-bank:8080}
       connect-timeout: 1s
       read-timeout: 28s
+    # eKYC onboarding (ticket 124b, FRS UC-01; client/ComplianceClient): mw-compliance's internal API over
+    # mTLS with the client-credentials token of client mw-app-gateway (audience mw-compliance) and the end
+    # user from the app token in X-Mw-Subject-Type / X-Mw-Subject-Id. Images: JPEG or PNG, at most 2 MB
+    # decoded, checked here before forwarding. The timeout covers mw-compliance's EC NID and core calls.
+    compliance:
+      base-url: ${MW_COMPLIANCE_URL:https://mw-compliance:8080}
+      connect-timeout: 1s
+      timeout: 20s
+      max-document-bytes: 2097152
+      content-types: image/jpeg,image/png
     # Linked bank accounts (ticket 117b, FRS FL-08; service/LinkedAccountService): the account number
     # is stored encrypted (AES-256-GCM under a key derived from encryption-key, which comes from Vault
     # only: secret/mw-app-gateway, created once by the dev provisioning; >= 32 chars) with a keyed hash

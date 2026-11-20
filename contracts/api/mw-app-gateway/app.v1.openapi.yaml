@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.17.0
+  version: 1.18.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -753,6 +753,105 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /app/v1/onboarding/applications:
+    post:
+      operationId: createOnboardingApplication
+      summary: Open an eKYC application (FRS UC-01; 1.18.0) with the customer's consent
+      description: >-
+        Customer, DSO and Agent apps only (any other app role 403 MW-AUTH-002). The Customer app applies for
+        its own wallet (walletId absent or the token's MSISDN, else 403); the DSO and Agent apps name the
+        customer's wallet and assist as themselves (channel DSO or AGENT, agent id from the token). Answered by
+        mw-compliance (compliance.v1 createKycApplication), whose refusals pass through.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OnboardingApplicationRequest" }
+      responses:
+        "201":
+          description: The application, SUBMITTED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingApplication" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /app/v1/onboarding/applications/{id}/documents:
+    post:
+      operationId: addOnboardingDocument
+      summary: Upload (or replace) one image of the application (NID front, back, selfie)
+      description: >-
+        JPEG or PNG, at most 2 MB decoded; another type or a larger image is 400 here and never forwarded
+        (this route alone takes a body up to 3 MiB). mw-compliance checks the magic bytes again.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/ApplicationId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OnboardingDocumentRequest" }
+      responses:
+        "201":
+          description: Stored, envelope-encrypted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingDocument" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /app/v1/onboarding/applications/{id}/submit:
+    post:
+      operationId: submitOnboardingApplication
+      summary: Verify against the EC NID service and decide
+      description: >-
+        APPROVED (the core wallet's KYC level is set, FULL), MANUAL_REVIEW (a date-of-birth-only match),
+        MISMATCHED (with reason), or FAILED (retryable). 504 MW-TMO-EC_NID when the EC does not answer.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/ApplicationId" }
+      responses:
+        "200":
+          description: The decided application
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingApplication" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+        "504": { $ref: "#/components/responses/Error" }
+  /app/v1/onboarding/applications/{id}:
+    get:
+      operationId: getOnboardingApplication
+      summary: One application of this subject, masked (NID last three digits)
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/ApplicationId" }
+      responses:
+        "200":
+          description: The application
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OnboardingApplication" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /app/v1/bank-accounts:
     get:
       operationId: listBankAccounts
@@ -964,6 +1063,12 @@ paths:
         "429": { $ref: "#/components/responses/Error" }
 components:
   parameters:
+    ApplicationId:
+      name: id
+      in: path
+      required: true
+      description: The eKYC application id (mw-compliance)
+      schema: { type: string, format: uuid }
     Group:
       name: group
       in: path
@@ -1009,6 +1114,62 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
   schemas:
+    OnboardingApplicationRequest:
+      type: object
+      required: [nid, dob, consent]
+      additionalProperties: false
+      properties:
+        walletId: { type: string, pattern: "^01[3-9][0-9]{8}$", description: "The customer's wallet; DSO and Agent apps only (the Customer app's is the token's)" }
+        nid: { type: string, pattern: "^([0-9]{10}|[0-9]{13}|[0-9]{17})$" }
+        dob: { type: string, format: date }
+        nameEn: { type: string, maxLength: 120 }
+        nameBn: { type: string, maxLength: 120 }
+        consent:
+          type: object
+          required: [purpose]
+          additionalProperties: false
+          properties:
+            purpose: { type: string, minLength: 1, maxLength: 64, example: EKYC_ONBOARDING }
+            grantedAt: { type: string, format: date-time }
+    OnboardingDocumentRequest:
+      type: object
+      required: [type, contentType, content]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [NID_FRONT, NID_BACK, SELFIE] }
+        contentType: { type: string, enum: [image/jpeg, image/png] }
+        content: { type: string, minLength: 1, description: "The image, base64, at most 2 MB decoded" }
+    OnboardingDocument:
+      type: object
+      required: [documentId, applicationId, type, sizeBytes, sha256]
+      properties:
+        documentId: { type: string, format: uuid }
+        applicationId: { type: string, format: uuid }
+        type: { type: string, enum: [NID_FRONT, NID_BACK, SELFIE] }
+        sizeBytes: { type: integer, minimum: 1 }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+    OnboardingApplication:
+      type: object
+      description: mw-compliance's Application (compliance.v1), as it answers
+      required: [applicationId, walletId, channel, status, nidMasked, retryable, documents]
+      properties:
+        applicationId: { type: string, format: uuid }
+        walletId: { type: string }
+        channel: { type: string, enum: [APP, DSO, AGENT] }
+        agentId: { type: string }
+        consentId: { type: string, format: uuid }
+        status: { type: string, enum: [SUBMITTED, EC_CALLED, MATCHED, MISMATCHED, FAILED, MANUAL_REVIEW, APPROVED] }
+        nidMasked: { type: string }
+        matchScore: { type: number, minimum: 0, maximum: 1 }
+        kycLevel: { type: string, enum: [BASIC, FULL] }
+        reason: { type: string }
+        errorCode: { type: string }
+        retryable: { type: boolean }
+        documents:
+          type: array
+          items: { type: string, enum: [NID_FRONT, NID_BACK, SELFIE] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     PinKey:
       type: object
       required: [keyId, algorithm, publicKeyPem]
