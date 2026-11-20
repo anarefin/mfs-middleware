@@ -117,12 +117,24 @@ class P2pKafkaIT {
         .isEqualTo("COMPLETED");
 
     // ticket 12: one audit event per state, on mw.audit.event.v1, valid against its contract
+    // ticket 130b: plus one CORE_CALL hop per core REST call, with its latency and masked bodies
     List<ConsumerRecord<String, String>> audits =
         KafkaTestConsumer.read(
-            kafka.getBootstrapServers(), "mw.audit.event.v1", 4, Duration.ofSeconds(60), r -> req.txnId().equals(r.key()));
+            kafka.getBootstrapServers(), "mw.audit.event.v1", 6, Duration.ofSeconds(60), r -> req.txnId().equals(r.key()));
     assertThat(audits)
+        .filteredOn(r -> "txn.state.changed".equals(json.readTree(r.value()).path("action").asString()))
         .extracting(r -> json.readTree(r.value()).path("after").path("status").asString())
         .containsExactly("RECEIVED", "VALIDATING", "POSTING", "COMPLETED");
+    List<JsonNode> coreHops = audits.stream().map(r -> json.readTree(r.value()))
+        .filter(a -> "CORE_CALL".equals(a.path("hop").asString())).toList();
+    assertThat(coreHops).extracting(a -> a.path("after").path("commandType").asString())
+        .containsExactly("ValidateTransaction", "PostTransfer");
+    assertThat(coreHops).allSatisfy(a -> {
+      assertThat(a.path("direction").asString()).isEqualTo("OUT");
+      assertThat(a.path("durationMs").isIntegralNumber()).isTrue();
+      assertThat(a.path("payload").size()).isEqualTo(2);
+      assertThat(a.toString()).doesNotContain(TestData.ASSERTION).doesNotContain("01711000001");
+    });
     for (ConsumerRecord<String, String> r : audits) {
       assertThat(ContractSchemas.schema(AUDIT_SCHEMA).validate(json.readTree(r.value()))).as(r.value()).isEmpty();
       assertThat(KafkaTestConsumer.headers(r)).containsKeys(MwHeaders.REQUIRED.toArray(String[]::new));

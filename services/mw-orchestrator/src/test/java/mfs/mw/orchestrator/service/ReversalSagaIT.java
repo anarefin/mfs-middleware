@@ -74,7 +74,8 @@ class ReversalSagaIT {
 
   private List<JsonNode> outbox(String topic, String key) {
     return jdbc.queryForList(
-            "select payload::text from outbox where topic = ? and msg_key = ? order by id", String.class, topic, key)
+            "select payload::text from outbox where topic = ? and msg_key = ?"
+                + " and coalesce(payload::jsonb ->> 'action', '') <> 'core.call.completed' order by id", String.class, topic, key)
         .stream()
         .map(json::readTree)
         .toList();
