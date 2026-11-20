@@ -54,6 +54,9 @@ class ConsumedContractsTest {
     assertValid(OpenApiSchemas.request(AUTH_INTERNAL, "/internal/v1/seed/pins", "post"),
         new SeedPinsRequest(List.of(new SeedPinsRequest.Pin("01712000001",
             new SeedPinsRequest.EncryptedPin("pin-transport.v1", "Y2lwaGVy")))));
+    assertValid(OpenApiSchemas.request(AUTH_INTERNAL, "/internal/v1/seed/pins", "post"),
+        new SeedPinsRequest(List.of(new SeedPinsRequest.Pin("01412000001",
+            new SeedPinsRequest.EncryptedPin("pin-transport.v1", "Y2lwaGVy"), "PARTNER"))));
     String result = "{\"results\":[{\"walletId\":\"01712000001\",\"outcome\":\"CREATED\"}]}";
     assertThat(OpenApiSchemas.component(AUTH_INTERNAL, "SeedPinsResult").validate(JSON.readTree(result))).isEmpty();
     assertThat(JSON.readValue(result, SeedPinsResult.class).results().getFirst().outcome()).isEqualTo("CREATED");

@@ -9,10 +9,19 @@ import java.util.List;
 import mfs.mw.auth.util.Sensitive;
 import mfs.mw.auth.util.SensitiveType;
 
-/** Dev only: {@code POST /internal/v1/seed/pins}, the seeder's first PINs (ticket 69). */
+/**
+ * Dev only: {@code POST /internal/v1/seed/pins}, the seeder's first PINs (ticket 69). {@code appRole}
+ * {@code PARTNER} marks an organisation wallet as a partner app user. Absent for every other wallet.
+ */
 public record SeedPinsRequest(@NotNull @Size(min = 1, max = 200) List<@Valid Pin> pins) {
 
   public record Pin(
       @NotBlank @Pattern(regexp = "[A-Za-z0-9._:+-]{1,64}") @Sensitive(SensitiveType.MSISDN) String walletId,
-      @NotNull @Valid EncryptedPin encryptedPin) {}
+      @NotNull @Valid EncryptedPin encryptedPin,
+      @Pattern(regexp = "PARTNER") String appRole) {
+
+    public Pin(String walletId, EncryptedPin encryptedPin) {
+      this(walletId, encryptedPin, null);
+    }
+  }
 }

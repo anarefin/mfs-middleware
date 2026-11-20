@@ -163,7 +163,7 @@ public class DeviceBindingService {
       Optional<AuthDevice> before = devices.lock(deviceId);
       before.filter(d -> d.bound() && !d.walletId().equals(wallet))
           .ifPresent(d -> closed.add(new String[] {d.walletId(), d.deviceId()}));
-      int keep = Math.max(0, appTypes.of(w.type()).maxDevices() - 1);
+      int keep = Math.max(0, appTypes.of(w.appType()).maxDevices() - 1);
       for (String other : devices.unbindBeyond(wallet, deviceId, keep, now)) {
         closed.add(new String[] {wallet, other});
       }

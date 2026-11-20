@@ -132,6 +132,9 @@ paths:
         `encryptedPin` under the PIN transport key (GET /auth/v1/pin-key): mw-auth stores the HMAC
         mw-crypto derives. A wallet that already has a PIN is left alone (UNCHANGED); a wallet not
         projected yet is UNKNOWN_WALLET (the seeder retries); a PIN mw-crypto refuses as weak is WEAK.
+        `appRole` `PARTNER` marks that organisation wallet (core type stays ORGANISATION, stored ORG)
+        for the partner app login. A mark on any other wallet type is ignored. An organisation wallet
+        without the mark still has no app token. A wallet that already has a PIN is still marked.
       security: []
       requestBody:
         required: true
@@ -347,6 +350,12 @@ components:
             required: [walletId, encryptedPin]
             properties:
               walletId: { type: string, pattern: "^[A-Za-z0-9._:+-]{1,64}$" }
+              appRole:
+                type: string
+                enum: [PARTNER]
+                description: >-
+                  Marks this organisation wallet as a partner app user. The core wallet type stays
+                  ORGANISATION. Omit it for every wallet that is not a partner user.
               encryptedPin:
                 type: object
                 additionalProperties: false

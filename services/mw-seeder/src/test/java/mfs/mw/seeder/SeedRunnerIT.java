@@ -208,6 +208,14 @@ class SeedRunnerIT {
     assertThat(first).doesNotContain("fake-ops-password", "fake-totp-secret", "fake-portals-totp-secret", "fake-admin-password", "13579");
     LoggedRequest pins = requests(RequestMethod.POST, "/internal/v1/seed/pins").getFirst();
     assertThat(pins.getBodyAsString()).contains("\"keyId\":\"pin-transport.v1\"").doesNotContain("13579");
+    JsonNode pinBody = json.readTree(pins.getBodyAsString());
+    List<String> marked = new ArrayList<>();
+    for (JsonNode pin : pinBody.path("pins")) {
+      if (pin.hasNonNull("appRole")) {
+        marked.add(pin.path("walletId").asString() + "=" + pin.path("appRole").asString());
+      }
+    }
+    assertThat(marked).containsExactly("01412000001=PARTNER");
 
     wm.resetRequests();
     assertThat(SeederApplication.run(args())).isZero();

@@ -113,7 +113,7 @@ public class LoginService {
       throw invalid("encryptedPin", "exactly one of encryptedPin and otp is required");
     }
     AuthWallet w = wallets.byMsisdn(msisdn).orElseThrow(LoginService::deviceMismatch);
-    String role = TokenService.role(w.type());
+    String role = TokenService.role(w.appType());
     wallets.check(w);
     AuthDevice d = boundTo(w.walletId(), deviceId);
     signed.verify(key(d), req);
@@ -131,7 +131,7 @@ public class LoginService {
       amr = OTP_AMR;
     }
     TokenPair pair = tokens.issue(w, msisdn, deviceId, amr);
-    Duration idle = open(w.walletId(), deviceId, w.type());
+    Duration idle = open(w.walletId(), deviceId, w.appType());
     log.atInfo().addKeyValue("event", "auth.login").addKeyValue("channel", channel(role))
         .addKeyValue("amr", String.join(",", amr)).log("Wallet logged in on device {}", deviceId);
     return pair.withSession(idle.toSeconds(), hasPin);
@@ -147,10 +147,10 @@ public class LoginService {
       throw deviceMismatch();
     }
     AuthWallet w = wallets.byId(current.walletId()).orElseThrow(LoginService::deviceMismatch);
-    String role = TokenService.role(w.type());
+    String role = TokenService.role(w.appType());
     wallets.check(w);
     TokenPair pair = tokens.issue(w, wallets.msisdnOf(w), deviceId, current.amr(), current.family());
-    Duration idle = open(w.walletId(), deviceId, w.type());
+    Duration idle = open(w.walletId(), deviceId, w.appType());
     log.atInfo().addKeyValue("event", "auth.refresh").addKeyValue("channel", channel(role))
         .log("Tokens refreshed on device {}", deviceId);
     return pair.withSession(idle.toSeconds(), wallets.hasPin(w.walletId()));
@@ -171,7 +171,7 @@ public class LoginService {
     if (wallets.hasPin(walletId)) {
       throw new MwException(ErrorCodes.AUTH_FORBIDDEN, "A PIN is already set").withStatus(HttpStatus.FORBIDDEN);
     }
-    String role = TokenService.role(w.type());
+    String role = TokenService.role(w.appType());
     wallets.check(w);
     PinHmac hmac = pins.newPin(w, msisdn, pin);
     if (!credentials.insertIfAbsent(walletId, hmac, clock.instant())) {
@@ -179,7 +179,7 @@ public class LoginService {
     }
     tokens.revoke(family);
     TokenPair pair = tokens.issue(w, msisdn, deviceId, PIN_AMR);
-    Duration idle = open(walletId, deviceId, w.type());
+    Duration idle = open(walletId, deviceId, w.appType());
     log.atInfo().addKeyValue("event", "auth.pin.set").log("First PIN set on device {}", deviceId);
     return pair.withSession(idle.toSeconds(), true);
   }
@@ -202,7 +202,7 @@ public class LoginService {
     if (amr == null || !amr.contains("pin")) {
       throw PinService.notSet();
     }
-    String role = TokenService.role(w.type());
+    String role = TokenService.role(w.appType());
     wallets.check(w);
     verifier.verify(walletId, current);
     PinHmac hmac = pins.newPin(w, msisdn, next);
@@ -216,7 +216,7 @@ public class LoginService {
     });
     tokens.revoke(family);
     TokenPair pair = tokens.issue(w, msisdn, deviceId, PIN_AMR);
-    Duration idle = open(walletId, deviceId, w.type());
+    Duration idle = open(walletId, deviceId, w.appType());
     log.atInfo().addKeyValue("event", "auth.pin.changed").log("PIN changed on device {}", deviceId);
     return pair.withSession(idle.toSeconds(), true);
   }

@@ -22,7 +22,9 @@ import org.springframework.stereotype.Service;
  * dev app PIN ({@code mw.seeder.app-pins.pin}, {@code MW_SEED_APP_PIN}, a fixed fake value): the
  * seeded CUSTOMER, AGENT, MERCHANT and DISTRIBUTOR (ticket 94) wallets, an mw-auth app user whose core
  * wallet is an organisation (the partner app), plus {@code extra-wallet-ids} (the realm imports' app
- * users the Newman suite logs in as). The PIN is encrypted as an app does, under mw-auth's PIN
+ * users the Newman suite logs in as). A user whose role is {@code partner} is marked {@code PARTNER}
+ * on that call, so mw-auth gives that organisation wallet the partner app login and no other
+ * organisation wallet. The PIN is encrypted as an app does, under mw-auth's PIN
  * transport key, and set through mw-auth's dev-only seed API, which leaves a wallet that has a PIN
  * alone. mw-auth learns about a wallet from the core's wallet events, asynchronously: a wallet it has
  * not projected yet makes the step retry (503). The manifest names the PIN's variable, never the PIN.
@@ -69,7 +71,8 @@ public class SeedAppPinsStep implements SeedStep {
     List<SeedPinsRequest.Pin> pins = new ArrayList<>();
     for (String w : wallets) {
       pins.add(new SeedPinsRequest.Pin(w,
-          new SeedPinsRequest.EncryptedPin(key.keyId(), PinCipher.encrypt(cfg.pin(), key.publicKeyPem()))));
+          new SeedPinsRequest.EncryptedPin(key.keyId(), PinCipher.encrypt(cfg.pin(), key.publicKeyPem())),
+          partnerMark(w)));
     }
     SeedPinsResult result = auth.seedPins(new SeedPinsRequest(pins));
     StepResult r = StepResult.unchanged(0);
@@ -91,11 +94,24 @@ public class SeedAppPinsStep implements SeedStep {
 
   /** An mw-auth persona still gets the dev PIN when the core stores that wallet as an organisation. */
   private boolean appLogin(String walletId) {
+    return persona(walletId) != null;
+  }
+
+  /**
+   * The partner app login. Only an mw-auth user whose role is {@code partner} is marked; the core
+   * wallet stays an organisation, and an organisation with no such user is not marked.
+   */
+  private String partnerMark(String walletId) {
+    SeederProperties.User user = persona(walletId);
+    return user != null && user.roles().contains("partner") ? "PARTNER" : null;
+  }
+
+  private SeederProperties.User persona(String walletId) {
     for (SeederProperties.User user : props.users()) {
       if ("mw-auth".equals(user.realm()) && walletId.equals(user.attributes().get("msisdn"))) {
-        return true;
+        return user;
       }
     }
-    return false;
+    return null;
   }
 }

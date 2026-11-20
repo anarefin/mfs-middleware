@@ -21,11 +21,12 @@ public class WalletRepository {
               rs.getString("status"),
               rs.getBoolean("has_pin"),
               rs.getObject("birth_year", Integer.class),
-              rs.getLong("version"));
+              rs.getLong("version"),
+              rs.getString("app_role"));
 
   private static final String COLUMNS =
       "select wallet_id, msisdn_token, msisdn_token_kid, msisdn_enc::text msisdn_enc, type, status, has_pin, "
-          + "birth_year, version from wallet ";
+          + "birth_year, version, app_role from wallet ";
 
   private final JdbcTemplate jdbc;
 
@@ -40,6 +41,17 @@ public class WalletRepository {
   /** The wallet whose MSISDN has this keyed hash (login lookup, tickets 68-69). */
   public Optional<AuthWallet> findByMsisdnToken(String msisdnToken) {
     return jdbc.query(COLUMNS + "where msisdn_token = ?", MAPPER, msisdnToken).stream().findFirst();
+  }
+
+  /**
+   * Marks an organisation wallet as a partner app user. A wallet of any other type is left alone, so
+   * the mark cannot turn a customer into a partner. Idempotent. The core projection never writes
+   * {@code app_role}.
+   */
+  public boolean markPartnerApp(String walletId) {
+    return jdbc.update(
+            "update wallet set app_role = 'PARTNER' where wallet_id = ? and type = 'ORG'", walletId)
+        == 1;
   }
 
   /** The stored version of a wallet, empty when it is not projected yet. */

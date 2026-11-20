@@ -169,7 +169,7 @@ public class PinVerifier implements PinVerification {
     PinProperties.Lock base = props.lock();
     return wallets.find(walletId)
         .map(w -> {
-          AppTypePolicy.Settings s = appTypes.of(w.type());
+          AppTypePolicy.Settings s = appTypes.of(w.appType());
           return new PinProperties.Lock(s.pinTries(), s.pinLock(), base.level2(), base.decay());
         })
         .orElse(base);

@@ -3,9 +3,11 @@ package mfs.mw.auth.service;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import mfs.mw.auth.dto.PinHmac;
 import mfs.mw.auth.dto.SeedPinsRequest;
 import mfs.mw.auth.dto.SeedPinsResult;
+import mfs.mw.auth.entity.AuthWallet;
 import mfs.mw.auth.exception.MwException;
 import mfs.mw.auth.exception.ErrorCodes;
 import mfs.mw.auth.repository.CredentialRepository;
@@ -18,7 +20,9 @@ import org.springframework.stereotype.Service;
 /**
  * Dev only (ticket 69, {@code mw.auth.seed-api.enabled}): the seeder's first PINs. Each PIN arrives
  * encrypted under the PIN transport key, as from an app; mw-crypto derives the HMAC. Idempotent: a
- * wallet with a PIN is UNCHANGED (no mw-crypto call).
+ * wallet with a PIN is UNCHANGED (no mw-crypto call). {@code appRole PARTNER} marks that organisation
+ * wallet for the partner app login (the core type stays ORG); a mark on any other type is ignored,
+ * and a wallet that already has a PIN is still marked.
  */
 @Service
 @ConditionalOnProperty(name = "mw.auth.seed-api.enabled", havingValue = "true")
@@ -49,8 +53,12 @@ public class SeedPinService {
   }
 
   private String seed(SeedPinsRequest.Pin p) {
-    if (wallets.version(p.walletId()).isEmpty()) {
+    Optional<AuthWallet> wallet = wallets.find(p.walletId());
+    if (wallet.isEmpty()) {
       return "UNKNOWN_WALLET";
+    }
+    if ("PARTNER".equals(p.appRole()) && "ORG".equals(wallet.get().type())) {
+      wallets.markPartnerApp(p.walletId());
     }
     if (credentials.find(p.walletId()).isPresent()) {
       return "UNCHANGED";
