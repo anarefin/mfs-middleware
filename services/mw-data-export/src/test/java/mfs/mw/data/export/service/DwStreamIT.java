@@ -13,7 +13,6 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -57,8 +56,11 @@ class DwStreamIT {
     }
   }
 
-  @Autowired
-  JdbcTemplate jdbc;
+  private final JdbcTemplate jdbc;
+
+  DwStreamIT(JdbcTemplate jdbc) {
+    this.jdbc = jdbc;
+  }
 
   @Test
   void aCompletedTransactionIsProjectedWithoutTheClearMsisdn() throws Exception {

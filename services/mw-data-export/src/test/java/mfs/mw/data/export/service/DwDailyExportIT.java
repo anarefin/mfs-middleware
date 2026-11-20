@@ -15,7 +15,6 @@ import net.schmizz.sshj.SSHClient;
 import net.schmizz.sshj.sftp.SFTPClient;
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -72,10 +71,13 @@ class DwDailyExportIT {
     }
   }
 
-  @Autowired
-  JdbcTemplate jdbc;
-  @Autowired
-  DwDailyExportJob job;
+  private final JdbcTemplate jdbc;
+  private final DwDailyExportJob job;
+
+  DwDailyExportIT(JdbcTemplate jdbc, DwDailyExportJob job) {
+    this.jdbc = jdbc;
+    this.job = job;
+  }
 
   @Test
   void theDropMatchesItsControlAndASecondRunLeavesTheFileAlone() throws Exception {
