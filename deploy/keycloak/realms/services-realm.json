@@ -362,6 +362,32 @@
       ]
     },
     {
+      "clientId": "mw-recon",
+      "name": "mw-recon (the core wallet REST API: the e-money total of the trust position, ticket 127c)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_MW_RECON_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-mw-core-mock",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-core-mock",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "mw-simulators",
       "name": "mw-simulators (dev/test only: the trust bank mock reads mw-core-mock's statements, ticket 123)",
       "enabled": true,

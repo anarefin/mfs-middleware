@@ -5670,6 +5670,54 @@
       ]
     },
     {
+      "name": "61 Recon reports",
+      "description": "Ticket 127c, FRS REC-07: the trust position job compares the core's e-money total (GET /core/v1/reports/emoney-total, mw-recon's realm services token) with the trust bank's MT940 closing balance. The test route is key-auth. partner-sftp is profile tester.",
+      "item": [
+        {
+          "name": "[mock] the trust position job compares the core e-money total with the trust bank's closing balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[mock] the trust position job compares the core e-money total with the trust bank's closing balance\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.mock.reset('trustbank'));\\n      await MW.mock.reset('trustbank');\\n      const written = await MW.http('POST', '/test/mock-control/trustbank/run', {\\n        apikey: true, json: { operation: 'mt940' },\\n      });\\n      S.status(200, written);\\n      const pulled = await MW.http('POST', '/test/recon/v1/pull', { apikey: true });\\n      S.status(200, pulled);\\n      const position = await MW.http('POST', '/test/recon/v1/trust-position', { apikey: true });\\n      S.status(200, position);\\n      const p = position.body || {};\\n      S.check('the core reports e-money', Number(p.emoneyTotalMinor) > 0, p);\\n      S.eq('the difference is trust minus e-money', p.differenceMinor, p.trustClosingMinor - p.emoneyTotalMinor);\\n      S.check('a difference raises an exception, none without one',\\n        (p.differenceMinor === 0) === (p.exceptionId === null || p.exceptionId === undefined), p);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[mock] a trust position for a day without a statement is 404 MW-VAL-003",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[mock] a trust position for a day without a statement is 404 MW-VAL-003\", eval(MW.forRun(\";(async (MW, S) => {\\n      const none = await MW.http('POST', '/test/recon/v1/trust-position?date=2000-01-01', { apikey: true });\\n      S.status(404, none);\\n      S.eq('the error code', none.body && none.body.code, 'MW-VAL-003');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "62 DW export",
       "description": "Ticket 128, FRS EXT-17, DAT-02: mw-data-export uploads today's drop to dw/in (test route, key-auth). The warehouse mock on partner-sftp (profile tester) checks the control file.",
       "item": [

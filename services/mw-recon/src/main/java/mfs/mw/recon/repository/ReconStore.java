@@ -345,6 +345,13 @@ public class ReconStore {
         """, (rs, n) -> rs.getLong(1), source, day).stream().findFirst().orElse(null);
   }
 
+  /** The latest business date of {@code source} with a closing balance, or null (ticket 127c). */
+  public LocalDate latestTrustClosingDate(String source) {
+    return jdbc.queryForObject(
+        "select max(business_date) from source_file where source = ? and closing_balance_minor is not null",
+        (rs, n) -> rs.getObject(1, LocalDate.class), source);
+  }
+
   public void saveTrustPosition(LocalDate day, long emoney, long trust, long difference, UUID exceptionId, Instant at) {
     jdbc.update("""
         insert into trust_position

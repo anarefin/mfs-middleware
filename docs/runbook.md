@@ -484,6 +484,38 @@ class per layout).
    its host keys when the container is recreated, so write them again then. The lines are in the
    adapter's outbox (`mw.partner.recon.v1`) and on Kafka; their consumer, mw-recon, is ticket 88.
 
+## A day does not reconcile
+
+mw-recon reports; it never moves money (ticket 126, 127). A day is reconciled when every exception of it is
+RESOLVED or EXPLAINED (FRS 10.4 #7: zero unexplained differences). The ops console's workbench (ticket 134)
+shows the queue; until then use mw-admin-api (`POST /admin/v1/recon-exceptions/{id}/change-requests`) and,
+on the host, mw-recon's internal API on port 8097 (it needs an mw-admin-api service token, ticket 127b).
+
+1. **Find what is open.** `GET /internal/v1/recon/exceptions?state=OPEN` (filters `class`, `partner`,
+   `minAgeHours`); `GET .../{id}` gives the suggested action. The daily report
+   (`GET /internal/v1/recon/reports?partner=&from=&to=&kind=DAILY&format=csv`) totals the classes per partner.
+2. **No statement for the day.** `recon.mt940.*` / `recon.sftp.unconfigured` in mw-recon's log: the trust
+   bank's MT940 did not arrive or the SFTP password is missing (`mw.recon.trust.password` in Vault). Once the
+   file is on the host the next pull (00:30, MT942 every 15 min) reads it; a file is read once by name and
+   sha256, `POST /internal/v1/recon/files/{id}/reprocess` runs it again (audited).
+3. **Trust position gap** (`AMOUNT_MISMATCH`, detail `TRUST_POSITION`, owner `finance`). `TrustPositionJob`
+   runs at 00:45 Asia/Dhaka (`mw.recon.trust.position-cron`) for yesterday: the MT940 closing balance against
+   the core's `GET /core/v1/reports/emoney-total`. `recon.trust_position.no_statement` in the log: no closing
+   balance yet, nothing was computed (run it again after the pull; the dev route
+   `POST /test/recon/v1/trust-position?date=YYYY-MM-DD` does it on the test stack). A 503 `MW-SYS-002`
+   (`E-money total: ...`): the core or Keycloak was not reachable, or client `mw-recon` of realm `services`
+   lacks its secret (`mw.recon.core.client-secret`, from `KC_MW_RECON_SECRET`) or its `aud-mw-core-mock`
+   mapper; the core answers 403 when `mw-recon` is not in its allowed clients. A real gap (the core total
+   moved after the cut-off, a bank posting not in the ledger) is explained by finance with
+   `POST .../{id}/explanations`; the position row is in `recon.trust_position`.
+4. **A transaction class** (`MISSING_IN_UPAY`, `MISSING_IN_PARTNER`, `STATUS_MISMATCH`, `AMOUNT_MISMATCH`): look
+   the transaction up in the ops console. When money must move, a recon-maker opens a change request
+   (FORCE_COMMIT or REVERSE) and a different recon-checker approves it; mw-recon marks the exception ACTIONED
+   and RESOLVED when the transaction reaches the expected status. Everything else is explained.
+
+The real core must serve `GET /core/v1/reports/emoney-total` (open item for Upay, `docs/frs-traceability.md`
+REC-07); until it does the trust position cannot run against it.
+
 ## Data warehouse export
 
 The daily job uploads yesterday (Asia/Dhaka) at 01:10 to the SFTP folder `dw/in`: `transactions`, `wallet_snapshot`, `notifications`, `recon` and `control_<date>.json`. A day is uploaded once. An operator re-export is `POST /internal/v1/exports/YYYY-MM-DD` with header `X-Mw-Operator-Id` on the service port 8096 (not routed at the edge). That call overwrites the files and writes an audit event `dw.export.replayed`. An archived day comes back as CSV from `GET /internal/v1/archive/transactions/YYYY-MM-DD` (also `notifications` and `recon`). The dev test route `POST /test/data-export/v1/exports/today` (key-auth, test routes on, profile `tester` for the SFTP host) uploads today so the warehouse mock can check the drop.

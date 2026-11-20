@@ -79,6 +79,15 @@ public class WalletRepository {
     return jdbc.query(STATE_COLUMNS + "where msisdn is not null order by id", STATE);
   }
 
+  /** One wallet type's e-money: how many wallets and the sum of their balances (ticket 127c). */
+  public record TypeSum(String type, long walletCount, long balanceMinor) {}
+
+  /** The e-money wallets' balances per type, SYSTEM wallets left out (REC-07, ticket 127c). */
+  public List<TypeSum> emoneyByType() {
+    return jdbc.query("select type, count(*), coalesce(sum(balance_minor), 0) from wallet where type <> 'SYSTEM' "
+        + "group by type order by type", (rs, i) -> new TypeSum(rs.getString(1), rs.getLong(2), rs.getLong(3)));
+  }
+
   /** Reads and row-locks a wallet for the rest of the transaction. */
   public Wallet lock(String id) {
     return jdbc.queryForObject("select * from wallet where id = ? for update", MAPPER, id);

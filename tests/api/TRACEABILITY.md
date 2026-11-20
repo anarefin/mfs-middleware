@@ -288,6 +288,8 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 47 | [notify] an opted-out customer still gets the P2P SMS | - |  |
 | 47 | [admin notify] an approved campaign change request is APPROVED | - |  |
 | 60 | [mock] an injected trust-bank line is missing in Upay | - | |
+| 61 | [mock] the trust position job compares the core e-money total with the trust bank's closing balance | - |  |
+| 61 | [mock] a trust position for a day without a statement is 404 MW-VAL-003 | - |  |
 | 62 | [mock] today's data warehouse export is accepted by the drop check | - |  |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

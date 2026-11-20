@@ -70,6 +70,8 @@ public class SecurityConfig {
                     .access(caller(props, UNLOCK_CALLER))
                     .requestMatchers(HttpMethod.POST, "/core/v1/customers/*/verify-factors")
                     .access(caller(props, FACTORS_CALLER))
+                    .requestMatchers(HttpMethod.GET, "/core/v1/reports/emoney-total")
+                    .access(caller(props, EMONEY_CALLER))
                     .requestMatchers("/core/**")
                     .access(
                         (auth, ctx) ->
@@ -89,6 +91,8 @@ public class SecurityConfig {
   static final String UNLOCK_CALLER = "mw-admin-api";
   /** The one client that may check a customer's KYC factors: the PIN reset (ticket 95b). */
   static final String FACTORS_CALLER = "mw-auth";
+  /** The one client that may read the e-money total: the trust position job (ticket 127c). */
+  static final String EMONEY_CALLER = "mw-recon";
 
   /** An allowed client ({@code azp}) that is also the operation's one caller. */
   private static AuthorizationManager<RequestAuthorizationContext> caller(InternalAuthProperties props, String client) {

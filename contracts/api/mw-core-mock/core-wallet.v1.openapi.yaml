@@ -50,6 +50,11 @@ info:
     (`FundsHeld`, `HoldCommitted`, `TransferPosted`, ...) through the outbox in the transaction of
     the ledger change, holds on `core.payment.event.v1`, the rest on `core.wallet.event.v1`. A hold
     the core releases on expiry (default 30 min) is announced as `HoldExpired` on `core.payment.event.v1`.
+
+    E-money total (ticket 127c, FRS REC-07): `GET /core/v1/reports/emoney-total` is the sum of the
+    balances of every e-money wallet, read by mw-recon's trust position job (the only caller) after the
+    trust bank's MT940 cut-off. OPEN ITEM for Upay: the real core must provide this endpoint with the
+    same shape (ideally its end-of-day snapshot); mw-core-mock answers the ledger as it is now.
 servers:
   - url: http://mw-core-mock:8080
 security:
@@ -429,6 +434,27 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+  /core/v1/reports/emoney-total:
+    parameters:
+      - $ref: "#/components/parameters/CorrelationId"
+    get:
+      operationId: getEmoneyTotal
+      summary: "REC-07: the sum of all e-money wallet balances (trust account position), only mw-recon"
+      description: >-
+        Every wallet that holds e-money: CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, ORGANISATION, DSO and
+        PARTNER, whatever its status (a locked, dormant or closed wallet's balance is still e-money).
+        SYSTEM wallets (settlement, fee, VAT pools) are the scheme's own and not counted. `total` is the
+        ledger balance (held money included), `byType` its split, `asOf` when the core read it. Only the
+        client mw-recon (`403 MW-AUTH-002` for another). Changes nothing. OPEN ITEM for Upay: the real
+        core must serve this endpoint (ticket 127c).
+      responses:
+        "200":
+          description: The total
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmoneyTotal" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     internalClientCredentials:
@@ -643,6 +669,24 @@ components:
         entries:
           type: array
           items: { $ref: "#/components/schemas/Entry" }
+    EmoneyTotal:
+      type: object
+      required: [asOf, total, walletCount, byType]
+      additionalProperties: false
+      properties:
+        asOf: { type: string, format: date-time }
+        total: { $ref: "#/components/schemas/Amount" }
+        walletCount: { type: integer, minimum: 0 }
+        byType:
+          type: array
+          items:
+            type: object
+            required: [type, walletCount, total]
+            additionalProperties: false
+            properties:
+              type: { enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, ORGANISATION, DSO, PARTNER] }
+              walletCount: { type: integer, minimum: 0 }
+              total: { $ref: "#/components/schemas/Amount" }
     TransactionStatus:
       type: object
       required: [txnId, status, entries]
