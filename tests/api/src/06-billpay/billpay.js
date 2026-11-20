@@ -1,6 +1,9 @@
 // Port of billpay.feature. Aggregator simulator (billagg): amount due = 100 taka + the bill number's
 // last three digits; bills ending 404 unknown, ending 999 refused on payment; fraction .13 times out.
 // The same rules hold for the SOAP billers (KGDCL, JGTDSL, BTCL, LINK3) on billagg's SOAP front end.
+// Ticket 113b: the app list is the gateway's catalogue projection (57 dev billers); DESCO and KGDCL
+// need billMonth; a payment of a bill this wallet fetched carries the fetched amount, and DESCO is
+// FIXED: so the payments below with other amounts use bill numbers this folder never fetches.
 export default [
   {
     name: '[billpay] the customer sees the billers and fetches the amount due on a bill',
@@ -9,10 +12,10 @@ export default [
       const b = S.record(await MW.app.billers('customer01'));
       S.status(200);
       const billers = (b.body || {}).billers || [];
-      S.eq('the catalogue has 10 billers', billers.length, 10, String(b));
+      S.check('the catalogue has at least 10 billers', billers.length >= 10, String(b));
       S.check('the billers include DESCO', billers.some(x => x.code === 'DESCO'), String(b));
       S.check('KGDCL is a GAS biller', billers.some(x => x.code === 'KGDCL' && x.category === 'GAS'), String(b));
-      const f = S.record(await MW.app.fetchBill('customer01', 'DESCO', '1234567'));
+      const f = S.record(await MW.app.fetchBill('customer01', 'DESCO', '1234567', '202611'));
       S.status(200);
       S.eq('the amount due is 66700 poisha', f.body.amount && f.body.amount.valueMinor, 66700, String(f));
       await S.noChange();
@@ -24,7 +27,7 @@ export default [
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       // KGDCL is one of billagg's SOAP billers (KGDCL, JGTDSL, BTCL, LINK3): fetch and pay go over
       // POST /billagg/v1/soap; the simulator refuses a SOAP biller on the REST paths (3004).
-      const f = S.record(await MW.app.fetchBill('customer01', 'KGDCL', '7654321'));
+      const f = S.record(await MW.app.fetchBill('customer01', 'KGDCL', '7654321', '202611'));
       S.status(200);
       S.eq('the amount due is 42100 poisha', f.body.amount && f.body.amount.valueMinor, 42100, String(f));
       await S.billPay('customer01', 'KGDCL', '7654321', 42100, MW.pin);
@@ -38,7 +41,7 @@ export default [
   {
     name: '[billpay] an unknown bill number is a mapped aggregator error',
     run: async (MW, S) => {
-      S.record(await MW.app.fetchBill('customer01', 'DESCO', '1234404'));
+      S.record(await MW.app.fetchBill('customer01', 'DESCO', '1234404', '202611'));
       S.status(502);
       S.code('MW-PTR-BILLAGG-BILL_NOT_FOUND');
     },
@@ -46,7 +49,7 @@ export default [
   {
     name: '[billpay] an unknown biller is not found',
     run: async (MW, S) => {
-      S.record(await MW.app.fetchBill('customer01', 'NOPE', '1234567'));
+      S.record(await MW.app.fetchBill('customer01', 'NOPE', '1234567', '202611'));
       S.status(404);
       S.code('MW-VAL-003');
     },
@@ -80,7 +83,7 @@ export default [
     name: '[billpay] a bill payment without a biller is refused by the app API',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.previewBillPay('customer01', null, '1234567', 10000, MW.pin);
+      await S.previewBillPay('customer01', null, '2234567', 10000, MW.pin);
       S.status(400);
       S.code('MW-VAL-001');
       await S.noChange();
@@ -90,7 +93,7 @@ export default [
     name: '[billpay tsq] an aggregator timeout is resolved by status inquiry and the hold is committed',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.previewBillPay('customer01', 'DESCO', '1234567', 10013, MW.pin);
+      await S.previewBillPay('customer01', 'DESCO', '2234567', 10013, MW.pin);
       S.status(202);
       S.txnStatus('PROCESSING');
       await S.appShows('COMPLETED', 120);
@@ -101,7 +104,7 @@ export default [
   {
     name: '[billpay] a paid bill leaves an audit trail of the hold path',
     run: async (MW, S) => {
-      await S.previewBillPay('customer01', 'DESCO', '1234567', 5000, MW.pin);
+      await S.previewBillPay('customer01', 'DESCO', '2234567', 5000, MW.pin);
       S.status(200);
       await S.auditStates('RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED');
       await S.auditPartnerCall('mw-adapter-billpay');
@@ -111,7 +114,7 @@ export default [
     name: '[billpay] a bill payment sent twice with the same idempotency key pays the bill once',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.previewBillPay('customer01', 'DESCO', '1234567', 10000, MW.pin);
+      await S.previewBillPay('customer01', 'DESCO', '2234567', 10000, MW.pin);
       await S.repeat();
       S.status(200);
       S.sameTxnId();
@@ -125,7 +128,7 @@ export default [
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.lateUnapplied('billagg');
-      await S.previewBillPay('customer01', 'DESCO', '1234567', 10000, MW.pin);
+      await S.previewBillPay('customer01', 'DESCO', '2234567', 10000, MW.pin);
       S.status(202);
       S.txnStatus('PROCESSING');
       await S.normalOnceAnswered('billagg', '/billagg/v1/payments');

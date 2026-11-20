@@ -91,7 +91,7 @@ public class TxnRequestMapper {
         null,
         s.language(),
         Map.of("ussdSessionId", s.sessionId(), "mno", s.mno()),
-        null,
+        attributes(req.flow(), s),
         now,
         "true".equals(s.inputs().get(FlowRequest.CONFIRM_DUPLICATE)) ? Boolean.TRUE : null);
   }
@@ -113,6 +113,19 @@ public class TxnRequestMapper {
             new TxnAuthorisationRequest.TxnParty(req.debitParty().type(), req.debitParty().id()),
             new TxnAuthorisationRequest.TxnParty(req.creditParty().type(), req.creditParty().id()),
             req.idempotencyKey()));
+  }
+
+  /**
+   * A BILL_PAY carries the bill the {@code bill} lookup fetched for this session ({@code
+   * billOutstandingMinor}, poisha; ticket 113b): the orchestrator checks a FIXED biller's amount
+   * against it. A session input set by the lookup only, never typed by the subscriber.
+   */
+  private static Map<String, String> attributes(String flow, UssdSession s) {
+    String fetched = s.inputs() == null ? null : s.inputs().get("billOutstandingMinor");
+    if (!BILL_PAY.equals(flow) || fetched == null || !fetched.matches("[0-9]{1,15}")) {
+      return null;
+    }
+    return Map.of("billOutstandingMinor", fetched);
   }
 
   private static Party creditParty(String flow, String id) {

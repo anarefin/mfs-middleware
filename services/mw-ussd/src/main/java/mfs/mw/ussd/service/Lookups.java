@@ -21,7 +21,10 @@ import org.springframework.stereotype.Component;
  * Read-only lookups a node runs ({@code lookup}, arguments from the node's {@code mapping}:
  * argument name to an input name, or a literal {@code =VALUE}); their values are added to the
  * session's inputs. {@code bill} fetches a bill ({@code billerCode}, {@code billNumber}) and adds
- * {@code amount} (taka, {@code 667.00}) and {@code partnerId}. {@code charges} quotes the fee
+ * {@code amount} (taka, {@code 667.00}), {@code partnerId} and {@code billOutstandingMinor} (the
+ * fetched amount in poisha, which a BILL_PAY carries as {@code attributes.billOutstandingMinor} so
+ * the orchestrator checks a FIXED biller's amount; ticket 113b); a biller the catalogue disabled is
+ * refused with its bn/en maintenance text before any fetch. {@code charges} quotes the fee
  * (WAL-04) for {@code txnType} and {@code amount} and adds {@code fee} in taka. {@code statement}
  * and {@code remit} add the screen text ({@code lines}, {@code status}).
  */
@@ -34,6 +37,8 @@ public class Lookups {
   public static final String REMIT = "remit";
   public static final String BILLER_CODE = "billerCode";
   public static final String BILL_NUMBER = "billNumber";
+  /** The fetched bill in poisha, added by {@code bill} (session input, never typed by the subscriber). */
+  public static final String BILL_OUTSTANDING = "billOutstandingMinor";
 
   /** Lookup name to its required arguments. */
   public static final Map<String, Set<String>> ARGUMENTS =
@@ -44,6 +49,9 @@ public class Lookups {
           REMIT, Set.of("reference"));
 
   private static final Logger log = LoggerFactory.getLogger(Lookups.class);
+  private static final java.time.ZoneId DHAKA = java.time.ZoneId.of("Asia/Dhaka");
+  private static final java.time.format.DateTimeFormatter BILL_MONTH =
+      java.time.format.DateTimeFormatter.ofPattern("yyyyMM");
 
   private final BillDirectory bills;
   private final ChargeQuote charges;
@@ -71,19 +79,31 @@ public class Lookups {
     }
     String code = args.get(BILLER_CODE);
     try {
-      Bill bill = bills.fetch(code, args.get(BILL_NUMBER));
-      String partnerId =
+      Biller biller =
           bills.billers().stream()
               .filter(b -> b.code().equals(code))
-              .map(Biller::partnerId)
               .findFirst()
               .orElseThrow(() -> new IllegalStateException("biller not in the catalogue"));
+      if (!biller.isEnabled()) {
+        return LookupOutcome.refused(new ErrorInfo(
+            "MW-SYS-BILLER_DISABLED",
+            biller.maintenanceEn() == null ? "This biller is not available now" : biller.maintenanceEn(),
+            biller.maintenanceBn() == null ? "এই বিলার এখন পাওয়া যাচ্ছে না" : biller.maintenanceBn(),
+            false));
+      }
+      String partnerId = biller.partnerId();
+      // A handset has no bill-month screen: a biller that needs one is asked for the current month's
+      // bill (Asia/Dhaka), the bill a subscriber pays over USSD (ticket 113b).
+      Bill bill = Boolean.TRUE.equals(biller.billMonthRequired())
+          ? bills.fetch(code, args.get(BILL_NUMBER), BILL_MONTH.format(java.time.YearMonth.now(DHAKA)))
+          : bills.fetch(code, args.get(BILL_NUMBER));
       if (bill.amount() == null || bill.amount().valueMinor() == null || bill.amount().valueMinor() <= 0) {
         return LookupOutcome.refused(
             new ErrorInfo(ErrorCodes.VAL_INVALID, "Nothing to pay on this bill", "এই বিলে দেওয়ার কিছু নেই", false));
       }
       String taka = BigDecimal.valueOf(bill.amount().valueMinor()).movePointLeft(2).toPlainString();
-      return LookupOutcome.found(Map.of("amount", taka, "partnerId", partnerId));
+      return LookupOutcome.found(Map.of(
+          "amount", taka, "partnerId", partnerId, BILL_OUTSTANDING, Long.toString(bill.amount().valueMinor())));
     } catch (BillPayRefusedException e) {
       ErrorEnvelope env = e.envelope();
       log.atInfo()

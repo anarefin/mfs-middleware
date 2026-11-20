@@ -139,7 +139,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   unreadable `503 MW-SYS-011` (retryable). Resilience4j instance `billpay`: retry (2 retries, these
   are idempotent reads) and circuit breaker on `BillPayUnavailableException` only; the envelope
   (`BillPayRefusedException`) is a normal answer. Any authenticated app user with a wallet may call
-  them. Why HTTP and not Kafka: see "Design decision: synchronous bill fetch" in
+  them. Ticket 113b (app.v1 1.14.0, FRS FL-04, FL-05, PLT-043): the list and the aggregator come from this
+  service's own projection of mw-admin-api's catalogue (`service/BillerCatalog`, fed by
+  `messaging/BillerCatalogKafkaListener` from `mw.config.changed.v1` BILLER records: own group
+  `<service>-billers-<HOSTNAME>`, seek to the beginning on every assignment, never commits, never throws; the
+  topic is in `mw.kafka.retry.exclude-topics`; `mw.biller-catalog.consumer.enabled`, off in tests); the
+  adapter's list is the fallback while the projection is empty. Each biller carries `nameBn`, `fields`
+  (name, bn/en label, regex), `amountRule` and bounds, `billMonthRequired`, `enabled` and the bn/en
+  maintenance text; a BILL_PAY to a disabled biller is 503 `MW-SYS-BILLER_DISABLED` with that text.
+  fetch-bill takes `billMonth` (YYYYMM). Each fetched amount is kept in Redis `billfetch:<sha256(channel,
+  wallet, biller, bill number)>` for 30 min (`repository/BillFetchStore`, no MSISDN or bill number in the
+  key); a bill-pay preview of the same wallet, biller and bill number stores it and the confirm attaches
+  `attributes.billOutstandingMinor` (the client's own value of that key is always dropped), so the
+  orchestrator checks a FIXED biller's amount (ticket 113c, `MW-VAL-032`). Redis trouble: logged
+  `billpay.fetch.store_unavailable`, the payment goes without it. Tests `service/BillerServiceTest`,
+  `service/PreviewServiceTest`, `messaging/BillerProjectionIT` (Kafka). Why HTTP and not Kafka: see "Design decision: synchronous bill fetch" in
   mw-adapter-billpay's CLAUDE.md (no money moves; no Kafka thread waits; contract, not code,
   dependency; Kafka request/reply would misuse orchestrator-owned partner topics).
 - Submit (`service/TransactionService`): mints a UUIDv7 txnId (`util/UuidV7`), maps to the
@@ -335,6 +349,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `dto/TxnAuthorisation`; checked in `ApiContractsTest`) and `api/mw-auth/auth.v1.openapi.yaml` (`GET /auth/v1/pin-key`,
   `dto/PinKey`, served unchanged as the app API's `PinKey`). The app token itself is mw-auth's (`api/mw-auth/auth.v1.openapi.yaml`
   describes its claims; tested by `security/AppTokenDecoderTest`, `security/AppUserResolverTest`).
+- `events/mw-admin-api/mw.config.changed.v1` (consumed, ticket 113b: BILLER records only; own type
+  `dto/ConfigChangedEvent`; `ConsumedContractsTest` runs every valid sample through the listener into the projection).
 - `events/mw-orchestrator/mw.txn.status.v1` (consumed; own type `dto/StatusMessage`, unknown
   fields ignored) and the orchestrator's `mw-reply-to` / duplicate-answer conventions.
 

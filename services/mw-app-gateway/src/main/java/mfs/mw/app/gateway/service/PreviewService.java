@@ -88,6 +88,7 @@ public class PreviewService {
 
   private final OrchestratorQuoteClient quotes;
   private final TransactionService transactions;
+  private final BillerService billers;
   private final PreviewStore store;
   private final PreviewProperties props;
   private final Clock clock;
@@ -95,9 +96,10 @@ public class PreviewService {
 
   public PreviewService(
       OrchestratorQuoteClient quotes, TransactionService transactions, PreviewStore store, PreviewProperties props,
-      Clock clock) {
+      Clock clock, BillerService billers) {
     this.quotes = quotes;
     this.transactions = transactions;
+    this.billers = billers;
     this.store = store;
     this.props = props;
     this.clock = clock;
@@ -124,7 +126,7 @@ public class PreviewService {
       store.save(
           id,
           new PreviewStore.Stored(
-              scope(user), txn.txnType(), txnHash(txn), poisha(quote.outstanding()), poisha(quote.minimum())),
+              scope(user), txn.txnType(), txnHash(txn), outstanding(user, txn, quote), poisha(quote.minimum())),
           props.ttl());
     } catch (RuntimeException e) {
       throw new MwException(ErrorCodes.SYS_SESSION_STORE_UNAVAILABLE, "Preview temporarily unavailable, try again", e)
@@ -239,18 +241,34 @@ public class PreviewService {
     return new QuoteRequest(user.msisdn(), walletType, txn.txnType(), user.channel(), txn.amount(), payee, product);
   }
 
+  /**
+   * The bill to attach at confirm: the quote's postpaid bill, else (BILL_PAY, ticket 113b) the amount
+   * this wallet fetched for the same biller and bill number ({@link BillerService#fetchedAmount}),
+   * never a client value. None: the orchestrator leaves a FIXED biller's amount to the aggregator.
+   */
+  private Long outstanding(AppUser user, TransactionRequest txn, Quote quote) {
+    Long quoted = poisha(quote.outstanding());
+    if (quoted != null || !RequestMapper.BILL_PAY.equals(txn.txnType())
+        || txn.partner() == null || txn.creditParty() == null) {
+      return quoted;
+    }
+    return billers.fetchedAmount(user, txn.partner().billerCode(), txn.creditParty().id()).orElse(null);
+  }
+
   private static Long poisha(Quote.Money money) {
     return money == null ? null : money.valueMinor();
   }
 
   /** The bill the quote stored, attached at confirm so the orchestrator does not fetch again. */
   private static Map<String, String> billOf(PreviewStore.Stored preview) {
-    if (preview.outstandingMinor() == null || preview.minimumMinor() == null) {
-      return Map.of();
+    Map<String, String> bill = new java.util.LinkedHashMap<>();
+    if (preview.outstandingMinor() != null) {
+      bill.put(RequestMapper.BILL_OUTSTANDING, Long.toString(preview.outstandingMinor()));
     }
-    return Map.of(
-        RequestMapper.BILL_OUTSTANDING, Long.toString(preview.outstandingMinor()),
-        RequestMapper.BILL_MINIMUM, Long.toString(preview.minimumMinor()));
+    if (preview.minimumMinor() != null) {
+      bill.put(RequestMapper.BILL_MINIMUM, Long.toString(preview.minimumMinor()));
+    }
+    return bill;
   }
 
   /** The payee type submit publishes. A type the client sent is ignored, so the quote cannot differ. */

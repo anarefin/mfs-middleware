@@ -198,6 +198,22 @@ class TxnRequestMapperTest {
    * the core's txnHash check fails. One case per flow.
    */
   @Test
+  void aBillPayCarriesTheBillTheLookupFetchedNeverOtherFlows() {
+    UssdSession s =
+        new UssdSession("robi", "sess-5", "01712345678", "main", 2, "bn", "bp.send", List.of(),
+            Map.of("billOutstandingMinor", "66700"), 0, List.of(), false, NOW);
+    TxnRequestMapper mapper = new TxnRequestMapper();
+    TxnRequest bill = mapper.toRequest(new FlowRequest("BILL_PAY", s, "p",
+        Map.of("creditParty", "1234567", "amount", "667", "partnerId", "billagg", "billerCode", "DESCO"), null),
+        "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0f", "k".repeat(64), "corr-5", NOW);
+    assertThat(bill.attributes()).containsExactly(Map.entry("billOutstandingMinor", "66700"));
+    TxnRequest p2p = mapper.toRequest(new FlowRequest("P2P", s, "p",
+        Map.of("creditParty", "01812345678", "amount", "5"), null),
+        "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0f", "k".repeat(64), "corr-5", NOW);
+    assertThat(p2p.attributes()).isNull();
+  }
+
+  @Test
   void theAuthorisationCarriesExactlyThePublishedValues() {
     EncryptedPin pin = new EncryptedPin("PIN_TRANSPORT.v1", "Y2lwaGVy");
     UssdSession s =
