@@ -72,7 +72,9 @@ public class MerchantPartnerService {
    * delivered again by Kafka (a retry, a rebalance, a replay) after it was claimed calls nobody
    * and writes nothing, so a PAY reaches the partner once per requestId. If the instance dies
    * between claim and reply, the orchestrator's partner deadline moves the transaction to UNKNOWN
-   * and the status inquiry resolves it (spec 7.4), exactly as for a crash during the call.
+   * and the status inquiry resolves it (spec 7.4), exactly as for a crash during the call. A NOTIFY
+   * (PAY) whose call throws is answered UNKNOWN {@code MW-TMO-PARTNER_CALL_FAILED} (M9 review): the
+   * orchestrator retries it with backoff, then dead-letters it.
    */
   public void process(PartnerRequest request) {
     if (!inbox.processOnce(CALL_CLAIM, request.requestId(), () -> { })) {
@@ -84,7 +86,23 @@ public class MerchantPartnerService {
       duplicates.increment();
       return;
     }
-    publish(request, replyFor(request));
+    PartnerReply reply;
+    try {
+      reply = replyFor(request);
+    } catch (RuntimeException e) {
+      if (!"PAY".equals(request.payload() == null ? null : request.payload().operation())) {
+        throw e; // VALIDATE, REFUND, STATUS_QUERY: the orchestrator's deadline and inquiry resolve them
+      }
+      // M9 review: a NOTIFY must never be lost silently; UNKNOWN makes the orchestrator retry it
+      log.atWarn()
+          .addKeyValue("event", "partner.call.failed")
+          .addKeyValue("txnId", request.txnId())
+          .addKeyValue("correlationId", request.correlationId())
+          .addKeyValue("errorClass", e.getClass().getName())
+          .log("merchant notify call failed; answering UNKNOWN so it is retried");
+      reply = replies.callFailed(request, null);
+    }
+    publish(request, reply);
   }
 
   private PartnerReply replyFor(PartnerRequest request) {

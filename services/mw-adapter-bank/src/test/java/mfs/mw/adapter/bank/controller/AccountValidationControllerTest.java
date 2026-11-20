@@ -47,7 +47,7 @@ class AccountValidationControllerTest {
 
   @Test
   void theAppGatewayGetsTheMaskedAnswer() throws Exception {
-    when(service.validate("dbbl", "1234567890")).thenReturn(new AccountValidationView("dbbl", "7890", "R."));
+    when(service.validate("dbbl", "1234567890", null)).thenReturn(new AccountValidationView("dbbl", "7890", "R."));
 
     var res = mvc.post().uri("/bank/v1/accounts/validate")
         .with(jwt().jwt(j -> j.claim("azp", "mw-app-gateway")))
@@ -64,7 +64,7 @@ class AccountValidationControllerTest {
     assertThat(mvc.post().uri("/bank/v1/accounts/validate").contentType(MediaType.APPLICATION_JSON).content(BODY))
         .hasStatus(401)
         .bodyJson().extractingPath("code").isEqualTo("MW-AUTH-001");
-    verify(service, never()).validate(any(), any());
+    verify(service, never()).validate(any(), any(), any());
   }
 
   @Test
@@ -74,7 +74,7 @@ class AccountValidationControllerTest {
             .contentType(MediaType.APPLICATION_JSON).content(BODY))
         .hasStatus(403)
         .bodyJson().extractingPath("code").isEqualTo("MW-AUTH-002");
-    verify(service, never()).validate(any(), any());
+    verify(service, never()).validate(any(), any(), any());
   }
 
   @Test
@@ -84,6 +84,6 @@ class AccountValidationControllerTest {
             .contentType(MediaType.APPLICATION_JSON)
             .content("{\"bankCode\":\"dbbl\",\"accountNumber\":\"12ab\"}"))
         .hasStatus(400);
-    verify(service, never()).validate(any(), any());
+    verify(service, never()).validate(any(), any(), any());
   }
 }

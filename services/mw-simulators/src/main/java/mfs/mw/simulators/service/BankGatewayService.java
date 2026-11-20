@@ -149,11 +149,13 @@ public class BankGatewayService {
     if (closed.isPresent()) {
       return closed.get();
     }
-    Optional<BankTransfer> existing = ledger.find(p.code(), transactionId);
-    if (existing.isPresent()) {
-      return reply(existing.get(), d);
+    // M9 review: check and apply in one atomic step, so concurrent resends never credit twice
+    BankGatewayLedger.Applied applied =
+        ledger.applyOnce(p.code(), transactionId, () -> apply(p, d, transactionId, accountNumber, value, direction));
+    if (!applied.fresh()) {
+      return reply(applied.transfer(), d);
     }
-    BankTransfer record = ledger.putIfAbsent(apply(p, d, transactionId, accountNumber, value, direction));
+    BankTransfer record = applied.transfer();
     log.atInfo()
         .addKeyValue("event", "sim.bank.transfer.applied")
         .addKeyValue("partnerId", p.party())

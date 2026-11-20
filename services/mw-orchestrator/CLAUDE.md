@@ -75,7 +75,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `P2pFlow`, `CashInFlow`, `CashOutFlow`, `MerchantPayFlow` (ticket 30) = validate + post (parties as the channel set them:
   CASH_IN agent -> customer, CASH_OUT customer -> agent, MERCHANT_PAY customer -> merchant; the core enforces the wallet types).
   Merchant system leg (ticket 115b, FRS UC-11, EXT-11; `config/MerchantSystemProperties`
-  `mw.orchestrator.merchant-systems.{merchants.<merchant wallet id>.{partner-id, merchant-id, till-id}, notify-attempts 3}`;
+  `mw.orchestrator.merchant-systems.{merchants.<merchant wallet id>.{partner-id, merchant-id, till-id}, notify-attempts 3, notify-backoff 30s}`;
   none in the main config, dev: merchant20 `01911000020` -> `merchant-soap` / `M-0001` / `TILL-01` in the compose
   `SPRING_APPLICATION_JSON`): a MERCHANT_PAY whose credit wallet has a merchant system starts with
   `MerchantValidationStarted` -> VALIDATING + `Effect.SEND_MERCHANT_VALIDATE` (step CALL_PARTNER, which
@@ -89,7 +89,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   waits for the VALIDATING deadline (FAILED `MW-TMO-001`). Entering COMPLETED (not from REVERSING) sends the
   NOTIFY (`SagaEngine.sendMerchantNotify`, a PAY with the amount, requestId `<txnId>:NOTIFY:<n>`) through the outbox,
   so it leaves only after the completion commits. A NOTIFY answer never moves the saga: SUCCESS is logged
-  `merchant.notify.delivered`; any other answer to the LATEST attempt sends attempt n+1 at once until
+  `merchant.notify.delivered`; any other answer to the LATEST attempt schedules attempt n+1 after a backoff (M9
+  review: `notify-backoff` 30 s, doubled per later attempt; saga timer step `MERCHANT_NOTIFY`, sent by
+  `SagaTimerService` while the payment is COMPLETED; mw-adapter-merchant answers UNKNOWN
+  `MW-TMO-PARTNER_CALL_FAILED` when its notify call throws) until
   `notify-attempts` sends, then the notify is dead-lettered: ERROR `merchant.notify.dead_lettered` and audit
   `merchant.notify.failed` (outcome FAILURE, `after.attempts`, `after.errorCode`; visible in the console's audit
   search), the payment stays COMPLETED. An answer to an older attempt is ignored. Deviations: the retries have no

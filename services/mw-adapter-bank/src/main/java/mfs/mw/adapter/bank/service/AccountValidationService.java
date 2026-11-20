@@ -8,6 +8,7 @@ import mfs.mw.adapter.bank.exception.MwException;
 import mfs.mw.adapter.bank.partner.PartnerCall;
 import mfs.mw.adapter.bank.partner.PartnerResponse;
 import mfs.mw.adapter.bank.partner.route.PartnerGateway;
+import mfs.mw.adapter.bank.util.HolderNameMatch;
 import mfs.mw.adapter.bank.util.MaskingPolicy;
 import mfs.mw.adapter.bank.util.SensitiveType;
 import org.slf4j.Logger;
@@ -33,6 +34,9 @@ public class AccountValidationService {
   /** The profile of a bank code (ticket 117a: {@code bank-<code>}). */
   public static final String PROFILE_PREFIX = "bank-";
 
+  /** The INQUIRY attribute with the bank's whole holder name, compared here and never answered. */
+  static final String FULL_NAME = "holderFullName";
+
   private final PartnerGateway partners;
 
   public AccountValidationService(PartnerGateway partners) {
@@ -40,10 +44,19 @@ public class AccountValidationService {
   }
 
   public AccountValidationView validate(String bankCode, String accountNumber) {
+    return validate(bankCode, accountNumber, null);
+  }
+
+  /**
+   * As above; with a {@code matchName} (the wallet's KYC name, M9 review owner binding) the answer
+   * also says whether the bank's full holder name ({@code attributes.holderFullName} of the profile's
+   * INQUIRY mapping) is that person. No full name from the bank is a mismatch (fail closed).
+   */
+  public AccountValidationView validate(String bankCode, String accountNumber, String matchName) {
     String partnerId = PROFILE_PREFIX + bankCode;
     PartnerResponse response = partners.call(call(partnerId, accountNumber));
     return switch (response) {
-      case PartnerResponse.Success s -> view(bankCode, partnerId, accountNumber, s);
+      case PartnerResponse.Success s -> view(bankCode, partnerId, accountNumber, s, matchName);
       case PartnerResponse.Rejected r ->
           throw new MwException("MW-PTR-" + segment(partnerId) + "-" + r.errorSuffix(),
                   r.message() == null ? "Account validation refused" : MaskingPolicy.scrub(r.message()))
@@ -76,7 +89,7 @@ public class AccountValidationService {
   }
 
   private static AccountValidationView view(
-      String bankCode, String partnerId, String accountNumber, PartnerResponse.Success success) {
+      String bankCode, String partnerId, String accountNumber, PartnerResponse.Success success, String matchName) {
     String holder = success.attributes() == null ? null : success.attributes().get("holderName");
     if (holder == null || holder.isBlank()) {
       throw timeout("MALFORMED_REPLY");
@@ -86,8 +99,12 @@ public class AccountValidationService {
         .addKeyValue("partnerId", partnerId)
         .addKeyValue("operation", "INQUIRY")
         .log("bank account validated");
+    Boolean nameMatch = matchName == null
+        ? null
+        : HolderNameMatch.matches(matchName, success.attributes().get(FULL_NAME));
     return new AccountValidationView(
-        bankCode, accountNumber.substring(accountNumber.length() - 4), MaskingPolicy.mask(SensitiveType.NAME, holder));
+        bankCode, accountNumber.substring(accountNumber.length() - 4), MaskingPolicy.mask(SensitiveType.NAME, holder),
+        nameMatch);
   }
 
   private static MwException timeout(String reason) {

@@ -14,7 +14,11 @@ import java.util.UUID;
 import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import mfs.mw.app.gateway.client.BankAccountClient;
 import mfs.mw.app.gateway.client.OrchestratorQuoteClient;
+import mfs.mw.app.gateway.dto.Party;
+import mfs.mw.app.gateway.util.MaskingPolicy;
+import mfs.mw.app.gateway.util.SensitiveType;
 import mfs.mw.app.gateway.config.PreviewProperties;
 import mfs.mw.app.gateway.dto.AppUser;
 import mfs.mw.app.gateway.dto.ConfirmRequest;
@@ -94,10 +98,12 @@ public class PreviewService {
   private final PreviewProperties props;
   private final Clock clock;
   private final SecretKeySpec key;
+  private final BankAccountClient bank;
 
   public PreviewService(
       OrchestratorQuoteClient quotes, TransactionService transactions, PreviewStore store, PreviewProperties props,
-      Clock clock, BillerService billers) {
+      Clock clock, BillerService billers, BankAccountClient bank) {
+    this.bank = bank;
     this.quotes = quotes;
     this.transactions = transactions;
     this.billers = billers;
@@ -110,9 +116,11 @@ public class PreviewService {
   public PreviewView preview(AppUser user, String group, PreviewRequest body) {
     TransactionRequest txn = body.toTransaction(txnType(group));
     transactions.check(user, txn);
+    LinkedAccountService.Resolved linked = transactions.linkedAccount(user, txn).orElse(null);
+    String holder = bankHolder(txn, linked);
     Quote quote;
     try {
-      quote = quotes.quote(quoteRequest(user, txn, transactions.linkedAccount(user, txn).orElse(null)));
+      quote = quotes.quote(quoteRequest(user, txn, linked));
     } catch (OrchestratorUnavailableException e) {
       throw new MwException(ErrorCodes.SYS_ORCHESTRATOR_UNAVAILABLE, "Preview temporarily unavailable, try again", e)
           .withStatus(HttpStatus.SERVICE_UNAVAILABLE)
@@ -141,7 +149,7 @@ public class PreviewService {
         .log("transaction previewed");
     return new PreviewView(
         id + "." + sign(id, user), expiresAt, txn.txnType(), quote.amount(), quote.fee(), quote.vat(),
-        quote.commission(), quote.total(), quote.counterparty(),
+        quote.commission(), quote.total(), payee(quote.counterparty(), holder),
         new PreviewView.Limits(quote.limits().remaining()), quote.outstanding(), quote.minimum());
   }
 
@@ -206,6 +214,28 @@ public class PreviewService {
       throw expired();
     }
     return stored.get();
+  }
+
+  /**
+   * FL-09 (M9 review): a W2B preview asks the bank again (AVL through mw-adapter-bank) whether the
+   * linked account is still open and who holds it; a refusal or no answer ends the preview with the
+   * adapter's code, nothing kept. The holder comes back masked to the initial. Other types: null.
+   */
+  private String bankHolder(TransactionRequest txn, LinkedAccountService.Resolved linked) {
+    if (linked == null || !RequestMapper.W2B.equals(txn.txnType())) {
+      return null;
+    }
+    return MaskingPolicy.mask(SensitiveType.NAME, bank.validate(linked.bankCode(), linked.accountNumber()).holderName());
+  }
+
+  /** The quote's payee, with the bank's (masked) holder name for a W2B. */
+  private static Party payee(Party quoted, String holder) {
+    if (holder == null) {
+      return quoted;
+    }
+    return quoted == null
+        ? new Party("BANK_ACCOUNT", null, holder, null)
+        : new Party(quoted.type(), quoted.id(), holder, quoted.walletType());
   }
 
   private static MwException expired() {

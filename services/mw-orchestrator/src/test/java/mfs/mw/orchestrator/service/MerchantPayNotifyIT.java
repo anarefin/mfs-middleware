@@ -35,6 +35,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.orchestrator.consumers.enabled=false",
       "mw.orchestrator.timer.enabled=false",
       "mw.orchestrator.merchant-systems.notify-attempts=3",
+      "mw.orchestrator.merchant-systems.notify-backoff=10s",
       "mw.orchestrator.merchant-systems.merchants.01911000009.partner-id=merchant-soap",
       "mw.orchestrator.merchant-systems.merchants.01911000009.merchant-id=M-0009",
       "mw.orchestrator.merchant-systems.merchants.01911000009.till-id=TILL-01"
@@ -55,11 +56,13 @@ class MerchantPayNotifyIT {
   private final MutableClock clock;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
+  private final SagaTimerService timers;
 
   @Autowired
   MerchantPayNotifyIT(
       TransactionService transactions, CoreCalls core, PartnerReplyService replies, Clock clock,
-      JdbcTemplate jdbc, JsonMapper json) {
+      JdbcTemplate jdbc, JsonMapper json, SagaTimerService timers) {
+    this.timers = timers;
     this.transactions = transactions;
     this.core = core;
     this.replies = replies;
@@ -211,13 +214,35 @@ class MerchantPayNotifyIT {
     assertValid(txn);
   }
 
+  private int notifies(String txn) {
+    return (int) outbox(TOPIC, txn).stream().filter(n -> "PAY".equals(n.path("payload").path("operation").asString())).count();
+  }
+
   @Test
   void aFailedNotifyIsRetriedThenDeadLetteredAndThePaymentStaysCompleted() {
     String txn = completed();
 
-    replies.handle(reply(txn, "NOTIFY:1", "PAY", "UNKNOWN", "MW-TMO-PARTNER_TIMEOUT"));
+    replies.handle(reply(txn, "NOTIFY:1", "PAY", "UNKNOWN", "MW-TMO-PARTNER_CALL_FAILED"));
+    // M9 review: the retry waits for its backoff (10 s, then 20 s), it is not sent at once
+    assertThat(notifies(txn)).isEqualTo(1);
+    clock.set(TestData.NOW.plusSeconds(9));
+    timers.sweep();
+    assertThat(notifies(txn)).isEqualTo(1);
+    clock.set(TestData.NOW.plusSeconds(10));
+    timers.sweep();
+    assertThat(notifies(txn)).isEqualTo(2);
+
     replies.handle(reply(txn, "NOTIFY:2", "PAY", "FAILED", "MW-PTR-MERCHANT_SOAP-UNMAPPED"));
+    clock.set(TestData.NOW.plusSeconds(29));
+    timers.sweep();
+    assertThat(notifies(txn)).isEqualTo(2);
+    clock.set(TestData.NOW.plusSeconds(30));
+    timers.sweep();
+    assertThat(notifies(txn)).isEqualTo(3);
+
     replies.handle(reply(txn, "NOTIFY:3", "PAY", "UNKNOWN", "MW-TMO-PARTNER_TIMEOUT"));
+    clock.set(TestData.NOW.plusSeconds(3600));
+    timers.sweep();
 
     assertThat(outbox(TOPIC, txn)).extracting(n -> n.path("requestId").asString()).containsExactly(
         PartnerRequestMapper.requestId(txn, "INQUIRY"),
@@ -241,6 +266,8 @@ class MerchantPayNotifyIT {
     replies.handle(reply(txn, "NOTIFY:1", "PAY", "FAILED", "MW-PTR-MERCHANT_SOAP-UNMAPPED"));
 
     replies.handle(reply(txn, "NOTIFY:1", "PAY", "UNKNOWN", null));
+    clock.set(TestData.NOW.plusSeconds(3600));
+    timers.sweep();
 
     assertThat(outbox(TOPIC, txn)).hasSize(3); // INQUIRY, NOTIFY:1, NOTIFY:2
   }

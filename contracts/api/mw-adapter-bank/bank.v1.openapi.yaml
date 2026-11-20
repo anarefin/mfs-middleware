@@ -11,6 +11,9 @@ info:
     The account number is never echoed: the answer carries its last 4 digits only, and the holder
     name only as its first initial (`MaskingPolicy`), so neither the full name nor the full number
     leaves the adapter. Every error is the 5.3 envelope. The call is a read and may be retried.
+    Owner binding (M9 review, FRS FL-08): with `matchName` (the wallet's KYC name) the adapter compares
+    it with the bank's full holder name (normalised, honorifics dropped, one-edit spelling variants) and
+    answers `nameMatch`; the full name still never leaves the adapter.
 servers:
   - url: http://mw-adapter-bank:8080
 security:
@@ -74,6 +77,7 @@ components:
       properties:
         bankCode: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,40}$", description: "The profile is bank-<bankCode>" }
         accountNumber: { type: string, pattern: "^[0-9]{6,20}$" }
+        matchName: { type: string, maxLength: 120, description: "Optional: the wallet's KYC name to compare with the bank's holder name" }
     AccountValidation:
       type: object
       required: [bankCode, accountLast4, holderName]
@@ -82,6 +86,7 @@ components:
         bankCode: { type: string }
         accountLast4: { type: string, pattern: "^[0-9]{4}$" }
         holderName: { type: string, description: "First initial only, e.g. R." }
+        nameMatch: { type: boolean, description: "Only when the request named matchName: whether the bank's holder is that person" }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]
