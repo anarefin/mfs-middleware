@@ -159,6 +159,13 @@ public class BillAggregatorMockService {
     }, BillAggregatorMockService::unavailable, BillAggregatorMockService::internalError, code -> refusalCode(p, reference, code));
   }
 
+  /** The health probe a partner record with {@code healthCheck: true} sends (samplebiller, ticket 136). */
+  public SimReply health(AggregatorProfile p) {
+    Decision d = control.decide(p.id(), "health", Map.of(), SimMode.SUCCESS);
+    return MockCalls.answer(d, p.id(), () -> new SimReply(200, body("status", "UP")),
+        BillAggregatorMockService::unavailable, BillAggregatorMockService::internalError, code -> refusalCode(p, null, code));
+  }
+
   /** The bill's state for tests ({@code GET /sim/agg/{profile}/bills/{biller}/{billNumber}}). */
   public Map<String, Object> bill(String profile, String billerCode, String billNumber) {
     Bill b = ledger.bill(profile(profile).id(), billerCode, billNumber)
