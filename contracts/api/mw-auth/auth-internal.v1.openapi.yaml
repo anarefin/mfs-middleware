@@ -226,6 +226,66 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/atm-tokens:
+    post:
+      operationId: issueAtmToken
+      summary: A one-time ATM cash-out token after the app's PIN step-up
+      description: >-
+        Ticket 120b2, FRS FL-11, UC-17. Only the client `mw-app-gateway` (any other allowed client:
+        403 MW-AUTH-002). The step-up is the transaction assertion the caller got first from `POST
+        /internal/v1/txn-authorisations` for txnType `ATM_CASH_OUT`, payer `WALLET/<walletId>`, payee
+        `PARTNER/ucbatm` (`mw.auth.atm-token.partner-id`) with this amount, currency, idempotencyKey and
+        channel; it must be the live assertion of that wallet and key, bound to exactly that
+        transaction, else 401 MW-AUTH-049 and nothing is stored. Answers 6 random digits valid 10 min.
+        Only their HMAC under the mw-crypto `HMAC_ATMTOKEN` key, bound to wallet, amount and currency,
+        is stored; one live token per wallet (a new one replaces it). Unknown wallet 403 MW-AUTH-002,
+        wallet checks as the assertion (403 MW-AUTH-043, 423 MW-AUTH-041/042), mw-crypto down 503
+        MW-SYS-050.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AtmTokenRequest" }
+      responses:
+        "201":
+          description: The token, shown once
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AtmTokenIssued" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "423": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/atm-tokens/verifications:
+    post:
+      operationId: verifyAtmToken
+      summary: Checks an ATM token with its amount and spends it
+      description: >-
+        Ticket 120b2. Only the client `mw-adapter-atm` (VerifyTokenAndDebit). A match spends the token
+        (once: a second check is 401 MW-AUTH-011) and answers the wallet to debit. Another amount is a
+        wrong token. Wrong: 401 MW-AUTH-010 (the third wrong one voids it); no token, expired, spent,
+        replaced or an unknown MSISDN: 401 MW-AUTH-011; checks used up: 401 MW-AUTH-012; wallet not
+        active or admin-locked 403 MW-AUTH-043; mw-crypto down 503 MW-SYS-050.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AtmTokenVerification" }
+      responses:
+        "200":
+          description: The token matched and is spent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AtmTokenVerified" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /internal/v1/pin-resets:
     post:
       operationId: approveCarePinReset
@@ -400,6 +460,40 @@ components:
         purpose: { type: string, enum: [CHECKOUT] }
         bindingId: { type: string, pattern: "^[A-Za-z0-9._:-]{8,128}$" }
         otp: { type: string, pattern: "^[0-9]{6}$" }
+    AtmTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [walletId, channel, amount, currency, idempotencyKey, assertion]
+      properties:
+        walletId: { type: string, minLength: 1, maxLength: 64 }
+        channel: { type: string, pattern: "^[A-Z][A-Z_]{1,31}$" }
+        deviceId: { type: string, minLength: 1, maxLength: 128 }
+        amount: { type: integer, format: int64, minimum: 1, description: Minor units }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 64 }
+        assertion: { type: string, minLength: 1, maxLength: 4096, description: The step-up assertion (compact JWS) }
+    AtmTokenIssued:
+      type: object
+      additionalProperties: false
+      required: [token, expiresAt]
+      properties:
+        token: { type: string, pattern: "^[0-9]{6}$" }
+        expiresAt: { type: string, format: date-time }
+    AtmTokenVerification:
+      type: object
+      additionalProperties: false
+      required: [msisdn, amount, currency, token]
+      properties:
+        msisdn: { type: string, pattern: "^(\\+?880|0)1[3-9][0-9]{8}$" }
+        amount: { type: integer, format: int64, minimum: 1, description: Minor units }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        token: { type: string, pattern: "^[0-9]{6}$" }
+    AtmTokenVerified:
+      type: object
+      additionalProperties: false
+      required: [walletId]
+      properties:
+        walletId: { type: string, minLength: 1, maxLength: 64 }
     CarePinResetRequest:
       type: object
       additionalProperties: false

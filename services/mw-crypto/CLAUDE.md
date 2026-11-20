@@ -263,7 +263,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   | `/jws/sign` (by purpose or keyId) | `mw.crypto.authz.purposes.<PURPOSE>` | `JWT_SIGN`, `ASSERTION_SIGN`: `mw-auth`; `AUDIT_ANCHOR_SIGN`: `mw-audit-dw` |
   | `/tokens` | `purposes.TOKENISE_<domain>` | `TOKENISE_MSISDN`, `TOKENISE_NID`: `mw-auth`, `mw-audit-dw`; `TOKENISE_ACCOUNT`: `mw-audit-dw` |
   | `/envelope/encrypt`, `/decrypt` | `purposes.KEK_<purpose>` | `KEK_COLUMN`: `mw-auth`; `KEK_FILE`: nobody |
-  | `/hmac/sign`, `/verify` | `purposes.HMAC_<use>` | none yet |
+  | `/hmac/sign`, `/verify` | `purposes.HMAC_<use>` | `HMAC_ATMTOKEN`: `mw-auth` (ticket 120b2, the ATM cash-out token; also a dev bootstrap purpose) |
   | `/pinblock/translate`, `/pvv/generate`, `/pvv/verify` (ticket 64) | `purposes.<TPK, ZPK, TPK_AES, ZPK_AES, PVK>` of every key | none yet |
   | `/xmldsig/sign`, `/verify` (also with a partner PEM) | `purposes.XMLDSIG` | `mw-adapter-interop` (ticket 121b, NPSB ISO 20022) |
   | `/http-signature/sign`, `/verify` | the key's purpose (`HTTP_SIGN_RSA`, `HTTP_SIGN_EC`, `HMAC_<use>`); a partner PEM by its key type | none yet |

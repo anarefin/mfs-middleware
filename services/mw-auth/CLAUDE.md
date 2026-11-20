@@ -300,6 +300,32 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   `010` wrong; `012` checks used up; each check reserved atomically, the wrong guess that uses the last
   one voids it), then spent once. Tested by `security/CheckoutOtpIT` (own slot both ways, two sessions,
   own quota both ways).
+- ATM cash-out token (ticket 120b2, FRS FL-11, UC-17; `controller/InternalAtmTokenController`,
+  `service/AtmTokenService`, `repository/AtmTokenRepository`, `config/AtmTokenProperties`
+  `mw.auth.atm-token.*`, V13 `atm_token`). **Where it lives (decision of 120b2):** here, in its own
+  table, not in mw-app-gateway and not in `channel_otp`: mw-auth already holds the PIN step-up (the
+  assertion cache), the OTP-style check/lockout and an mw-crypto client, and the ATM adapter needs a
+  verifier it can reach over mTLS (a channel service should not be one); `channel_otp` is an SMS OTP
+  per binding with a send quota and a hash, while the token is shown in the app, bound to an amount and
+  an HMAC under an HSM key, so it gets its own slot. `POST /internal/v1/atm-tokens` (only
+  `mw.auth.atm-token.issuers`, mw-app-gateway; others 403 `MW-AUTH-002`) `{walletId, channel,
+  deviceId?, amount, currency, idempotencyKey, assertion}`: the wallet (403 `MW-AUTH-002`) and
+  `WalletAccess.check`, then the step-up: the live `assert:{walletId}:{idempotencyKey}` entry must hold
+  exactly this assertion (constant time) with the txnHash of `ATM_CASH_OUT` payer `WALLET/<walletId>`
+  payee `PARTNER/<partner-id>` (`ucbatm`), the amount, currency, key and channel, else 401
+  `MW-AUTH-049` and nothing stored. Then 6 digits (`SecureRandom`); only HMAC-SHA256 under mw-crypto
+  `HMAC_ATMTOKEN` (keyId `hmac-atmtoken`, `CryptoClient.signHmac`) over `ATM_TOKEN\n<walletId>\n<amount>\n
+  <currency>\n<token>` is stored with its kid, `ttl` 10 min, one live token per wallet (a new one
+  replaces it with fresh checks); 201 `{token, expiresAt}`, the token shown once. `POST
+  /internal/v1/atm-tokens/verifications` (only `verifiers`, mw-adapter-atm, also on
+  `mw.internal-auth.allowed-clients`) `{msisdn, amount, currency, token}`: unknown MSISDN 401
+  `MW-AUTH-011` (no oracle), `checkActive` (403 `MW-AUTH-043`), then as the checkout OTP: checks used up
+  (`max-attempts` 3) 401 `MW-AUTH-012`, none/spent/void/expired `011`, a check reserved atomically, the
+  HMAC checked by mw-crypto `/hmac/verify` under the stored kid (another amount = a wrong token), wrong
+  `010` (the third voids it), right: spent once (conditional on the mac), 200 `{walletId}`. Nothing logs
+  the token (events `auth.atm_token.issued|wrong|spent|step_up_refused`). mw-crypto: `HMAC_ATMTOKEN` is
+  bound to mw-auth and a dev bootstrap purpose. Tested by `security/AtmTokenIT`. Open: the assertion
+  can issue again within its 60 s life (a re-issue replaces the token; only mw-app-gateway can call).
 - Channel PIN transport key (security review of ticket 72; `controller/InternalPinKeyController`,
   `service/ChannelPinKeyService`, `dto/InternalPinKey`): `GET /internal/v1/pin-key` on the internal mTLS
   port for the assertion's callers (`mw.auth.assertion.callers`; anyone else 403 `MW-AUTH-002`) ->
@@ -307,7 +333,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   /auth/v1/pin-key` (which stays for the apps only). mw-app-gateway, mw-ussd and mw-checkout read the key
   here, never from the plain public port, and refuse a key of any other purpose. Tested in
   `security/LoginIT`.
-- Error codes so far: `MW-AUTH-001..007`, `010..012`, `040..045`, `047`, `048` (18.7; `046` is the core's),
+- Error codes so far: `MW-AUTH-001..007`, `010..012`, `040..045`, `047`, `048`, `049` (ticket 120b2) (18.7; `046` is the core's),
   `MW-IDEM-001` (ticket 71), `MW-VAL-001`, `MW-VAL-003`, `MW-VAL-022`, `MW-VAL-030/031` (reset, ticket 70),
   `MW-VAL-BODY_TOO_LARGE`, `MW-SYS-010`, `MW-SYS-012`, `MW-SYS-050/051`.
 
@@ -318,7 +344,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   `scripts/derived-schemas.sh --write` after a change).
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (internal API: the device lookups of ticket 68, the session's key
   fingerprint and the dev seed API of ticket 69; `POST /internal/v1/txn-authorisations`, ticket 71; the care PIN
-  reset `POST /internal/v1/pin-resets`, ticket 70; the checkout OTP `POST /internal/v1/otp` and
+  reset `POST /internal/v1/pin-resets`, ticket 70; the ATM token `POST /internal/v1/atm-tokens[/verifications]`, ticket 120b2; the checkout OTP `POST /internal/v1/otp` and
   `/internal/v1/otp/verifications`, ticket 72, bodies checked in `contracts/ApiContractsTest`).
 - `events/mw-auth/auth.wallet-lock.v1.schema.json` (ticket 70; consumed here, produced by mw-admin-api;
   `contracts/ConsumedContractsTest` reads the samples through `mapper/WalletLockMapper`).
@@ -332,7 +358,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   against the contract's `FactorsRequest`).
 - `events/mw-audit-dw/mw.audit.event.v1` (produced, ticket 70).
 - `api/mw-crypto/crypto-internal.v1.openapi.yaml` as a client (`/tokens`, `/envelope/encrypt`,
-  `/envelope/decrypt`, `/pin/verify`, `/pin/derive`, `/jws/sign`, `/jwks/{purpose}`; ticket 70 `/tokens` domain
+  `/envelope/decrypt`, `/pin/verify`, `/pin/derive`, `/jws/sign`, `/jwks/{purpose}`, `/hmac/sign`, `/hmac/verify` (ticket 120b2); ticket 70 `/tokens` domain
   NID, allowed to mw-auth by mw-crypto's `TOKENISE_NID` entry; own types `dto/Crypto*`,
   `dto/EncryptedPin`, `dto/PinHmac`).
 - `events/mw-notify/mw.notify.request.v1` (produced, ticket 68: the binding OTP and the new device SMS; own type
