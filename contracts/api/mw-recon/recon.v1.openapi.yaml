@@ -96,8 +96,9 @@ paths:
     post:
       operationId: explainException
       description: >
-        Records an explanation (FRS 10.4 criterion 7: every difference is resolved or explained). An OPEN
-        exception becomes EXPLAINED; a later state is kept. Nothing moves money.
+        Records an explanation (FRS 10.4 criterion 7: every difference is resolved or explained) of an OPEN
+        or EXPLAINED exception, which becomes EXPLAINED; each explanation is audited on mw.audit.event.v1
+        (action recon.exception.explained). Nothing moves money.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
         - { name: X-Mw-Operator-Id, in: header, required: true, schema: { type: string, minLength: 1 } }
@@ -121,6 +122,8 @@ paths:
           description: A blank explanation or a missing operator header (MW-VAL-001).
         "404":
           description: No such exception (MW-VAL-003).
+        "409":
+          description: The exception is ACTIONED or RESOLVED and is not rewritten (MW-VAL-006).
 components:
   schemas:
     ReconException:

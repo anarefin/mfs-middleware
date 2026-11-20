@@ -321,9 +321,9 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | REC-02 | done | adapters publish `mw.partner.recon.v1` (D28); `mw-recon` consumes it (ticket 126) |
 | REC-03 | done | matching with a poisha tolerance and a date window (`MatchingServiceTest`, ticket 126) |
 | REC-04 | done | classes MATCHED, MISSING_IN_PARTNER, MISSING_IN_UPAY, AMOUNT_MISMATCH, STATUS_MISMATCH (`ReconMatchingIT`, ticket 126) |
-| REC-05 | tickets 127, 134 | exception queue with maker-checker |
-| REC-06 | tickets 127, 134 | reports |
-| REC-07 | ticket 127 | trust account position |
+| REC-05 | tickets 127, 134 | exception work queue read and explain API built (ticket 127: `GET /internal/v1/recon/exceptions`, suggested action, `POST .../explanations`, `ReconReportsIT`); the `RECON_EXCEPTION` maker-checker action in mw-admin-api and `mw.recon.exception.v1` remain ticket 127 (follow-up); console 134 |
+| REC-06 | tickets 127, 134 | reports built (ticket 127): `GET /internal/v1/recon/reports` CSV, XLSX, PDF, daily report stored in `recon.report` (`ReportServiceTest`); console download 134 |
+| REC-07 | ticket 127 | trust position computed and stored with an `AMOUNT_MISMATCH`/`TRUST_POSITION` exception on a gap (`TrustPositionService`, `TrustPositionTest`, ticket 127); the scheduled job waits for a core e-money total endpoint (ticket 127 follow-up) |
 | REC-08 | done | file register, filename plus sha256, processed once (`FileRegisterIT`, ticket 126) |
 | CMP-01 | ticket 125 | AML file export |
 | CMP-02 | tickets 125, 134 | HOLD and BLOCK applied (wallet lock built in mw-auth and the core); release in 134 |

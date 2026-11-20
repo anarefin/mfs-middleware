@@ -1,13 +1,18 @@
 package mfs.mw.recon.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.networknt.schema.Schema;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import mfs.mw.recon.TestInfrastructure;
+import mfs.mw.recon.contracts.ContractSchemas;
+import mfs.mw.recon.exception.ErrorCodes;
+import mfs.mw.recon.exception.MwException;
 import mfs.mw.recon.dto.ExceptionView;
 import mfs.mw.recon.dto.ReconReport;
 import mfs.mw.recon.dto.ReportFormat;
@@ -17,6 +22,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Reports, trust position and the work queue against the real recon schema (ticket 127, REC-05..07, UC-22): an
@@ -45,13 +53,18 @@ class ReconReportsIT {
   private final ReportService reports;
   private final TrustPositionService trust;
   private final ExceptionQueueService queue;
+  private final JdbcTemplate jdbc;
+  private final JsonMapper json;
 
   @Autowired
-  ReconReportsIT(ReconService recon, ReportService reports, TrustPositionService trust, ExceptionQueueService queue) {
+  ReconReportsIT(ReconService recon, ReportService reports, TrustPositionService trust, ExceptionQueueService queue,
+      JdbcTemplate jdbc, JsonMapper json) {
     this.recon = recon;
     this.reports = reports;
     this.trust = trust;
     this.queue = queue;
+    this.jdbc = jdbc;
+    this.json = json;
   }
 
   @Test
@@ -87,6 +100,40 @@ class ReconReportsIT {
     assertThat(explained.explainedBy()).isEqualTo("seed-recon-maker");
     assertThat(queue.list("AMOUNT_MISMATCH", "trustbank", "OPEN", null, 100)).extracting(ExceptionView::id)
         .doesNotContain(id.toString());
+  }
+
+  @Test
+  void anExplanationIsAuditedAndAClosedExceptionIsNotRewritten() throws Exception {
+    recon.ingestStatement("MT940_rpt127c.fin", FIN.replace("RPT127", "RPT127C").replace("261005", "261007")
+        .replace("2610051005", "2610071007").getBytes(StandardCharsets.UTF_8), true);
+    LocalDate day = DAY.plusDays(2);
+    UUID open = trust.compute(day, 1L).exceptionId();
+    UUID resolved = trust.compute(day, 2L).exceptionId();
+    jdbc.update("update recon_exception set state = 'RESOLVED', explanation = 'settled' where id = ?", resolved);
+
+    queue.explain(open, "timing difference", "seed-recon-maker");
+    queue.explain(open, "timing difference, bank confirmed", "seed-recon-maker");
+
+    List<String> audits = jdbc.queryForList(
+        "select payload::text from outbox where topic = ? and payload->>'resource' = ? order by 1",
+        String.class, ReconTopics.AUDIT, "recon_exception/" + open);
+    assertThat(audits).hasSize(2);
+    Schema schema = ContractSchemas.schema("events/mw-audit-dw/mw.audit.event.v1.schema.json");
+    for (String audit : audits) {
+      assertThat(schema.validate(json.readTree(audit))).isEmpty();
+      assertThat(json.readTree(audit).path("action").asString()).isEqualTo("recon.exception.explained");
+      assertThat(json.readTree(audit).path("actor").path("id").asString()).isEqualTo("seed-recon-maker");
+    }
+
+    assertThatThrownBy(() -> queue.explain(resolved, "rewrite history", "seed-recon-maker"))
+        .isInstanceOfSatisfying(MwException.class, e -> {
+          assertThat(e.code()).isEqualTo(ErrorCodes.VAL_STATE_CONFLICT);
+          assertThat(e.status()).isEqualTo(HttpStatus.CONFLICT);
+        });
+    assertThat(queue.get(resolved).explanation()).isEqualTo("settled");
+    assertThat(queue.get(resolved).state()).isEqualTo("RESOLVED");
+    assertThat(jdbc.queryForObject("select count(*) from outbox where payload->>'resource' = ?", Integer.class,
+        "recon_exception/" + resolved)).isZero();
   }
 
   @Test

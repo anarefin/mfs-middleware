@@ -277,12 +277,14 @@ public class ReconStore {
         .orElse(null);
   }
 
-  /** Records the explanation; an OPEN exception becomes EXPLAINED (FRS 10.4 #7: explained, not unexplained). */
+  /**
+   * Records the explanation while the exception is OPEN or EXPLAINED (OPEN becomes EXPLAINED; FRS 10.4 #7). An
+   * ACTIONED or RESOLVED exception is never rewritten: 0 rows.
+   */
   public int explain(UUID id, String explanation, String operatorId, Instant at) {
     return jdbc.update("""
-        update recon_exception set explanation = ?, explained_by = ?, explained_at = ?,
-          state = case when state = 'OPEN' then 'EXPLAINED' else state end
-        where id = ?
+        update recon_exception set explanation = ?, explained_by = ?, explained_at = ?, state = 'EXPLAINED'
+        where id = ? and state in ('OPEN', 'EXPLAINED')
         """, explanation, operatorId, Timestamp.from(at), id);
   }
 

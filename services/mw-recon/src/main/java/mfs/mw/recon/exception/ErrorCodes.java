@@ -13,6 +13,8 @@ public final class ErrorCodes {
   public static final String VAL_METHOD = "MW-VAL-004";
   /** Content type not supported. */
   public static final String VAL_MEDIA_TYPE = "MW-VAL-005";
+  /** The resource is in a state that does not allow the change (ticket 127: explaining a closed exception); 409. */
+  public static final String VAL_STATE_CONFLICT = "MW-VAL-006";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
   /** The trust-bank SFTP host did not answer (ticket 126). */

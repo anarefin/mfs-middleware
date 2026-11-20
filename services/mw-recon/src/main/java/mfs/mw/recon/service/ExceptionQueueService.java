@@ -3,12 +3,20 @@ package mfs.mw.recon.service;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import mfs.mw.recon.dto.ExceptionView;
 import mfs.mw.recon.exception.ErrorCodes;
 import mfs.mw.recon.exception.MwException;
+import mfs.mw.recon.messaging.EventMetadata;
+import mfs.mw.recon.messaging.OutboxWriter;
 import mfs.mw.recon.repository.ReconStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,11 +29,15 @@ public class ExceptionQueueService {
 
   static final int MAX_LIMIT = 500;
 
+  private static final Logger log = LoggerFactory.getLogger(ExceptionQueueService.class);
+
   private final ReconStore store;
+  private final OutboxWriter outbox;
   private final Clock clock;
 
-  public ExceptionQueueService(ReconStore store, Clock clock) {
+  public ExceptionQueueService(ReconStore store, OutboxWriter outbox, Clock clock) {
     this.store = store;
+    this.outbox = outbox;
     this.clock = clock;
   }
 
@@ -43,12 +55,43 @@ public class ExceptionQueueService {
     return view(require(id), clock.instant());
   }
 
-  /** Records the explanation; an OPEN exception becomes EXPLAINED, a later state keeps its state. */
+  /**
+   * Records the explanation of an OPEN or EXPLAINED exception (it becomes EXPLAINED) and audits it on
+   * {@code mw.audit.event.v1} in the same transaction. An ACTIONED or RESOLVED exception is refused with 409.
+   */
   @Transactional
   public ExceptionView explain(UUID id, String explanation, String operatorId) {
     require(id);
-    store.explain(id, explanation.strip(), operatorId, clock.instant());
+    Instant now = clock.instant();
+    if (store.explain(id, explanation.strip(), operatorId, now) == 0) {
+      throw new MwException(ErrorCodes.VAL_STATE_CONFLICT, "the exception is closed and cannot be explained")
+          .withStatus(HttpStatus.CONFLICT);
+    }
+    String correlation = MDC.get("correlationId");
+    if (correlation == null || correlation.isBlank()) {
+      correlation = "recon-" + id;
+    }
+    String auditId = UUID.randomUUID().toString();
+    outbox.append(ReconTopics.AUDIT, operatorId, new EventMetadata(correlation, id.toString(), "explain-" + auditId, 1),
+        audit(auditId, correlation, id, operatorId, now));
+    log.atInfo().addKeyValue("event", "recon.exception.explained").addKeyValue("exceptionId", id.toString())
+        .log("recon exception explained");
     return get(id);
+  }
+
+  private static Map<String, Object> audit(String auditId, String correlation, UUID id, String operatorId,
+      Instant at) {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("schemaVersion", 1);
+    body.put("auditId", auditId);
+    body.put("correlationId", correlation);
+    body.put("actor", Map.of("type", "user", "id", operatorId));
+    body.put("action", "recon.exception.explained");
+    body.put("resource", "recon_exception/" + id);
+    body.put("outcome", "SUCCESS");
+    body.put("at", at.toString());
+    body.put("service", "mw-recon");
+    return body;
   }
 
   private ReconStore.ExceptionRow require(UUID id) {
