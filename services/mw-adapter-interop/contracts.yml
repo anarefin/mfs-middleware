@@ -2,6 +2,8 @@
 produces:
   events:
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#interop
+    # ticket 121b: NPSB inbound credits (service/NpsbInboundService, kind NPSB_CREDIT, txnType NPSB_IN)
+    - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#interop
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
     # ticket 84: LIVE / REJECTED of each partner record version (messaging/PartnerRouteStatusPublisher)
     - events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json
