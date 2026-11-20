@@ -1,0 +1,4 @@
+{
+  "name": "60 Recon matching",
+  "description": "Ticket 126, FRS REC-01, REC-04, EXT-06: an injected trust-bank line is classified MISSING_IN_UPAY. The test route is key-auth. partner-sftp is profile tester."
+}

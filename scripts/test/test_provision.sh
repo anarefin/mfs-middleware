@@ -115,7 +115,7 @@ manifest_services() { (. "$PROVISION_DIR/services.sh"; printf '%s\n' $SERVICES);
 test_every_service_with_an_approle_volume_is_in_the_manifest() {
   local s
   for s in mw-core-mock mw-crypto mw-auth mw-simulators mw-orchestrator mw-audit-dw mw-app-gateway mw-notify mw-ussd \
-    mw-admin-api mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-portal-api mw-checkout mw-data-export; do
+    mw-admin-api mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-portal-api mw-checkout mw-data-export mw-recon; do
     manifest_services | grep -q "^$s:" || fail "$s missing from deploy/provision/services.sh"
   done
   [ "$(manifest_services | head -1)" = mw-core-mock:core-mock ] \
@@ -137,7 +137,7 @@ test_provision_creates_every_secret_role_and_approle() {
     grep -q "^vault policy write $s -$" .vault-calls || fail "$s: no policy"
     grep -q "^vault write auth/approle/role/$s token_policies=$s " .vault-calls || fail "$s: no AppRole"
   done
-  assert_out_contains "provision: 16 services provisioned"
+  assert_out_contains "provision: 17 services provisioned"
 }
 
 test_provision_writes_the_service_specific_keys() {

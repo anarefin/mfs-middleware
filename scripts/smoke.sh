@@ -269,7 +269,7 @@ check "apisix https://localhost:$https_port/healthz -> 200" \
 
 # ---- API docs page (ticket 101): test-only route /docs/, applied with MW_E2E_ROUTES=1 ----
 # Lists every service's Swagger UI; without the test-only routes (plain `up`) the page is absent (404).
-DOC_SERVICES="mw-app-gateway mw-checkout mw-portal-api mw-ussd mw-orchestrator mw-audit-dw mw-admin-api mw-auth mw-core-mock mw-simulators"
+DOC_SERVICES="mw-app-gateway mw-checkout mw-portal-api mw-ussd mw-orchestrator mw-audit-dw mw-admin-api mw-auth mw-core-mock mw-simulators mw-recon"
 docs_listing() {
   local page code svc
   code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 "https://localhost:$https_port/docs/")"

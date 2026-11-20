@@ -1,0 +1,27 @@
+openapi: 3.1.0
+info:
+  title: mw-recon internal
+  version: 1.0.0
+  description: >
+    Operator reprocess of one registered statement or settlement file (ticket 126). Not routed
+    at the edge. The action is audited on mw.audit.event.v1. It re-runs matching and never posts money.
+paths:
+  /internal/v1/recon/files/{id}/reprocess:
+    post:
+      operationId: reprocessFile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: X-Mw-Operator-Id
+          in: header
+          required: true
+          schema: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: The file was matched again.
+        "400":
+          description: The operator header is missing.
+        "404":
+          description: No such file.

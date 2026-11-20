@@ -154,7 +154,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |
 | `UC-21` AML | ticket 125 |
-| `UC-22` recon and DW export | DW export done (ticket 128); recon remains tickets 126, 127 |
+| `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports and the exception queue remain ticket 127 |
 
 ## 3. Common platform (FRS 3)
 
@@ -263,7 +263,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-03 | done | GreenMail SMTP with its web inbox instead of Mailpit (same role) |
 | EXT-04 | done | mw-notify `client/PushClient` (FCM / APNs style app-server push API) against mw-simulators' stateful push mock, mock party `push` (ticket 110; `PushSimulatorIT`, `PushDispatchIT`, API suite 43) |
 | EXT-05 | ticket 125 | mock side done (ticket 123): mw-simulators party `aml` answers each file of `aml/in` with ALERT / HOLD / BLOCK lines in `aml/out` (rules `seed/v1/aml/rules.json`, draft format `contracts/files/aml/README.md`; `AmlResponderTest`, `SftpMocksIT`, API folder 44); the feed and response handling in 125 |
-| EXT-06 | ticket 126 | generator done (ticket 123): party `trustbank` writes the daily MT940 and intraday MT942 of the trust account (wallet SETTLEMENT) from mw-core-mock's `/core/v1/statements`, built with Prowide Core, mismatches MISSING_IN_PARTNER, MISSING_IN_UPAY, AMOUNT_MISMATCH, DC_FLIP (`TrustStatementGeneratorTest`, `SftpMocksIT`); the recon pull in 126 |
+| EXT-06 | done | trust bank mock (ticket 123) and the pull (ticket 126): `mw-recon` reads MT940 and MT942 from `trustbank/out` (sshj, Prowide) and classifies them (`Mt940ParserTest`, `ReconMatchingIT`, folder 60) |
 | EXT-07 | ticket 124 | EC NID mock |
 | EXT-08 | ticket 112 | one OCS simulator built; four operator profiles in 112 |
 | EXT-09 | ticket 114 | utility aggregator simulator (billagg) built; stateful bills and callbacks in 114 |
@@ -317,14 +317,14 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | NOT-07 | done | campaigns with a per-second throttle on the PROMO bind (ticket 111): `POST /admin/v1/notify-campaigns` through maker-checker, `CampaignRunnerIT` |
 | NOT-08 | tickets 111, 134 | notification log search API built (ticket 111): `GET /internal/v1/notifications`, paged and masked, OTP body always masked; the console view is 134 |
 | NOT-09 | done | promotional opt-out (ticket 111): `POST /app/v1/notifications/opt-out` and SMS keyword STOP, honoured for PROMO only |
-| REC-01 | ticket 126 | MT940/942 pull and parse |
-| REC-02 | ticket 126 | adapters' SFTP ingest to `mw.partner.recon.v1` built (D28); consumer in 126 |
-| REC-03 | ticket 126 | matching with tolerance |
-| REC-04 | ticket 126 | FRS result classes |
+| REC-01 | done | MT940/942 pull and parse (`TrustStatementPullJob`, `Mt940ParserTest`, ticket 126) |
+| REC-02 | done | adapters publish `mw.partner.recon.v1` (D28); `mw-recon` consumes it (ticket 126) |
+| REC-03 | done | matching with a poisha tolerance and a date window (`MatchingServiceTest`, ticket 126) |
+| REC-04 | done | classes MATCHED, MISSING_IN_PARTNER, MISSING_IN_UPAY, AMOUNT_MISMATCH, STATUS_MISMATCH (`ReconMatchingIT`, ticket 126) |
 | REC-05 | tickets 127, 134 | exception queue with maker-checker |
 | REC-06 | tickets 127, 134 | reports |
 | REC-07 | ticket 127 | trust account position |
-| REC-08 | ticket 126 | file register with checksum |
+| REC-08 | done | file register, filename plus sha256, processed once (`FileRegisterIT`, ticket 126) |
 | CMP-01 | ticket 125 | AML file export |
 | CMP-02 | tickets 125, 134 | HOLD and BLOCK applied (wallet lock built in mw-auth and the core); release in 134 |
 | CMP-03 | ticket 125 | real-time pre-check, fails open with an alert (D32) |

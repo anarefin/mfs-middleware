@@ -5316,6 +5316,33 @@
       ]
     },
     {
+      "name": "60 Recon matching",
+      "description": "Ticket 126, FRS REC-01, REC-04, EXT-06: an injected trust-bank line is classified MISSING_IN_UPAY. The test route is key-auth. partner-sftp is profile tester.",
+      "item": [
+        {
+          "name": "[mock] an injected trust-bank line is missing in Upay",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[mock] an injected trust-bank line is missing in Upay\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.mock.reset('trustbank'));\\n      await MW.mock.reset('trustbank');\\n      await MW.mock.scenario('trustbank', {\\n        operation: 'mt940', behaviour: 'INJECTED_MISMATCH', code: 'MISSING_IN_UPAY', count: 1, nextN: 1,\\n      });\\n      const written = await MW.http('POST', '/test/mock-control/trustbank/run', {\\n        apikey: true, json: { operation: 'mt940' },\\n      });\\n      S.status(200, written);\\n      const pulled = await MW.http('POST', '/test/recon/v1/pull', { apikey: true });\\n      S.status(200, pulled);\\n      const runs = Array.isArray(pulled.body) ? pulled.body : [];\\n      const classified = runs.some((r) => (r.missingInUpay || 0) >= 1);\\n      const already = runs.some((r) => r.skipped && String(r.fileName || '').indexOf('MT940_') === 0);\\n      S.check('the injected line is classified, or that file was already registered', classified || already, pulled.body);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "62 DW export",
       "description": "Ticket 128, FRS EXT-17, DAT-02: mw-data-export uploads today's drop to dw/in (test route, key-auth). The warehouse mock on partner-sftp (profile tester) checks the control file.",
       "item": [

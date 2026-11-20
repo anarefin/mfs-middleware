@@ -34,7 +34,7 @@
 # ops = Keycloak, Vault, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
-# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8096), the
+# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8097), the
 # two consoles (3000, 3001) and the platform (postgres 5432, redis 6379, kafka 9094, keycloak 8180,
 # vault 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
 # (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
@@ -78,7 +78,7 @@
 #   KAFKA_MEM (576M)            kafka                469  (KAFKA_HEAP (256m) fixed heap; 1 partition per topic, MW_KAFKA_PARTITIONS)
 #   KEYCLOAK_MEM (608M)         keycloak             483  (heap 128..384m)
 #   APISIX_MEM (384M)           apisix               290, 368*
-#   POSTGRES_MEM (320M)         postgres             140, 274*  (shared_buffers 64MB, max_connections 100; pools total 39)
+#   POSTGRES_MEM (320M)         postgres             140, 274*  (shared_buffers 64MB, max_connections 100; pools total 42)
 #   GREENMAIL_MEM (160M)        greenmail            125  (heap 96m)
 #   VAULT_MEM (128M)            vault                 95
 #   SOFTHSM_MEM (48M)           softhsm               new (ticket 61): socat + one p11-kit remote per client
@@ -86,7 +86,7 @@
 #   REDIS_MEM_LIMIT (64M)       redis                 8  (measured before the ticket 90 image swap)
 #   ADMIN_UI_MEM (64M)          mw-admin-ui           46  (Node.js standalone server; 160 -> 64 in ticket 62
 #                                                    to free memory for mw-crypto: peak x 1.3, rounded up)
-#   long-running total with the defaults: 8560 of the 12288 budget (ticket 128: +384 mw-data-export; ticket 67: -320 APP_MEM_LIMIT, +320
+#   long-running total with the defaults: 8944 of the 12288 budget (ticket 126: +384 mw-recon; ticket 128: +384 mw-data-export; ticket 67: -320 APP_MEM_LIMIT, +320
 #                                                    mw-auth; sum of the measured peaks: 6249 without mw-auth)
 #   fixed (outside the guard): one-shots exit before their service starts: provision 128,
 #   kafka-init 512 (3 parallel CLI JVMs; 8 were OOM-killed at 384), apisix-init 256 (apisix-init-tester
@@ -201,6 +201,7 @@ volumes:
   orchestrator-approle:
   audit-dw-approle:
   data-export-approle:
+  recon-approle:
   app-gateway-approle:
   notify-approle:
   ussd-approle:
@@ -310,7 +311,7 @@ services:
     # One shared dev instance serves Keycloak and every service's pool. max_connections sizing
     # (sum of the worst case, one replica each; keep it below max_connections minus the 3
     # superuser_reserved_connections when a pool or a replica is added): the dev stack caps each
-    # service's Hikari pool (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE below: 2-4, 39 in all with
+    # service's Hikari pool (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE below: 2-4, 42 in all with
     # audit-dw's extra pools and Keycloak's 20), so 100 leaves room for psql sessions and the provision one-shot.
     # Production sizes max_connections per instance (pool x replicas, summed).
     command:
@@ -750,6 +751,7 @@ services:
       - orchestrator-approle:/out/orchestrator
       - audit-dw-approle:/out/audit-dw
       - data-export-approle:/out/data-export
+      - recon-approle:/out/recon
       - app-gateway-approle:/out/app-gateway
       - notify-approle:/out/notify
       - ussd-approle:/out/ussd
@@ -1030,6 +1032,28 @@ services:
       MW_TLS_ENABLED: "true"
       # Dev/test only: POST /test/v1/exports/today, reached through the test-only APISIX route.
       MW_DATA_EXPORT_TEST_API_ENABLED: "true"
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
+
+  # Trust-bank statements and partner settlement matching (ticket 126, profile core). Reports only.
+  mw-recon:
+    <<: *app
+    profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_RECON:-8097}:8080"
+    image: mfs-mw/mw-recon:local
+    build: { context: ../services/mw-recon, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+    volumes:
+      - recon-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      MW_RECON_TRUST_PASSWORD: ${SFTP_DEV_PASSWORD:?cp dev.env.defaults .env}
+      # Dev/test only: POST /test/v1/pull, reached through the test-only APISIX route.
+      MW_RECON_TEST_API_ENABLED: "true"
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
@@ -1482,6 +1506,7 @@ services:
       mw-notify: { condition: service_healthy }
       mw-audit-dw: { condition: service_healthy }
       mw-data-export: { condition: service_healthy }
+      mw-recon: { condition: service_healthy }
       mw-ussd: { condition: service_healthy }
       mw-adapter-telco: { condition: service_healthy }
       mw-adapter-billpay: { condition: service_healthy }

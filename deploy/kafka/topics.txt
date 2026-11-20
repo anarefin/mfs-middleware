@@ -13,17 +13,17 @@
 #              topic (scripts/test/test_platform_compose.sh checks it).
 #
 # MVP subset of the 6.2 catalogue. Deferred and therefore left out: the interop and
-# compliance partner families, mw.compliance.instruction.v1, mw.recon.result.v1.
-# dw.* topics are produced by mw-data-export (ticket 128). mw.recon.exception.v1 and
-# mw.kyc.completed.v1 are created here so the export can subscribe; their schemas arrive
-# with tickets 127 and 124.
+# compliance partner families and mw.compliance.instruction.v1.
+# dw.* topics are produced by mw-data-export (ticket 128). mw.recon.result.v1 is produced by
+# mw-recon (ticket 126). mw.recon.exception.v1 and mw.kyc.completed.v1 are created here so the
+# export can subscribe; their schemas arrive with tickets 127 and 124.
 
 mw.txn.request.v1              48 7d retry=mw-orchestrator
 mw.txn.action.v1                6 7d retry=mw-orchestrator
-mw.txn.status.v1               48 7d retry=mw-app-gateway,mw-audit-dw,mw-checkout,mw-data-export,mw-notify,mw-portal-api
-core.wallet.event.v1           48 7d retry=mw-orchestrator,mw-auth
+mw.txn.status.v1               48 7d retry=mw-app-gateway,mw-audit-dw,mw-checkout,mw-data-export,mw-notify,mw-portal-api,mw-recon
+core.wallet.event.v1           48 7d retry=mw-orchestrator,mw-auth,mw-recon
 auth.wallet-lock.v1             6 7d retry=mw-auth,mw-notify
-core.payment.event.v1          48 7d retry=mw-orchestrator
+core.payment.event.v1          48 7d retry=mw-orchestrator,mw-recon
 mw.partner.request.telco.v1    24 3d retry=mw-adapter-telco
 mw.partner.request.billpay.v1  24 3d retry=mw-adapter-billpay
 mw.partner.request.bank.v1     24 3d retry=mw-adapter-bank
@@ -47,5 +47,7 @@ dw.kyc.completed.v1             6 7d
 dw.audit.operator-action.v1     6 7d
 mw.config.changed.v1            6 compact retry=mw-ussd,mw-notify,mw-orchestrator
 mw.partner.route.status.v1      6 7d retry=mw-admin-api,mw-orchestrator
-# ticket 86: lines of the partners' SFTP reconciliation files; consumer mw-recon (ticket 88) adds its retry group
-mw.partner.recon.v1             6 7d
+# ticket 86: lines of the partners' SFTP reconciliation files; mw-recon (ticket 126) consumes them
+mw.partner.recon.v1             6 7d retry=mw-recon
+# ticket 126: one run's class counts and exceptions. No in-repo consumer yet.
+mw.recon.result.v1              6 7d

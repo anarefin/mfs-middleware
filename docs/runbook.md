@@ -99,6 +99,7 @@ D3 amendment 2026-11-13).
 | 8094 | `mw-crypto` (HTTPS with a mandatory client certificate, D24: `scripts/smoke.sh` shows a call; its actuator is on 8081 inside the network) | `MW_PORT_CRYPTO` |
 | 8095 | `mw-auth` public port (`/auth/v1/**` from ticket 69; its internal API 8443 needs a client certificate and is not published, its actuator is on 8081 inside the network) | `MW_PORT_AUTH` |
 | 8096 | `mw-data-export` (profile `core`; the internal API is not on the edge) | `MW_PORT_DATA_EXPORT` |
+| 8097 | `mw-recon` (profile `core`; the internal reprocess API is not on the edge) | `MW_PORT_RECON` |
 | 3000 | `mw-admin-ui` (path `/console`) | `MW_PORT_ADMIN_UI` |
 | 3001 | `mw-test-console` (profile `tester`) | `MW_PORT_TEST_CONSOLE` |
 | 5432 | `postgres` | `MW_PORT_POSTGRES` |

@@ -197,6 +197,7 @@ mw-checkout:127.0.0.1:8092->8080
 mw-core-mock:127.0.0.1:8084->8080
 mw-crypto:127.0.0.1:8094->8080
 mw-data-export:127.0.0.1:8096->8080
+mw-recon:127.0.0.1:8097->8080
 mw-notify:127.0.0.1:8086->8080
 mw-orchestrator:127.0.0.1:8083->8080
 mw-portal-api:127.0.0.1:8093->8080
@@ -389,7 +390,7 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
   expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 vault=128 etcd=64 redis=64 softhsm=48
     mw-admin-ui=64 mw-crypto=320 mw-auth=320 mw-simulators=384 mw-orchestrator=448 mw-audit-dw=448 mw-core-mock=384
     mw-notify=384 mw-app-gateway=384 mw-ussd=384 mw-admin-api=384 mw-adapter-telco=384 mw-adapter-billpay=384
-    mw-adapter-bank=384 mw-portal-api=384 mw-checkout=384 mw-data-export=384"
+    mw-adapter-bank=384 mw-portal-api=384 mw-checkout=384 mw-data-export=384 mw-recon=384"
   for s in $expect; do
     want=$(( ${s#*=} * 1048576 ))
     got="$(printf '%s' "$j" | jq -r --arg s "${s%%=*}" '.services[$s].deploy.resources.limits.memory')"
@@ -672,7 +673,6 @@ test_topic_plan_rejects_a_retry_flag_without_a_group() {
 
 test_topic_plan_leaves_out_deferred_topics() {
   assert_ok plan
-  assert_out_lacks "mw.recon.result.v1"
   assert_out_lacks "dw.txn.event.v1"
   assert_out_lacks "mw.compliance.instruction.v1"
   assert_out_lacks "mw.partner.request.interop.v1"

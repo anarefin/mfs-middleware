@@ -5,9 +5,6 @@
 # `make contracts-lint` fails on an entry for a side a manifest in the repo already plays.
 producers: {}
 consumers:
-  # Partner reconciliation lines from the adapters' SFTP batch routes (ticket 86); matched by the future
-  # mw-recon service (ticket 88, user decision 2026-11-18), which replaces this entry with its contracts.yml.
-  events/mw-adapter-billpay/mw.partner.recon.v1.schema.json: mw-recon (not yet in the repo, ticket 88)
   # The Data Warehouse is outside the repo (ticket 128). mw-data-export produces these.
   events/mw-data-export/dw.txn.created.v1.schema.json: Data Warehouse (outside the repo, ticket 128)
   events/mw-data-export/dw.txn.state-changed.v1.schema.json: Data Warehouse (outside the repo, ticket 128)
@@ -16,3 +13,5 @@ consumers:
   events/mw-data-export/dw.recon.exception.v1.schema.json: Data Warehouse (outside the repo, ticket 128)
   events/mw-data-export/dw.kyc.completed.v1.schema.json: Data Warehouse (outside the repo, ticket 128)
   events/mw-data-export/dw.audit.operator-action.v1.schema.json: Data Warehouse (outside the repo, ticket 128)
+  # Reconciliation results (ticket 126). No service in the repo consumes them yet.
+  events/mw-recon/mw.recon.result.v1.schema.json: dashboards (not yet in the repo, ticket 126)
