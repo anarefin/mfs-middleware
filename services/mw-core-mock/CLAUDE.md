@@ -281,7 +281,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   from outside (ADD_MONEY_BANK validate) is checked against its own rule's per-txn min/max only.
 - Wallet types per `txnType` (`mw.coremock.wallet-types`, debit -> credit): CASH_IN AGENT ->
   CUSTOMER, CASH_OUT CUSTOMER -> AGENT, MERCHANT_PAY CUSTOMER -> MERCHANT (ticket 30, fee 0),
-  BULK_DISBURSE ORGANISATION -> CUSTOMER (ticket 34, fee 0); other types unrestricted. BULK_DISBURSE carries
+  BULK_DISBURSE ORGANISATION -> CUSTOMER (ticket 34, fee 0), REMIT_IN SYSTEM -> CUSTOMER (ticket 119b; security
+  fix in 119c: REMIT_IN carries no assertion, so `TransferRules.check` also refuses, whatever the config, a
+  payer that is not a SYSTEM `SETTLEMENT*` wallet, e.g. `SETTLEMENT_UCB_IMT`: a customer wallet is never its
+  debit side on validate, post or hold; test `WalletRulesIT`); other types unrestricted. BULK_DISBURSE carries
   no assertion (contract: the org authorised the batch by maker-checker; `TransferPayload.authorisationRequired`);
   any other transfer without `assertion` + `idempotencyKey` is malformed (retry topics, DLQ).
   Wrong types `INVALID_COUNTERPARTY`

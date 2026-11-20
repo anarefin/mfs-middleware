@@ -2,7 +2,9 @@ package mfs.mw.adapter.remit.controller;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.constraints.Pattern;
+import mfs.mw.adapter.remit.dto.BeneficiaryLookupResult;
 import mfs.mw.adapter.remit.dto.RemitCreditAck;
+import mfs.mw.adapter.remit.service.BeneficiaryLookupService;
 import mfs.mw.adapter.remit.mapper.InboundCallMapper;
 import mfs.mw.adapter.remit.service.RemitInboundService;
 import org.springframework.http.HttpStatus;
@@ -31,11 +33,22 @@ public class RemitInboundController {
   static final String PARTNER_REF = "^[A-Za-z0-9._-]{1,64}$";
 
   private final RemitInboundService service;
+  private final BeneficiaryLookupService lookups;
   private final InboundCallMapper mapper;
 
-  public RemitInboundController(RemitInboundService service, InboundCallMapper mapper) {
+  public RemitInboundController(RemitInboundService service, BeneficiaryLookupService lookups, InboundCallMapper mapper) {
     this.service = service;
+    this.lookups = lookups;
     this.mapper = mapper;
+  }
+
+  /** The beneficiary's masked name and eligibility before a remittance is sent (ticket 119c). */
+  @PostMapping("/remit/v1/beneficiary-lookup")
+  BeneficiaryLookupResult lookup(
+      @RequestHeader("X-Partner-Id") @Pattern(regexp = PARTNER_ID) String partnerId,
+      @RequestBody(required = false) byte[] body,
+      HttpServletRequest request) {
+    return lookups.lookup(mapper.toInboundCall(partnerId, request, body));
   }
 
   @PostMapping("/remit/v1/credits")

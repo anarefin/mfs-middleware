@@ -157,6 +157,79 @@ class WalletRulesIT {
     assertThat(balance(CUSTOMER_B)).isEqualTo(1_000_000 + 4 * perTxn);
   }
 
+  // --- REMIT_IN (security fix on 119b): no assertion only from the remittance settlement wallet -----
+
+  static final String UCB_IMT = "SETTLEMENT_UCB_IMT";
+
+  /** A REMIT_IN command without an assertion (the partner's money: nobody authorises it). */
+  private CoreCommand remit(String commandType, String from, String toType, String to, long minor) {
+    String u = UUID.randomUUID().toString();
+    String txnId = u.substring(0, 14) + "7" + u.substring(15);
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("txnType", "REMIT_IN");
+    payload.put("debitParty", new Party("WALLET", from, null, null));
+    payload.put("creditParty", new Party(toType, to, null, null));
+    payload.put("amount", Amount.bdt(minor));
+    Instant now = Instant.now();
+    return new CoreCommand(1, commandType, txnId + ":" + commandType, txnId, "corr-" + txnId, now,
+        now.plusSeconds(300), json.valueToTree(payload));
+  }
+
+  @Test
+  void aRemitInDebitOfACustomerWalletWithoutAnAssertionIsRefusedOnValidatePostAndHold() {
+    assertThat(handle(remit("ValidateTransaction", CUSTOMER_A, "WALLET", CUSTOMER_B, 1_000)).reasonCode())
+        .isEqualTo("INVALID_COUNTERPARTY");
+    CoreEvent post = handle(remit("PostTransfer", CUSTOMER_A, "WALLET", CUSTOMER_B, 1_000));
+    assertThat(post.eventType()).isEqualTo("TransferRejected");
+    assertThat(post.reasonCode()).isEqualTo("INVALID_COUNTERPARTY");
+    CoreEvent hold = handle(remit("HoldFunds", CUSTOMER_A, "MSISDN", "01711000009", 1_000));
+    assertThat(hold.outcome()).isEqualTo(CoreEvent.Outcome.FAILURE);
+    assertThat(hold.reasonCode()).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(balance(CUSTOMER_A)).isEqualTo(1_000_000);
+    assertThat(balance(CUSTOMER_B)).isEqualTo(1_000_000);
+    assertThat(jdbc.queryForObject("select held_minor from wallet where id = ?", Long.class, CUSTOMER_A)).isZero();
+  }
+
+  @Test
+  void aRemitInFromAnyOtherWalletIsRefused() {
+    assertThat(handle(remit("PostTransfer", "FEE_INCOME", "WALLET", CUSTOMER_A, 1_000)).reasonCode())
+        .isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(handle(remit("PostTransfer", AGENT, "WALLET", CUSTOMER_A, 1_000)).reasonCode())
+        .isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(handle(remit("PostTransfer", UCB_IMT, "WALLET", AGENT, 1_000)).reasonCode())
+        .isEqualTo("INVALID_COUNTERPARTY");
+  }
+
+  @Test
+  void aRemitInFromTheRemittanceSettlementWalletToACustomerPosts() {
+    CoreEvent e = handle(remit("PostTransfer", UCB_IMT, "WALLET", CUSTOMER_A, 1_000));
+    assertThat(e.eventType()).isEqualTo("TransferPosted");
+    assertThat(balance(CUSTOMER_A)).isEqualTo(1_000_000 + 1_000);
+  }
+
+  /** The flow's validation: the partner's bank account pays (outside the core), a customer receives. */
+  private String validateRemit(String to, long minor) {
+    CoreCommand c = remit("ValidateTransaction", "ucb-imt", "WALLET", to, minor);
+    var payload = (tools.jackson.databind.node.ObjectNode) c.payload();
+    payload.set("debitParty", json.valueToTree(new Party("BANK_ACCOUNT", "ucb-imt", null, null)));
+    CoreEvent e = handle(c);
+    return e.outcome() == CoreEvent.Outcome.SUCCESS ? "OK" : e.reasonCode();
+  }
+
+  @Test
+  void aRemittanceToAFullKycCustomerIsCappedAt200000TakaPerTransaction() {
+    // limit sheet v1 (ticket 119c, the mock's decision): REMIT_IN 2,00,000 Tk per txn
+    assertThat(validateRemit(CUSTOMER_A, 20_000_000)).isEqualTo("OK");
+    assertThat(validateRemit(CUSTOMER_A, 20_000_001)).isEqualTo("LIMIT_EXCEEDED_PER_TXN");
+  }
+
+  @Test
+  void aRemittanceToABasicKycCustomerKeepsTheBasicCap() {
+    String basic = "01711000901";
+    assertThat(validateRemit(basic, 100_000)).isEqualTo("OK");
+    assertThat(validateRemit(basic, 100_001)).isEqualTo("LIMIT_EXCEEDED_PER_TXN");
+  }
+
   @Test
   void typesWithoutARuleAreNotRestricted() {
     assertThat(validate("P2P", CUSTOMER_A, CUSTOMER_B)).isEqualTo("OK");
