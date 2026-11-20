@@ -643,6 +643,9 @@
     async previewMenu(user, body) { return http('POST', '/admin/v1/ussd/menus/preview', { headers: await ops(user), json: body }); },
     async proposeTemplate(user, code, ch, loc, body) { return http('POST', '/admin/v1/notify-templates/' + code + '/' + ch + '/' + loc + '/change-requests', { headers: await ops(user), json: body }); },
     async proposeCampaign(user, body) { return http('POST', '/admin/v1/notify-campaigns', { headers: await ops(user), json: body }); },
+    // ticket 133c: notification rules through maker-checker, and their live versions
+    async proposeNotifyRule(user, ruleId, body) { return http('POST', '/admin/v1/notify-rules/' + ruleId + '/change-requests', { headers: await ops(user), json: body }); },
+    async notifyRules(user) { return http('GET', '/admin/v1/notify-rules', { headers: await ops(user) }); },
     async proposeRoutingRule(user, id, body) { return http('POST', '/admin/v1/routing-rules/' + id + '/change-requests', { headers: await ops(user), json: body }); },
     async proposePrefix(user, prefix, body) { return http('POST', '/admin/v1/msisdn-prefixes/' + prefix + '/change-requests', { headers: await ops(user), json: body }); },
     async proposeMnp(user, msisdn, body) { return http('POST', '/admin/v1/mnp-overrides/' + msisdn + '/change-requests', { headers: await ops(user), json: body }); },

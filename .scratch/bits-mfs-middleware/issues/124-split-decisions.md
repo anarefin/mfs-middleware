@@ -18,7 +18,7 @@ level + stack wiring + Newman). Split as the orchestrator suggested:
   MW-SYS-PARTNER_CIRCUIT_OPEN, images missing, wrong image type, 401, PII-at-rest column scan, log scan),
   `ProducedContractsTest`.
 
-## 124b (open)
+## 124b (items 1-4 done 2026-11-20 on ticket/124b-compliance-wiring; 5-6 moved to 124c)
 
 1. **Core KYC level.** `contracts/api/mw-core-mock/core-wallet.v1.openapi.yaml` has `Account.kycLevel` but no
    endpoint to set it. Needs a core-mock contract change (owner mw-core-mock; the ticket says "through core
@@ -52,4 +52,33 @@ is where `/internal/v1/hmac/sign` (purpose `HMAC_<use>`) goes.
   from the app token (customer wallet, or DSO/agent id).
 - NID reuse: another wallet holding the NID (EC_CALLED/MATCHED/APPROVED) -> MANUAL_REVIEW, reason NID_IN_USE, no EC
   call, no level. Checked at submit (the gate before the EC call), not at create.
-- **Open product decision**: a DOB-only match auto-issues BASIC (ticket rule table). Left as is.
+- ~~Open product decision: a DOB-only match auto-issues BASIC.~~ Decided in 124b (user): a DOB-only match goes to
+  MANUAL_REVIEW (reason NAME_MISMATCH, no level, no event); only a FULL match is issued. Done in 124b.
+- Subject headers from the app token: done in 124b (mw-app-gateway `service/OnboardingService`).
+
+## 124c (open; split from 124b at the time cap)
+
+124b delivered items 1-4 above (core-mock `PUT /core/v1/accounts/{walletId}/kyc-level` + MATCHED -> core -> APPROVED
+with the event after the core call; DOB-only -> MANUAL_REVIEW; EC NID mock `ec` in mw-simulators with contract
+`ec-nid.v1`; compose/provision/Keycloak/mw-crypto wiring; mw-app-gateway `/app/v1/onboarding/*` + APISIX route
+`app-v1-onboarding`). Left:
+
+1. **mw-notify consumer** of `mw.kyc.completed.v1` (owner mw-compliance): SMS to the wallet on APPROVED
+   ("your account is verified", Bangla + English templates, seeded like the other templates), Spring Kafka
+   listener in `messaging/`, inbox dedup on eventId, retry topics + DLQ; consumer manifest in mw-notify
+   `contracts.yml` with a fixture; retry groups in `deploy/kafka/topics.txt`.
+2. **mw-audit-dw consumer** of `mw.kyc.completed.v1`: an audit row per decision (applicationId, walletId masked,
+   channel, agentId, kycLevel, decidedAt), consumer manifest, topics.txt retry group.
+3. **Newman folder 64-ekyc** (`tests/api`, `build_collection.mjs`, `TRACEABILITY.md` with UC-01 / CMP-04 tags):
+   self-onboarding (customer app: create, three images, submit -> APPROVED, core `kycLevel` FULL), DSO-assisted
+   (subject AGENT), mismatch (NID ending 111 -> MISMATCHED), not found (000), EC down/timeout (999 -> 504
+   MW-TMO-EC_NID, then resubmit), DOB-only -> MANUAL_REVIEW, another subject's id -> 404; then `scripts/log-scan.sh`
+   (no NID / name in any log). Needs the stack, so it was not run in 124b; nothing in 124b was run live.
+4. **Seeder**: the onboarding test wallets (a customer without KYC whose MSISDN the app tokens carry, a DSO and an
+   agent) if the existing seeded personas do not fit the Newman flows.
+5. Follow-ups found in 124b (not blocking):
+   - mw-compliance `ApplicationView.retryable` is true only for FAILED; a MATCHED application whose core call
+     failed (errorCode set) can be resubmitted but reports `retryable: false`. Make it true for MATCHED with an
+     errorCode (compliance.v1 description to match).
+   - `KycLevel.BASIC` stays in the enum and in the `mw.kyc.completed.v1` schema, but nothing issues it any more.
+   - The real core must provide the kyc-level endpoint (ADR D31 core over REST); only core-mock has it.

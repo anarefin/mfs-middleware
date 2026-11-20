@@ -73,6 +73,14 @@ public class ContentVersionRepository {
         .stream().findFirst();
   }
 
+  /** The latest PUBLISHED version of every key under {@code prefix} (ticket 133c), by key. */
+  public List<ContentVersion> latestPublishedUnder(String prefix) {
+    return jdbc.query(
+        "select distinct on (config_key) " + COLUMNS + " from content_version"
+            + " where starts_with(config_key, ?) and status = 'PUBLISHED' order by config_key, version desc",
+        this::row, prefix);
+  }
+
   /** Newest first. */
   public List<ContentVersion> list(String configKey, int limit, int offset) {
     return jdbc.query(

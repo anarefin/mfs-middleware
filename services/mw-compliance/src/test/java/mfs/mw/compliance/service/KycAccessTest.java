@@ -18,6 +18,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import mfs.mw.compliance.client.CoreWalletClient;
 import mfs.mw.compliance.client.EcNidClient;
 import mfs.mw.compliance.config.ComplianceProperties;
 import mfs.mw.compliance.dto.Caller;
@@ -52,7 +53,7 @@ class KycAccessTest {
   private final EcNidClient ec = mock(EcNidClient.class);
   private final OutboxWriter outbox = mock(OutboxWriter.class);
   private final KycApplicationService service = new KycApplicationService(
-      store, pii, ec, new KycMatchService(ComplianceProperties.defaults()), outbox,
+      store, pii, ec, mock(CoreWalletClient.class), new KycMatchService(ComplianceProperties.defaults()), outbox,
       new TransactionTemplate(mock(PlatformTransactionManager.class)),
       Clock.fixed(Instant.parse("2026-11-20T10:00:00Z"), ZoneOffset.UTC), ComplianceProperties.defaults());
 

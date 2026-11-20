@@ -66,6 +66,8 @@ public final class ErrorCodes {
   public static final String SYS_CORE_UNAVAILABLE = "MW-SYS-015";
   /** mw-adapter-bank's account validation could not be asked (ticket 117b); retryable: 503. */
   public static final String SYS_BANK_UNAVAILABLE = "MW-SYS-016";
+  /** mw-compliance's eKYC API could not be asked (ticket 124b); retryable: 503. */
+  public static final String SYS_COMPLIANCE_UNAVAILABLE = "MW-SYS-017";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 

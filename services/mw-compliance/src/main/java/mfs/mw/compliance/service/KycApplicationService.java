@@ -12,6 +12,7 @@ import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import mfs.mw.compliance.client.CoreWalletClient;
 import mfs.mw.compliance.client.EcNidClient;
 import mfs.mw.compliance.config.ComplianceProperties;
 import mfs.mw.compliance.dto.ApplicationView;
@@ -24,6 +25,7 @@ import mfs.mw.compliance.dto.DocumentView;
 import mfs.mw.compliance.dto.EcPerson;
 import mfs.mw.compliance.dto.EcVerifyRequest;
 import mfs.mw.compliance.dto.KycCompletedEvent;
+import mfs.mw.compliance.dto.KycLevel;
 import mfs.mw.compliance.dto.KycStatus;
 import mfs.mw.compliance.dto.MatchResult;
 import mfs.mw.compliance.entity.Consent;
@@ -51,12 +53,13 @@ import org.springframework.transaction.support.TransactionTemplate;
  *   <li>{@link #addDocument}: an image (type and magic bytes checked, at most 2 MB), sealed, with its sha256.
  *   <li>{@link #submit}: in a first transaction the application moves to EC_CALLED, only when every required image
  *       is there and its consent row is committed (CMP-04: otherwise the EC is never called); then, outside any
- *       transaction, the EC verify call carrying the consent id; then in a second transaction the outcome
- *       (MATCHED with a level, or MISMATCHED) and, when matched, {@code mw.kyc.completed.v1} through the outbox.
- *       An EC timeout, open breaker, EC or mw-crypto failure leaves the application FAILED: submit again.
+ *       transaction, the EC verify call carrying the consent id; then in a second transaction the outcome:
+ *       MATCHED with a level, MANUAL_REVIEW (DOB only, ticket 124b) or MISMATCHED. A match then sets the level on
+ *       the core (core wallet REST, ticket 124b) and only after that, in a third transaction, becomes APPROVED with
+ *       {@code mw.kyc.completed.v1} through the outbox. An EC timeout, open breaker, EC or mw-crypto failure leaves
+ *       the application FAILED; a core failure leaves it MATCHED: submit again (a MATCHED one goes straight to the
+ *       core, no second EC call).
  * </ol>
- *
- * <p>Ticket 124b sets the level on the core (core wallet REST) between MATCHED and APPROVED.
  */
 @Service
 public class KycApplicationService {
@@ -73,17 +76,20 @@ public class KycApplicationService {
   private final KycStore store;
   private final PiiCipher pii;
   private final EcNidClient ec;
+  private final CoreWalletClient core;
   private final KycMatchService match;
   private final OutboxWriter outbox;
   private final TransactionTemplate tx;
   private final Clock clock;
   private final ComplianceProperties.Kyc kyc;
 
-  public KycApplicationService(KycStore store, PiiCipher pii, EcNidClient ec, KycMatchService match,
-      OutboxWriter outbox, TransactionTemplate tx, Clock clock, ComplianceProperties props) {
+  @SuppressWarnings("java:S107")
+  public KycApplicationService(KycStore store, PiiCipher pii, EcNidClient ec, CoreWalletClient core,
+      KycMatchService match, OutboxWriter outbox, TransactionTemplate tx, Clock clock, ComplianceProperties props) {
     this.store = store;
     this.pii = pii;
     this.ec = ec;
+    this.core = core;
     this.match = match;
     this.outbox = outbox;
     this.tx = tx;
@@ -161,6 +167,9 @@ public class KycApplicationService {
       KycApplication a = store.lockApplication(id).filter(x -> visible(x, caller)).orElseThrow(() -> notFound(id));
       boolean staleCall = a.status() == KycStatus.EC_CALLED
           && a.updatedAt().plus(STALE_EC_CALL).isBefore(clock.instant());
+      if (a.status() == KycStatus.MATCHED) {
+        return a;
+      }
       if (a.status() != KycStatus.SUBMITTED && a.status() != KycStatus.FAILED && !staleCall) {
         throw state("Application is " + a.status());
       }
@@ -188,6 +197,10 @@ public class KycApplicationService {
           .addKeyValue("reason", NID_IN_USE).log("KYC application {} held for review: NID in use", id);
       return get(id, caller);
     }
+    if (app.status() == KycStatus.MATCHED) {
+      approve(app, app.kycLevel(), app.matchScore() == null ? 0 : app.matchScore());
+      return get(id, caller);
+    }
     MatchResult result;
     Optional<EcPerson> person;
     try {
@@ -203,21 +216,43 @@ public class KycApplicationService {
     }
     String ecNames = person.map(p -> pii.seal(names(p.nameEn(), p.nameBn()), "kyc_application/" + id + "/ec_name"))
         .orElse(null);
-    KycStatus status = result.matched() ? KycStatus.MATCHED : KycStatus.MISMATCHED;
-    Instant now = clock.instant();
-    tx.executeWithoutResult(s -> {
-      store.recordOutcome(id, status, ecNames, result.score(), result.level(), result.reason(), now);
-      if (result.matched()) {
-        outbox.append(TOPIC, app.walletId(),
-            new EventMetadata(app.correlationId(), id.toString(), "kyc-completed:" + id, 1),
-            new KycCompletedEvent(1, UUID.randomUUID().toString(), id.toString(), app.walletId(),
-                result.level().name(), app.channel().name(), app.agentId(), (int) Math.round(result.score() * 100), now.toString(),
-                app.correlationId()));
-      }
-    });
+    KycStatus status = result.matched() ? KycStatus.MATCHED
+        : result.manualReview() ? KycStatus.MANUAL_REVIEW : KycStatus.MISMATCHED;
+    tx.executeWithoutResult(s ->
+        store.recordOutcome(id, status, ecNames, result.score(), result.level(), result.reason(), clock.instant()));
     log.atInfo().addKeyValue("event", "kyc.application.decided").addKeyValue("status", status.name())
         .log("KYC application {} {}", id, status);
+    if (result.matched()) {
+      approve(app, result.level(), result.score());
+    }
     return get(id, caller);
+  }
+
+  /**
+   * The level on the core, then APPROVED and the event (decision a of ticket 124b: the event follows the core call).
+   * The core is idempotent, so two submits racing here both set it; the row lock lets only one approve and publish.
+   */
+  private void approve(KycApplication app, KycLevel level, double score) {
+    UUID id = app.id();
+    try {
+      core.setKycLevel(app.walletId(), level, id);
+    } catch (MwException e) {
+      tx.executeWithoutResult(s -> store.updateStatus(id, KycStatus.MATCHED, e.code(), clock.instant()));
+      throw e;
+    }
+    Instant now = clock.instant();
+    tx.executeWithoutResult(s -> {
+      if (store.lockApplication(id).map(KycApplication::status).orElse(null) != KycStatus.MATCHED) {
+        return;
+      }
+      store.updateStatus(id, KycStatus.APPROVED, null, now);
+      outbox.append(TOPIC, app.walletId(),
+          new EventMetadata(app.correlationId(), id.toString(), "kyc-completed:" + id, 1),
+          new KycCompletedEvent(1, UUID.randomUUID().toString(), id.toString(), app.walletId(), level.name(),
+              app.channel().name(), app.agentId(), (int) Math.round(score * 100), now.toString(), app.correlationId()));
+    });
+    log.atInfo().addKeyValue("event", "kyc.application.decided").addKeyValue("status", KycStatus.APPROVED.name())
+        .log("KYC application {} APPROVED", id);
   }
 
   public ApplicationView get(UUID id, Caller caller) {

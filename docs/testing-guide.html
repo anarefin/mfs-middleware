@@ -1557,6 +1557,15 @@ curl -sk -X POST https://localhost/test/mock-control/dw/run -H 'apikey: e2e-test
         "…: placeholder {{a b}} is not a plain {{name}}"; Sender id <code>TOO-LONG-SENDER</code> → "senderId must be 1-11 letters, digits or spaces".</li>
       <li>Code <code>bad code</code>, Open: "A code is A-Z, 0-9 and _ (2 to 64), channel SMS or EMAIL, locale bn or en."</li>
       <li>As the checker or a viewer, or while a version waits: "Only an ops-maker proposes template versions (and not while one waits for approval)."</li>
+      <li><b>Rules</b> (ticket 133c): the <span class="ui">Rules</span> tab lists the rules made in the console (the seeded ones live in mw-notify and are not listed).
+        Maker, <i>New rule</i>: Rule id <code>p2p-sent-copy</code>, Event type <code>P2P</code>, Outcome <code>SUCCESS</code>, Customer type <code>any (*)</code>,
+        Recipient <code>DEBIT_PARTY</code>, Template code <code>TXN_P2P_SENT</code>, only <code>SMS</code> ticked, Enabled, Reason, <span class="ui">Request publish</span>.
+        The approvals row reads <code>P2P SUCCESS * -&gt; SMS TXN_P2P_SENT</code>. Checker approves; the Rules tab shows <i>P2P: COMPLETED</i>, <i>SMS</i>, v1.</li>
+      <li>Test console: a P2P from <code>01711000001</code>, then <span class="ui">SMS &amp; email</span> for <code>01711000001</code>: two "sent" SMS for that TrxID (the seeded
+        rule and the copy). No restart is needed.</li>
+      <li>Click <code>p2p-sent-copy</code> in the Rules tab (the id is read-only now), untick <span class="ui">Enabled</span>, request and approve: the next P2P sends one
+        "sent" SMS again; the Rules tab shows <i>off</i>, v2.</li>
+      <li>Rule problems (refused before the API is called): Rule id <code>Bad_Id</code>, Event type <code>p2p</code>, or no channel ticked.</li>
     </ol>
   </div>
 

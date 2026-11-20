@@ -15,6 +15,8 @@ import mfs.mw.admin.api.dto.ConfigChangedEvent;
 import mfs.mw.admin.api.dto.ContentVersionView;
 import mfs.mw.admin.api.dto.ErrorDetail;
 import mfs.mw.admin.api.dto.Menu;
+import mfs.mw.admin.api.dto.NotifyRuleChangeBody;
+import mfs.mw.admin.api.dto.NotifyRuleList;
 import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.dto.TemplateChangeBody;
 import mfs.mw.admin.api.dto.UssdMenuChangeBody;
@@ -38,7 +40,8 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * USSD menus and notify templates through maker-checker (ticket 39, spec 9.2, 10.3, 15.2, 15.3).
+ * USSD menus, notify templates and notify rules (ticket 133c) through maker-checker (ticket 39,
+ * spec 9.2, 10.3, 15.2, 15.3).
  *
  * <ul>
  *   <li>A maker ({@link AdminRole#CONTENT_MAKER}) proposes a new version: the tree or template is
@@ -65,6 +68,13 @@ public class ContentChangeService {
   private static final Pattern CODE = Pattern.compile("[A-Z][A-Z0-9_]{1,63}");
   private static final Set<String> CHANNELS = Set.of("SMS", "EMAIL");
   private static final Set<String> LOCALES = Set.of("bn", "en");
+  private static final Pattern RULE_ID = Pattern.compile("[a-z0-9][a-z0-9-]{0,47}");
+  private static final Pattern EVENT_TYPE = Pattern.compile("[A-Z][A-Z0-9_]{1,31}");
+  private static final Set<String> OUTCOMES = Set.of("SUCCESS", "FAILURE", "PROCESSING");
+  private static final Set<String> CUSTOMER_TYPES =
+      Set.of("CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO", "ORG", "*");
+  private static final Set<String> RECIPIENTS = Set.of("INITIATOR", "DEBIT_PARTY", "CREDIT_PARTY", "OPS");
+  private static final List<String> RULE_CHANNELS = List.of("SMS", "EMAIL", "PUSH");
 
   /** Lazily: ChangeRequestService's handlers ({@link ContentChangeHandler}) need this service. */
   private final ObjectProvider<ChangeRequestService> changeRequests;
@@ -91,7 +101,8 @@ public class ContentChangeService {
 
   /** Whether change requests of {@code resourceType} are this service's. */
   public static boolean handles(String resourceType) {
-    return ContentChangeMapper.USSD_MENU.equals(resourceType) || ContentChangeMapper.NOTIFY_TEMPLATE.equals(resourceType);
+    return ContentChangeMapper.USSD_MENU.equals(resourceType) || ContentChangeMapper.NOTIFY_TEMPLATE.equals(resourceType)
+        || ContentChangeMapper.NOTIFY_RULE.equals(resourceType);
   }
 
   // --- maker ----------------------------------------------------------------------------------
@@ -174,6 +185,56 @@ public class ContentChangeService {
   }
 
   /**
+   * Ticket 133c (FRS NOT-01): a new version of notification rule {@code ruleId}. mw-notify applies
+   * it to its rule table once approved; {@code enabled false} stops the rule.
+   */
+  public ChangeRequestView proposeNotifyRule(Operator maker, String ruleId, NotifyRuleChangeBody body) {
+    requireMaker(maker);
+    List<ErrorDetail> problems = new ArrayList<>();
+    if (!RULE_ID.matcher(ruleId).matches()) {
+      problems.add(new ErrorDetail("ruleId", "must be 1-48 of a-z, 0-9 or -, starting with a letter or digit"));
+    }
+    if (!EVENT_TYPE.matcher(body.eventType()).matches()) {
+      problems.add(new ErrorDetail("eventType", "must be a txnType (A-Z, 0-9 or _), e.g. P2P"));
+    }
+    if (!OUTCOMES.contains(body.outcome())) {
+      problems.add(new ErrorDetail("outcome", "must be SUCCESS, FAILURE or PROCESSING"));
+    }
+    String customerType = body.customerType() == null ? "*" : body.customerType();
+    if (!CUSTOMER_TYPES.contains(customerType)) {
+      problems.add(new ErrorDetail("customerType", "must be a wallet type, ORG or *"));
+    }
+    if (!RECIPIENTS.contains(body.recipient())) {
+      problems.add(new ErrorDetail("recipient", "must be INITIATOR, DEBIT_PARTY, CREDIT_PARTY or OPS"));
+    }
+    if (!RULE_CHANNELS.containsAll(body.channels()) || new HashSet<>(body.channels()).size() != body.channels().size()) {
+      problems.add(new ErrorDetail("channels", "must name SMS, EMAIL or PUSH, each once"));
+    }
+    if (!CODE.matcher(body.templateCode()).matches()) {
+      problems.add(new ErrorDetail("templateCode", "must be 2-64 of A-Z, 0-9 or _, starting with a letter"));
+    }
+    if (!problems.isEmpty()) {
+      throw invalid(problems);
+    }
+    List<String> channels = RULE_CHANNELS.stream().filter(body.channels()::contains).toList();
+    String key = ContentChangeMapper.notifyRuleKey(ruleId);
+    return propose(maker, ContentChangeMapper.NOTIFY_RULE, ruleId, key, ContentVersion.NOTIFY_RULE, body.reason(),
+        version -> {
+          Map<String, Object> value = new LinkedHashMap<>();
+          value.put("ruleId", ruleId);
+          value.put("version", version);
+          value.put("eventType", body.eventType());
+          value.put("outcome", body.outcome());
+          value.put("customerType", customerType);
+          value.put("recipient", body.recipient());
+          value.put("channels", channels);
+          value.put("templateCode", body.templateCode());
+          value.put("enabled", body.enabled() == null || body.enabled());
+          return value;
+        });
+  }
+
+  /**
    * Through {@link ChangeRequestService}'s shared open path: inside its transaction the version
    * number is taken, the request inserted (one open request per resource, 409 MW-VAL-031) and
    * audited, and the PENDING version stored with it.
@@ -248,6 +309,13 @@ public class ContentChangeService {
     return one(ContentChangeMapper.templateKey(code, channel, locale), version);
   }
 
+  /** Ticket 133c: the live version of every rule made in the console. */
+  public NotifyRuleList notifyRules() {
+    return new NotifyRuleList(
+        versions.latestPublishedUnder(ContentChangeMapper.NOTIFY_RULE_KEY_PREFIX).stream()
+            .map(ContentChangeMapper::notifyRule).toList());
+  }
+
   private ContentVersionView.Page page(String key, int limit, int offset) {
     return new ContentVersionView.Page(
         versions.list(key, limit, offset).stream().map(v -> ContentChangeMapper.view(v, false)).toList(), limit, offset);
@@ -273,7 +341,7 @@ public class ContentChangeService {
         out.add(a);
       }
       value.put("activations", out);
-    } else {
+    } else if (ContentVersion.TEMPLATE.equals(v.configType())) {
       value.put("validFrom", notBefore(value.get("validFrom"), now));
     }
     return value;

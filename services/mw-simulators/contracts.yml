@@ -3,7 +3,8 @@ produces:
   # ticket 112c: a mock-control switch on an OCS party is partner health for routing
   events: [events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json]
   # ticket 102 (ADR D33): the test-only mock-control API (profile mock-control)
-  apis:   [api/mw-simulators/mock-control.v1.openapi.yaml]
+  # ticket 124b: the EC NID verify wire of the EC mock (party ec)
+  apis:   [api/mw-simulators/mock-control.v1.openapi.yaml, api/mw-simulators/ec-nid.v1.openapi.yaml]
 consumes:
   events: []
   # ticket 103: the global reset fans out to mw-core-mock's POST /mock-control/reset

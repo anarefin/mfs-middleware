@@ -110,6 +110,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     SMSC's DLR is an in-band callback (`MockParties.callsBackInBand`): always on without a `callbackUrl`,
     also without the profile (`MagicValuesOnly` answers ONCE). Not on the engine: the SOAP stub biller and
     the partner stubs.
+- EC NID mock (ticket 124b, FRS EXT-07; party `ec`, operation `verify`, key `nid`; `service/EcNidService`,
+  `controller/EcNidController`; contract `api/mw-simulators/ec-nid.v1.openapi.yaml`, owned here and in
+  `ContractDriftTest`): `POST /ec/v1/nid/verify {nid, dob, consentId, requestId}` as mw-compliance's
+  `EcNidClient` calls it, HTTP Basic required (presence only), and the SOAP 1.1 front end `POST /ec/v1/soap`
+  (`urn:ec:nid:v1` VerifyNid -> VerifyNidResponse, or a fault with `ec:code`). Answers the fake citizens of
+  `seed/v1/ec/nid.json` (242 records, Bangla and English names, father, mother, address, a photo placeholder;
+  `1990123456789` is MD RAHIM UDDIN / মোঃ রহিম উদ্দিন, 1990-05-17); unknown 404 `NID_NOT_FOUND`. Magic values:
+  NID ending `000` not found, `999` TIMEOUT (held the settings' `timeoutDelayMs`, else `sim.timeout-delay`),
+  `111` the record with the date of birth a year after the one asked. Never logs a record. `EcNidSimulatorIT`.
 - OCS wire format: `POST /ocs/v1/topup {transactionId, msisdn, amount:"100.00"}`; `GET
   /ocs/v1/topup/{transactionId}` returns the real outcome (200, or 404 NOT_FOUND). Replies:
   `{transactionId, status SUCCESS|FAILED|NOT_FOUND|UNAVAILABLE|ERROR, code, message, ocsRef}`;

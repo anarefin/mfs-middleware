@@ -368,6 +368,33 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /core/v1/accounts/{walletId}/kyc-level:
+    parameters:
+      - { name: walletId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+      - $ref: "#/components/parameters/CorrelationId"
+    put:
+      operationId: setKycLevel
+      summary: "Set the wallet's KYC level after an eKYC match (ticket 124b); only mw-compliance"
+      description: >-
+        Idempotent: setting the level the wallet already has changes nothing and answers the same. A changed
+        level is announced as `WalletStateChanged` (change STATUS_CHANGED) on `core.wallet.event.v1`. An
+        unknown wallet is `422 MW-CORE-WALLET_NOT_FOUND`; another client is `403 MW-AUTH-002`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/KycLevelRequest" }
+      responses:
+        "200":
+          description: The wallet's level now
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KycLevelResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /core/v1/customers/{walletId}/verify-factors:
     parameters:
       - { name: walletId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
@@ -740,6 +767,20 @@ components:
         status: { enum: [UNLOCKED, VERIFIED] }
         coreRef: { type: string }
         resetId: { type: string, format: uuid, description: The PIN reset a factors check belongs to }
+    KycLevelRequest:
+      type: object
+      additionalProperties: false
+      required: [kycLevel, applicationId]
+      properties:
+        kycLevel: { enum: [BASIC, FULL] }
+        applicationId: { type: string, format: uuid, description: The mw-compliance KYC application that decided it }
+    KycLevelResult:
+      type: object
+      required: [walletId, kycLevel, applicationId]
+      properties:
+        walletId: { type: string }
+        kycLevel: { enum: [BASIC, FULL] }
+        applicationId: { type: string, format: uuid }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

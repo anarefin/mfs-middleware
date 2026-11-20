@@ -115,6 +115,12 @@ public class WalletRepository {
                 + "where id = ? and status = 'LOCKED'", id) == 1;
   }
 
+  /** Sets the KYC level (ticket 124b), a new version when it changes; false, changing nothing, when it is that already. */
+  public boolean setKycLevel(String id, String kycLevel) {
+    return jdbc.update("update wallet set kyc_level = ?, version = nextval('wallet_version_seq') "
+        + "where id = ? and kyc_level <> ?", kycLevel, id, kycLevel) == 1;
+  }
+
   /**
    * What the wallet paid (transfer debits: distinct transactions and poisha) since the start of the
    * day and of the month (ticket 94); only debits of {@code txnType} when it is not null.

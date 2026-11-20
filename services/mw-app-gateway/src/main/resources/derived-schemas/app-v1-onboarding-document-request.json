@@ -1,0 +1,31 @@
+{
+  "x-mw-derived-from": "api/mw-app-gateway/app.v1.openapi.yaml#/components/schemas/OnboardingDocumentRequest",
+  "type": "object",
+  "required": [
+    "type",
+    "contentType",
+    "content"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": "string",
+      "enum": [
+        "NID_FRONT",
+        "NID_BACK",
+        "SELFIE"
+      ]
+    },
+    "contentType": {
+      "type": "string",
+      "enum": [
+        "image/jpeg",
+        "image/png"
+      ]
+    },
+    "content": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

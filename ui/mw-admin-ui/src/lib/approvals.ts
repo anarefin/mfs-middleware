@@ -32,6 +32,7 @@ export const RESOURCE_LABELS: Record<string, string> = {
   partner: "Partner",
   ussd_menu: "USSD menu",
   notify_template: "Template",
+  "notify-rule": "Notify rule",
   key: "Key",
 };
 
@@ -143,7 +144,7 @@ export function parseReason(raw: unknown): string | null {
 function side(cr: ChangeRequest, s: ChangeSide | undefined): string {
   if (!s) return "-";
   if (cr.resourceType === "transaction" || walletRequest(cr)) return s.status ?? "-";
-  if (cr.resourceType === "ussd_menu" || cr.resourceType === "notify_template") {
+  if (cr.resourceType === "ussd_menu" || cr.resourceType === "notify_template" || cr.resourceType === "notify-rule") {
     return typeof s.version === "number" ? `v${s.version}` : "-";
   }
   if (cr.resourceType === "key") return typeof s.key === "string" ? s.key : "-";

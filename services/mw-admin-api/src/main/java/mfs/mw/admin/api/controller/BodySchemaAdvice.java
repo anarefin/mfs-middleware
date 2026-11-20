@@ -58,6 +58,7 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
             Map.entry(UssdPreviewBody.class, new BodySchema(json, BodySchema.USSD_MENU_PREVIEW)),
             Map.entry(TemplateChangeBody.class, new BodySchema(json, BodySchema.TEMPLATE_CHANGE)),
             Map.entry(NotifyCampaignBody.class, new BodySchema(json, BodySchema.NOTIFY_CAMPAIGN)),
+            Map.entry(mfs.mw.admin.api.dto.NotifyRuleChangeBody.class, new BodySchema(json, BodySchema.NOTIFY_RULE_CHANGE)),
             Map.entry(KeyChangeBody.class, new BodySchema(json, BodySchema.KEY_CHANGE)),
             Map.entry(KeyCeremonyBody.class, new BodySchema(json, BodySchema.KEY_CEREMONY)),
             Map.entry(KeyComponentBody.class, new BodySchema(json, BodySchema.KEY_COMPONENT)),

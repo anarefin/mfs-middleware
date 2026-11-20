@@ -2,6 +2,7 @@
 // handlers and server components): the operator's access token is sent from this server, never
 // from the browser (spec 15.1). The wiring with the token and base URL is src/lib/server/admin.ts.
 
+import type { NotifyRule, NotifyRuleProposal } from "./notify-rules";
 import type { TemplateKey } from "./templates";
 import type { Menu } from "./ussd-menu";
 import type {
@@ -201,6 +202,13 @@ export function createAdminApi(opts: AdminApiOptions) {
     },
     proposeTemplate(token: string, k: TemplateKey, body: TemplateProposal): Promise<ApiResult<ChangeRequest>> {
       return post<ChangeRequest>(token, `${templatePath(k)}/change-requests`, body);
+    },
+    // notification rules (ticket 133c)
+    listNotifyRules(token: string): Promise<ApiResult<{ items: NotifyRule[] }>> {
+      return get<{ items: NotifyRule[] }>(token, "/admin/v1/notify-rules");
+    },
+    proposeNotifyRule(token: string, ruleId: string, body: NotifyRuleProposal): Promise<ApiResult<ChangeRequest>> {
+      return post<ChangeRequest>(token, `/admin/v1/notify-rules/${encodeURIComponent(ruleId)}/change-requests`, body);
     },
   };
 }

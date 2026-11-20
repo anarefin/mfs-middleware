@@ -134,6 +134,11 @@ public final class MockTriggers {
           new Trigger("control file", "a listed file missing, its sha256 or row count wrong, or a wrong header",
               "verdict REJECTED with the reasons"),
           new Trigger("control file", "everything matches", "verdict ACCEPTED")), null),
+      new Section("Bangladesh Election Commission NID", List.of("EXT-07"), List.of("ec"), List.of(
+          new Trigger("NID", "ending `000`, or not in `seed/v1/ec/nid.json`", "404 `NID_NOT_FOUND`"),
+          new Trigger("NID", "ending `999`", "timeout: the answer held `sim.timeout-delay`"),
+          new Trigger("NID", "ending `111`", "the record with the date of birth one year after the one asked"),
+          new Trigger("NID", "any other seeded one", "the record (names, parents, address, photo reference)")), null),
       new Section("payShield 10K HSM", List.of("spec 18.8"), List.of("payshield"), List.of(), "the"
           + " commands run on real key material; error codes by scenario (BUSINESS_ERROR `code`, default `15`)"));
 

@@ -13,7 +13,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * from the EC mock to the real service is configuration only.
  */
 @ConfigurationProperties("mw.compliance")
-public record ComplianceProperties(Kyc kyc, Ec ec, Crypto crypto, Set<String> unscopedClients) {
+public record ComplianceProperties(Kyc kyc, Ec ec, Crypto crypto, Core core, Set<String> unscopedClients) {
 
   /**
    * {@code unscoped-clients}: service clients ({@code azp}) that may read any application (mw-admin-api, the
@@ -24,7 +24,8 @@ public record ComplianceProperties(Kyc kyc, Ec ec, Crypto crypto, Set<String> un
   }
 
   /**
-   * @param nameThreshold normalised name similarity (0..1) at or above which an exact-DOB match is FULL
+   * @param nameThreshold normalised name similarity (0..1) at or above which an exact-DOB match is FULL; below it
+   *     the application is held for manual review
    * @param maxDocumentBytes largest image accepted (decoded)
    * @param contentTypes image types accepted
    * @param requiredDocuments the images an application needs before submit
@@ -38,7 +39,13 @@ public record ComplianceProperties(Kyc kyc, Ec ec, Crypto crypto, Set<String> un
    */
   public record Ec(URI baseUrl, String username, String password, Duration connectTimeout, Duration timeout) {}
 
-  /** mw-crypto (mTLS) and this service's realm {@code services} client for it. */
+  /**
+   * The core wallet REST API (ADR D31; mw-core-mock in the stack): {@code PUT /core/v1/accounts/{walletId}/kyc-level}
+   * with this service's realm token ({@code crypto.token-uri}, audience mapper {@code aud-mw-core-mock}).
+   */
+  public record Core(URI baseUrl, Duration connectTimeout, Duration timeout) {}
+
+  /** mw-crypto (mTLS) and this service's realm {@code services} client for it (also the core's token). */
   public record Crypto(
       URI baseUrl, URI tokenUri, String clientId, String clientSecret, Duration connectTimeout, Duration timeout) {}
 
@@ -50,6 +57,7 @@ public record ComplianceProperties(Kyc kyc, Ec ec, Crypto crypto, Set<String> un
         new Ec(URI.create("http://mw-simulators:8080"), "mw-compliance", "", Duration.ofSeconds(2), Duration.ofSeconds(5)),
         new Crypto(URI.create("https://mw-crypto:8080"), URI.create("http://keycloak:8080/realms/services/protocol/openid-connect/token"),
             "mw-compliance", "", Duration.ofSeconds(2), Duration.ofSeconds(2)),
+        new Core(URI.create("http://mw-core-mock:8080"), Duration.ofSeconds(2), Duration.ofSeconds(5)),
         Set.of("mw-admin-api"));
   }
 }

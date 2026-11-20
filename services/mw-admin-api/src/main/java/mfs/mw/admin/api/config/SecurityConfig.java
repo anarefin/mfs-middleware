@@ -101,7 +101,7 @@ public class SecurityConfig {
                     .requestMatchers(
                         HttpMethod.POST, "/admin/v1/ussd-menus/*/change-requests",
                         "/admin/v1/notify-templates/*/*/*/change-requests",
-                        "/admin/v1/notify-campaigns")
+                        "/admin/v1/notify-campaigns", "/admin/v1/notify-rules/*/change-requests")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.CONTENT_MAKER::contains)))
                     .requestMatchers(HttpMethod.POST, "/admin/v1/ussd/menus/preview")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.CONTENT_PREVIEW::contains)))

@@ -12,7 +12,7 @@
       "pattern": "^[a-z0-9-]+(/[A-Za-z0-9_.-]+)+$",
       "description": "<configType path>/<id>, e.g. partner/gp."
     },
-    "configType": { "enum": ["PARTNER", "ROUTE", "TEMPLATE", "USSD_MENU", "LIMIT", "FEATURE_FLAG", "ERROR_MAP", "ROUTING_RULE", "MSISDN_PREFIX", "MNP_OVERRIDE", "MAINTENANCE_MESSAGE", "BILLER"] },
+    "configType": { "enum": ["PARTNER", "ROUTE", "TEMPLATE", "USSD_MENU", "LIMIT", "FEATURE_FLAG", "ERROR_MAP", "ROUTING_RULE", "MSISDN_PREFIX", "MNP_OVERRIDE", "MAINTENANCE_MESSAGE", "BILLER", "NOTIFY_RULE"] },
     "change": { "enum": ["UPSERT", "DELETE"] },
     "version": {
       "type": "integer",
@@ -37,9 +37,36 @@
     {
       "if": { "properties": { "configType": { "const": "BILLER" } }, "required": ["configType"] },
       "then": { "properties": { "value": { "$ref": "#/$defs/BillerValue" } } }
+    },
+    {
+      "if": { "properties": { "configType": { "const": "NOTIFY_RULE" } }, "required": ["configType"] },
+      "then": { "properties": { "value": { "$ref": "#/$defs/NotifyRuleValue" } } }
     }
   ],
   "$defs": {
+    "NotifyRuleValue": {
+      "type": "object",
+      "description": "NOTIFY_RULE value (ticket 133c, FRS NOT-01): one notification rule edited in the admin console, configKey notify-rule/<ruleId>. A mw.txn.status.v1 event of txnType eventType whose status is in the outcome group (SUCCESS: COMPLETED; FAILURE: FAILED, REJECTED; PROCESSING: UNKNOWN, MANUAL_REVIEW), for a recipient of customerType (* any), sends templateCode on each of channels. mw-notify applies it to its rule table without a restart: the next matching event uses the new channel set; enabled false stops the rule.",
+      "required": ["ruleId", "eventType", "outcome", "customerType", "recipient", "channels", "templateCode", "enabled"],
+      "additionalProperties": false,
+      "properties": {
+        "ruleId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,47}$" },
+        "version": { "type": "integer", "minimum": 1 },
+        "eventType": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,31}$", "description": "The txnType of mw.txn.status.v1, e.g. P2P." },
+        "outcome": { "enum": ["SUCCESS", "FAILURE", "PROCESSING"] },
+        "customerType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO", "ORG", "*"] },
+        "recipient": { "enum": ["INITIATOR", "DEBIT_PARTY", "CREDIT_PARTY", "OPS"] },
+        "channels": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": { "enum": ["SMS", "EMAIL", "PUSH"] }
+        },
+        "templateCode": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{1,63}$" },
+        "enabled": { "type": "boolean" }
+      }
+    },
     "BillerValue": {
       "type": "object",
       "description": "BILLER value (ticket 113, FRS FL-04, FL-05, ADM-05): one biller catalogue entry, configKey biller/<code>. mw-adapter-billpay keeps a read projection; mw-orchestrator enforces amountRule. A disabled biller is refused with maintenanceEn/maintenanceBn (PLT-043).",

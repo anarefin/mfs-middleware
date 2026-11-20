@@ -9,7 +9,10 @@ import mfs.mw.compliance.dto.KycLevel;
 import mfs.mw.compliance.dto.MatchResult;
 import org.junit.jupiter.api.Test;
 
-/** The match rule table (ticket 124): exact DOB and name similarity >= threshold FULL, DOB only BASIC, else MISMATCHED. */
+/**
+ * The match rule table (ticket 124, product decision in 124b): exact DOB and name similarity >= threshold FULL; DOB
+ * only is held for manual review (no level); another DOB MISMATCHED.
+ */
 class KycMatchServiceTest {
 
   private static final LocalDate DOB = LocalDate.of(1990, 5, 17);
@@ -54,10 +57,12 @@ class KycMatchServiceTest {
   }
 
   @Test
-  void sameDobButAnotherNameIsBasic() {
+  void sameDobButAnotherNameIsHeldForManualReviewWithoutALevel() {
     MatchResult r = match.match(DOB, "Karim Hossain", "করিম হোসেন", ec("RAHIM UDDIN", "রহিম উদ্দিন", DOB));
-    assertThat(r.level()).isEqualTo(KycLevel.BASIC);
-    assertThat(r.matched()).isTrue();
+    assertThat(r.level()).isNull();
+    assertThat(r.matched()).isFalse();
+    assertThat(r.manualReview()).isTrue();
+    assertThat(r.reason()).isEqualTo("NAME_MISMATCH");
     assertThat(r.score()).isLessThan(0.85);
   }
 
@@ -67,11 +72,13 @@ class KycMatchServiceTest {
     assertThat(r.level()).isNull();
     assertThat(r.matched()).isFalse();
     assertThat(r.reason()).isEqualTo("DOB_MISMATCH");
+    assertThat(r.manualReview()).isFalse();
   }
 
   @Test
-  void noComparableNameIsBasicWhenTheDobMatches() {
+  void noComparableNameIsHeldForManualReviewWhenTheDobMatches() {
     MatchResult r = match.match(DOB, null, "রহিম", ec("RAHIM", null, DOB));
-    assertThat(r.level()).isEqualTo(KycLevel.BASIC);
+    assertThat(r.level()).isNull();
+    assertThat(r.manualReview()).isTrue();
   }
 }

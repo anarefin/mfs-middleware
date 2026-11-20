@@ -40,3 +40,25 @@ the branch that implements a slice. No money, security or foreign-contract choic
   verdict ("Check on server"); its own browser walk stays for the interactive paging.
 - **API folder 67** (`67-admin-ussd-templates`) started: the paged robi preview and the refused tree; 133c / 133d
   add their requests to it.
+
+## 133c decisions (implementer, 2026-11-20)
+
+- **Rule model:** event type (a `mw.txn.status.v1` txnType) + outcome group (SUCCESS = COMPLETED; FAILURE =
+  FAILED / REJECTED; PROCESSING = UNKNOWN / MANUAL_REVIEW, the groups the seeded rules use) + customer type (`*` any)
+  -> recipient, channels (SMS / EMAIL / PUSH) and template. The operator never writes SpEL: mw-notify builds the
+  condition from values that passed the contract's patterns.
+- **Storage in mw-admin-api:** a content version (`content_version`, configKey `notify-rule/<ruleId>`, V23 widens the
+  type check), so propose / approve / reject / expire and the one-open-request rule are the template path's.
+  `GET /admin/v1/notify-rules` lists the latest PUBLISHED version per rule.
+- **Seeded rules** (mw-notify V5, V7, V13, V16, V18, V20) stay in mw-notify and are neither listed nor editable in the
+  console: their conditions are richer than the model (`creditPartyId != debitPartyId`, txnType lists). A console
+  rule is added beside them. Overriding or disabling a seeded rule from the console is not built (open item).
+- **Apply in mw-notify:** one `notify.rule` row per channel, `admin-<ruleId>-<channel>`, upserted; a dropped channel,
+  `enabled false` and a DELETE disable the row (never deleted: rule-built message ids name the rule). Rules are read
+  per event, so the next matching event uses the new set without a restart. Version guard `rule.config_version` (V21).
+- **Contract:** `NOTIFY_RULE` in the configType enum with `NotifyRuleValue` (owned by mw-admin-api); every
+  service's own `ConfigType` enum takes the value (as BILLER did, ticket 113) so no consumer parks such records.
+- **e2e / API:** Playwright `e2e/51-notify-rules.spec.ts` (written, not run) uses the e2e-only rule
+  `e2e-rule-pay-success` (event type `E2E_RULE_PAY`); API folder 67 adds two requests on per-run rule ids (event type
+  `API_RULE_PAY`). No transaction has those types. A live walk that observes the new channel set is in
+  `docs/testing-guide.html` 9.11 (rule `p2p-sent-copy`).

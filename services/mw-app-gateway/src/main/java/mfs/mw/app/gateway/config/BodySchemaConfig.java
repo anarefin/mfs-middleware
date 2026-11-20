@@ -16,7 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The body schema checks of every {@code app.v1} JSON body (ticket 29, M3 gate decision A6;
- * APISIX validates no body): {@code /app/**} POST bodies (at most 64 KiB, else 413) are kept in
+ * APISIX validates no body): {@code /app/**} POST bodies (at most 64 KiB, an onboarding image 3 MiB; else 413) are kept in
  * memory ({@link CachedBodyFilter}) so the schema check, the device signature and the controller
  * all read the same bytes; each check runs after the JWT and before the device gate ({@code
  * DeviceBindingConfig}). The device API bodies are checked by mw-auth (ticket 68). A new JSON
@@ -40,7 +40,7 @@ public class BodySchemaConfig implements WebMvcConfigurer {
   FilterRegistrationBean<CachedBodyFilter> cachedBodyFilter(
       @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors) {
     FilterRegistrationBean<CachedBodyFilter> r =
-        new FilterRegistrationBean<>(new CachedBodyFilter(errors, CachedBodyRequest.MAX_BODY));
+        new FilterRegistrationBean<>(new CachedBodyFilter(errors, CachedBodyRequest.MAX_BODY, CachedBodyRequest.MAX_DOCUMENT_BODY));
     r.addUrlPatterns("/app/*");
     return r;
   }
@@ -58,6 +58,8 @@ public class BodySchemaConfig implements WebMvcConfigurer {
     add(registry, BodySchema.LINK_BANK_ACCOUNT, false, "/app/v1/bank-accounts");
     add(registry, BodySchema.CARD_SESSION, false, "/app/v1/add-money/card/sessions");
     add(registry, BodySchema.ATM_TOKEN, false, "/app/v1/atm/tokens");
+    add(registry, BodySchema.ONBOARDING_APPLICATION, false, "/app/v1/onboarding/applications");
+    add(registry, BodySchema.ONBOARDING_DOCUMENT, false, CachedBodyFilter.DOCUMENTS);
   }
 
   private void add(InterceptorRegistry registry, String schema, boolean optional, String path) {

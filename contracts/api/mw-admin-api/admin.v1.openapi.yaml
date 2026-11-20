@@ -1120,6 +1120,72 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/notify-rules:
+    get:
+      operationId: listNotifyRules
+      summary: The live version of every notification rule made in the console
+      description: >-
+        Any spec 15.4 role (ticket 133c, FRS NOT-01). One item per rule, its latest PUBLISHED
+        version, by rule id. The seeded rules live in mw-notify and are not listed.
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The rules
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotifyRuleList" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /admin/v1/notify-rules/{ruleId}/change-requests:
+    post:
+      operationId: proposeNotifyRule
+      summary: Propose a new version of a notification rule (maker)
+      description: >-
+        Role `ops-maker` (ticket 133c, FRS NOT-01). A rule sends `templateCode` on each of `channels`
+        to `recipient` when a `mw.txn.status.v1` event of txnType `eventType` ends in `outcome`
+        (SUCCESS: COMPLETED; FAILURE: FAILED or REJECTED; PROCESSING: UNKNOWN or MANUAL_REVIEW) for a
+        recipient of `customerType` (`*` any, the default). `enabled` false stops the rule (true when
+        absent). A value outside these rules is 400 MW-VAL-040 with one `details` entry per problem.
+        The version is PENDING with its change request (one open request per rule, 409 MW-VAL-031); a
+        different `ops-checker` approves it with `/admin/v1/change-requests/{id}/approve`, which
+        publishes it on `mw.config.changed.v1` (configType NOTIFY_RULE, configKey
+        `notify-rule/<ruleId>`); mw-notify applies it without a restart: the next matching event
+        uses the new channel set.
+      parameters:
+        - { name: ruleId, in: path, required: true, schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,47}$" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventType, outcome, recipient, channels, templateCode, reason]
+              additionalProperties: false
+              properties:
+                eventType: { type: string, minLength: 2, maxLength: 32, description: "The txnType, e.g. P2P (A-Z, 0-9, _)" }
+                outcome: { type: string, enum: [SUCCESS, FAILURE, PROCESSING] }
+                customerType: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, DSO, ORG, "*"] }
+                recipient: { type: string, enum: [INITIATOR, DEBIT_PARTY, CREDIT_PARTY, OPS] }
+                channels:
+                  type: array
+                  minItems: 1
+                  maxItems: 3
+                  items: { type: string, enum: [SMS, EMAIL, PUSH] }
+                templateCode: { type: string, minLength: 2, maxLength: 64 }
+                enabled: { type: boolean }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+      responses:
+        "201":
+          description: The change request, PENDING (`payload` = the version to publish)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /admin/v1/notify-templates/{code}/{channel}/{locale}/change-requests:
     post:
       operationId: proposeNotifyTemplate
@@ -1523,6 +1589,28 @@ components:
               page: { type: integer, minimum: 0 }
               pages: { type: integer, minimum: 1 }
               ended: { type: boolean }
+    NotifyRuleList:
+      type: object
+      description: The live notification rules made in the console (ticket 133c).
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [ruleId, version, eventType, outcome, customerType, recipient, channels, templateCode, enabled]
+            properties:
+              ruleId: { type: string }
+              version: { type: integer, minimum: 1 }
+              eventType: { type: string }
+              outcome: { type: string, enum: [SUCCESS, FAILURE, PROCESSING] }
+              customerType: { type: string }
+              recipient: { type: string }
+              channels: { type: array, items: { type: string, enum: [SMS, EMAIL, PUSH] } }
+              templateCode: { type: string }
+              enabled: { type: boolean }
+              approvedBy: { type: [string, "null"] }
+              approvedAt: { type: [string, "null"], format: date-time }
     ContentVersionPage:
       type: object
       required: [items, limit, offset]
@@ -1543,7 +1631,8 @@ components:
         offset: { type: integer }
     ResourceType:
       type: string
-      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template, notify-campaign, key, channel_client,
+      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template, notify-campaign, notify-rule, key,
+        channel_client,
         partner_credential, partner_error_map, recon_exception]
     KeyAction:
       type: string

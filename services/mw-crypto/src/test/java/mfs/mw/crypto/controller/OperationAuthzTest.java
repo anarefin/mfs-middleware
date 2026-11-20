@@ -69,6 +69,7 @@ class OperationAuthzTest {
   static final String AUTH = "mw-auth";
   static final String AUDIT = "mw-audit-dw";
   static final String ADMIN = "mw-admin-api";
+  static final String COMPLIANCE = "mw-compliance";
 
   @TestConfiguration(proxyBeanMethods = false)
   @EnableConfigurationProperties({OperationAuthzProperties.class, CryptoProperties.class})
@@ -108,7 +109,7 @@ class OperationAuthzTest {
   @BeforeEach
   void keys() {
     for (String purpose : List.of("PIN_TRANSPORT", "PIN_HMAC", "JWT_SIGN", "ASSERTION_SIGN", "AUDIT_ANCHOR_SIGN",
-        "TOKENISE_MSISDN", "TOKENISE_ACCOUNT", "KEK_COLUMN", "KEK_FILE", "HMAC_WEBHOOK",
+        "TOKENISE_MSISDN", "TOKENISE_NID", "TOKENISE_ACCOUNT", "KEK_COLUMN", "KEK_FILE", "HMAC_WEBHOOK",
         "HMAC_ATMTOKEN")) {
       KeyPurpose p = KeyPurpose.parse(purpose);
       String keyId = p.defaultKeyId();
@@ -199,6 +200,21 @@ class OperationAuthzTest {
     JsonNode m = JSON.readTree(mac.getResponse().getContentAsString());
     forbidden(post(AUTH, "/internal/v1/hmac/verify",
         "{\"keyId\":\"hmac-webhook\",\"data\":\"AAAA\",\"mac\":\"" + m.get("mac").asString() + "\"}"));
+  }
+
+  /** Ticket 124b: mw-compliance tokenises NIDs and seals its PII columns, and nothing else. */
+  @Test
+  void mwComplianceTokenisesNidsAndSealsColumnsOnly() throws Exception {
+    assertThat(post(COMPLIANCE, "/internal/v1/tokens", "{\"domain\":\"NID\",\"values\":[\"1990123456789\"]}"))
+        .hasStatusOk();
+    forbidden(post(COMPLIANCE, "/internal/v1/tokens", "{\"domain\":\"MSISDN\",\"values\":[\"01712345678\"]}"));
+    MvcTestResult sealed =
+        post(COMPLIANCE, "/internal/v1/envelope/encrypt", "{\"purpose\":\"KEK_COLUMN\",\"plaintext\":\"AAAA\"}");
+    assertThat(sealed).hasStatusOk();
+    assertThat(post(COMPLIANCE, "/internal/v1/envelope/decrypt", sealed.getResponse().getContentAsString()))
+        .hasStatusOk();
+    forbidden(post(COMPLIANCE, "/internal/v1/envelope/encrypt", "{\"purpose\":\"KEK_FILE\",\"plaintext\":\"AAAA\"}"));
+    forbidden(post(COMPLIANCE, "/internal/v1/jws/sign", "{\"purpose\":\"JWT_SIGN\",\"payload\":{}}"));
   }
 
   @Test

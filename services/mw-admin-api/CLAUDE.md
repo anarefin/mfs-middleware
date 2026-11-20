@@ -60,7 +60,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   approval (moved on: `409 MW-VAL-030`, request stays PENDING); expired: marked EXPIRED + audited,
   `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
   `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]` (`resourceType`
-  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|notify-campaign|key|channel_client|partner_credential|partner_error_map|recon_exception; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
+  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|notify-campaign|notify-rule|key|channel_client|partner_credential|partner_error_map|recon_exception; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
   (`READ_CHANGE_REQUESTS`: the transaction readers and integration-maker/checker, ticket 38; an
   operator without `READ_TRANSACTIONS` sees partner requests only: transaction and wallet ones are
   left out of the list, `?resourceType=transaction|wallet` and their detail are 403).
@@ -269,6 +269,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   only in those services (the admin lists only versions made here); the compacted topic keeps only
   the latest record per key, so a consumer starting on an empty database gets the latest version
   only (fine for the single-instance MVP with persistent databases).
+- Notification rules (ticket 133c, FRS NOT-01; `controller/NotifyRuleController` -> `ContentChangeService`, the
+  content path above; `NotifyRuleChangeHandler`, V23 widens `content_version.config_type`): `POST
+  /admin/v1/notify-rules/{ruleId}/change-requests {eventType, outcome SUCCESS|FAILURE|PROCESSING, customerType?
+  (wallet type, ORG or * = default), recipient INITIATOR|DEBIT_PARTY|CREDIT_PARTY|OPS, channels [SMS|EMAIL|PUSH],
+  templateCode, enabled? (default true), reason}` (ops-maker; derived schema `admin-v1-notify-rule-change-request.json`;
+  ruleId `[a-z0-9][a-z0-9-]{0,47}`, eventType a txnType `[A-Z][A-Z0-9_]{1,31}`, each channel once, else `400
+  MW-VAL-040`) -> resourceType `notify-rule`, resourceId ruleId, configKey `notify-rule/<ruleId>`, value `{ruleId,
+  version, eventType, outcome, customerType, recipient, channels (SMS, EMAIL, PUSH order), templateCode, enabled}`;
+  approval (ops-checker) publishes configType NOTIFY_RULE (no go-live time: live on approval). `GET
+  /admin/v1/notify-rules` (any 15.4 role): the latest PUBLISHED version per rule (`NotifyRuleList`). A rule is
+  stopped by `enabled false`, never deleted. The seeded rules live in mw-notify and are neither listed nor
+  editable here (a console rule is added beside them).
 - USSD menu preview (ticket 133b, FRS ADM-06, CH-USSD-06; `ContentController.previewMenu` ->
   `service/UssdPreviewService`, pure `service/UssdPreview`): `POST /admin/v1/ussd/menus/preview {menu, menuId?,
   mno, language?, inputs?, outcome?}` (`AdminRole.CONTENT_PREVIEW` = ops-maker, ops-checker; derived schema
