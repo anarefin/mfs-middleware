@@ -3945,6 +3945,54 @@
       ]
     },
     {
+      "name": "30 Saga FRS (partner reversal of a completed top-up)",
+      "description": "Ticket 96c, FRS PLT-022 and PLT-025. Reversing a completed top-up asks the operator to reverse first. The core reversal follows only after that confirms. A partner refusal ends MANUAL_REVIEW and leaves the posting. The OCS scenario is cleared in the scenario.",
+      "item": [
+        {
+          "name": "[topup reversal frs] a completed top-up is reversed at the operator before the core and every balance is restored",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup reversal frs] a completed top-up is reversed at the operator before the core and every balance is restored\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      const ocsAt = await MW.sim.lastSeq('ocs');\\n      const coreAt = (await MW.mockJournal('core')).reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('REVERSED', 30);\\n      await S.noChange();\\n      const ocs = (await MW.mockJournal('ocs')).filter(r => (r.seq || 0) > ocsAt && String(r.path || '').indexOf('/reverse') >= 0);\\n      const core = (await MW.mockJournal('core', { path: 'reversal' })).filter(r => (r.seq || 0) > coreAt);\\n      S.check('the operator was reversed once', ocs.length === 1, ocs);\\n      S.check('the core was reversed once', core.length === 1, core);\\n      await S.auditStates('RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED, REVERSING, REVERSED');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup reversal frs] a partner refusal to reverse a completed top-up ends in manual review and keeps the posting",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup reversal frs] a partner refusal to reverse a completed top-up ends in manual review and keeps the posting\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.after(() => MW.mockReset('ocs'));\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      const coreAt = (await MW.mockJournal('core')).reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n      await MW.mockScenario('ocs', 'reverse', 'BUSINESS_ERROR', { code: '4091', nextN: 1 });\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('MANUAL_REVIEW', 30);\\n      await S.changedBy({ '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174 });\\n      const core = (await MW.mockJournal('core', { path: 'reversal' })).filter(r => (r.seq || 0) > coreAt);\\n      S.check('the core was not reversed', core.length === 0, core);\\n      const rows = await S.auditStates('RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED, REVERSING, MANUAL_REVIEW');\\n      const mr = rows.find(e => e.after && e.after.status === 'MANUAL_REVIEW');\\n      S.eq('MANUAL_REVIEW carries MW-PTR-GP-UNMAPPED', mr.after.errorCode, 'MW-PTR-GP-UNMAPPED', mr);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "35 Routing (operator from the MSISDN, MNP, a down connector, a maintenance message)",
       "description": "Ticket 98. A top-up with no partnerId, an MNP override, ocs switched DOWN, and a biller maintenance message. Cleaned up in the scenario so later folders are unchanged.",
       "item": [

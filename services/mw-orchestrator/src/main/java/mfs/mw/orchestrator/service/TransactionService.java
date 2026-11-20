@@ -272,7 +272,13 @@ public class TransactionService {
           .log("transaction is already being reversed; answered with its current status");
       return;
     }
-    engine.fire(original.withReversal(UUID.fromString(req.txnId())), new SagaEvent.ReversalRequested(), null);
+    boolean partnerFirst = flows.find(original.request().txnType())
+        .filter(f -> f.needsHold() && f.partnerCall().isPresent())
+        .isPresent();
+    engine.fire(
+        original.withReversal(UUID.fromString(req.txnId())),
+        new SagaEvent.ReversalRequested(partnerFirst),
+        null);
   }
 
   private static Optional<UUID> originalId(TxnRequest req) {

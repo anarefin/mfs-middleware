@@ -19,10 +19,17 @@ public enum Effect {
   SEND_RELEASE,
   SEND_REVERSE,
   /**
-   * Partner {@code REVERSE} after a refused commit (ticket 96b). The same request id on every
-   * resend. Not the core ReverseTransaction of a completed transaction.
+   * Partner {@code REVERSE} (ticket 96b, 96c). The same request id on every resend. Sent before
+   * any core compensation: after a refused commit, and when reversing a completed top-up or bill
+   * payment.
    */
   SEND_PARTNER_REVERSE,
+  /**
+   * Core {@code ReverseTransaction} of a completed top-up or bill payment, sent only after the
+   * partner confirmed REVERSE (ticket 96c). Clears the partner leg so the reversal deadline asks
+   * the core.
+   */
+  SEND_CORE_REVERSE,
   /**
    * QueryTransaction asking whether the hold of a refused commit still exists, once the partner
    * has confirmed REVERSE (ticket 96b).

@@ -291,7 +291,8 @@ API suite folders (`tests/api/src`, details in `tests/api/README.md`): `00` edge
 baseline, `01`–`04` P2P, device binding, cash in / out, merchant payment, `05`–`08` top-up, bill
 pay, add money from bank, `09` checkout and IPN, `10`–`11` notifications, `12` reversal, `13`–`17`
 admin (maker-checker, console search, partner config, wallet unlock, menus and templates),
-`18`–`20` USSD over HTTP and SMPP, `21`–`23` bulk disbursement and SP query, and since ticket 76 the
+`18`–`20` USSD over HTTP and SMPP, `21`–`23` bulk disbursement and SP query, `30` partner-first
+reversal of a completed top-up (ticket 96c), and since ticket 76 the
 security folders: `24` mw-auth (OTP, device binding, first PIN, login, logout, key documents), `25`
 the PIN lifecycle (policy, change, self-service and care reset, lockout, ops unlock), `26` the
 transaction assertion (PIN before the saga, reuse, USSD, checkout), `27` the payShield PVV through

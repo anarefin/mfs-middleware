@@ -678,7 +678,7 @@ Timeout values are defaults; each is configurable per partner and product from t
 
 **Late conflicting partner results (Decision 2026-11-04).** A late callback or status-inquiry answer that contradicts a state already reached (`SUCCESS` against `RELEASING` / `FAILED` / `MANUAL_REVIEW`; `FAILED` or `NOT_FOUND` against `COMMITTING` / `COMPLETED` / `REVERSING` / `REVERSED` / `MANUAL_REVIEW`) never moves the transaction: a terminal state is kept, and nothing reopens it to `MANUAL_REVIEW`. The orchestrator logs `txn.outcome.conflict` at ERROR and writes an audit entry (`mw.audit.event.v1`, action `txn.outcome.conflict`, outcome FAILURE), which operations and reconciliation resolve (section 13, admin console). A late result that agrees with the state is audited as `partner.callback.late` and changes nothing.
 
-**Reversal (Decision 2026-11-04).** Reversal is core-only in the MVP: the orchestrator sends `ReverseTransaction` and no partner-side reversal, so a reversed `TOPUP` gives the money back and the customer keeps the airtime. Only a `COMPLETED` transaction can be reversed, once, for its full amount. Only the `SYSTEM` channel may request one (`MW-AUTH-020` otherwise); operators reach it through the admin console with maker-checker (ticket 37).
+**Reversal (Decision 2026-11-04, amended by ticket 96c).** A completed transaction with no held partner leg (P2P, cash, merchant pay, add money) is reversed at the core only: `ReverseTransaction`, no partner call. A completed `TOPUP` or `BILL_PAY` is reversed at the partner first (section 7.4). Only a `COMPLETED` transaction can be reversed, once, for its full amount. Only the `SYSTEM` channel may request one (`MW-AUTH-020` otherwise); operators reach it through the admin console with maker-checker (ticket 37).
 
 ### 7.3 Idempotency (FR-05)
 
@@ -696,6 +696,7 @@ Timeout values are defaults; each is configurable per partner and product from t
 - TSQ result `SUCCESS` → `COMMITTING`; `FAILED` → `RELEASING` (`FAILED` when nothing is held); still pending → next slot. `NOT_FOUND` releases (`MW-TMO-003`) only once the original request can no longer arrive: for a partner, after the partner deadline plus a grace period (the adapter refuses to send an expired request); for the core, after the command's `expiresAt` plus the grace period. Before that, `NOT_FOUND` counts as pending (**Decision 2026-11-04**). An answer that fits no outcome goes to `MANUAL_REVIEW` `MW-TMO-005`; a late answer that contradicts the resolution follows the conflict rule in 7.2.
 - Partners without a status API: hold stays until the settlement file arrives; recon (section 13) resolves it.
 - Customers receive a "processing" message immediately and a final SMS on resolution.
+- Partner reversal of a completed top-up or bill payment (ticket 96c, FRS PLT-022, PLT-025): the saga sends partner `REVERSE` first, keyed `reverse:<txnId>` and resent until a definite answer or the reversing window. The core `ReverseTransaction` is sent only after the partner confirms. A definite partner refusal ends `MANUAL_REVIEW` and does not move the core posting. No definite answer in the reversing window is `MANUAL_REVIEW` `MW-TMO-022`, still with no core reversal. A refused commit is the other order (ticket 96b): partner `REVERSE`, then the hold, and a definite refusal ends `FAILED`.
 
 ### 7.5 Synchronous channels over an async core
 

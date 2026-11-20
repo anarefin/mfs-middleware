@@ -15,6 +15,7 @@ import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.Outcome;
+import mfs.mw.orchestrator.service.saga.PendingLeg;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
@@ -121,23 +122,35 @@ public class PartnerReplyService {
   }
 
   /**
-   * A REVERSE reply after a refused commit (ticket 96b). SUCCESS asks the core about the hold;
-   * a definite FAILED ends the transaction FAILED and leaves the hold untouched (the hold is
-   * asked about only after the partner confirms). UNKNOWN, PENDING and NOT_FOUND wait for the
-   * reversal deadline, which resends the same key.
+   * A REVERSE reply while the pending leg is the partner (ticket 96b, 96c). SUCCESS of a refused
+   * commit asks the core about the hold; SUCCESS of a completed top-up or bill payment (the
+   * original carries a reversal txn id) sends the core reversal. A definite FAILED of a refused
+   * commit ends FAILED and leaves the hold untouched; a definite FAILED of a completed top-up or
+   * bill payment ends MANUAL_REVIEW and does not touch the posting. UNKNOWN, PENDING and NOT_FOUND
+   * wait for the reversal deadline, which resends the same key. A reply after the leg has moved on
+   * changes nothing.
    */
   private void applyReverse(TransactionRecord rec, PartnerReply reply) {
+    if (rec.pendingLeg() != PendingLeg.PARTNER_REVERSE) {
+      drop(reply, "saga.event.ignored", "partner reversal reply arrived after that leg finished");
+      return;
+    }
     Optional<Outcome> outcome = PartnerReplyMapper.outcome(reply);
     if (outcome.isEmpty() || outcome.get() == Outcome.UNKNOWN || outcome.get() == Outcome.PENDING
         || outcome.get() == Outcome.NOT_FOUND) {
       drop(reply, "partner.reverse.pending", "partner reversal has no definite answer yet; the deadline resends it");
       return;
     }
+    boolean completed = rec.reversalTxnId() != null;
     try {
       if (outcome.get() == Outcome.SUCCESS) {
-        engine.fire(rec, new SagaEvent.PartnerReverseConfirmed(), null);
+        engine.fire(rec, completed
+            ? new SagaEvent.PartnerReverseConfirmed(SagaEvent.PartnerReverseConfirmed.Follow.CORE)
+            : new SagaEvent.PartnerReverseConfirmed(), null);
       } else {
-        engine.fire(rec, new SagaEvent.PartnerReverseRefused(), mapper.error(reply));
+        engine.fire(rec, completed
+            ? new SagaEvent.PartnerReverseRefused(SagaEvent.PartnerReverseRefused.End.MANUAL_REVIEW)
+            : new SagaEvent.PartnerReverseRefused(), mapper.error(reply));
       }
     } catch (InvalidTransitionException e) {
       log.atInfo()
