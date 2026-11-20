@@ -469,7 +469,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   as a REVERSAL on `mw.txn.request.v1`, with the exception's txnId) + the audit (resource
   `recon_exception/<id>`); only after the commit (`ResourceChangeHandler.afterApproved`, new hook) mw-recon is
   told (`POST /internal/v1/recon/exceptions/{id}/actions`, idempotent on the change request id; the answer is
-  logged `admin.recon_exception.recorded`, not tracked). mw-recon marks it ACTIONED, then RESOLVED on the
+  logged `admin.recon_exception.recorded`). REC-05 (M9 review): the decision transaction also writes a
+  `recon_action_pending` row (V21); an answer (recorded or refused) drops it, no answer keeps it and
+  `scheduler/ReconActionRetryJob` (ShedLock `recon-action-retry`, `mw.recon.action-retry-cron` every minute)
+  re-sends it 30 s after the last attempt until mw-recon answers. mw-recon marks it ACTIONED, then RESOLVED on the
   outcome. Test `controller/ExceptionActionIT` (stub orchestrator and mw-recon).
 - Internal API identity (M3 gate decision; `client/ServiceTokenClient`, `client/InternalApiCaller`):
   Keycloak realm `services` client `mw-admin-api` (client credentials, HTTP Basic, token carries
