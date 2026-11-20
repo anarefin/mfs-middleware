@@ -60,6 +60,8 @@ provision_mw_simulators() {
   # the WS-Security UsernameToken password of the billagg SOAP front end (SOAP billers)
   sync_env sim.billagg.ws-password BILLAGG_WS_PASSWORD
   sync_env sim.callback-secrets.c2wbank C2WBANK_HMAC_SECRET
+  # the push server mock checks the key mw-notify sends (ticket 110)
+  sync_env sim.push.api-key PUSH_API_KEY
   sync_env sim.ussd-gateway.credentials.gp USSD_GP_GATEWAY_SECRET
   sync_env sim.ussd-gateway.credentials.robi USSD_ROBI_GATEWAY_SECRET
   sync_env sim.ussd-gateway.credentials.bl USSD_BL_GATEWAY_SECRET
@@ -124,10 +126,12 @@ provision_mw_app_gateway() {
   db_role app_gateway_rw app_gateway
 }
 
-# SMPP 3.4 passwords are at most 8 characters.
+# SMPP 3.4 passwords are at most 8 characters. The push server API key (ticket 110) is shared with
+# mw-simulators' push mock.
 provision_mw_notify() {
   gen_once spring.datasource.password 40
   gen_once mw.notify.smpp.password 8
+  sync_env mw.notify.push.api-key PUSH_API_KEY
   db_role notify_rw notify
 }
 

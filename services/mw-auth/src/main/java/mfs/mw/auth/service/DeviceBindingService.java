@@ -165,7 +165,7 @@ public class DeviceBindingService {
       closed.add(new String[] {wallet, deviceId});
       devices.bind(deviceId, wallet, publicKey, now);
       String correlationId = DeviceOtpService.correlationId();
-      NotificationRequest notice = notifications.bound(msisdn, checked.locale(), correlationId);
+      NotificationRequest notice = notifications.bound(msisdn, deviceId, checked.locale(), correlationId);
       outbox.append(props.notifyTopic(), msisdn,
           new EventMetadata(correlationId, notice.messageId(), notice.messageId(), 1), notice);
       return closed;

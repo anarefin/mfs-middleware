@@ -62,6 +62,7 @@ public final class MaskingPolicy {
         yield trimmed.isEmpty() ? STARS : trimmed.substring(0, 1).toUpperCase(Locale.ROOT) + ".";
       }
       case SECRET -> STARS;
+      case PUSH_TOKEN -> value.length() <= 6 ? STARS : STARS + value.substring(value.length() - 6);
       case PARTY_ID -> mask(SensitiveType.ACCOUNT, value);
     };
   }

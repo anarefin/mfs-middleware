@@ -246,7 +246,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-11 | ticket 120 | ATM one-time token |
 | FL-12 | tickets 121, 122 | BanglaQR on-us and off-us |
 | FL-13 | done | each bulk row is its own transaction linked to the batch (mw-portal-api, `BULK_DISBURSE`) |
-| FL-14 | tickets 110, 125, 128 | completion SMS and event built; push 110, AML feed 125, DW 128 |
+| FL-14 | tickets 125, 128 | completion SMS and event built; push next to the SMS (SMS always, push optional) in mw-notify (ticket 110, `PushDispatchIT`); AML feed 125, DW 128 |
 
 ## 6. Connectors and mocks (FRS 6)
 
@@ -261,7 +261,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-01 | ticket 109 | USSD gateway simulator (GP, SMPP) built; four MNOs in 109 |
 | EXT-02 | done | SMSC simulator in mw-simulators with inbox and delivery receipts |
 | EXT-03 | done | GreenMail SMTP with its web inbox instead of Mailpit (same role) |
-| EXT-04 | ticket 110 | push mock |
+| EXT-04 | done | mw-notify `client/PushClient` (FCM / APNs style app-server push API) against mw-simulators' stateful push mock, mock party `push` (ticket 110; `PushSimulatorIT`, `PushDispatchIT`, API suite 43) |
 | EXT-05 | tickets 123, 125 | AML SFTP mock and feed |
 | EXT-06 | tickets 123, 126 | MT940/942 generator and recon pull |
 | EXT-07 | ticket 124 | EC NID mock |
@@ -308,12 +308,12 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| NOT-01 | tickets 110, 111, 133 | transaction notifications built; rule table and system events 111, push 110, editor 133 |
-| NOT-02 | ticket 110 | SMS and email templates in Bangla and English built; push templates in 110 |
+| NOT-01 | tickets 111, 133 | transaction notifications on SMS, email and push (ticket 110) built; rule table and system events 111, editor 133 |
+| NOT-02 | done | SMS, email and push templates (title + body, `PUSH_TXN_COMPLETED` / `PUSH_TXN_FAILED`, ticket 110) in Bangla and English in `notify.template` |
 | NOT-03 | done | mw-notify SMPP: GSM-7 / UCS2, concatenation, sender id (`SmsEncoder`) |
 | NOT-04 | done | delivery receipts update the message status (`DeliveryReport`) |
 | NOT-05 | done | priority queues, OTP first (`Priority`) |
-| NOT-06 | tickets 110, 134 | retry and DLQ for SMS and email built; push 110, console view 134 |
+| NOT-06 | ticket 134 | retry and DLQ for SMS, email and push built (push: client retry with backoff and breaker, then 2/10/30 s, ticket 110); console view 134 |
 | NOT-07 | ticket 111 | campaigns with throttle |
 | NOT-08 | tickets 111, 134 | notification log search |
 | NOT-09 | ticket 111 | opt-out |

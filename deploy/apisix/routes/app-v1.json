@@ -2,7 +2,7 @@
   "name": "app-v1",
   "desc": "Mobile apps API v1 (8.2, 8.3, D21): mw-auth RS256 access token verified by openid-connect with mw-auth's discovery document (ticket 69; verified again upstream), body cap, quota per token subject in Redis",
   "uri": "/app/v1/*",
-  "methods": ["GET", "POST"],
+  "methods": ["GET", "POST", "PUT"],
   "plugins": {
     "client-control": {
       "max_body_size": 65536

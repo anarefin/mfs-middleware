@@ -82,6 +82,7 @@ Dev/test stack only, never real secrets. The logins testers type are fixed, docu
    bill aggregator callbacks (HMAC-SHA256)      $(v BILLAGG_HMAC_SECRET)
    bill aggregator SOAP (WS-Security, user bits) $(v BILLAGG_WS_PASSWORD)
    bank C2W callbacks (HMAC-SHA256)             $(v C2WBANK_HMAC_SECRET)
+   push server API key (mw-notify -> push mock)  $(v PUSH_API_KEY)
 
 == USSD gateways (basic auth, user ussd-<mno>, POST $base/ussd/<mno>)
    gp $(v USSD_GP_GATEWAY_SECRET) | robi $(v USSD_ROBI_GATEWAY_SECRET) | bl $(v USSD_BL_GATEWAY_SECRET) | teletalk $(v USSD_TELETALK_GATEWAY_SECRET)

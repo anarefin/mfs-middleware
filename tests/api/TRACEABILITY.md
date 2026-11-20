@@ -241,5 +241,9 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 42 | [audit topup] a search by partner and amount range finds the top-up and its partner call | - |  | FR-18 |
 | 42 | [audit p2p] the timeline of a P2P lists its hops in order with latencies and no clear MSISDN | - |  | FR-18, SEC-10 |
 | 42 | [audit] a CSV export of a transaction returns its rows and records one operator action | - |  | FR-18 |
+| 43 | [p2p notify] the sender gets a push with the transaction text next to the SMS | - |  |
+| 43 | [p2p notify mock] a push server that answers 5xx is retried and stores nothing; the SMS for the same transaction still goes | - |  |
+| 43 | [p2p notify mock] a token the push server does not know gets no push and the SMS still goes | - |  |
+| 43 | [notify] a push token with an unknown platform is refused 400 MW-VAL-001 | - |  |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

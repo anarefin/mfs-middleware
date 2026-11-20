@@ -18,7 +18,7 @@ public class MessageRepository {
   private static final String COLUMNS =
       "message_id, txn_id, correlation_id, channel, recipient_msisdn, template_code, template_version, locale,"
           + " priority, sender_id, body, concat_ref, segment_count, status, attempts, next_attempt_at, expires_at,"
-          + " error_code, recipient_email, subject, html_body";
+          + " error_code, recipient_email, subject, html_body, recipient_push_token";
 
   private final JdbcTemplate jdbc;
 
@@ -30,21 +30,36 @@ public class MessageRepository {
   public boolean insertIfAbsent(MessageRecord m, int priorityRank) {
     return jdbc.update(
             "insert into message (" + COLUMNS + ", priority_rank) values"
-                + " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                + " (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 + " on conflict (message_id, channel) do nothing",
             m.messageId(), m.txnId(), m.correlationId(), m.channel(), m.recipientMsisdn(), m.templateCode(),
             m.templateVersion(), m.locale(), m.priority(), m.senderId(), m.body(), m.concatRef(),
             m.segmentCount(), m.status(), m.attempts(), ts(m.nextAttemptAt()), ts(m.expiresAt()),
-            m.errorCode(), m.recipientEmail(), m.subject(), m.htmlBody(), priorityRank)
+            m.errorCode(), m.recipientEmail(), m.subject(), m.htmlBody(), m.recipientPushToken(), priorityRank)
         == 1;
   }
 
-  /** Keys due at {@code now} for one priority, oldest first (no lock; see {@link #lockDue}). */
+  /**
+   * SMS and email keys due at {@code now} for one priority, oldest first (no lock; see {@link #lockDue}).
+   * PUSH rows have their own dispatcher ({@link #pushDueKeys}), so a slow push server never holds an SMS.
+   */
   public List<MessageRecord.Key> dueKeys(int priorityRank, Instant now, int limit) {
     return jdbc.query(
         "select message_id, channel from message where priority_rank = ? and status in ('QUEUED', 'RETRY')"
-            + " and next_attempt_at <= ? order by next_attempt_at, created_at limit ?",
+            + " and channel <> 'PUSH' and next_attempt_at <= ? order by next_attempt_at, created_at limit ?",
         (rs, i) -> new MessageRecord.Key(rs.getString(1), rs.getString(2)), priorityRank, ts(now), limit);
+  }
+
+  /**
+   * PUSH keys due at {@code now}, by priority then oldest first (ticket 110); with {@code holdPromo} (quiet
+   * hours) a PROMO push is taken only once expired, to record it EXPIRED.
+   */
+  public List<MessageRecord.Key> pushDueKeys(Instant now, boolean holdPromo, int limit) {
+    return jdbc.query(
+        "select message_id, channel from message where channel = 'PUSH' and status in ('QUEUED', 'RETRY')"
+            + " and next_attempt_at <= ? and (not ? or priority <> 'PROMO' or expires_at <= ?)"
+            + " order by priority_rank, next_attempt_at, created_at limit ?",
+        (rs, i) -> new MessageRecord.Key(rs.getString(1), rs.getString(2)), ts(now), holdPromo, ts(now), limit);
   }
 
   /**
@@ -54,7 +69,8 @@ public class MessageRepository {
   public List<MessageRecord.Key> expiredDueKeys(int priorityRank, Instant now, int limit) {
     return jdbc.query(
         "select message_id, channel from message where priority_rank = ? and status in ('QUEUED', 'RETRY')"
-            + " and next_attempt_at <= ? and expires_at <= ? order by next_attempt_at, created_at limit ?",
+            + " and channel <> 'PUSH' and next_attempt_at <= ? and expires_at <= ?"
+            + " order by next_attempt_at, created_at limit ?",
         (rs, i) -> new MessageRecord.Key(rs.getString(1), rs.getString(2)), priorityRank, ts(now), ts(now), limit);
   }
 
@@ -161,7 +177,7 @@ public class MessageRepository {
         (Integer) rs.getObject("segment_count"), rs.getString("status"), rs.getInt("attempts"),
         instant(rs.getTimestamp("next_attempt_at")), instant(rs.getTimestamp("expires_at")),
         rs.getString("error_code"), rs.getString("recipient_email"), rs.getString("subject"),
-        rs.getString("html_body"));
+        rs.getString("html_body"), rs.getString("recipient_push_token"));
   }
 
   private static Timestamp ts(Instant i) {

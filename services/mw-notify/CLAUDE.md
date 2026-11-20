@@ -5,16 +5,57 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 
 ## Responsibilities
 
-- Customer notifications (spec 10, WP17, tickets 24 and 25): SMS over SMPP 3.4 and email over
-  SMTP; push and channel fallback come later. One `notify.message` row per requested
-  channel, key (message_id, channel); a channel without its address (SMS: msisdn, EMAIL: email)
-  or PUSH is recorded FAILED `MW-VAL-101`; a request naming no channel is a FAILED SMS.
+- Customer notifications (spec 10, WP17, tickets 24, 25 and 110): SMS over SMPP 3.4, email over
+  SMTP and push to the app (below); channel fallback comes later. One `notify.message` row per requested
+  channel, key (message_id, channel); a channel without its address (SMS: msisdn, EMAIL: email, PUSH: a
+  device token) is recorded FAILED `MW-VAL-101`; a request naming no channel is a FAILED SMS.
+- Push (ticket 110, FRS EXT-04, NOT-01/02/06, FL-14: SMS always, push optional):
+  - Token registry `notify.push_device` (`V13`; wallet_id, device_id, token, platform ANDROID|IOS,
+    updated_at; `repository/PushDeviceRepository`, `service/PushDeviceService`): fed by
+    `mw.notify.push-token.v1` (contract owned here, produced by mw-app-gateway for `PUT
+    /app/v1/notifications/push-token`; `messaging/PushTokenListener`, group mw-notify, retry topics + DLQ;
+    an unknown platform or a missing field goes to the DLQ). One bound device per wallet: a registration
+    replaces the wallet's other devices (and the device's rows under another wallet, and the token
+    elsewhere); one older than the stored one is ignored. Re-bind revocation: mw-auth's `DEVICE_BOUND`
+    notice (on `mw.notify.request.v1`) carries param `deviceId` (the new device; the SMS shows nothing of
+    it); when it is accepted as a new message, `NotificationService` revokes every token of the wallet but
+    that device's, and the device's tokens under any other wallet (a device that moved: the old wallet's
+    pushes never reach the new holder). The binding is kept in `notify.push_device_binding` (`V14`;
+    wallet_id, device_id, bound_at = when the notice was accepted; an older one never replaces a newer one)
+    as a revocation tombstone: a registration that arrives later on its own topic but is stamped at or before
+    a binding of another device to its wallet, or of its device to another wallet, is ignored
+    (`notify.push.token.revoked_late`; ticket 110 security review). Tokens are not personal data but are logged masked to their last 6 characters
+    (`SensitiveType.PUSH_TOKEN`).
+  - Addressing: a request's `recipient.pushToken`, else the token registered for its `msisdn` (then
+    `subjectId`) wallet. Rules with channel PUSH (`RuleEngine.ContactLookup.pushTokenOf`) are skipped when
+    the recipient's wallet has no token (no FAILED row). Rule-built ids `<txnId>:push:<ruleId>`.
+  - Templates and rules (`V13`): `PUSH_TXN_COMPLETED` and `PUSH_TXN_FAILED` (bn/en; `subject` = the push
+    title, `body` the text; params txnType, amount, txnId); rules `push-txn-completed` (COMPLETED) and
+    `push-txn-failed` (FAILED|REJECTED) to the INITIATOR for P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY,
+    MERCHANT_PAY, ADD_MONEY_BANK (`txnType matches '...'`). A PUSH template without a title fails
+    `MW-VAL-102`.
+  - Client (`client/PushClient`, `config/PushProperties` `mw.notify.push.{enabled (PUSH_ENABLED), base-url
+    (PUSH_BASE_URL, default http://mw-simulators:8080), api-key (Vault secret/mw-notify, synced from
+    PUSH_API_KEY), connect-timeout 2s, timeout 3s}`): `POST /push/v1/messages {messageId, token, platform,
+    notification {title, body}, data {txnId}}` with `Authorization: key=<api-key>`; Resilience4j retry
+    `push` (default 3 attempts, 200 ms exponential; `PushRefusedException` ignored) inside breaker `push`
+    (refusals ignored). 2xx `status DELIVERED` -> DELIVERED, otherwise (accepted, or an unreadable body)
+    SENT; 4xx `PushRefusedException` (404 = token unknown there: the token is dropped, FAILED `MW-VAL-103`;
+    other 4xx FAILED `MW-SYS-101`); 5xx / 408 / 429 / timeout / I/O / breaker open / switched off
+    `PushSendException` (transient).
+  - Dispatch (`service/PushDispatchService`, `scheduler/PushDispatchJob`, ShedLock `notify-push-dispatch`,
+    every `mw.notify.dispatch.period`): its own job, so a slow push server never holds an SMS
+    (`DispatchService` never takes a PUSH row); priorities in order, PROMO held in the quiet hours. The
+    token must still be registered at send time (else FAILED `MW-VAL-103`, nothing sent: a re-bind stops
+    queued pushes too). A transient failure retries after `retry-backoff` (FAILED final=false
+    `MW-SYS-104`), then FAILED `MW-SYS-102`. Status DELIVERED / SENT / FAILED on `mw.notify.status.v1`
+    (channel PUSH; providerMessageId = the push server's id).
 - Intake (`service/NotificationService`): `mw.notify.request.v1` (`messaging/NotifyRequestListener`)
   and the notification rules, evaluated by `service/RuleEngine` for each `mw.txn.status.v1` record
   (`messaging/TxnStatusListener`, `service/TxnStatusService`). Both are Spring Kafka `@KafkaListener`s
   (ADR D27) with retry topics and DLQ, stopped by `mw.notify.consumers.enabled=false` (the test default). `messageId` is the idempotency key (with the
   channel the PK of `notify.message`, duplicates dropped, event `notify.duplicate`); rule-built ids
-  are `<txnId>:<sms|email>:<ruleId>`. `expiresAt` defaults by priority (`dto/Priority`: OTP 2 min, TXN 24 h,
+  are `<txnId>:<sms|email|push>:<ruleId>`. `expiresAt` defaults by priority (`dto/Priority`: OTP 2 min, TXN 24 h,
   INFO 24 h, PROMO 72 h); an expired message is recorded EXPIRED and never sent. Listeners only
   store; nothing is sent on a Kafka thread.
 - Template `CHECKOUT_OTP` (bn/en SMS, `V8`, ticket 31): mw-checkout's OTP, params otp, amount, merchant.
@@ -90,25 +131,31 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   (`service/StatusEvents`; SENT, FAILED, DELIVERED, UNDELIVERABLE, EXPIRED; `channel` names the
   row). `mw-txn-id` header = txnId, else messageId.
 - Dev provisioning (`provision_mw_notify` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role `notify_rw`, schema `notify`,
-  `secret/mw-notify` (DB and SMPP passwords), AppRole `mw-notify`.
+  `secret/mw-notify` (DB and SMPP passwords, the push API key `mw.notify.push.api-key` synced from
+  `PUSH_API_KEY`), AppRole `mw-notify`.
 
 ## Contracts owned
 
 - `events/mw-notify/mw.notify.request.v1.schema.json` (consumed; `dto/NotificationRequest`).
 - `events/mw-notify/mw.notify.status.v1.schema.json` (produced; `dto/NotifyStatusEvent`).
+- `events/mw-notify/mw.notify.push-token.v1.schema.json` (consumed, ticket 110; produced by mw-app-gateway;
+  `dto/PushTokenEvent`).
 
 ## Contracts used
 
 - `events/mw-orchestrator/mw.txn.status.v1.schema.json` (own subset type `dto/TxnStatusEvent`).
 - `events/mw-admin-api/mw.config.changed.v1.schema.json` (ticket 39; own type `dto/ConfigChangedEvent`).
 - Machine-readable list: `contracts.yml` (produces `mw.notify.status.v1`; consumes `mw.notify.request.v1`,
-  `mw.txn.status.v1` and `mw.config.changed.v1`; no APIs), checked by `./gradlew :contractsLint`, tested by
+  `mw.txn.status.v1`, `mw.config.changed.v1` and `mw.notify.push-token.v1`; no APIs), checked by `./gradlew :contractsLint`, tested by
   `contracts/ProducedContractsTest` (events built by `StatusEvents`) / `ConsumedContractsTest` (samples
   through the real listeners); no Spring, no Docker.
 
 ## Tests
 
-- `service/SmsEncoderTest`, `TemplateRendererTest`, `RuleEngineTest` (units);
+- `service/SmsEncoderTest`, `TemplateRendererTest`, `RuleEngineTest` (units); `client/PushClientTest` (retry with
+  backoff, no retry of a refusal, stand-in server); `service/PushDispatchIT` (ticket 110: a completed / failed
+  txn -> the push text stored by a stand-in push server, bn/en; a 5xx retried then FAILED while the SMS goes; a
+  re-bind revokes the old token; an unknown token dropped);
   `service/NotificationFlowIT` (PostgreSQL, `client/FakeSmsSender`, `MutableClock`: dedup, expiry,
   priority order, 2/10/30 s retries, DLR outcomes, PROMO quiet hours); `config/QuietHoursTest`; `service/EmailFlowIT` (in-process GreenMail:
   subject, text and HTML parts, SMS+EMAIL request, SMTP down retried); `service/FlowNotificationsIT`

@@ -92,7 +92,8 @@
 107-app-nonfinancial                        94,105            open
 108-app-soap-facade                         105               open
 109-ussd-frs                                94,105            open
-110-notify-push                             102               open
+110-notify-push                             102               done     37m      86 files +2628 −75     76ab0c4c,4757e709
+110b-push-binding-epoch                     110               open   (security review: mw-notify stamps re-binds with its own clock; carry mw-auth's authoritative boundAt or a binding epoch in DEVICE_BOUND + token registration, compare versions or with skew margin; test)
 111-notify-campaign-optout-log              110               open
 # --- M8 gate: UC-02..07 on app and USSD
 112-telco-four-ocs                          97,98,102         open

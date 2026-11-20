@@ -61,10 +61,14 @@ public class DeviceNotificationMapper {
         template, locale(locale), Map.copyOf(params), List.of("SMS"), "OTP", expiresAt);
   }
 
-  public NotificationRequest bound(String wallet, String locale, String correlationId) {
+  /**
+   * The "a new device was bound" notice. Param {@code deviceId} names the new device (the template does not
+   * show it): mw-notify revokes the push tokens of the wallet's other devices on it (ticket 110).
+   */
+  public NotificationRequest bound(String wallet, String deviceId, String locale, String correlationId) {
     return new NotificationRequest(
         1, "device-bound:" + UUID.randomUUID(), correlationId, new NotificationRequest.Recipient(wallet),
-        BOUND_TEMPLATE, locale(locale), Map.of(), List.of("SMS"), "TXN", null);
+        BOUND_TEMPLATE, locale(locale), Map.of("deviceId", deviceId), List.of("SMS"), "TXN", null);
   }
 
   /** A notice without parameters (template {@code PIN_RESET_APPROVED}, {@code PIN_CHANGED}), priority TXN. */
