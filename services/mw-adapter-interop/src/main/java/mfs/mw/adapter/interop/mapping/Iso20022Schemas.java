@@ -66,6 +66,42 @@ public class Iso20022Schemas {
     }
   }
 
+  /** XML-DSig namespace of the enveloped signature mw-crypto adds and the switch sends. */
+  public static final String DSIG_NS = "http://www.w3.org/2000/09/xmldsig#";
+
+  /**
+   * The document without its enveloped XML-DSig {@code Signature} (a child of {@code Document}), so the
+   * ISO XSD, which has no place for it, can validate what is left. Only after the signature verified
+   * (ticket 121b part 2). Parsed with the same safe settings.
+   */
+  public String unsigned(String xml) {
+    if (xml == null || xml.isBlank() || xml.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES) {
+      throw new MwException(INVALID, "empty or too large document");
+    }
+    try {
+      DocumentBuilder builder = documents.newDocumentBuilder();
+      builder.setErrorHandler(null);
+      Document doc = builder.parse(new InputSource(new StringReader(xml)));
+      Element root = doc.getDocumentElement();
+      org.w3c.dom.NodeList signatures = root.getElementsByTagNameNS(DSIG_NS, "Signature");
+      for (int i = signatures.getLength() - 1; i >= 0; i--) {
+        org.w3c.dom.Node signature = signatures.item(i);
+        if (signature.getParentNode() == root) {
+          root.removeChild(signature);
+        }
+      }
+      javax.xml.transform.TransformerFactory tf = javax.xml.transform.TransformerFactory.newInstance();
+      tf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+      tf.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+      tf.setAttribute(XMLConstants.ACCESS_EXTERNAL_STYLESHEET, "");
+      java.io.StringWriter out = new java.io.StringWriter();
+      tf.newTransformer().transform(new DOMSource(doc), new javax.xml.transform.stream.StreamResult(out));
+      return out.toString();
+    } catch (SAXException | IOException | ParserConfigurationException | javax.xml.transform.TransformerException e) {
+      throw new MwException(INVALID, "document is not well-formed or safe XML", e);
+    }
+  }
+
   /** Parses and validates {@code xml} as {@code message}; the parsed document when valid. */
   public Document validate(IsoMessage message, String xml) {
     if (xml == null || xml.isBlank()) {

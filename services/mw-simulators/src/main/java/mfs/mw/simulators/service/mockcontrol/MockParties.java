@@ -73,9 +73,9 @@ public final class MockParties {
               List.of("trigger", "confirm", "status"), List.of("msisdn", "partnerRef")),
           new MockParty("ucbatm", "UCB ATM switch: dispense status of a cardless cash-out",
               List.of("status"), List.of("txnRef")),
-          // ticket 121a: the participant list; the ISO 20022 transfer, status, return and inbound push follow in 121b
-          new MockParty("npsb", "NPSB switch: participant list (ISO 20022 transfers with ticket 121b)",
-              List.of("participants"), List.of("participant", "txnRef")),
+          // tickets 121a / 121b: the participant list, the ISO 20022 transfer, status, return and the inbound push
+          new MockParty("npsb", "NPSB switch: participants, ISO 20022 transfers (pacs.008 / .002 / .028, camt.056 / .029), inbound push",
+              List.of("participants", "transfer", "status", "return", "inbound"), List.of("participant", "txnRef")),
           new MockParty("smsc", "SMSC, the SMPP 3.4 server of mw-notify (the DLR is its callback)",
               List.of("bind", "submit"), List.of("systemId", "msisdn"), SMSC_BEHAVIOURS),
           new MockParty("ussdgw", "USSD gateway: SMPP server mw-ussd binds to; dial plays a session (SMPP or HTTP)",
@@ -122,7 +122,7 @@ public final class MockParties {
    * Callback dimension is decided without a {@code callbackUrl}: the SMSC's DLR (on the caller's connection)
    * and UCB IMT's credit push (posted to {@code sim.ucb-imt.credit-url}; duplicate and late re-sends, MCK-06).
    */
-  private static final Set<String> IN_BAND_CALLBACKS = Set.of("smsc", "ucb-imt");
+  private static final Set<String> IN_BAND_CALLBACKS = Set.of("smsc", "ucb-imt", "npsb");
 
   private static final Pattern SMPP_STATUS = Pattern.compile("0[xX][0-9A-Fa-f]{1,8}|[0-9]{1,10}");
 

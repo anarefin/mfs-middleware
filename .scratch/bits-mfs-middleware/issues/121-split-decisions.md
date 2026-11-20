@@ -29,3 +29,14 @@ split, with the ISO 20022 wire pulled out of "adapter module" so 121a ships with
   FL-12, PLT-014, PLT-023/025, MCK-01..07 for NPSB).
 
 Ticket 122 (BanglaQR) builds on 121b (wire) and 121c (flows).
+
+## 121b2 (2026-11-20, ticket/121b2-npsb-finish)
+
+- Inbound kind: `mw.partner.inbound.v1` already had kind `NPSB_CREDIT` (new inbound money from the switch); the
+  adapter publishes kind `NPSB_CREDIT` with txnType `NPSB_IN` (sample `interop/valid-npsb-in.json`) instead of
+  adding a second kind `NPSB_IN` with the same meaning. 121c's NpsbInFlow keys on txnType `NPSB_IN`.
+- Dev switch key pair: provision `npsb_switch_key` (secret/mw-simulators `sim.npsb.signing-key`) and
+  `npsb_switch_certificate` (secret/mw-adapter-interop `npsb-certificate-pem`); the mock signs every document it
+  sends, so the stack verifies the switch end to end.
+- Still open (not 121c): edge mTLS for the switch on route `partner-npsb-inbound` (APISIX client-certificate
+  check, with ticket 100c's MTLS clients).
