@@ -3,10 +3,13 @@ package mfs.mw.orchestrator.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import mfs.mw.orchestrator.config.OrchestratorProperties;
+import mfs.mw.orchestrator.dto.Amount;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.PartnerRef;
+import mfs.mw.orchestrator.dto.Party;
 import mfs.mw.orchestrator.dto.StatusMessage;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.entity.TransactionRecord;
@@ -44,6 +47,15 @@ public class TransactionService {
 
   static final String REVERSAL = "REVERSAL";
   static final String BULK_DISBURSE = "BULK_DISBURSE";
+
+  /**
+   * What {@code core-wallet.v1} {@code Party} can express. {@code PARTNER} is an app role, not a
+   * core wallet type; an organisation debit is party type {@code ORG} (stored as ORGANISATION).
+   */
+  private static final Set<String> CORE_PARTY_TYPES =
+      Set.of("WALLET", "BANK_ACCOUNT", "CARD_TOKEN", "BILLER_ACCOUNT", "MSISDN", "MERCHANT", "ORG");
+  private static final Set<String> CORE_WALLET_TYPES =
+      Set.of("CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO");
 
   private final IdempotencyRepository idempotency;
   private final TransactionRepository transactions;
@@ -305,6 +317,10 @@ public class TransactionService {
       return new ErrorInfo(
           ErrorCodes.VAL_UNSUPPORTED_TXN_TYPE, "Transaction type is not supported", null, false);
     }
+    ErrorInfo unexpressible = unexpressible(req);
+    if (unexpressible != null) {
+      return unexpressible;
+    }
     if (BULK_DISBURSE.equals(req.txnType()) && !properties.bulkChannels().contains(req.channel())) {
       // no PIN on a bulk child: only the org portal (maker-checker) may send one (ticket 34)
       return new ErrorInfo(
@@ -321,6 +337,33 @@ public class TransactionService {
     }
     if (req.amount().valueMinor() <= 0) {
       return new ErrorInfo(ErrorCodes.VAL_AMOUNT, "Amount must be greater than zero", null, false);
+    }
+    return null;
+  }
+
+  /**
+   * A party or amount {@code core-wallet.v1} cannot express is refused here, before validate and
+   * therefore before any hold. Wallet types are the core {@code Party.walletType} enum; currency
+   * is BDT in integer poisha.
+   */
+  private static ErrorInfo unexpressible(TxnRequest req) {
+    Amount amount = req.amount();
+    if (amount == null || amount.valueMinor() < 0 || !Amount.BDT.equals(amount.currency())) {
+      return new ErrorInfo(ErrorCodes.VAL_AMOUNT, "The core cannot post this amount", null, false);
+    }
+    ErrorInfo debit = unexpressible(req.debitParty());
+    return debit != null ? debit : unexpressible(req.creditParty());
+  }
+
+  private static ErrorInfo unexpressible(Party party) {
+    if (party == null
+        || party.type() == null
+        || !CORE_PARTY_TYPES.contains(party.type())
+        || party.id() == null
+        || party.id().isBlank()
+        || party.id().length() > 64
+        || (party.walletType() != null && !CORE_WALLET_TYPES.contains(party.walletType()))) {
+      return new ErrorInfo(ErrorCodes.VAL_INVALID, "The core cannot post this party", null, false);
     }
     return null;
   }

@@ -106,7 +106,7 @@ this file says what is specific to this module.
   all four with password + TOTP; portals `seed-org-maker`,
   `seed-org-checker` (orgId ORG001, password + TOTP); app users (realm `mw-auth`, no Keycloak user)
   `seed-customer01`/`02` (`01712000001`/`2`), `seed-agent01` (`01812000001`), `seed-merchant01` (`01912000001`), `seed-distributor01` (`01612000001`, DISTRIBUTOR,
-  ticket 94); wallets for those MSISDNs plus orgs `01312000001`, `01312000002` (sent as ORG; core-mock stores ORGANISATION),
+  ticket 94); wallets for those MSISDNs plus orgs `01312000001`, `01312000002`, and the partner app wallet `01412000001` (sent as ORG; core-mock stores ORGANISATION; the seed-PIN call marks only that wallet `appRole` PARTNER),
   outside mw-core-mock's own seed ranges (`0171100xxxx`, ...). The API suite's run customers `seed-run-customer01..24` (persona
   `run-customer`, role customer, MSISDN `01714NN0001`: masks as `0171****001` like customer01) with
   CUSTOMER wallets of 10,000,000 BDT: each `scripts/api-test.sh` run plays customer01 as one of them

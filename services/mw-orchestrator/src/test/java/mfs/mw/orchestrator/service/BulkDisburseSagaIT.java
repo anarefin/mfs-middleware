@@ -9,7 +9,10 @@ import mfs.mw.orchestrator.TestData;
 import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
+import mfs.mw.orchestrator.contracts.OpenApiSchemas;
+import mfs.mw.orchestrator.dto.Amount;
 import mfs.mw.orchestrator.dto.CoreEvent;
+import mfs.mw.orchestrator.dto.Party;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -136,5 +139,64 @@ class BulkDisburseSagaIT {
     assertThat(all.get(1).path("error").path("code").asString()).isEqualTo("MW-AUTH-021");
     assertThat(commands(c.txnId())).isEmpty();
     assertAllValid(c.txnId());
+  }
+
+  @Test
+  void aPartnerAppPostsAnOrganisationWalletToACustomer() {
+    String txn = TestData.txnId();
+    TxnRequest child = new TxnRequest(
+        1, txn, "partner-disburse-1", "corr-" + txn.substring(0, 8), "PARTNER_APP", "BULK_DISBURSE",
+        new Party("MSISDN", "01311000001", null, null),
+        new Party("ORG", "01311000001", null, null),
+        new Party("WALLET", "01711000005", null, "CUSTOMER"),
+        Amount.bdt(10_000), null, null, null, "en", null, null, TestData.NOW);
+    transactions.accept(child, null);
+
+    assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING");
+    JsonNode validate = commands(txn).get(0);
+    assertThat(validate.path("commandType").asString()).isEqualTo("ValidateTransaction");
+    assertThat(validate.path("payload").path("debitParty").path("type").asString()).isEqualTo("ORG");
+    assertThat(validate.path("payload").path("debitParty").has("walletType")).isFalse();
+    assertThat(validate.path("payload").path("creditParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+    String api = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
+    assertThat(OpenApiSchemas.component(api, "Party").validate(validate.path("payload").path("debitParty"))).isEmpty();
+    assertThat(OpenApiSchemas.component(api, "Party").validate(validate.path("payload").path("creditParty"))).isEmpty();
+    assertThat(commands(txn)).noneMatch(c -> "HoldFunds".equals(c.path("commandType").asString()));
+
+    coreEvents.answer(event("TransactionValidated", txn, "validate"));
+    assertThat(commands(txn).get(1).path("commandType").asString()).isEqualTo("PostTransfer");
+    coreEvents.answer(event("TransferPosted", txn, "post"));
+    assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "POSTING", "COMPLETED");
+    assertAllValid(txn);
+  }
+
+  @Test
+  void aPartyTheCoreCannotExpressIsRefusedBeforeAnyHold() {
+    TxnRequest topup = TestData.topup(TestData.txnId(), "bad-party", 2_000, "01711000002");
+    TxnRequest partnerWallet = TestData.with(
+        topup, new Party("WALLET", "01711000001", null, "PARTNER"), topup.creditParty(), 2_000);
+    transactions.accept(partnerWallet, null);
+
+    assertThat(statuses(topup.txnId())).containsExactly("RECEIVED", "REJECTED");
+    List<JsonNode> all = outbox("mw.txn.status.v1", topup.txnId());
+    assertThat(all.get(1).path("error").path("code").asString()).isEqualTo("MW-VAL-001");
+    assertThat(commands(topup.txnId())).isEmpty();
+    assertAllValid(topup.txnId());
+  }
+
+  @Test
+  void anAmountTheCoreCannotExpressIsRefusedBeforeAnyHold() {
+    TxnRequest topup = TestData.topup(TestData.txnId(), "bad-amount", 2_000, "01711000002");
+    TxnRequest foreign = new TxnRequest(
+        topup.schemaVersion(), topup.txnId(), topup.idempotencyKey(), topup.correlationId(), topup.channel(),
+        topup.txnType(), topup.initiator(), topup.debitParty(), topup.creditParty(), new Amount(2_000, "USD"),
+        topup.partner(), topup.originalTxnId(), topup.assertion(), topup.locale(), topup.metadata(),
+        topup.attributes(), topup.requestedAt());
+    transactions.accept(foreign, null);
+
+    assertThat(statuses(topup.txnId())).containsExactly("RECEIVED", "REJECTED");
+    List<JsonNode> all = outbox("mw.txn.status.v1", topup.txnId());
+    assertThat(all.get(1).path("error").path("code").asString()).isEqualTo("MW-VAL-011");
+    assertThat(commands(topup.txnId())).isEmpty();
   }
 }

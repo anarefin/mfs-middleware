@@ -78,7 +78,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   post too: debit `{ORG, <org wallet>}`, credit the customer's WALLET, **no PIN** (the org
   authorised the batch by maker-checker; the core's validate / transfer require the
   assertion + `idempotencyKey` for every txnType but BULK_DISBURSE). Only channels in
-  `mw.orchestrator.bulk-channels` (default `ORG_PORTAL`) may send one, else REJECTED `MW-AUTH-021`
+  `mw.orchestrator.bulk-channels` (default `ORG_PORTAL,PARTNER_APP`) may send one, else REJECTED `MW-AUTH-021`
   (`BulkDisburseSagaIT`); the core restricts it to ORG -> CUSTOMER. The portal derives txnId and
   key per row, so a resent child is answered from the idempotency record. The batch's parent
   BULK_DISBURSE txn is not a saga here (portal-side record, `attributes.parentTxnId`). `TopupFlow` = validate + hold + callPartner (`PartnerCall` telco,

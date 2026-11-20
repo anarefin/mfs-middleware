@@ -41,6 +41,8 @@ public class RequestMapper {
   public static final String ADD_MONEY_BANK = "ADD_MONEY_BANK";
   /** Balance inquiry (ADR D26): moves no money, never in the app history. */
   public static final String BALANCE = "BALANCE";
+  /** Partner-app disbursement: one organisation wallet pays one customer. */
+  public static final String BULK_DISBURSE = "BULK_DISBURSE";
   /** The canonical product of a C2W debit. */
   public static final String C2W_PRODUCT = "C2W";
 
@@ -87,8 +89,14 @@ public class RequestMapper {
       PartnerRef partner) {
     Party own = Party.wallet(user.msisdn(), user.walletType());
     boolean addMoney = ADD_MONEY_BANK.equals(body.txnType());
-    // ADD_MONEY_BANK: the bank account pays, the caller's own wallet (its PIN) receives
-    Party debit = addMoney ? new Party("BANK_ACCOUNT", body.debitParty().id(), null, null) : own;
+    boolean bulk = BULK_DISBURSE.equals(body.txnType());
+    // ADD_MONEY_BANK: the bank account pays, the caller's own wallet (its PIN) receives.
+    // BULK_DISBURSE: the partner app keeps the role PARTNER; the core posts the existing
+    // organisation wallet (party type ORG, stored as ORGANISATION) to a customer. The core
+    // contract has no PARTNER wallet type.
+    Party debit = addMoney
+        ? new Party("BANK_ACCOUNT", body.debitParty().id(), null, null)
+        : bulk ? new Party("ORG", user.msisdn(), null, null) : own;
     Party credit = addMoney ? own : creditParty(body, user.walletType());
     return new TxnRequest(
         1,

@@ -228,7 +228,10 @@ public class PreviewService {
     } else if (txn.creditParty() != null) {
       payee = new QuoteRequest.Counterparty(creditType(txn), creditId(txn));
     }
-    return new QuoteRequest(user.msisdn(), user.walletType(), txn.txnType(), user.channel(), txn.amount(), payee);
+    // A partner disbursement is quoted as the organisation wallet the core posts (no PARTNER
+    // customer type, and no new fee: BULK_DISBURSE stays on the existing free tariff).
+    String walletType = RequestMapper.BULK_DISBURSE.equals(txn.txnType()) ? "ORGANISATION" : user.walletType();
+    return new QuoteRequest(user.msisdn(), walletType, txn.txnType(), user.channel(), txn.amount(), payee);
   }
 
   /** The payee type submit publishes. A type the client sent is ignored, so the quote cannot differ. */

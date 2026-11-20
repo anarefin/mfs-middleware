@@ -134,6 +134,31 @@ class TokenServiceTest {
     verify(crypto, never()).signJws(anyString(), anyString(), any(), any());
   }
 
+  /** The core type stays ORG. Only the seeder's partner mark (app role PARTNER) gets an app token. */
+  @Test
+  void aMarkedOrganisationWalletGetsThePartnerAppToken() throws Exception {
+    cryptoSigns();
+    AppTypePolicy partnerTtl = new AppTypePolicy(
+        new AppTypePolicy.Settings(Duration.ofMinutes(5), 1, 1, Duration.ofMinutes(5), 5, Duration.ofHours(24)),
+        Map.of("PARTNER", new AppTypePolicy.Settings(Duration.ofMinutes(2), null, null, null, null, null)));
+    TokenService issued = new TokenService(crypto, refresh, PROPS, partnerTtl, Clock.fixed(NOW, ZoneOffset.UTC));
+    AuthWallet marked = new AuthWallet("01412000001", "t", "k", "{}", "ORG", "ACTIVE", true, null, 1, "PARTNER");
+
+    TokenPair pair = issued.issue(marked, "01412000001", "device-0001", List.of("pin", "device"));
+
+    assertThat(SignedJWT.parse(pair.accessToken()).getJWTClaimsSet().getStringClaim("role")).isEqualTo("partner");
+    assertThat(pair.expiresIn()).isEqualTo(120);
+  }
+
+  @Test
+  void aPartnerMarkOnAnotherWalletTypeDoesNotChangeItsRole() throws Exception {
+    cryptoSigns();
+    AuthWallet customer = new AuthWallet("01711000001", "t", "k", "{}", "CUSTOMER", "ACTIVE", true, null, 1, "PARTNER");
+    String role = SignedJWT.parse(tokens.issue(customer, "01711000001", "device-0001", List.of("pin", "device"))
+        .accessToken()).getJWTClaimsSet().getStringClaim("role");
+    assertThat(role).isEqualTo("customer");
+  }
+
   @Test
   void theRefreshTokenIs256RandomBitsStoredOnlyAsItsSha256ForThirtyDays() throws Exception {
     cryptoSigns();

@@ -64,7 +64,10 @@ public class TokenService {
     this.clock = clock;
   }
 
-  /** The app role of a wallet type; 403 MW-AUTH-002 for a type that has no app (ORG). */
+  /**
+   * The app role of an app type; 403 MW-AUTH-002 for a type that has no app. An unmarked ORG has none.
+   * A seeder-marked organisation wallet is asked as {@code PARTNER} ({@link mfs.mw.auth.entity.AuthWallet#appType()}).
+   */
   public static String role(String walletType) {
     String role = ROLES.get(walletType);
     if (role == null) {
@@ -80,9 +83,10 @@ public class TokenService {
 
   /** Tokens of the session {@code family} (a rotation keeps it). */
   public TokenPair issue(AuthWallet wallet, String msisdn, String deviceId, List<String> amr, UUID family) {
-    String role = role(wallet.type());
+    String appType = wallet.appType();
+    String role = role(appType);
     Instant now = clock.instant();
-    java.time.Duration accessTtl = appTypes.of(wallet.type()).accessTtl();
+    java.time.Duration accessTtl = appTypes.of(appType).accessTtl();
     Map<String, Object> claims = new LinkedHashMap<>();
     claims.put("iss", props.issuer());
     claims.put("aud", props.audience());

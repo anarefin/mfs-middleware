@@ -92,6 +92,26 @@ class WalletRepositoryIT {
   }
 
   @Test
+  void aPartnerMarkOnAnOrganisationSurvivesANewerCoreProjection() {
+    wallets.upsertIfNewer(new AuthWallet(
+        "01412000001", "MSISDN_TOKEN_01412000001", "tokenise-msisdn.v1", ENC, "ORG", "ACTIVE", true, null, 1));
+    assertThat(wallets.markPartnerApp("01412000001")).isTrue();
+
+    assertThat(wallets.updateIfNewer(new AuthWallet(
+        "01412000001", "OTHER", "tokenise-msisdn.v2", "{}", "ORG", "ACTIVE", false, null, 4))).isTrue();
+
+    AuthWallet marked = wallets.find("01412000001").orElseThrow();
+    assertThat(marked.type()).isEqualTo("ORG");
+    assertThat(marked.appRole()).isEqualTo("PARTNER");
+    assertThat(marked.appType()).isEqualTo("PARTNER");
+
+    wallets.upsertIfNewer(wallet("01711000001", "ACTIVE", 1));
+    assertThat(wallets.markPartnerApp("01711000001")).isFalse();
+    assertThat(wallets.find("01711000001").orElseThrow().appRole()).isNull();
+    assertThat(wallets.find("01711000001").orElseThrow().appType()).isEqualTo("CUSTOMER");
+  }
+
+  @Test
   void theCoresDormantAndClosedStatusesAreStored() {
     // ticket 94 (FRS 7.1, V9)
     wallets.upsertIfNewer(wallet("01711000001", "DORMANT", 1));

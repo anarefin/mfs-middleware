@@ -208,6 +208,24 @@ class RequestMapperTest {
   }
 
   @Test
+  void aPartnerDisbursementPostsTheOrganisationWalletToACustomer() {
+    JsonNode tree =
+        validRequest(
+            mapper.toRequest(
+                new AppUser("01412000001", "PARTNER_APP", "PARTNER"), "key-1",
+                body("BULK_DISBURSE", "01711000005", null), TXN_ID, "corr-1", NOW));
+
+    assertThat(tree.path("channel").asString()).isEqualTo("PARTNER_APP");
+    assertThat(tree.path("txnType").asString()).isEqualTo("BULK_DISBURSE");
+    assertThat(tree.path("debitParty").path("type").asString()).isEqualTo("ORG");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("01412000001");
+    assertThat(tree.path("debitParty").has("walletType")).isFalse();
+    assertThat(tree.path("creditParty").path("type").asString()).isEqualTo("WALLET");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01711000005");
+    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+  }
+
+  @Test
   void aP2pCarriesNoPartner() {
     TxnRequest req =
         mapper.toRequest(

@@ -27,7 +27,7 @@ public class WalletEventMapper {
       Set.of("CUSTOMER", "AGENT", "MERCHANT", "ORG", "DISTRIBUTOR", "DSO", "PARTNER");
   // ticket 94 (FRS 7.1): the core's DORMANT and CLOSED; only ACTIVE logs in (WalletAccess)
   private static final Set<String> STATUSES = Set.of("ACTIVE", "BLOCKED", "HOLD", "LOCKED", "DORMANT", "CLOSED");
-  /** The core's ORGANISATION (ticket 94) is this service's ORG (no app role either way). */
+  /** The core's ORGANISATION (ticket 94) is stored as ORG. The type has no app role; a seeder mark does. */
   private static final String ORGANISATION = "ORGANISATION";
 
   private final JsonMapper json;

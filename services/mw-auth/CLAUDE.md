@@ -36,7 +36,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   mw-core-mock is the MSISDN itself. mw-crypto down: `MW-SYS-050` before anything is written, the
   record goes to the retry topics (fail closed). Switch: `mw.auth.consumer.enabled` (both listeners and
   their retry consumers; tests off). The core's account model (ticket 94, FRS 7.1): `ORGANISATION` is stored
-  as this service's `ORG` (no app role either way), the statuses `DORMANT` and `CLOSED` are projected
+  as this service's `ORG` (that type has no app role). A wallet the seeder marks as a partner user
+  (`app_role` `PARTNER` on the dev seed-PIN call) logs in with app role partner; an unmarked
+  organisation wallet still gets no app token. The statuses `DORMANT` and `CLOSED` are projected
   (`V9__core_wallet_statuses.sql`) and, like every status but ACTIVE, refused at login (`MW-AUTH-043`);
   `kycLevel` is ignored (`mapper/WalletEventMapperTest`).
 - **WalletStateChanged envelope decision (ticket 67):** the `core.event.v1` envelope is kept as it is
@@ -112,8 +114,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
     idleTimeoutSeconds, pinSet}`.
   - Access JWT: RS256 by mw-crypto `JWT_SIGN` (D21 amendment; header `typ at+jwt`, `kid <keyId>.v<n>`),
     15 min (`MW_AUTH_ACCESS_TTL`, `config/AppTypePolicy`); claims `iss` (`mw.auth.tokens.issuer`, `mw-auth`), `aud` `mw-app`,
-    `sub` walletId, `msisdn`, `role` (wallet type: customer, agent, merchant, distributor, dso, partner; an ORG
-    wallet `403 MW-AUTH-002`), `deviceId`, `amr`, `sid` (= the refresh family), `jti`, `iat`, `exp`.
+    `sub` walletId, `msisdn`, `role` (wallet type: customer, agent, merchant, distributor, dso, partner; an unmarked ORG
+    wallet `403 MW-AUTH-002`; an ORG wallet the seeder marked as a partner user has role partner), `deviceId`, `amr`, `sid` (= the refresh family), `jti`, `iat`, `exp`.
   - Refresh token: 32 random bytes base64url, only its SHA-256 (hex) stored with family, wallet, device,
     30 days and the session's `amr`. `POST /auth/v1/tokens/refresh {refreshToken}` signed by the bound
     device: rotated by one conditional update; a rotated or revoked token again revokes the family `401
@@ -137,7 +139,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   `mw.auth.seed-api.enabled`, compose `MW_AUTH_SEED_API_ENABLED`, true only in `dev.env.defaults`):
   mw-seeder's first PINs, each an `encryptedPin` under the transport key, the HMAC derived by mw-crypto;
   per wallet `CREATED`, `UNCHANGED` (has a PIN), `UNKNOWN_WALLET` (not projected yet: the seeder retries),
-  `WEAK`. No token and reachable on the plain public port (the seeder has no client certificate); APISIX
+  `WEAK`. Optional `appRole` `PARTNER` marks an organisation wallet for the partner app login (stored
+  `app_role`, left alone by a later core projection; ignored unless the stored type is `ORG`; still
+  applied when the PIN is `UNCHANGED`). No token and reachable on the plain public port (the seeder has no client certificate); APISIX
   never routes `/internal/*`; off, the path is the internal chain's (401).
 - Dev only, the same switch `mw.auth.seed-api.enabled`: the test console's account test API (contract
   `api/mw-auth/auth-test.v1.openapi.yaml`, `controller/TestAccountController`, `service/TestAccountService`,
