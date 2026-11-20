@@ -12,8 +12,8 @@
 #              parked records (B10). List every service with a RetryTopicRouteBuilder on the
 #              topic (scripts/test/test_platform_compose.sh checks it).
 #
-# MVP subset of the 6.2 catalogue. Deferred and therefore left out: the interop and
-# compliance partner families and mw.compliance.instruction.v1.
+# MVP subset of the 6.2 catalogue. Deferred and therefore left out: the
+# compliance partner family and mw.compliance.instruction.v1 (interop: ticket 121, mw-adapter-interop).
 # dw.* topics are produced by mw-data-export (ticket 128). mw.recon.result.v1 is produced by
 # mw-recon (ticket 126); mw.recon.exception.v1 too (ticket 127b, consumed by mw-audit-dw and the export).
 # mw.kyc.completed.v1 is created here so the export can subscribe; its schema arrives with ticket 124.
@@ -31,6 +31,7 @@ mw.partner.request.merchant.v1 24 3d retry=mw-adapter-merchant
 mw.partner.request.card.v1     24 3d retry=mw-adapter-card
 mw.partner.request.remit.v1    24 3d retry=mw-adapter-remit
 mw.partner.request.atm.v1      24 3d retry=mw-adapter-atm
+mw.partner.request.interop.v1  24 3d retry=mw-adapter-interop
 mw.partner.reply.v1            48 3d retry=mw-orchestrator
 mw.partner.inbound.v1          24 7d retry=mw-orchestrator
 mw.notify.request.v1           24 3d retry=mw-notify

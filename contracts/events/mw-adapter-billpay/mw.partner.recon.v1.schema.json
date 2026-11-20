@@ -8,7 +8,7 @@
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "partnerId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "description": "The partner id of the batch route's record partner/<id>." },
-    "family": { "enum": ["telco", "billpay", "bank", "merchant", "card", "remit", "atm"], "description": "The family of the reporting adapter." },
+    "family": { "enum": ["telco", "billpay", "bank", "merchant", "card", "remit", "atm", "interop"], "description": "The family of the reporting adapter." },
     "fileName": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The file's name on the partner host (without its directory)." },
     "fileId": { "type": "string", "minLength": 1, "maxLength": 400, "description": "The file's identity, <fileName>-<size>-<modified epoch ms> (the idempotent repository's key without the partner id); the same for every line of one file." },
     "lineNumber": { "type": "integer", "minimum": 1, "description": "1-based line of the file (a header line counts)." },
