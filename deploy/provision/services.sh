@@ -198,6 +198,21 @@ provision_mw_adapter_bank() {
   gen_once spring.datasource.password 40
   KV="secret/$SVC/c2wbank"
   sync_env hmac-secret C2WBANK_HMAC_SECRET
+  # Bank gateway profiles (ticket 117, deploy/partner-routes/bank/bank-profiles.csv): every bank
+  # signs its callbacks hmac-sha256; the outbound auth field follows the profile's auth column.
+  local code
+  for code in dbbl city ucb prime dhaka southeast; do
+    KV="secret/$SVC/bank-$code"; gen_once hmac-secret 40
+  done
+  for code in brac ebl mtb pubali one standard; do
+    KV="secret/$SVC/bank-$code"; gen_once hmac-secret 40; gen_once api-key 40
+  done
+  for code in sonali agrani ibbl premier; do
+    KV="secret/$SVC/bank-$code"; gen_once hmac-secret 40; gen_once basic-user 24; gen_once basic-password 40
+  done
+  for code in janata rupali ab nrbc; do
+    KV="secret/$SVC/bank-$code"; gen_once hmac-secret 40; gen_once ws-password 40
+  done
   KV="secret/$SVC"
   db_role adapter_bank_rw bank_ref
 }

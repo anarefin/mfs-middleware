@@ -83,7 +83,7 @@ class PartnerCallMapperTest {
     assertThat(mapper.problem(pay(newTxnId(), "12-34", 100))).contains("debit party must be a bank account");
     assertThat(mapper.problem(withPayload(ok, null))).isNotEqualTo(Optional.empty());
     assertThat(mapper.problem(withPayload(ok, new PartnerRequest.Payload(
-            "PAY", "W2B", p.partner(), p.partnerTxnRef(), p.amount(), p.debitParty(), p.creditParty(), null, null))))
+            "PAY", "BILL_PAY", p.partner(), p.partnerTxnRef(), p.amount(), p.debitParty(), p.creditParty(), null, null))))
         .contains("unsupported txnType");
     assertThat(mapper.problem(withPayload(ok, new PartnerRequest.Payload(
             "PAY", p.txnType(), p.partner(), p.partnerTxnRef(), p.amount(), p.debitParty(),
@@ -122,6 +122,51 @@ class PartnerCallMapperTest {
     PartnerRequest noAmount =
         withPayload(ok, new PartnerRequest.Payload("REVERSE", p.txnType(), p.partner(), null, null, null, null, null, null));
     assertThat(mapper.problem(noAmount)).contains("amount must be positive");
+  }
+
+  @Test
+  void aW2bPayCreditsTheBankAccountFromTheWallet() {
+    PartnerRequest ok = pay(newTxnId(), ACCOUNT, 2000);
+    PartnerRequest.Payload p = ok.payload();
+    PartnerRequest w2b = withPayload(ok, new PartnerRequest.Payload(
+        "PAY", "W2B", p.partner(), p.partnerTxnRef(), p.amount(),
+        new PartnerRequest.Party("WALLET", "01711000001", null, "CUSTOMER"),
+        new PartnerRequest.Party("BANK_ACCOUNT", ACCOUNT, null, null), null, null));
+
+    assertThat(mapper.problem(w2b)).isEmpty();
+    PartnerCall call = mapper.toCall(w2b, "BITSREF2");
+    assertThat(call.txnType()).isEqualTo("W2B");
+    assertThat(call.input()).containsEntry("account", ACCOUNT).containsEntry("direction", "CREDIT");
+    assertThat(mapper.toCall(ok, "R").input()).containsEntry("account", ACCOUNT).containsEntry("direction", "DEBIT");
+
+    assertThat(mapper.problem(withPayload(ok, new PartnerRequest.Payload(
+            "PAY", "W2B", p.partner(), p.partnerTxnRef(), p.amount(),
+            new PartnerRequest.Party("WALLET", "01711000001", null, null),
+            new PartnerRequest.Party("BANK_ACCOUNT", "12-34", null, null), null, null))))
+        .contains("credit party must be a bank account");
+    assertThat(mapper.problem(withPayload(ok, new PartnerRequest.Payload(
+            "PAY", "W2B", p.partner(), p.partnerTxnRef(), p.amount(),
+            new PartnerRequest.Party("BANK_ACCOUNT", ACCOUNT, null, null),
+            new PartnerRequest.Party("BANK_ACCOUNT", ACCOUNT, null, null), null, null))))
+        .contains("debit party must be a wallet");
+  }
+
+  @Test
+  void anInquiryIsAnAccountValidationOfOneBankAccountWithoutAnAmount() {
+    PartnerRequest ok = pay(newTxnId(), ACCOUNT, 2000);
+    PartnerRequest.Payload p = ok.payload();
+    PartnerRequest avl = withPayload(ok, new PartnerRequest.Payload(
+        "INQUIRY", "W2B", p.partner(), p.partnerTxnRef(), null, null,
+        new PartnerRequest.Party("BANK_ACCOUNT", ACCOUNT, null, null), null, null));
+
+    assertThat(mapper.problem(avl)).isEmpty();
+    PartnerCall call = mapper.toCall(avl, "R");
+    assertThat(call.operation()).isEqualTo("INQUIRY");
+    assertThat(call.input()).containsEntry("account", ACCOUNT).doesNotContainKey("amount");
+    assertThat(mapper.problem(withPayload(ok, new PartnerRequest.Payload(
+            "INQUIRY", "W2B", p.partner(), p.partnerTxnRef(), null, null,
+            new PartnerRequest.Party("WALLET", "01711000001", null, null), null, null))))
+        .contains("an account validation needs a bank account");
   }
 
   private static PartnerRequest withPayload(PartnerRequest r, PartnerRequest.Payload p) {

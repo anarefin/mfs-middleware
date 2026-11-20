@@ -1,0 +1,21 @@
+code,name,protocol,auth
+dbbl,Dutch-Bangla Bank,REST,hmac-sha256
+brac,BRAC Bank,REST,api-key
+city,The City Bank,REST,hmac-sha256
+ebl,Eastern Bank,REST,api-key
+ucb,United Commercial Bank,REST,hmac-sha256
+mtb,Mutual Trust Bank,REST,api-key
+prime,Prime Bank,REST,hmac-sha256
+pubali,Pubali Bank,REST,api-key
+dhaka,Dhaka Bank,REST,hmac-sha256
+one,ONE Bank,REST,api-key
+southeast,Southeast Bank,REST,hmac-sha256
+standard,Standard Bank,REST,api-key
+sonali,Sonali Bank,SOAP,basic
+janata,Janata Bank,SOAP,ws-security
+agrani,Agrani Bank,SOAP,basic
+rupali,Rupali Bank,SOAP,ws-security
+ibbl,Islami Bank Bangladesh,SOAP,basic
+ab,AB Bank,SOAP,ws-security
+premier,Premier Bank,SOAP,basic
+nrbc,NRBC Bank,SOAP,ws-security

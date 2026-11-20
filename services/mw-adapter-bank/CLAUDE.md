@@ -18,8 +18,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   instance's `error-map` (unlisted `UNMAPPED`), FAILED `MW-SYS-PARTNER_*` when nothing left
   (retryable), UNKNOWN `MW-TMO-PARTNER_*` (status inquiry resolves it), NOT_FOUND for a
   STATUS_QUERY only, a PAY past its `deadlineAt` refused unsent (`MW-SYS-PARTNER_REQUEST_EXPIRED`),
-  FAILED `MW-VAL-INVALID_PARTNER_REQUEST` for requests that cannot be mapped. W2B, AVL, card,
-  UCB ATM / IMT and CyberSource are later tickets (new instances, operations or SPI modules here).
+  FAILED `MW-VAL-INVALID_PARTNER_REQUEST` for requests that cannot be mapped. Ticket 117a adds W2B
+  (PAY with debit party `WALLET`, credit party `BANK_ACCOUNT`: the bank credits the account) and AVL
+  (INQUIRY naming one `BANK_ACCOUNT` party, no amount: the bank answers `partnerRef` and
+  `attributes.holderName`, the holder's first initial only, masked in the route's JSONata so the whole
+  name never leaves the adapter). The call input carries `account` and `direction` (`DEBIT` C2W,
+  `CREDIT` W2B). Card, UCB ATM / IMT and CyberSource are later tickets.
 - Stable partner reference (`service/PartnerReferenceService`, table `partner_reference` in own
   schema `bank_ref`): `BITS` + txnId hex, stored on first use, sent as the bank's
   `transactionId`; a repeated one returns the original outcome.
@@ -96,6 +100,20 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
   `4001` ACCOUNT_NOT_LINKED, `4002` DEBIT_REFUSED, `4003` INSUFFICIENT_FUNDS, `9876` ambiguous,
   `CALLBACK.response` for the callback. mw-admin-api's dev seed `partner-seeds/dev/c2wbank.json` is a
   copy: keep them identical.
+- **Bank gateway profiles** (ticket 117a, FRS EXT-12): `bank-<code>` for the 20 banks of
+  `deploy/partner-routes/bank/bank-profiles.csv` (code, name, protocol REST|SOAP, outbound auth
+  hmac-sha256|api-key|basic|ws-security). `node deploy/partner-routes/bank/generate.mjs` writes
+  `src/main/resources/bank-profiles-dev.yml` (imported by `application-dev.yml`; JSON, which is YAML) and
+  mw-admin-api's `partner-seeds/dev/bank-<code>.json` plus its seed list; never edit them by hand
+  (`scripts/test/test_bank_profiles.sh` runs `--check`). Operations INQUIRY (AVL), PAY (C2W debit / W2B
+  credit, 202 PENDING then callback), STATUS_QUERY, REVERSE; the wire format is in the generator's header
+  (REST under `/bank/<code>/v1`, SOAP 1.1 `/bank/<code>/v1/soap` with the JSON/XML convention, namespace
+  `urn:bank:<code>:v1`). Shared error map `4001` ACCOUNT_NOT_FOUND, `4002` ACCOUNT_INACTIVE, `4003`
+  INSUFFICIENT_FUNDS, `4004` LIMIT_EXCEEDED, `4005` TRANSFER_REFUSED, `9876` ambiguous
+  (`MW-PTR-BANK_<CODE>-<suffix>`). Callbacks are hmac-sha256 (`hmac-secret`) for every bank; secrets in
+  `secret/mw-adapter-bank/bank-<code>` (dev: `provision_mw_adapter_bank`). Base URL
+  `BANK_GATEWAY_BASE_URL`, hosts `MW_BANK_ALLOWED_HOSTS`. Proved by `partner/route/BankProfileRouteIT`
+  (`bank-dbbl` REST, `bank-sonali` SOAP). The mw-simulators bank gateway is not built yet (117d).
 - Only the outbound call is the route; the callback still goes APISIX -> `controller/
   PartnerCallbackController` -> `PartnerGateway.inbound` (the record's `auth` and `CALLBACK.response`)
   -> `mw.partner.inbound.v1` (above).
@@ -106,8 +124,9 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
 - **Batch partners over SFTP** (ticket 86, e.g. a bank's daily settlement file): billpay's
   `from: kamelet:mw-sftp-source` routes ending in `mw-recon`, publishing `mw.partner.recon.v1` (see
   mw-adapter-billpay CLAUDE.md "Batch partners over SFTP"; shared `SftpReconRouteIT`).
-- Service-layer rules stay Java (`mapper/PartnerCallMapper`): PAY only for `ADD_MONEY_BANK` / `C2W`,
-  debit party `BANK_ACCOUNT`, credit party `WALLET`.
+- Service-layer rules stay Java (`mapper/PartnerCallMapper`): PAY for `ADD_MONEY_BANK` / `C2W`
+  (debit party `BANK_ACCOUNT`, credit party `WALLET`) and `W2B` (the reverse); INQUIRY needs one
+  `BANK_ACCOUNT` party.
 
 ## Callback replay protection (ticket 99, FRS PLT-008 / PLT-014)
 
