@@ -120,3 +120,19 @@ mw:
             : (status = 404 or status = 422) and $type(body.code) = "string" and body.code != ""
               ? {"outcome": "FAILED", "code": body.code, "message": body.message}
             : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # 3-D Secure webhook (ticket 118b, PLT-014): POST /partner/cybersource/callback/3ds {clientReference
+          # (our reference), sessionId, transientToken, status AUTHENTICATED|FAILED, code}, signed (auth above,
+          # with X-Nonce); never a route: controller/PartnerCallbackController reads it with this mapping.
+          # AUTHENTICATED hands the session and its transient token on for AUTHORISE_CAPTURE; FAILED carries
+          # the code (4002 THREE_DS_FAILED) and no token. Anything else (no token, unknown status) is refused.
+          "[CALLBACK.response]": |
+            $type(body.clientReference) != "string" or body.clientReference = ""
+              or $type(body.sessionId) != "string" or body.sessionId = "" ? {}
+            : body.status = "AUTHENTICATED" and $type(body.transientToken) = "string" and body.transientToken != ""
+              ? {"outcome": "SUCCESS", "partnerRef": body.sessionId, "reference": body.clientReference,
+                 "code": body.code,
+                 "attributes": {"sessionId": body.sessionId, "transientToken": body.transientToken}}
+            : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "partnerRef": body.sessionId, "reference": body.clientReference,
+                 "code": body.code, "message": body.message, "attributes": {"sessionId": body.sessionId}}
+            : {}

@@ -172,7 +172,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-011 | done | key + request hash, `MW-IDEM-001`; mw-app-gateway replays the first 200 body byte for byte (`service/IdempotentReplay`, `IdempotentReplayIT`, ticket 99); API folder 36 |
 | PLT-012 | done | in-flight duplicate answered 202 with the current status (`IdempotencyLockIntakeIT`, re-run in ticket 99) |
 | PLT-013 | done | mw-orchestrator `service/DuplicateGuard` (60 s, `MW_DUPLICATE_WINDOW`): app/USSD `MW-VAL-024` + `confirmDuplicate` (USSD asks the PIN again), API clients `MW-VAL-025` (`DuplicateGuardTest`, `DuplicateGuardIT`, ticket 99); API folder 36 |
-| PLT-014 | tickets 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) and signed nonces (ticket 99) built; card, IMT, NPSB in their adapters |
+| PLT-014 | tickets 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) and signed nonces (ticket 99) built; card built (mw-adapter-card 3-D Secure webhook, ticket 118b); IMT, NPSB in their adapters |
 | PLT-020 | done | saga steps with compensation (`saga_step`, spec 7.1) |
 | PLT-021 | done | step state persisted per step; resume after restart (`scripts/chaos.sh`); a core REST call starts only after its step commits and its answer re-enters the saga in its own transaction (ticket 95a, `CoreCallDispatcher`, `CoreReplyService`) |
 | PLT-022 | done | a refused commit compensates the partner first, then releases a hold that remains (`PartnerReversalIT`, ticket 96b); a completed TOPUP or BILL_PAY is reversed at the partner before ReverseTransaction, and a partner refusal ends MANUAL_REVIEW without a core reversal (`CompletedPartnerReversalIT`, ticket 96c); API folder 30 |

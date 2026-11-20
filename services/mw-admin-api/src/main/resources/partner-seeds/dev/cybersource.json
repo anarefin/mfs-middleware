@@ -1,0 +1,56 @@
+{
+  "partnerId": "cybersource",
+  "family": "card",
+  "config": {
+    "enabled": true,
+    "connectTimeoutMs": 3000,
+    "timeoutMs": 10000,
+    "readTimeoutMs": 12000,
+    "auth": {
+      "scheme": "hmac-sha256",
+      "credentialsRef": "hmac-secret"
+    },
+    "sensitiveFields": {
+      "transientToken": "SECRET"
+    },
+    "ambiguousCodes": [
+      "9876"
+    ],
+    "errorMap": {
+      "4001": {
+        "suffix": "CARD_DECLINED",
+        "retryable": false
+      },
+      "4002": {
+        "suffix": "THREE_DS_FAILED",
+        "retryable": false
+      },
+      "4003": {
+        "suffix": "INSUFFICIENT_FUNDS",
+        "retryable": false
+      },
+      "4004": {
+        "suffix": "REFUND_REFUSED",
+        "retryable": false
+      },
+      "4005": {
+        "suffix": "SESSION_EXPIRED",
+        "retryable": false
+      }
+    },
+    "route": "- route:\n    from:\n      uri: direct:partner-cybersource\n      steps:\n        - choice:\n            when:\n              - simple: \"${header.mwOperation} == 'INQUIRY'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=INQUIRY.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/cybersource/v1/sessions&auth=hmac-sha256&secretField=hmac-secret\"\n                  - to: \"kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=400,422\"\n              - simple: \"${header.mwOperation} == 'PAY'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=PAY.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/cybersource/v1/payments&auth=hmac-sha256&secretField=hmac-secret\"\n                  - to: \"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422\"\n              - simple: \"${header.mwOperation} == 'STATUS_QUERY'\"\n                steps:\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=GET&path=/cybersource/v1/payments/{reference}&auth=hmac-sha256&secretField=hmac-secret\"\n                  - to: \"kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404\"\n              - simple: \"${header.mwOperation} == 'REVERSE'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=REVERSE.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/cybersource/v1/payments/{reference}/refunds&auth=hmac-sha256&secretField=hmac-secret\"\n                  - to: \"kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=404,422\"\n        - to: \"kamelet:mw-audit\"\n",
+    "mappings": {
+      "INQUIRY.request": "{\"clientReference\": reference, \"amount\": amount.major, \"currency\": amount.currency}\n",
+      "INQUIRY.response": "status = 201 or status = 200\n  ? (body.status = \"CREATED\" and $type(body.sessionId) = \"string\" and body.sessionId != \"\"\n      and $type(body.hostedPageUrl) = \"string\" and body.hostedPageUrl != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.sessionId,\n         \"attributes\": {\"sessionId\": body.sessionId, \"hostedPageUrl\": body.hostedPageUrl}}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: (status = 400 or status = 422) and $type(body.code) = \"string\" and body.code != \"\"\n  ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "PAY.request": "{\"clientReference\": reference, \"sessionId\": attributes.sessionId,\n \"transientToken\": attributes.transientToken, \"amount\": amount.major, \"currency\": amount.currency}\n",
+      "PAY.response": "status = 201 or status = 200\n  ? (body.status = \"CAPTURED\" and $type(body.paymentId) = \"string\" and body.paymentId != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.paymentId, \"code\": body.code}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: (status = 400 or status = 422) and $type(body.code) = \"string\" and body.code != \"\"\n  ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "STATUS_QUERY.response": "status = 200\n  ? (body.status = \"CAPTURED\" and $type(body.paymentId) = \"string\" and body.paymentId != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.paymentId, \"code\": body.code}\n      : body.status = \"DECLINED\" and $type(body.code) = \"string\" and body.code != \"\"\n        ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n      : body.status = \"PENDING\"\n        ? {\"outcome\": \"PENDING\", \"partnerRef\": body.paymentId}\n        : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 404 and body.status = \"NOT_FOUND\"\n  ? {\"outcome\": \"NOT_FOUND\", \"code\": body.code, \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "REVERSE.request": "{\"refundId\": reversalReference, \"amount\": amount.major, \"currency\": amount.currency}\n",
+      "REVERSE.response": "status = 201 or status = 200\n  ? (body.status = \"REFUNDED\" and $type(body.refundId) = \"string\" and body.refundId != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.refundId, \"code\": body.code}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: (status = 404 or status = 422) and $type(body.code) = \"string\" and body.code != \"\"\n  ? {\"outcome\": \"FAILED\", \"code\": body.code, \"message\": body.message}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "CALLBACK.response": "$type(body.clientReference) != \"string\" or body.clientReference = \"\"\n  or $type(body.sessionId) != \"string\" or body.sessionId = \"\" ? {}\n: body.status = \"AUTHENTICATED\" and $type(body.transientToken) = \"string\" and body.transientToken != \"\"\n  ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.sessionId, \"reference\": body.clientReference,\n     \"code\": body.code,\n     \"attributes\": {\"sessionId\": body.sessionId, \"transientToken\": body.transientToken}}\n: body.status = \"FAILED\" and $type(body.code) = \"string\" and body.code != \"\"\n  ? {\"outcome\": \"FAILED\", \"partnerRef\": body.sessionId, \"reference\": body.clientReference,\n     \"code\": body.code, \"message\": body.message, \"attributes\": {\"sessionId\": body.sessionId}}\n: {}\n"
+    },
+    "allowedHosts": [
+      "mw-simulators"
+    ]
+  }
+}
