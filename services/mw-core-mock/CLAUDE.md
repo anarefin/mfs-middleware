@@ -27,8 +27,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   Money operations are the internal commands of the same name (`dto/CoreCommand`, once the Kafka contract), built
   there and handed to `CoreCommandService.handle(cmd, topic)`: holds `HoldFunds`, `.../{holdId}/commit` `CommitHold`,
   `.../release` `ReleaseHold` (answers on `core.payment.event.v1`), transfers `PostTransfer`, credits
-  `CreditWallet`, reversals `ReverseTransaction` (`amount` optional = the whole original; partial is
-  `AMOUNT_MISMATCH` until ticket 116) on `core.wallet.event.v1`. So the rules, the faults, the `command_log`
+  `CreditWallet`, reversals `ReverseTransaction` (`amount` optional = the whole original; a smaller amount is a
+  partial reversal, ticket 116, below) on `core.wallet.event.v1`. So the rules, the faults, the `command_log`
   replay and the `core.event.v1` outbox results are the commands' (test `controller/CoreWalletEventsIT`).
   Idempotent by txnId and operation (FRS 7.3): commandId `<txnId>:rest:<op>` (commit and release: the
   hold's txnId), `rest_request` (`V12__rest_request.sql`) keeps the SHA-256 of the first body; same body =
@@ -162,7 +162,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   fresh `<txnId>:credit:manual-<n>` round): an already credited txn is answered `WalletCredited` without
   effect, a reversed one refused `ALREADY_REVERSED`. `ReverseTransaction`: undoes every entry (fee included) of
   `originalTxnId` once, under the reversal's own txnId, with `REVERSAL` entries; the amount must
-  equal the original transfer amount (`AMOUNT_MISMATCH`), the original must have entries
+  not exceed what is left to refund (`REFUND_EXCEEDS`; another currency `AMOUNT_MISMATCH`). A smaller amount (or
+  any amount once a partial one exists) is a **partial reversal** (ticket 116, FRS FL-06, merchant refunds):
+  only that amount goes back from the original's credited wallet to its debited wallet under the refund's own
+  txnId, the fee stays charged; `coremock.partial_reversal` (V15) keeps the refunds per original, and when they
+  add up to the transfer the original is also in `reversal` (then `ALREADY_REVERSED`). Idempotent by the refund's
+  txnId like every operation. Test `controller/CoreWalletRestIT.partialReversalsRefundUpToTheOriginalAndNoFurther`; the original must have entries
   (`ORIGINAL_NOT_FOUND`: a merely held txn has none), must not be a reversal
   (`ORIGINAL_NOT_REVERSIBLE`) nor reversed (`ALREADY_REVERSED`), and every wallet must afford it
   (`INSUFFICIENT_BALANCE`). Reversal does not lower a wallet's daily-limit usage.
@@ -204,7 +209,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `WalletSeeder.restore(version)` then the party reset, answers `{parties:[{party: core, status: RESET,
   seedVersion}]}`: wallets outside the seed (seed API: mw-seeder's personas, the test console) back to their
   opening balance (their entries undone), nothing held; `entry`, `hold`, `command_log`, `rest_request`,
-  `reversal`, `used_assertion` truncated; the seed's wallets re-created and the sheets replaced from
+  `reversal`, `partial_reversal`, `used_assertion` truncated; the seed's wallets re-created and the sheets replaced from
   `seed/<version>/`; a given version stays in force (`WalletSeeder.version()`), an unknown one `400 MW-VAL-001`.
   Tests: `controller/CoreMockScenarioIT`, `controller/MockControlResetIT` (seed `t1` on the test classpath),
   `service/mockcontrol/LegacyFaultsTest`, `service/SeedLoaderTest`, `config/ProdGuardTest`.

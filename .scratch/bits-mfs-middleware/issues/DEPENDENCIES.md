@@ -116,10 +116,13 @@
 113c-biller-amount-rule                     113a              in progress
 114-bill-aggregators                        113,97,102        open
 115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
-115a-merchant-adapter                       97,102            in progress
+115a-merchant-adapter                       97,102            done     31m      270 files +25395 −31   a58834bd,679349b0 (admin-api migration renumbered V17 at merge)
 115b-merchant-pay-flow                      115a,113          open
 139-dry-run-oauth2-isolation                115a              open   (security follow-up: dry-run keeps live tokenUrl; all adapter copies)
-116-checkout-refund-list                    95,96             open
+116-checkout-refund-list                    95,96             split (116-split-decisions.md, 2026-11-20)
+116a-core-partial-reversal-list             95,96             done     32m      ~32 files +500 −35     d42c5172,2bc20979
+116b-orchestrator-refund-flow               116a              in progress
+116c-checkout-refund-api                    116b              open
 # --- M9 gate: UC-08..12
 117-bank-avl-w2b                            97,98,102         split (117-split-decisions.md, 2026-11-20)
 117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069
@@ -140,7 +143,7 @@
 126-mw-recon-matching                       123,95            done     -        150 files, +10903 −38  62f06496
 127-mw-recon-reports                        126               split (127-split-decisions.md, 2026-11-20)
 127a-recon-reports-queue                    126               done     18m      24 files +1281 −11     9ac2723a,aaf3660d
-127b-recon-exception-actions                127a              in progress
+127b-recon-exception-actions                127a              in progress (started 15:45)
 127c-trust-job-suite                        127b              open
 128-mw-data-export                          123               done     -        189 files +12102 −46   9a1ccad6
 129-portal-bulk-sp                          95,116            open

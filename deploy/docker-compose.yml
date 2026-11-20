@@ -34,7 +34,7 @@
 # ops = Keycloak, Vault, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
-# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8097), the
+# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8098), the
 # two consoles (3000, 3001) and the platform (postgres 5432, redis 6379, kafka 9094, keycloak 8180,
 # vault 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
 # (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
@@ -198,6 +198,7 @@ volumes:
   adapter-telco-approle:
   adapter-billpay-approle:
   adapter-bank-approle:
+  adapter-merchant-approle:
   orchestrator-approle:
   audit-dw-approle:
   data-export-approle:
@@ -717,6 +718,7 @@ services:
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?cp dev.env.defaults .env}
       BILLAGG_WS_PASSWORD: ${BILLAGG_WS_PASSWORD:?cp dev.env.defaults .env}
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
+      MERCHANT_SOAP_WS_PASSWORD: ${MERCHANT_SOAP_WS_PASSWORD:?cp dev.env.defaults .env}
       PUSH_API_KEY: ${PUSH_API_KEY:?cp dev.env.defaults .env}
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
@@ -759,6 +761,7 @@ services:
       - adapter-telco-approle:/out/adapter-telco
       - adapter-billpay-approle:/out/adapter-billpay
       - adapter-bank-approle:/out/adapter-bank
+      - adapter-merchant-approle:/out/adapter-merchant
       - portal-api-approle:/out/portal-api
       - checkout-approle:/out/checkout
     deploy:
@@ -1279,6 +1282,31 @@ services:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
+  # Merchant system adapter (ticket 115, FRS UC-11 / EXT-11): validate, payment notify and refund over SOAP.
+  mw-adapter-merchant:
+    <<: *app
+    profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_ADAPTER_MERCHANT:-8098}:8080"
+    image: mfs-mw/mw-adapter-merchant:local
+    build: { context: ../services/mw-adapter-merchant, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+    volumes:
+      - adapter-merchant-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "2"
+      # Merchant system SOAP endpoint; the MVP stack targets mw-simulators (/merchant/v1/soap, ticket 115b).
+      MERCHANT_SOAP_BASE_URL: ${MERCHANT_SOAP_BASE_URL:-http://mw-simulators:8080}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+      # mw-recon: data lines per reconciliation file (a longer file moves to .error).
+      MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
+
   # Organisation portal API and bulk disbursement (spec 8.2, 9.4).
   mw-portal-api:
     <<: *app
@@ -1330,7 +1358,7 @@ services:
       MW_CHECKOUT_IPN_DEV_HOSTS: ${MW_CHECKOUT_IPN_DEV_HOSTS:-mw-simulators}
       # timer: the IPN retry schedule. The dev stack keeps the compressed one e2e was written
       # against (the packaged default is the spec's 1m,5m,30m,2h,6h; set this to try it).
-      MW_CHECKOUT_IPN_RETRY_DELAYS: ${MW_CHECKOUT_IPN_RETRY_DELAYS:-10s,20s,30s,1m,2m}
+      MW_CHECKOUT_IPN_RETRY_DELAYS: ${MW_CHECKOUT_IPN_RETRY_DELAYS:-1m,5m,30m,2h,6h,12h,24h}
       MW_CHECKOUT_IPN_POLL_PERIOD: ${MW_CHECKOUT_IPN_POLL_PERIOD:-2s}
       # mTLS client certificate (pki_int/issue/mw-checkout) for mw-auth's internal API: the checkout
       # OTP and the transaction assertion (ticket 72, D22, D24)
@@ -1513,6 +1541,7 @@ services:
       mw-adapter-telco: { condition: service_healthy }
       mw-adapter-billpay: { condition: service_healthy }
       mw-adapter-bank: { condition: service_healthy }
+      mw-adapter-merchant: { condition: service_healthy }
       mw-checkout: { condition: service_healthy }
       mw-portal-api: { condition: service_healthy }
     volumes:

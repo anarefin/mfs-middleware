@@ -289,7 +289,7 @@ test_checkout_routes_use_hmac_auth_and_the_dev_merchant_is_test_only() {
     || fail "merchant_pharmacy: $(cat out/consumers/merchant_pharmacy.json)"
   jq -e '.plugins["hmac-auth"] == {"key_id": "merchant-fashion", "secret_key": "fakeFashionSecret"}' out/consumers/merchant_fashion.json >/dev/null \
     || fail "merchant_fashion: $(cat out/consumers/merchant_fashion.json)"
-  for r in checkout-v1-sessions checkout-v1-session-get; do
+  for r in checkout-v1-sessions checkout-v1-session-get checkout-v1-payments-get; do
     jq -e '.plugins["hmac-auth"].allowed_algorithms == ["hmac-sha256"] and (.plugins["hmac-auth"].signed_headers | index("@request-target") and index("date"))' "out/routes/$r.json" >/dev/null \
       || fail "$r: hmac-auth must sign method, path and Date: $(jq -c '.plugins["hmac-auth"]' "out/routes/$r.json")"
     jq -e '.plugins["proxy-rewrite"].headers.set["X-Mw-Merchant-Id"] == "$consumer_name" and .plugins["limit-count"].key == "consumer_name"' "out/routes/$r.json" >/dev/null \

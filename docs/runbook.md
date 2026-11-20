@@ -94,6 +94,7 @@ D3 amendment 2026-11-13).
 | 8089 | `mw-adapter-telco` | `MW_PORT_ADAPTER_TELCO` |
 | 8090 | `mw-adapter-billpay` | `MW_PORT_ADAPTER_BILLPAY` |
 | 8091 | `mw-adapter-bank` | `MW_PORT_ADAPTER_BANK` |
+| 8098 | `mw-adapter-merchant` | `MW_PORT_ADAPTER_MERCHANT` |
 | 8092 | `mw-checkout` | `MW_PORT_CHECKOUT` |
 | 8093 | `mw-portal-api` | `MW_PORT_PORTAL_API` |
 | 8094 | `mw-crypto` (HTTPS with a mandatory client certificate, D24: `scripts/smoke.sh` shows a call; its actuator is on 8081 inside the network) | `MW_PORT_CRYPTO` |

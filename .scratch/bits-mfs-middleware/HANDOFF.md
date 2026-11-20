@@ -87,3 +87,10 @@ RetryTopicIT (admin-api/notify/telco), AuthClientIT (app-gateway/ussd), CryptoCl
 - 105 / 98: top-up operator resolution is in the routing module. Folders 35, 41, 46, 47 and 62 ran in the M7 suite (the two failures were folders 13 and 44). ui-e2e and tester-e2e passed.
 
 - 123: AML file carries clear MSISDNs (watch-list rules); ticket 125 asks for masked/tokenised parties -> ask the user (security) when 125 starts. DW file layout is 123's draft; 128 must match it.
+
+## Session 2026-11-20 afternoon (plan ~/.claude/plans/all-pending-tickets-dont-scalable-honey.md)
+User rules: 1 h cap per task then report + ask; at gates e2e first, then API; lean gates M9-M12 (new + affected Newman folders), full suite only at 138.
+Merged on upay-main: 117a (fa5ac85c), 127a, 113a, 116a (897a406b), 115a (3ff04653; admin-api migration renumbered V17).
+Splits: 113, 115, 116, 117, 127 (`issues/NN-split-decisions.md`). New: 139 (dry-run OAuth2 isolation, security follow-up, all adapter copies).
+User decision: 127c adds `GET /core/v1/reports/emoney-total` to the core wallet contract (open item for Upay's real core).
+In flight at 15:45: 113c, 116b, 117b, 117d, 127b (worktrees under .claude/worktrees/agent-*).

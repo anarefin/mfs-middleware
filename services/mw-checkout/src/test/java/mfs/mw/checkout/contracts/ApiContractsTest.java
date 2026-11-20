@@ -113,6 +113,11 @@ class ApiContractsTest {
             new Amount(failed.amountMinor(), failed.currency()), failed.txnId().toString(),
             MaskingPolicy.mask(SensitiveType.MSISDN, failed.payerMsisdn()), failed.errorCode(),
             failed.createdAt(), failed.expiresAt(), failed.updatedAt()));
+    // MerchantSessionService.list (ticket 116)
+    assertValid("PaymentList", new mfs.mw.checkout.dto.PaymentList(java.util.List.of(
+        new MerchantSessionView(open.sessionId().toString(), open.orderId(), open.status(),
+            new Amount(open.amountMinor(), open.currency()), null, null, null,
+            open.createdAt(), open.expiresAt(), open.updatedAt())), 0, 50, false));
   }
 
   @Test

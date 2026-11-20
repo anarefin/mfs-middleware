@@ -405,6 +405,7 @@ https://localhost on 443. Production stays edge-only (ADR D3 amendment).
 | 8089 | `mw-adapter-telco` (`MW_PORT_ADAPTER_TELCO`) |
 | 8090 | `mw-adapter-billpay` (`MW_PORT_ADAPTER_BILLPAY`) |
 | 8091 | `mw-adapter-bank` (`MW_PORT_ADAPTER_BANK`) |
+| 8098 | `mw-adapter-merchant`, merchant systems over SOAP (`MW_PORT_ADAPTER_MERCHANT`) |
 | 8092 | `mw-checkout` (`MW_PORT_CHECKOUT`) |
 | 8093 | `mw-portal-api` (`MW_PORT_PORTAL_API`) |
 | 8094 | `mw-crypto`, the HSM gateway (`MW_PORT_CRYPTO`) |
@@ -455,7 +456,7 @@ Recovery and operations in depth: [docs/runbook.md](docs/runbook.md).
 | Edge | `apisix`, `etcd` (TLS on 443, JWT / HMAC / basic auth, quotas, error envelope) |
 | Channels | `mw-app-gateway` (apps), `mw-ussd` (USSD over SMPP and HTTP), `mw-checkout` (web checkout, IPN), `mw-portal-api` (org bulk disbursement, SP query) |
 | Core flow | `mw-orchestrator` (saga, idempotency, TSQ, reversal), `mw-core-mock` (ledger, fault injection) |
-| Partners | `mw-adapter-telco`, `mw-adapter-billpay`, `mw-adapter-bank` |
+| Partners | `mw-adapter-telco`, `mw-adapter-billpay`, `mw-adapter-bank`, `mw-adapter-merchant` (merchant validate, payment notify, refund over SOAP) |
 | Security | `mw-auth` (wallet authentication: OTP, device binding, login and RS256 tokens, PIN custody and lockout, resets, the ES256 transaction assertion; public `/auth/v1`, mTLS internal API), `mw-crypto` (the HSM gateway: the only process that talks to an HSM, SoftHSM over PKCS#11 and the payShield simulator in dev; mTLS internal API only), `softhsm` |
 | Support | `mw-notify` (SMS over SMPP, email, push to the app), `mw-audit-dw` (hash-chained audit trail, signed daily anchor), `mw-admin-api` (also key management and the key ceremony), `mw-admin-ui` (console at `/console`) |
 | Platform | `kafka` (KRaft), `postgres` (18), `redis`, `keycloak`, `vault`, one-shots `kafka-init` and `provision` (every service's secret, database role and AppRole, `deploy/provision`), `softhsm` (dev/test PKCS#11 tokens, profiles `minimal` and `core`, `deploy/softhsm`) |
