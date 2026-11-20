@@ -5178,6 +5178,96 @@
       ]
     },
     {
+      "name": "48 App SOAP facade",
+      "description": "SOAP/XML facade on mw-app-gateway (ticket 108, FRS CH-APP-01). The same preview and confirm as REST, the same bearer and Idempotency-Key. Folder 41 stays the P2P FRS harness.",
+      "item": [
+        {
+          "name": "[p2p] a SOAP preview and confirm complete a P2P and debit the previewed fee once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[p2p] a SOAP preview and confirm complete a P2P and debit the previewed fee once\", eval(MW.forRun(\"function soapEnvelope(header, body) {\\n    const ns = 'urn:mfs:mw:app:soap:v1';\\n    return '<soapenv:Envelope xmlns:soapenv=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:app=\\\"' + ns + '\\\">'\\n      + '<soapenv:Header>' + header + '</soapenv:Header><soapenv:Body>' + body + '</soapenv:Body></soapenv:Envelope>';\\n  }\\nfunction xmlText(xml, local) {\\n    const marker = xml.indexOf(':' + local + '>');\\n    const start = marker < 0 ? xml.indexOf('<' + local + '>') : xml.lastIndexOf('<', marker);\\n    const from = xml.indexOf('>', start) + 1;\\n    return xml.slice(from, xml.indexOf('</', from)).trim();\\n  }\\n;(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      const headers = await MW.app.headers('customer01');\\n      const pin = await MW.app.request('P2P', '01711000002', 1000, MW.pin);\\n      const preview = await MW.http('POST', '/app/ws/v1', {\\n        headers,\\n        contentType: 'text/xml; charset=UTF-8',\\n        raw: soapEnvelope('', '<app:PreviewRequest><app:group>send-money</app:group>'\\n          + '<app:creditParty><app:id>01711000002</app:id></app:creditParty>'\\n          + '<app:amount><app:valueMinor>1000</app:valueMinor><app:currency>BDT</app:currency></app:amount>'\\n          + '</app:PreviewRequest>'),\\n      });\\n      S.eq('preview HTTP 200', preview.status, 200, String(preview));\\n      S.eq('preview fee 500', xmlText(preview.raw, 'fee').indexOf('500') >= 0, true, String(preview));\\n      const previewId = xmlText(preview.raw, 'previewId');\\n      const key = 'soap-' + S.token;\\n      const confirm = await MW.http('POST', '/app/ws/v1', {\\n        headers,\\n        contentType: 'text/xml; charset=UTF-8',\\n        raw: soapEnvelope('<app:Idempotency-Key>' + key + '</app:Idempotency-Key>',\\n          '<app:ConfirmRequest><app:group>send-money</app:group><app:previewId>' + previewId + '</app:previewId>'\\n          + '<app:creditParty><app:id>01711000002</app:id></app:creditParty>'\\n          + '<app:amount><app:valueMinor>1000</app:valueMinor><app:currency>BDT</app:currency></app:amount>'\\n          + '<app:encryptedPin><app:keyId>' + pin.body.encryptedPin.keyId + '</app:keyId>'\\n          + '<app:ciphertext>' + pin.body.encryptedPin.ciphertext + '</app:ciphertext></app:encryptedPin>'\\n          + '</app:ConfirmRequest>'),\\n      });\\n      S.eq('confirm HTTP 200', confirm.status, 200, String(confirm));\\n      S.eq('completed', xmlText(confirm.raw, 'status'), 'COMPLETED', String(confirm));\\n      const txnId = xmlText(confirm.raw, 'txnId');\\n      const status = await MW.http('POST', '/app/ws/v1', {\\n        headers,\\n        contentType: 'text/xml; charset=UTF-8',\\n        raw: soapEnvelope('', '<app:GetTransactionStatusRequest><app:txnId>' + txnId + '</app:txnId>'\\n          + '</app:GetTransactionStatusRequest>'),\\n      });\\n      S.eq('status HTTP 200', status.status, 200, String(status));\\n      S.eq('status completed', xmlText(status.raw, 'status'), 'COMPLETED', String(status));\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[p2p] a SOAP confirm and a REST confirm with the same idempotency key move the money once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[p2p] a SOAP confirm and a REST confirm with the same idempotency key move the money once\", eval(MW.forRun(\"function soapEnvelope(header, body) {\\n    const ns = 'urn:mfs:mw:app:soap:v1';\\n    return '<soapenv:Envelope xmlns:soapenv=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:app=\\\"' + ns + '\\\">'\\n      + '<soapenv:Header>' + header + '</soapenv:Header><soapenv:Body>' + body + '</soapenv:Body></soapenv:Envelope>';\\n  }\\nfunction xmlText(xml, local) {\\n    const marker = xml.indexOf(':' + local + '>');\\n    const start = marker < 0 ? xml.indexOf('<' + local + '>') : xml.lastIndexOf('<', marker);\\n    const from = xml.indexOf('>', start) + 1;\\n    return xml.slice(from, xml.indexOf('</', from)).trim();\\n  }\\n;(async (MW, S) => {\\n      await S.note(['01711000001', '01711000002', 'FEE_INCOME']);\\n      const headers = await MW.app.headers('customer01');\\n      const pin = await MW.app.request('P2P', '01711000002', 1000, MW.pin);\\n      const preview = await MW.http('POST', '/app/ws/v1', {\\n        headers,\\n        contentType: 'text/xml; charset=UTF-8',\\n        raw: soapEnvelope('', '<app:PreviewRequest><app:group>send-money</app:group>'\\n          + '<app:creditParty><app:id>01711000002</app:id></app:creditParty>'\\n          + '<app:amount><app:valueMinor>1000</app:valueMinor><app:currency>BDT</app:currency></app:amount>'\\n          + '</app:PreviewRequest>'),\\n      });\\n      S.eq('preview HTTP 200', preview.status, 200, String(preview));\\n      const previewId = xmlText(preview.raw, 'previewId');\\n      const key = 'soap-rest-' + S.token;\\n      const body = '<app:ConfirmRequest><app:group>send-money</app:group><app:previewId>' + previewId\\n        + '</app:previewId><app:creditParty><app:id>01711000002</app:id></app:creditParty>'\\n        + '<app:amount><app:valueMinor>1000</app:valueMinor><app:currency>BDT</app:currency></app:amount>'\\n        + '<app:encryptedPin><app:keyId>' + pin.body.encryptedPin.keyId + '</app:keyId>'\\n        + '<app:ciphertext>' + pin.body.encryptedPin.ciphertext + '</app:ciphertext></app:encryptedPin>'\\n        + '</app:ConfirmRequest>';\\n      const soap = await MW.http('POST', '/app/ws/v1', {\\n        headers, contentType: 'text/xml; charset=UTF-8',\\n        raw: soapEnvelope('<app:Idempotency-Key>' + key + '</app:Idempotency-Key>', body),\\n      });\\n      S.eq('SOAP confirm HTTP 200', soap.status, 200, String(soap));\\n      const txnId = xmlText(soap.raw, 'txnId');\\n      const rest = S.record(await MW.app.confirm('customer01', 'send-money', key, {\\n        previewId,\\n        creditParty: { id: '01711000002' },\\n        amount: { valueMinor: 1000, currency: 'BDT' },\\n        encryptedPin: pin.body.encryptedPin,\\n      }));\\n      S.eq('REST confirm HTTP 200', rest.status, 200, String(rest));\\n      S.eq('one txnId', rest.body && rest.body.txnId, txnId, String(rest));\\n      await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[p2p] a SOAP request that is not the schema is MW-VAL-001 and does not echo the MSISDN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[p2p] a SOAP request that is not the schema is MW-VAL-001 and does not echo the MSISDN\", eval(MW.forRun(\"function soapEnvelope(header, body) {\\n    const ns = 'urn:mfs:mw:app:soap:v1';\\n    return '<soapenv:Envelope xmlns:soapenv=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:app=\\\"' + ns + '\\\">'\\n      + '<soapenv:Header>' + header + '</soapenv:Header><soapenv:Body>' + body + '</soapenv:Body></soapenv:Envelope>';\\n  }\\nfunction xmlText(xml, local) {\\n    const marker = xml.indexOf(':' + local + '>');\\n    const start = marker < 0 ? xml.indexOf('<' + local + '>') : xml.lastIndexOf('<', marker);\\n    const from = xml.indexOf('>', start) + 1;\\n    return xml.slice(from, xml.indexOf('</', from)).trim();\\n  }\\n;(async (MW, S) => {\\n      const headers = await MW.app.headers('customer01');\\n      const fault = await MW.http('POST', '/app/ws/v1', {\\n        headers,\\n        contentType: 'text/xml; charset=UTF-8',\\n        raw: soapEnvelope('', '<app:PreviewRequest><app:group>send-money</app:group>'\\n          + '<app:creditParty><app:id>01711000002</app:id></app:creditParty></app:PreviewRequest>'),\\n      });\\n      S.eq('client fault HTTP 400', fault.status, 400, String(fault));\\n      S.check('MW-VAL-001', fault.raw.indexOf('MW-VAL-001') >= 0, String(fault));\\n      S.check('the MSISDN is not in the fault', fault.raw.indexOf('01711000002') < 0, String(fault));\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[docs] the app SOAP WSDL is listed on the dev docs page",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[docs] the app SOAP WSDL is listed on the dev docs page\", eval(MW.forRun(\"function soapEnvelope(header, body) {\\n    const ns = 'urn:mfs:mw:app:soap:v1';\\n    return '<soapenv:Envelope xmlns:soapenv=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\" xmlns:app=\\\"' + ns + '\\\">'\\n      + '<soapenv:Header>' + header + '</soapenv:Header><soapenv:Body>' + body + '</soapenv:Body></soapenv:Envelope>';\\n  }\\nfunction xmlText(xml, local) {\\n    const marker = xml.indexOf(':' + local + '>');\\n    const start = marker < 0 ? xml.indexOf('<' + local + '>') : xml.lastIndexOf('<', marker);\\n    const from = xml.indexOf('>', start) + 1;\\n    return xml.slice(from, xml.indexOf('</', from)).trim();\\n  }\\n;(async (MW, S) => {\\n      const page = await MW.http('GET', '/docs/');\\n      S.eq('docs page HTTP 200', page.status, 200, String(page));\\n      S.check('the page links the WSDL', page.raw.indexOf('/docs/mw-app-gateway/app/ws/v1/app.wsdl') >= 0, String(page));\\n      const wsdl = await MW.http('GET', '/docs/mw-app-gateway/app/ws/v1/app.wsdl');\\n      S.eq('WSDL HTTP 200', wsdl.status, 200, String(wsdl));\\n      S.check('Preview operation', wsdl.raw.indexOf('Preview') >= 0, String(wsdl));\\n      S.check('Confirm operation', wsdl.raw.indexOf('Confirm') >= 0, String(wsdl));\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "62 DW export",
       "description": "Ticket 128, FRS EXT-17, DAT-02: mw-data-export uploads today's drop to dw/in (test route, key-auth). The warehouse mock on partner-sftp (profile tester) checks the control file.",
       "item": [

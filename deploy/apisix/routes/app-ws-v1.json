@@ -1,0 +1,48 @@
+{
+  "name": "app-ws-v1",
+  "desc": "App SOAP facade (ticket 108, FRS CH-APP-01): the same mw-auth bearer and quota as app-v1, its own limit-count group, POST /app/ws/v1 and GET /app/ws/v1/* (the WSDL)",
+  "uris": ["/app/ws/v1", "/app/ws/v1/*"],
+  "methods": ["GET", "POST"],
+  "plugins": {
+    "client-control": {
+      "max_body_size": 65536
+    },
+    "openid-connect": {
+      "discovery": "http://mw-auth:8080/auth/v1/.well-known/openid-configuration",
+      "client_id": "mw-app",
+      "bearer_only": true,
+      "use_jwks": true,
+      "realm": "mw-app",
+      "iat_slack": 10,
+      "set_access_token_header": false,
+      "set_userinfo_header": false,
+      "set_id_token_header": false
+    },
+    "serverless-pre-function": {
+      "phase": "access",
+      "functions": ["@lua:lua/consumer-from-jwt.lua"]
+    },
+    "limit-count": {
+      "count": 120,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "mw_consumer",
+      "group": "app-ws-v1",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "redis",
+      "redis_port": 6379,
+      "redis_password": "$env://REDIS_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 10, "read": 35 },
+    "nodes": { "mw-app-gateway:8080": 1 }
+  }
+}

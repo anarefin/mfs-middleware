@@ -28,7 +28,10 @@
   <p>Not listed: mw-crypto (its API is served over mTLS only, so its document is on its own port
   inside the network), mw-notify and the adapters' callbacks (no OpenAPI contract owned).</p>
   <h2>WSDL</h2>
-  <p>No SOAP endpoint is served by the middleware yet (the adapters call partner SOAP services, they
-  serve none); the app SOAP facade of ticket 108 adds its <code>?wsdl</code> here.</p>
+  <p>The adapters call partner SOAP services and serve none. The app facade (ticket 108) publishes
+  its WSDL here. GET needs no bearer on this docs route; a SOAP POST still needs the app token.</p>
+  <ul>
+    <li><a href="/docs/mw-app-gateway/app/ws/v1/app.wsdl">mw-app-gateway app SOAP</a></li>
+  </ul>
 </body>
 </html>

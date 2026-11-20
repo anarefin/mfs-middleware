@@ -151,6 +151,8 @@ valid_body='{"txnType":"P2P","creditParty":{"type":"WALLET","id":"01711000002"},
 # ---- 401 ----
 no_token() { call GET /app/v1/transactions/x && envelope 401 MW-AUTH-001; }
 check "no bearer token -> 401 MW-AUTH-001 envelope" no_token
+soap_no_token() { call POST /app/ws/v1 -H 'Content-Type: text/xml' -d '<x/>' && envelope 401 MW-AUTH-001; }
+check "SOAP: no bearer token -> 401 MW-AUTH-001 envelope" soap_no_token
 garbage_token() { call GET /app/v1/transactions/x -H "Authorization: Bearer not.a.jwt" && envelope 401 MW-AUTH-001; }
 check "garbage bearer token -> 401 MW-AUTH-001 envelope" garbage_token
 # org portal route (ticket 33): realm portals only

@@ -165,7 +165,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-003 | ticket 132 | client registry built (ticket 100a): mw-admin-api `admin.channel_client` (V12), `/admin/v1/channel-clients` maker-checker (`ChannelClientChangeRequestIT`), projected to APISIX consumers + consumer groups after the approval commits and on a ShedLock reconcile (`service/ApisixConsumerSync`, `ApisixConsumerSyncTest`), secrets as `$secret://vault/edge/...` on the Vault KV v1 mount `apisix/`; today's clients seeded by mw-seeder (`seed-channel-clients`); console in 132 |
 | PLT-004 | ticket 100 | 429 with `Retry-After` on every route, one bucket per route group keyed per client (ticket 99, `lua/edge-error-headers.lua`, `test_apisix_edge.sh`, `scripts/edge-test.sh`); counters in Redis (ticket 90, D29); per registered client with an APISIX consumer: `limit-req` rate and `limit-count` daily quota in its consumer group (ticket 100a, `ApisixConsumerSyncTest`); an `OAUTH2_CC` client has no consumer and is limited on its route by `mw_client_id` (ticket 100b); mTLS clients in 100c |
 | PLT-005 | done | `CorrelationIdFilter` in every service, `MwHeaders` on Kafka, propagated on outbound calls (root `CLAUDE.md`) |
-| PLT-006 | ticket 108 | Bean Validation and body JSON Schema (`MW-VAL-001`) built; XSD with the SOAP facade |
+| PLT-006 | done | Bean Validation and body JSON Schema (`MW-VAL-001`); the SOAP XSD is `contracts/api/mw-app-gateway/app-soap.v1.xsd` (ticket 108) |
 | PLT-007 | done | `MaskingPolicy` and `@Sensitive` in every service, `scripts/log-scan.sh`; mask shape `0171****789` (repo rule) |
 | PLT-008 | done | app signatures (`MW-AUTH-005`/`006`); checkout HMAC signs `X-Nonce`, mw-checkout `service/RequestReplayGuard` (`MW-AUTH-005`/`006`, `HmacReplayTest`); partner callbacks sign `X-Nonce` (`partner/auth/HmacSha256AuthScheme` + `CallbackNonces`, `CallbackReplayIT`); nonces in PostgreSQL in mw-checkout and the adapters (ticket 99); API folder 36 |
 | PLT-010 | done | Idempotency-Key on every financial API, derived for USSD (spec 7.3) |
@@ -190,15 +190,15 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-041 | done | rules in `txn.routing_rule` (V14), maker-checker in mw-admin-api (V15, `RoutingRuleChangeRequestIT`), applied from `mw.config.changed.v1` and re-read every 30 s (`RoutingRuleReloadIT`) |
 | PLT-042 | done | prefix to MNO (017/013 gp, 018 robi, 015 teletalk, 019/014 banglalink) with an MNP override winning (`MsisdnRoutingTest`) |
 | PLT-043 | done | a maintenance message for a partner or biller is `MW-SYS-PARTNER_DISABLED` with the bn and en text (`MaintenanceMessageIT`, API folder 35); the adapter's own window stays 131b; biller-catalogue disable stays 113 |
-| PLT-050 | ticket 108 | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); no SOAP service is served yet, the app SOAP facade of 108 publishes the first WSDL |
+| PLT-050 | done | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); the app SOAP WSDL is generated from `contracts/api/mw-app-gateway/app-soap.v1.xsd` (ticket 108) |
 | PLT-051 | done | versioning policy in `contracts/README.md` ("Versioning", ticket 101): breaking change = new `/v2` file and path, `/v1` kept for one release |
-| PLT-052 | done | Swagger UI and `/v3/api-docs` only in profiles `dev`/`test` (off in production, `ApiDocsProductionTest`); test-only APISIX page `/docs/` lists them and the WSDLs (none until ticket 108) (ticket 101) |
+| PLT-052 | done | Swagger UI and `/v3/api-docs` only in profiles `dev`/`test` (off in production, `ApiDocsProductionTest`); test-only APISIX page `/docs/` lists them and the app SOAP WSDL (`deploy/apisix/docs/index.html`, ticket 108) |
 
 ## 4. Channels (FRS 4)
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| CH-APP-01 | ticket 108 | REST built (M2); SOAP facade in 108 |
+| CH-APP-01 | done | REST and the SOAP facade on mw-app-gateway (`contracts/api/mw-app-gateway/app-soap.v1.xsd`, `deploy/apisix/routes/app-ws-v1.json`, `tests/api/src/48-app-soap`) |
 | CH-APP-02 | ticket 106 | MSISDN + PIN + device login in mw-auth built (D21, the PIN checked by the middleware, D20); 15 min access token in 106 |
 | CH-APP-03 | ticket 106 | OTP device binding built; per-app-type device count in 106 |
 | CH-APP-04 | ticket 106 | sessions and forced logout in mw-auth; per-app-type limits in 106 |

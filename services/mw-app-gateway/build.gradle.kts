@@ -36,6 +36,12 @@ dependencies {
     testImplementation(platform("org.testcontainers:testcontainers-bom:2.0.5"))
 
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
+    // SOAP facade (ticket 108, FRS CH-APP-01). Spring WS, not Camel (ADR D1): 5.0.3 is the latest
+    // stable line for Spring Framework 7 (5.1.0 is not a final release on this Boot line).
+    implementation("org.springframework.ws:spring-ws-core:5.0.3")
+    // DefaultWsdl11Definition needs WSDL4J; the JDK no longer ships a SAAJ implementation.
+    implementation("wsdl4j:wsdl4j:1.6.3")
+    implementation("com.sun.xml.messaging.saaj:saaj-impl:3.0.4")
     // Generated OpenAPI 3.1 document and Swagger UI (ticket 101, PLT-050..052): on only in the dev and
     // test profiles (application.yml); contracts/ stays the source of truth, contracts/ContractDriftTest
     // compares the two. Same version in every module.
@@ -78,6 +84,7 @@ dependencies {
     implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.ws:spring-ws-test:5.0.3")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("org.testcontainers:testcontainers")
@@ -129,6 +136,14 @@ val listedContracts = providers.fileContents(layout.projectDirectory.file("contr
     } + listOf("common", "OWNERS.yml")
 }
 
+// The SOAP contract is not an OpenAPI file, so contracts.yml cannot list it (contracts-lint).
+// The jar serves this copy; ContractDriftTest fails when it drifts from contracts/.
+tasks.processResources {
+    from(contractsDir.file("api/mw-app-gateway/app-soap.v1.xsd")) {
+        into("xsd")
+    }
+}
+
 // Docker and CPU budget: every module's test JVM starts its own PostgreSQL and Kafka, so at most
 // `mwDockerTests` (root gradle.properties, default 4) module test tasks run at once, whatever
 // org.gradle.workers.max lets compile and jar tasks do beside them. Every module registers the same
@@ -153,6 +168,9 @@ tasks.test {
     inputs.files(contractsDir.files(listedContracts))
         .withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("mwContracts")
+    inputs.file(contractsDir.file("api/mw-app-gateway/app-soap.v1.xsd"))
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("appSoapXsd")
     systemProperty("mwContractsDir", contractsDir.asFile.absolutePath)
     // One test task runs everything: unit, slice, contract, Testcontainers `*IT` and the @Conformance
     // suite, in one JVM sharing one PostgreSQL and one Kafka (TestInfrastructure). Without Docker the

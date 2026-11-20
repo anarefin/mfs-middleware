@@ -13,6 +13,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `GET /app/v1/billers`, `POST /app/v1/billers/{code}/fetch-bill` and `GET /app/v1/merchant/collections` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only against mw-auth's
   discovery document since ticket 69).
+- SOAP facade (ticket 108, FRS CH-APP-01): `POST /app/ws/v1` with Spring Web Services (not Camel). The same
+  preview, confirm, balance and transaction-status services as the REST controllers. The bearer is the HTTP
+  `Authorization` header (`SecurityConfig` permits `GET /app/ws/v1/*.wsdl` and authenticates every other
+  `/app/**`). `Idempotency-Key` is a SOAP header and shares the REST replay store. The XSD is
+  `contracts/api/mw-app-gateway/app-soap.v1.xsd`; the WSDL is generated at `/app/ws/v1/app.wsdl`. The device
+  gate is an MVC interceptor, so it does not apply to this servlet. Payloads are not logged. APISIX route
+  `deploy/apisix/routes/app-ws-v1.json` (its own `limit-count` group `app-ws-v1`).
 - Auth (`config/SecurityConfig`, `security/`; ticket 69, D21): the bearer is an mw-auth access token on
   `/app/**`, verified again here (`SecurityConfig.appTokenDecoder`): RS256 only, header `typ at+jwt`, a
   key of mw-auth's JWK Set (`mw.app-gateway.jwt.jwk-set-uri`, `http://mw-auth:8080/auth/v1/.well-known/jwks.json`,
@@ -273,6 +280,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `api/mw-app-gateway/app.v1.openapi.yaml` (app API v1). This service checks every JSON request body against
   its schema in `src/main/resources/derived-schemas/` (`TransactionRequest`, `BalanceRequest`, `FetchBillRequest`; `scripts/derived-schemas.sh --write` after changing one;
   `./gradlew :contractsLint` fails until then). The edge answers 401/413/429 itself (`deploy/apisix/README.md`).
+- `api/mw-app-gateway/app-soap.v1.xsd` (ticket 108): the SOAP facade. The WSDL is generated from it
+  (`config/WebServiceConfig`); `contracts/ContractDriftTest` checks the operations. Not an OpenAPI file, so it
+  is owned in `contracts/OWNERS.yml` and copied into the jar, and it is not a `contracts.yml` `apis` entry.
 
 ## Contracts used
 
