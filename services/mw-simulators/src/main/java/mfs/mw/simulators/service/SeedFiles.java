@@ -7,8 +7,13 @@ import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import mfs.mw.simulators.dto.Biller;
+import mfs.mw.simulators.service.files.AmlResponder.AmlRules;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * The simulators' versioned seed files (ticket 103, FRS MCK-08) on the classpath under {@code
@@ -28,6 +33,40 @@ public final class SeedFiles {
       out.add(new Biller(c[0], c[1], c[2], Biller.Protocol.valueOf(c[3])));
     }
     return List.copyOf(out);
+  }
+
+  /** The AML vendor mock's rules (ticket 123, {@code aml/rules.json}): threshold, watch-list, block suffix. */
+  public static AmlRules amlRules(String version) {
+    JsonNode n = json(version, "aml/rules.json");
+    List<String> watch = new ArrayList<>();
+    n.path("watchList").forEach(w -> watch.add(w.asString()));
+    return new AmlRules(n.path("alertAboveMinor").asLong(), List.copyOf(watch), n.path("blockSuffix").asString());
+  }
+
+  /** The Data Warehouse drop mock's file types and their CSV headers (ticket 123, {@code dw/schemas.json}). */
+  public static Map<String, List<String>> dwSchemas(String version) {
+    JsonNode n = json(version, "dw/schemas.json");
+    Map<String, List<String>> out = new LinkedHashMap<>();
+    n.properties().forEach(e -> {
+      if (e.getValue().isArray()) {
+        List<String> cols = new ArrayList<>();
+        e.getValue().forEach(c -> cols.add(c.asString()));
+        out.put(e.getKey(), List.copyOf(cols));
+      }
+    });
+    return Map.copyOf(out);
+  }
+
+  private static JsonNode json(String version, String file) {
+    String path = "seed/" + version + "/" + file;
+    try (InputStream in = SeedFiles.class.getClassLoader().getResourceAsStream(path)) {
+      if (in == null) {
+        throw new IllegalStateException("seed file missing: " + path);
+      }
+      return JsonMapper.builder().build().readTree(in);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
   }
 
   private static List<String[]> read(String version, String file) {

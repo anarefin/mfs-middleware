@@ -10,8 +10,9 @@ import java.util.List;
 public record MockParty(
     String name, String description, List<String> operations, List<String> keys, List<MockBehaviour> behaviours) {
 
-  /** A party that carries out every behaviour (the HTTP parties). */
+  /** A party that carries out every call behaviour (the HTTP parties; the file faults are for the file mocks). */
   public MockParty(String name, String description, List<String> operations, List<String> keys) {
-    this(name, description, operations, keys, List.of(MockBehaviour.values()));
+    this(name, description, operations, keys, java.util.Arrays.stream(MockBehaviour.values())
+        .filter(b -> b.dimension() != MockBehaviour.Dimension.FILE).toList());
   }
 }
