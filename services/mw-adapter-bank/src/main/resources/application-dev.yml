@@ -2,6 +2,11 @@
 # and by the test config. The seed partner (version 0) points at mw-simulators over plain http; the
 # packaged application.yml has none, so a production start has no partners. Plain http still needs
 # MW_PARTNER_INSECURE_HTTP_HOSTS (docker-compose.yml sets it).
+# The bank gateway profiles bank-<code> (ticket 117) are generated from
+# deploy/partner-routes/bank/bank-profiles.csv into bank-profiles-dev.yml.
+spring:
+  config:
+    import: classpath:bank-profiles-dev.yml
 mw:
   partners:
     # Dry-runs of new partner versions go to mw-simulators' programmable stub (ticket 83).
