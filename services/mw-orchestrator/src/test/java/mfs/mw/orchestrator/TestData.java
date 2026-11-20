@@ -113,6 +113,31 @@ public final class TestData {
   }
 
   /**
+   * A W2B (transfer to bank, ticket 117c) of {@code amountMinor} from customer wallet 01711000001 to
+   * bank account {@code account} at {@code bankPartner} (e.g. {@code bank-dbbl}), with the wallet's PIN.
+   */
+  public static TxnRequest w2b(String txnId, String idemKey, long amountMinor, String bankPartner, String account) {
+    return new TxnRequest(
+        1,
+        txnId,
+        idemKey,
+        "corr-" + txnId.substring(0, 8),
+        "CUSTOMER_APP",
+        "W2B",
+        new Party("MSISDN", "01711000001", null, null),
+        new Party("WALLET", "01711000001", null, "CUSTOMER"),
+        new Party("BANK_ACCOUNT", account, null, null),
+        Amount.bdt(amountMinor),
+        new PartnerRef(bankPartner, "W2B", null),
+        null,
+        ASSERTION,
+        "en",
+        null,
+        null,
+        NOW);
+  }
+
+  /**
    * A REVERSAL of {@code originalTxnId} asked by operations (channel SYSTEM): the parties are the
    * original P2P's, swapped; no PIN.
    */

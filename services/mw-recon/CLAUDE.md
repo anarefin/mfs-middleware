@@ -26,8 +26,13 @@ Statement and settlement reconciliation (spec 13, ticket 126, FRS REC-01..04, RE
   (`mw.recon.report-cron`, default 02:00) stores yesterday's report per partner in `recon.report`.
 - Trust position (REC-07): the MT940 closing balance (62F) is stored on `source_file`;
   `service/TrustPositionService` compares it with the e-money total, stores `recon.trust_position` and
-  raises `AMOUNT_MISMATCH` detail `TRUST_POSITION` (owner `finance`) on a gap. The scheduled job that reads
-  the e-money total from the core is not built yet (no core aggregate endpoint in `core-wallet.v1`).
+  raises `AMOUNT_MISMATCH` detail `TRUST_POSITION` (owner `finance`) on a gap. `scheduler/TrustPositionJob`
+  (ticket 127c; `mw.recon.trust.position-cron`, default 00:45 Asia/Dhaka) computes yesterday's position when its
+  MT940 closing balance is in, with the core's `GET /core/v1/reports/emoney-total` read by `client/CoreEmoneyClient`
+  (read only; `client/ServiceTokenClient`: realm `services` client `mw-recon`, mapper `aud-mw-core-mock`,
+  `mw.recon.core.*`, secret from Vault `mw.recon.core.client-secret` / `KC_MW_RECON_SECRET`; renewed once on 401
+  `MW-AUTH-001`, anything else 503 `MW-SYS-002`). Dev/test `POST /test/v1/trust-position?date=` runs it (default
+  the latest closing date; none 404 `MW-VAL-003`). Open item for Upay: the real core must serve the endpoint.
 - Work queue (UC-22): `GET /internal/v1/recon/exceptions` (class, partner, state, minAgeHours, limit),
   `GET .../{id}` with a suggested action (advice only), `POST .../{id}/explanations` (OPEN or EXPLAINED -> EXPLAINED,
   audited on `mw.audit.event.v1` as `recon.exception.explained`; ACTIONED or RESOLVED is refused with 409
@@ -69,6 +74,7 @@ Statement and settlement reconciliation (spec 13, ticket 126, FRS REC-01..04, RE
 - `contracts/events/mw-core-mock/core.event.v1.schema.json` (`#TransferPosted`, `#WalletCredited`,
   `#HoldCommitted`, `#TransactionReversed`)
 - `contracts/events/mw-audit-dw/mw.audit.event.v1.schema.json` (produced on reprocess; mw-audit-dw consumes it)
+- `contracts/api/mw-core-mock/core-wallet.v1.openapi.yaml`: only `GET /core/v1/reports/emoney-total` (ticket 127c)
 
 `contracts.yml` lists no command topic and no core write API.
 

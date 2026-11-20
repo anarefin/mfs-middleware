@@ -51,6 +51,9 @@
         }
       }
     },
+    "linkedAccountId": {
+      "type": "string"
+    },
     "partner": {
       "type": "object",
       "additionalProperties": false,

@@ -183,6 +183,23 @@ class AppSoapEndpointTest {
     verify(transactions).submit(any(), eq("soap-key-1"), any(), any());
   }
 
+  /** Ticket 117c: transfer to bank names a linked account, as over REST. */
+  @Test
+  void aTransferToBankPreviewCarriesTheLinkedAccountId() {
+    exchange(envelope("", """
+        <app:PreviewRequest>
+          <app:group>transfer-to-bank</app:group>
+          <app:linkedAccountId>0b6f5a4e-3d2c-4b1a-9e8f-7d6c5b4a3f2e</app:linkedAccountId>
+          <app:amount><app:valueMinor>150000</app:valueMinor><app:currency>BDT</app:currency></app:amount>
+        </app:PreviewRequest>
+        """));
+
+    ArgumentCaptor<TransactionRequest> checked = ArgumentCaptor.forClass(TransactionRequest.class);
+    verify(transactions).check(any(), checked.capture());
+    assertThat(checked.getValue().txnType()).isEqualTo("W2B");
+    assertThat(checked.getValue().linkedAccountId()).isEqualTo("0b6f5a4e-3d2c-4b1a-9e8f-7d6c5b4a3f2e");
+  }
+
   /** XSD boolean {@code 1} is true (a confirmed duplicate must not stay false and be refused). */
   @Test
   void confirmDuplicateOfOneIsAcceptedAsTrue() {

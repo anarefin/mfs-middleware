@@ -18,6 +18,7 @@
       <xs:enumeration value="bill-pay"/>
       <xs:enumeration value="top-up"/>
       <xs:enumeration value="add-money"/>
+      <xs:enumeration value="transfer-to-bank"/>
       <xs:enumeration value="b2b"/>
       <xs:enumeration value="disburse"/>
     </xs:restriction>
@@ -105,6 +106,7 @@
         <xs:element name="group" type="tns:Group"/>
         <xs:element name="creditParty" type="tns:CounterParty" minOccurs="0"/>
         <xs:element name="debitParty" type="tns:BankAccount" minOccurs="0"/>
+        <xs:element name="linkedAccountId" type="xs:string" minOccurs="0"/>
         <xs:element name="partner" type="tns:Partner" minOccurs="0"/>
         <xs:element name="amount" type="tns:Amount"/>
         <xs:element name="locale" type="xs:string" minOccurs="0"/>
@@ -139,6 +141,7 @@
         <xs:element name="previewId" type="xs:string"/>
         <xs:element name="creditParty" type="tns:CounterParty" minOccurs="0"/>
         <xs:element name="debitParty" type="tns:BankAccount" minOccurs="0"/>
+        <xs:element name="linkedAccountId" type="xs:string" minOccurs="0"/>
         <xs:element name="partner" type="tns:Partner" minOccurs="0"/>
         <xs:element name="amount" type="tns:Amount"/>
         <xs:element name="encryptedPin" type="tns:EncryptedPin"/>

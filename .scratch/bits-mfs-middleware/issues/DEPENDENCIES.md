@@ -127,16 +127,18 @@
 117-bank-avl-w2b                            97,98,102         split (117-split-decisions.md, 2026-11-20)
 117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069
 117b-avl-api-linked-accounts                117a              done     29m      44 files +1640 −9      343b4088,3cfc49cf  (no mTLS on bank adapter side; local AES key, not mw-crypto)
-117c-w2b-flow-channels                      117b              in progress
+117c-w2b-flow-channels                      117b              done     39m      35 files +880 −46      ef2b5c5b,1953b95b  (orchestrator V18 bank routing; app.v1 1.15.0; USSD W2B menu waits for user security decision; status events carry full bank account id, pre-existing)
 117d-bank-gateway-simulator                 117a              done     19m      44 files +1416 −98     36bea5a1
-117e-bank-suite-regression                  117b,117c,117d    open
+117e-bank-suite-regression                  117b,117c,117d    open   (USSD W2B stays app-only: user decision 2026-11-20)
 118-mw-adapter-card                         95,97,102         split (118-split-decisions.md, 2026-11-20)
 118a-card-adapter                           95,97,102         done     27m      274 files +25935 −28   4f974e08,005a0983  (admin-api V18; postgres max_connections 100->120; 3DS webhook endpoint -> 118b)
 118b-card-flow-channels                     118a              open   (incl. adapter 3DS webhook controller: HMAC, nonce, partner-ref dedup PLT-014; admin-api cybersource seed copy)
 119-mw-adapter-remit                        95,97,102         split (119-split-decisions.md, 2026-11-20)
 119a-remit-adapter                          95,97,102         in progress
 119b-remit-flow                             119a              open
-120-mw-adapter-atm                          95,97,102         open
+120-mw-adapter-atm                          95,97,102         split (120-split-decisions.md, 2026-11-20)
+120a-atm-adapter-inbound                    95,97,102         in progress
+120b-atm-token-flows                        120a              open
 # --- M10 gate: UC-13..17
 121-mw-adapter-interop                      92,97,102         open
 122-banglaqr                                121               open
@@ -145,10 +147,10 @@
 124-mw-compliance-ekyc                      94,102,106        open
 125-aml-feed-actions                        124,123,96        open
 126-mw-recon-matching                       123,95            done     -        150 files, +10903 −38  62f06496
-127-mw-recon-reports                        126               split (127-split-decisions.md, 2026-11-20)
+127-mw-recon-reports                        126               done (split 127a,127b,127c; 127-split-decisions.md)
 127a-recon-reports-queue                    126               done     18m      24 files +1281 −11     9ac2723a,aaf3660d
 127b-recon-exception-actions                127a              done     34m      62 files +2139 −41     29d8922b,da80afa9  (recon /internal needs mw-admin-api service JWT; open: post-approval recon call not retried; FORCE_COMMIT that fails stays ACTIONED; data-export DW schema needs txnId)
-127c-trust-job-suite                        127b              in progress
+127c-trust-job-suite                        127b              done     32m      37 files +991 −14      cf16db41,0f015d57  (core GET /core/v1/reports/emoney-total, report-clients mw-recon only; e-money total = every wallet type but SYSTEM; Newman 61 not run live; T12 + mock business day -> 137)
 128-mw-data-export                          123               done     -        189 files +12102 −46   9a1ccad6
 129-portal-bulk-sp                          95,116            open
 130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f

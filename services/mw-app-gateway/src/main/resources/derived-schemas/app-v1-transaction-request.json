@@ -17,9 +17,13 @@
         "TOPUP",
         "BILL_PAY",
         "ADD_MONEY_BANK",
+        "W2B",
         "B2B_TRANSFER",
         "BULK_DISBURSE"
       ]
+    },
+    "linkedAccountId": {
+      "type": "string"
     },
     "creditParty": {
       "type": "object",

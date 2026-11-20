@@ -54,6 +54,7 @@ public class TransactionService {
   private final BillerService billers;
   private final AuthClient auth;
   private final IdempotentReplay replay;
+  private final LinkedAccountService linked;
 
   public TransactionService(
       EventPublisher publisher,
@@ -64,7 +65,8 @@ public class TransactionService {
       Clock clock,
       BillerService billers,
       AuthClient auth,
-      IdempotentReplay replay) {
+      IdempotentReplay replay,
+      LinkedAccountService linked) {
     this.exchange = new TxnReplyExchange(publisher, waiters, props);
     this.mapper = mapper;
     this.transactions = transactions;
@@ -73,6 +75,7 @@ public class TransactionService {
     this.billers = billers;
     this.auth = auth;
     this.replay = replay;
+    this.linked = linked;
   }
 
   public SubmitResult submit(AppUser user, String idempotencyKey, TransactionRequest body) {
@@ -87,16 +90,23 @@ public class TransactionService {
     if (stored.isPresent()) {
       return SubmitResult.done(stored.get());
     }
+    Optional<LinkedAccountService.Resolved> account = linkedAccount(user, body);
     PartnerRef partner =
-        RequestMapper.BILL_PAY.equals(body.txnType())
-            ? billers.partnerFor(body.partner().billerCode())
-            : body.partner() == null
-                ? null
-                : RequestMapper.partnerOf(body);
+        account.isPresent()
+            ? new PartnerRef(
+                account.get().partnerId(),
+                RequestMapper.W2B.equals(body.txnType()) ? RequestMapper.W2B : RequestMapper.C2W_PRODUCT)
+            : RequestMapper.BILL_PAY.equals(body.txnType())
+                ? billers.partnerFor(body.partner().billerCode())
+                : body.partner() == null
+                    ? null
+                    : RequestMapper.partnerOf(body);
     Instant now = clock.instant();
     String txnId = UuidV7.next(clock).toString();
     String correlationId = TxnReplyExchange.correlationId();
-    TxnRequest unauthorised = mapper.toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner, bill);
+    TxnRequest unauthorised = mapper.toRequest(
+        user, idempotencyKey, body, txnId, correlationId, now, partner, bill,
+        account.map(LinkedAccountService.Resolved::accountNumber).orElse(null));
     // the PIN goes to mw-auth only (ticket 72): its refusal (wrong PIN 401, lock 423, ...) is
     // answered at once and nothing is published; the request carries the assertion instead
     TxnRequest req = unauthorised.withAssertion(
@@ -136,6 +146,21 @@ public class TransactionService {
     refuseUnknownAttributes(body);
     refuseFieldsOfOtherFlows(body);
     refuseOwnWallet(user, body);
+    linkedAccount(user, body);
+  }
+
+  /**
+   * The linked bank account the body names (ticket 117c), this wallet's own, decrypted; empty when the
+   * body names none. Another wallet's or an unlinked id is 404 {@code MW-VAL-003}.
+   */
+  public Optional<LinkedAccountService.Resolved> linkedAccount(AppUser user, TransactionRequest body) {
+    if (body.linkedAccountId() == null) {
+      return Optional.empty();
+    }
+    return Optional.of(linked.resolve(user.msisdn(), body.linkedAccountId())
+        .orElseThrow(() -> new MwException(ErrorCodes.VAL_NOT_FOUND, "Linked bank account not found")
+            .withDetails(List.of(new ErrorDetail("linkedAccountId", "is not one of your linked bank accounts")))
+            .withStatus(HttpStatus.NOT_FOUND)));
   }
 
   /** Only allow-listed attribute keys (MW-VAL-001 naming each other key). */
@@ -164,12 +189,33 @@ public class TransactionService {
     boolean topup = RequestMapper.TOPUP.equals(body.txnType());
     boolean bill = RequestMapper.BILL_PAY.equals(body.txnType());
     boolean addMoney = RequestMapper.ADD_MONEY_BANK.equals(body.txnType());
+    boolean w2b = RequestMapper.W2B.equals(body.txnType());
+    boolean linkedAccount = body.linkedAccountId() != null;
     String expected = topup ? "MSISDN" : bill ? "BILLER_ACCOUNT" : "WALLET";
     String type = body.creditParty() == null ? null : body.creditParty().type();
     TransactionRequest.Partner partner = body.partner();
     String issue = null;
     String field = null;
-    if (addMoney) {
+    if (w2b || (addMoney && linkedAccount)) {
+      // W2B and ADD_MONEY_BANK from a linked account (ticket 117c): the linked account only; its
+      // number and bank come from the wallet's stored row, never from the body
+      if (!linkedAccount) {
+        field = "linkedAccountId";
+        issue = "is required for W2B";
+      } else if (body.creditParty() != null) {
+        field = "creditParty";
+        issue = "is not allowed for " + body.txnType() + ": the linked account is the other side";
+      } else if (body.debitParty() != null) {
+        field = "debitParty";
+        issue = "is not allowed with linkedAccountId";
+      } else if (partner != null) {
+        field = "partner";
+        issue = "is not allowed with linkedAccountId: the bank is the linked account's";
+      }
+    } else if (linkedAccount) {
+      field = "linkedAccountId";
+      issue = "is only allowed for W2B and ADD_MONEY_BANK";
+    } else if (addMoney) {
       // ADD_MONEY_BANK (ticket 23): from the caller's bank account into the caller's own wallet
       if (body.debitParty() == null) {
         field = "debitParty";

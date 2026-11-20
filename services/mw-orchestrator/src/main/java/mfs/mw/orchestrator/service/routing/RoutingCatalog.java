@@ -184,7 +184,7 @@ public class RoutingCatalog {
                   request.creditParty() == null ? null : request.creditParty().id(), snap.prefixes(), snap.overrides())
               .orElse(null);
       operator = isOperatorCode(requested, snap) ? requested : fromNumber;
-    } else if ("ADD_MONEY_BANK".equals(request.txnType())) {
+    } else if ("ADD_MONEY_BANK".equals(request.txnType()) || "W2B".equals(request.txnType())) {
       bank = requested;
     }
     long amount = request.amount() == null ? 0 : request.amount().valueMinor();

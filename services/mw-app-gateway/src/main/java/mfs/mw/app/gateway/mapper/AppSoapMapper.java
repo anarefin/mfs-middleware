@@ -38,14 +38,15 @@ public class AppSoapMapper {
     return new PreviewRequest(
         counterParty(child(body, "creditParty")), bank(child(body, "debitParty")),
         partner(child(body, "partner")), amount(child(body, "amount")), text(body, "locale"),
-        attributes(child(body, "attributes")));
+        attributes(child(body, "attributes")), text(body, "linkedAccountId"));
   }
 
   public ConfirmRequest confirmRequest(Element body) {
     return new ConfirmRequest(
         text(body, "previewId"), counterParty(child(body, "creditParty")), bank(child(body, "debitParty")),
         partner(child(body, "partner")), amount(child(body, "amount")), pin(child(body, "encryptedPin")),
-        text(body, "locale"), bool(body, "confirmDuplicate"), attributes(child(body, "attributes")));
+        text(body, "locale"), bool(body, "confirmDuplicate"), attributes(child(body, "attributes")),
+        text(body, "linkedAccountId"));
   }
 
   public BalanceRequest balanceRequest(Element body) {
