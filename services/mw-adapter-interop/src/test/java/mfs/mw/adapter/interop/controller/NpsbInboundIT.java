@@ -82,6 +82,13 @@ class NpsbInboundIT {
 
   @LocalServerPort int port;
 
+  private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+  @org.springframework.beans.factory.annotation.Autowired
+  NpsbInboundIT(org.springframework.jdbc.core.JdbcTemplate jdbc) {
+    this.jdbc = jdbc;
+  }
+
   private final HttpClient http = HttpClient.newHttpClient();
 
   @BeforeEach
@@ -132,6 +139,40 @@ class NpsbInboundIT {
         r -> r.value().contains(e2e))).hasSize(1);
   }
 
+  /** Security review (replay): a validly signed pacs.008 older than the window is refused, never credited. */
+  @Test
+  void aStaleMessageIsRejectedAndNotPublished() throws Exception {
+    String e2e = e2e();
+
+    HttpResponse<String> res = postXml(pacs008(e2e, "BITSBDDH", "01711000004", 1_000,
+        OffsetDateTime.now(ZoneOffset.UTC).minusHours(25).withNano(0)));
+
+    assertThat(res.statusCode()).isEqualTo(200);
+    NpsbStatus st = ISO.readPacs002(res.body());
+    assertThat(st.status()).isEqualTo("RJCT");
+    assertThat(st.reasonCode()).isEqualTo("DT01");
+    assertThat(KafkaTestConsumer.readToEnd(TestInfrastructure.kafkaBootstrapServers(), TOPIC,
+        r -> r.value().contains(e2e))).isEmpty();
+  }
+
+  /** Security review (replay): the NPSB dedup outlives the inbox purge; a replay never credits twice. */
+  @Test
+  void aReplayAfterTheInboxIsPurgedIsNotPublishedAgain() throws Exception {
+    String e2e = e2e();
+    String pacs008 = pacs008(e2e, "BITSBDDH", "01711000005", 2_000);
+    assertThat(ISO.readPacs002(postXml(pacs008).body()).status()).isEqualTo("ACSP");
+    assertThat(KafkaTestConsumer.read(TestInfrastructure.kafkaBootstrapServers(), TOPIC, 1, Duration.ofSeconds(20),
+        r -> r.value().contains(e2e))).hasSize(1);
+
+    jdbc.update("delete from inbox");
+    HttpResponse<String> replay = postXml(pacs008);
+
+    assertThat(ISO.readPacs002(replay.body()).status()).isEqualTo("ACSP");
+    Thread.sleep(500);
+    assertThat(KafkaTestConsumer.readToEnd(TestInfrastructure.kafkaBootstrapServers(), TOPIC,
+        r -> r.value().contains(e2e))).hasSize(1);
+  }
+
   @Test
   void aTamperedMessageIsRefusedAndNothingIsPublished() throws Exception {
     String e2e = e2e();
@@ -177,8 +218,12 @@ class NpsbInboundIT {
   }
 
   private static String pacs008(String e2e, String creditorAgent, String wallet, long minor) {
-    return ISO.pacs008(new NpsbTransfer("M" + e2e, OffsetDateTime.of(2026, 11, 20, 9, 0, 0, 0, ZoneOffset.UTC), e2e,
-        "T" + e2e, new Money(minor, "BDT"), LocalDate.of(2026, 11, 20),
+    return pacs008(e2e, creditorAgent, wallet, minor, OffsetDateTime.now(ZoneOffset.UTC).withNano(0));
+  }
+
+  private static String pacs008(String e2e, String creditorAgent, String wallet, long minor, OffsetDateTime createdAt) {
+    return ISO.pacs008(new NpsbTransfer("M" + e2e, createdAt, e2e,
+        "T" + e2e, new Money(minor, "BDT"), createdAt.atZoneSameInstant(java.time.ZoneId.of("Asia/Dhaka")).toLocalDate(),
         new NpsbParty("Karim Ahmed", "1234567890123", "FAKEBDD1"),
         new NpsbParty("Rahim Uddin", wallet, creditorAgent)));
   }

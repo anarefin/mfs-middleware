@@ -598,7 +598,7 @@ test_every_rate_limit_is_per_route_and_keyed_per_client() {
 test_hmac_callbacks_and_ussd_do_not_require_a_bearer_token() {
   render || fail "dry run failed"
   local r
-  for r in partner-billagg-callback partner-c2wbank-callback ussd-http-gp ussd-http-robi ussd-http-bl ussd-http-teletalk; do
+  for r in partner-billagg-callback partner-c2wbank-callback partner-npsb-inbound ussd-http-gp ussd-http-robi ussd-http-bl ussd-http-teletalk; do
     obj routes "$r" | jq -e '(.plugins | has("openid-connect") | not) and (.plugins | has("jwt-auth") | not)' >/dev/null \
       || fail "$r must not require a bearer token: $(obj routes "$r" | jq -c '.plugins | keys')"
   done
@@ -606,6 +606,8 @@ test_hmac_callbacks_and_ussd_do_not_require_a_bearer_token() {
     || fail "billagg limit key changed"
   obj routes partner-c2wbank-callback | jq -e '.plugins["limit-count"].key == "remote_addr"' >/dev/null \
     || fail "c2wbank limit key changed"
+  obj routes partner-npsb-inbound | jq -e '.plugins["ip-restriction"] and .upstream.nodes["mw-adapter-interop:8080"] and .uri == "/partner/v1/npsb/inbound"' >/dev/null \
+    || fail "npsb inbound route: allow-list, upstream or uri changed"
 }
 
 # Ticket 100b: the OAUTH2_CC test route checks a partners-realm bearer token and limits by client id.

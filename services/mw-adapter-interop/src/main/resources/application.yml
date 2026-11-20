@@ -220,6 +220,14 @@ mw:
     # certificate. Client secret and switch certificate from Vault secret/mw-adapter-interop
     # (crypto-client-secret, npsb-certificate-pem); never in a file. Off until the stack wires the
     # service's Keycloak client and Vault PKI certificate (mw-crypto demands mTLS, ticket 66).
+    # The NPSB wire (ticket 121b part 2, service/NpsbWireService, service/NpsbInboundService): our and
+    # the switch's participant ids (BIC shaped), and the freshness window of an inbound pacs.008 (an
+    # older CreDtTm is refused RJCT DT01: replay defence, well under the 7 d inbox retention; accepted
+    # credits are deduplicated for good in table npsb_inbound).
+    npsb:
+      own-participant: ${MW_NPSB_OWN_PARTICIPANT:BITSBDDH}
+      switch-participant: ${MW_NPSB_SWITCH_PARTICIPANT:NPSBBDDH}
+      inbound-max-age: ${MW_NPSB_INBOUND_MAX_AGE:24h}
     crypto:
       enabled: ${MW_INTEROP_CRYPTO_ENABLED:false}
       base-url: ${MW_CRYPTO_BASE_URL:https://mw-crypto:8080}
