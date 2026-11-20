@@ -132,7 +132,9 @@
 117e-bank-suite-regression                  117b,117c,117d    open   (USSD W2B stays app-only: user decision 2026-11-20)
 118-mw-adapter-card                         95,97,102         split (118-split-decisions.md, 2026-11-20)
 118a-card-adapter                           95,97,102         done     27m      274 files +25935 −28   4f974e08,005a0983  (admin-api V18; postgres max_connections 100->120; 3DS webhook endpoint -> 118b)
-118b-card-flow-channels                     118a              open   (incl. adapter 3DS webhook controller: HMAC, nonce, partner-ref dedup PLT-014; admin-api cybersource seed copy)
+118b-card-flow-channels                     118a              split (2026-11-20, 1 h cap)
+118b1-card-3ds-webhook                      118a              done     15m      27 files +1096 −7      bd5c540e  (HMAC/nonce/PLT-014 dedup; family card on mw.partner.inbound.v1; APISIX callback route; admin-api cybersource seed)
+118b2-add-money-card-flow                   118b1             open   (orchestrator AddMoneyCardFlow, app-gateway sessions, Newman 56, simulator callbackUrl seeding; keep transientToken out of logs/audit)
 119-mw-adapter-remit                        95,97,102         split (119-split-decisions.md, 2026-11-20)
 119a-remit-adapter                          95,97,102         done     -        286 files +26376 −36   bfa47ddf  (admin-api V19 remit; host port 8101. RemitInFlow, Newman 53, lookup -> 119b)
 119b-remit-flow                             119a              open
