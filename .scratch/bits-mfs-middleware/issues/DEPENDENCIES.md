@@ -137,7 +137,8 @@
 118b2-add-money-card-flow                   118b1             done     30m      49 files +1944 −31     4ff19347  (orchestrator V20 card routing; app.v1 1.16.0; Newman 56 not run live; card refund of a COMPLETED add-money not built; hosted page has no edge route)
 119-mw-adapter-remit                        95,97,102         split (119-split-decisions.md, 2026-11-20)
 119a-remit-adapter                          95,97,102         done     -        286 files +26376 −36   bfa47ddf  (admin-api V19 remit; host port 8101. RemitInFlow, Newman 53, lookup -> 119b)
-119b-remit-flow                             119a              open
+119b-remit-flow                             119a              done     45m      34 files +647 −57      2323f101  (REMIT_IN flow once per inbound id; adapter outbox; APISIX partner-remit-v1; HMAC fingerprint; core-mock REMIT_IN validate without assertion)
+119c-remit-lookup-suite                     119b              open   (POST /remit/v1/beneficiary-lookup masked; test console Send remittance; REMIT_IN limit row in core-mock limits.csv (mock: 200,000 Tk per txn); Newman 53-remittance-in)
 120-mw-adapter-atm                          95,97,102         split (120-split-decisions.md, 2026-11-20)
 120a-atm-adapter-inbound                    95,97,102         done     -        283 files +26354 −31   372dceb2  (admin-api V20 atm; host port 8100. Inbound SOAP recorded locally; publish, token, cash flows, Newman 54 -> 120b)
 120b-atm-token-flows                        120a              split (120-split-decisions.md, 1 h cap)
