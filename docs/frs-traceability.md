@@ -148,7 +148,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-12` web checkout and refund | pay done; refund: core partial reversal built (116a), orchestrator refund as its own REVERSAL record, owning merchant only (116b), checkout refund API `POST|GET /checkout/v1/payments/{id}/refunds` with the signed refund IPN built (116c) |
 | `UC-13` add money from card | ticket 118 |
 | `UC-14` add money from bank (C2W) | done (one bank); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
-| `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts, W2bFlow, app/USSD, simulator open (117b-d) |
+| `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts (117b); simulator (117d); orchestrator `W2bFlow` with a hold, bank routing V18, app `transfer-to-bank` preview/confirm and add money from a linked account (`linkedAccountId`, 117c); USSD Transfer to Bank menu and suite open (117c follow-up, 117e) |
 | `UC-16` remittance | USSD status by Upay txn id is core WAL-13 (109c); inbound credit is ticket 119 |
 | `UC-17` ATM | ticket 120 |
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
@@ -241,7 +241,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-06 | ticket 116 | refund bounds enforced in mw-core-mock (`MW-CORE-REFUND_EXCEEDS`, 116a); mw-orchestrator refunds 1..original per request and ends an overshoot REJECTED (116b); checkout refund API built, refusal passed through as 422 (116c) |
 | FL-07 | ticket 118 | card tokens only (card PAN never enters the middleware, root `CLAUDE.md`) |
 | FL-08 | ticket 117 | linked bank accounts with AVL: done (117b: `/app/v1/bank-accounts`, AVL API `/bank/v1/accounts/validate`) |
-| FL-09 | ticket 117 | W2B with AVL and a hold |
+| FL-09 | ticket 117 | W2B with AVL and a hold: partial (117c: `W2bFlow` hold until the bank confirms, app API; USSD menu open) |
 | FL-10 | ticket 119 | IMT push and lookup |
 | FL-11 | ticket 120 | ATM one-time token |
 | FL-12 | tickets 121, 122 | BanglaQR on-us and off-us |

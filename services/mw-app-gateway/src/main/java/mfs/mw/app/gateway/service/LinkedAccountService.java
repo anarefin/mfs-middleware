@@ -66,6 +66,35 @@ public class LinkedAccountService {
     return new LinkedBankAccount.Page(accounts.list(walletId));
   }
 
+  /**
+   * The account behind {@code id} of this wallet, decrypted for a payment (ticket 117c: W2B and
+   * ADD_MONEY_BANK name a linked account, never a number); empty when it is not this wallet's. The
+   * number leaves only towards the orchestrator; it is never logged ({@link Resolved#toString}).
+   */
+  public java.util.Optional<Resolved> resolve(String walletId, String id) {
+    UUID uuid;
+    try {
+      uuid = UUID.fromString(id);
+    } catch (IllegalArgumentException | NullPointerException e) {
+      return java.util.Optional.empty();
+    }
+    return accounts.find(walletId, uuid)
+        .map(s -> new Resolved(id, s.bankCode(), cipher.decrypt(s.ciphertext(), walletId), s.last4()));
+  }
+
+  /** A linked account ready to pay: its bank's profile is {@code bank-<bankCode>}. */
+  public record Resolved(String id, String bankCode, String accountNumber, String last4) {
+
+    public String partnerId() {
+      return "bank-" + bankCode;
+    }
+
+    @Override
+    public String toString() {
+      return "Resolved[id=" + id + ", bankCode=" + bankCode + ", account=****" + last4 + "]";
+    }
+  }
+
   public void unlink(String walletId, String id) {
     UUID uuid;
     try {

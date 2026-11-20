@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 class RoleScopingTest {
 
   static final Map<String, Set<String>> ALLOWED = Map.of(
-      "CUSTOMER", Set.of("send-money", "cash-out", "payment", "bill-pay", "top-up", "add-money"),
+      "CUSTOMER", Set.of("send-money", "cash-out", "payment", "bill-pay", "top-up", "add-money", "transfer-to-bank"),
       "AGENT", Set.of("cash-in", "b2b"),
       "MERCHANT", Set.of(),
       "DISTRIBUTOR", Set.of("b2b"),
@@ -40,7 +40,7 @@ class RoleScopingTest {
       mock(EventPublisher.class), new ReplyWaiters(), new RequestMapper(), mock(AppTransactionRepository.class),
       new AppGatewayProperties(
           Duration.ofMillis(50), "gw-unit", "mw.txn.request.v1", "mw.txn.status.v1",
-          List.of("P2P", "CASH_IN", "CASH_OUT", "MERCHANT_PAY", "TOPUP", "BILL_PAY", "ADD_MONEY_BANK",
+          List.of("P2P", "CASH_IN", "CASH_OUT", "MERCHANT_PAY", "TOPUP", "BILL_PAY", "ADD_MONEY_BANK", "W2B",
               "B2B_TRANSFER", "BULK_DISBURSE"),
           List.of("reference"),
           new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
@@ -52,9 +52,11 @@ class RoleScopingTest {
               "TOPUP", List.of("CUSTOMER"),
               "BILL_PAY", List.of("CUSTOMER"),
               "ADD_MONEY_BANK", List.of("CUSTOMER"),
+              "W2B", List.of("CUSTOMER"),
               "B2B_TRANSFER", List.of("DISTRIBUTOR", "DSO", "AGENT"),
               "BULK_DISBURSE", List.of("PARTNER"))),
-      Clock.systemUTC(), mock(BillerService.class), mock(AuthClient.class), mock(IdempotentReplay.class));
+      Clock.systemUTC(), mock(BillerService.class), mock(AuthClient.class), mock(IdempotentReplay.class),
+      mock(LinkedAccountService.class));
 
   @Test
   void eachAppTypeCanCallOnlyItsGroups() {
