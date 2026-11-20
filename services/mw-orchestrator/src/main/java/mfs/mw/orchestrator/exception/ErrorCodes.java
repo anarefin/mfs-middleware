@@ -69,6 +69,11 @@ public final class ErrorCodes {
   public static final String VAL_TOPUP_BILL = "MW-VAL-030";
   /** Prepaid top-up: the amount is not on {@code mw.topup.denominations.<operator>}. Refused before a hold. */
   public static final String VAL_TOPUP_DENOMINATION = "MW-VAL-031";
+  /**
+   * Bill payment (ticket 113c): an amount the biller's amount rule does not allow (FIXED other than the
+   * fetched bill, MINIMUM below the minimum, OPEN outside its range). Refused before a hold.
+   */
+  public static final String VAL_BILL_AMOUNT = "MW-VAL-032";
   /** REVERSAL from a channel outside {@code mw.orchestrator.reversal-channels}. */
   public static final String AUTH_REVERSAL_CHANNEL = "MW-AUTH-020";
   /** BULK_DISBURSE from a channel outside {@code mw.orchestrator.bulk-channels} (ticket 34). */

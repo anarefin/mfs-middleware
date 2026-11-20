@@ -199,7 +199,7 @@
     },
     {
       "clientId": "mw-app-gateway",
-      "name": "mw-app-gateway (mw-auth internal API: device keys and sessions of the device gate; mw-orchestrator query API: wallet history; mw-notify inbox; mw-core-mock profile, limits and statement)",
+      "name": "mw-app-gateway (mw-auth internal API: device keys and sessions of the device gate; mw-orchestrator query API: wallet history; mw-notify inbox; mw-core-mock profile, limits and statement; mw-adapter-bank account validation, ticket 117b)",
       "enabled": true,
       "publicClient": false,
       "clientAuthenticatorType": "client-secret",
@@ -247,6 +247,16 @@
           "protocolMapper": "oidc-audience-mapper",
           "config": {
             "included.custom.audience": "mw-core-mock",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        },
+        {
+          "name": "aud-mw-adapter-bank",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-adapter-bank",
             "access.token.claim": "true",
             "id.token.claim": "false"
           }
