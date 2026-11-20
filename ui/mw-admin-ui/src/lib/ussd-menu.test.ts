@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { menuProblems, parseActivations, parseMenu, startPreview, stepPreview, tree, type Menu } from "./ussd-menu";
+import {
+  addChild, deleteNode, menuProblems, MNO_SCREENS, moveNode, moveOption, parseActivations, parseMenu, screenPages, startPreview, stepPreview,
+  textCounter, tree, type Menu,
+} from "./ussd-menu";
 
 const t = (bn: string, en: string) => ({ bn, en });
 const MESSAGES = {
@@ -119,5 +122,122 @@ describe("menu checks before filing (the API checks again, MW-VAL-040)", () => {
     ]);
     expect(parseActivations([], {})).toBeNull();
     expect(parseActivations(["gp", "xx"], {})).toBeNull();
+  });
+});
+
+describe("screen paging (mw-ussd ScreenFormatter: GSM-7 182, UCS-2 70)", () => {
+  const SMALL = { gsm: 30, ucs2: 70, overflow: "PAGE" as const };
+
+  it("a screen that fits is shown as it is", () => {
+    expect(screenPages("Bits\n1 Send Money", MNO_SCREENS.gp, "0. Next", "00. Back")).toEqual(["Bits\n1 Send Money"]);
+  });
+
+  it("splits at line breaks, each page ends with Next and Back, the last with Back", () => {
+    expect(screenPages("Pick one\n1 Send Money\n2 Cash Out\n3 Pay Bill", SMALL, "0. Next", "00. Back")).toEqual([
+      "Pick one\n0. Next\n00. Back",
+      "1 Send Money\n0. Next\n00. Back",
+      "2 Cash Out\n3 Pay Bill\n00. Back",
+    ]);
+  });
+
+  it("TRUNCATE cuts at the limit (teletalk)", () => {
+    expect(screenPages("x".repeat(200), MNO_SCREENS.teletalk, "0. Next", "00. Back")).toEqual(["x".repeat(182)]);
+  });
+
+  it("a long Bangla menu pages at the UCS-2 limit of 70 and shows 00 Back", () => {
+    const text = ["আপনার সেবা বেছে নিন", "1 সেন্ড মানি", "2 ক্যাশ আউট", "3 মোবাইল রিচার্জ", "4 পেমেন্ট", "5 পে বিল", "6 অ্যাড মানি", "7 আমার অ্যাকাউন্ট"].join("\n");
+    expect(text.length).toBeGreaterThan(70);
+    const pages = screenPages(text, MNO_SCREENS.gp, "0. পরবর্তী", "00. পেছনে");
+    expect(pages.length).toBeGreaterThan(1);
+    for (const p of pages) expect(p.length).toBeLessThanOrEqual(70);
+    for (const p of pages.slice(0, -1)) expect(p.endsWith("\n0. পরবর্তী\n00. পেছনে")).toBe(true);
+    expect(pages.at(-1)!.endsWith("\n00. পেছনে")).toBe(true);
+    expect(pages[0]!.startsWith("আপনার সেবা বেছে নিন\n1 সেন্ড মানি")).toBe(true);
+    expect(pages.at(-1)).toContain("7 আমার অ্যাকাউন্ট");
+  });
+});
+
+describe("per-text counter", () => {
+  it("English is GSM-7 against 182, Bangla UCS-2 against 70", () => {
+    expect(textCounter("Send Money")).toEqual({ length: 10, encoding: "GSM-7", limit: 182, over: false });
+    expect(textCounter("সেন্ড মানি")).toEqual({ length: 10, encoding: "UCS-2", limit: 70, over: false });
+    expect(textCounter("ক".repeat(71)).over).toBe(true);
+    expect(textCounter("a€").encoding).toBe("UCS-2"); // mw-ussd's GSM-7 check has no extension table
+  });
+});
+
+describe("preview pages a long screen: 0 next page, 00 back", () => {
+  const LONG: Menu = {
+    start: "main",
+    messages: { ...MESSAGES, more: t("0. পরবর্তী", "0. Next"), back: t("00. পেছনে", "00. Back") },
+    nodes: {
+      main: {
+        type: "MENU", text: t("আপনার সেবা বেছে নিন", "Pick a service"),
+        options: ["সেন্ড মানি", "ক্যাশ আউট", "মোবাইল রিচার্জ", "পেমেন্ট", "পে বিল", "অ্যাড মানি"]
+          .map((bn, i) => ({ key: String(i + 1), label: t(bn, `Item ${i + 1}`), next: "done" })),
+      },
+      done: { type: "END", text: t("শেষ", "Done") },
+    },
+  };
+
+  it("shows page 1, 0 goes on, 00 goes back a page, an option still works", () => {
+    let p = startPreview(LONG, { msisdn: "01712345678", mno: "gp" });
+    expect(p.pages.length).toBeGreaterThan(1);
+    expect(p.screen).toBe(p.pages[0]);
+    expect(p.screen.endsWith("00. পেছনে")).toBe(true);
+    p = stepPreview(p, "0");
+    expect(p.screen).toBe(p.pages[1]);
+    p = stepPreview(p, "00");
+    expect(p.screen).toBe(p.pages[0]);
+    p = stepPreview(p, "6");
+    expect(p.screen).toBe("শেষ");
+    expect(p.ended).toBe(true);
+  });
+
+  it("00 on a first page returns to the node before", () => {
+    let p = stepPreview(startPreview(MENU, { msisdn: "01712345678" }), "1");
+    expect(p.screen).toBe("প্রাপকের নম্বর দিন");
+    p = stepPreview(p, "abc"); // an invalid answer stays on the node, pushes nothing
+    p = stepPreview(p, "00");
+    expect(p.screen).toBe("Bits\n1 সেন্ড মানি\n9 English");
+    expect(stepPreview(p, "00").screen).toBe("ভুল ইনপুট।\nBits\n1 সেন্ড মানি\n9 English"); // nothing before start
+  });
+});
+
+describe("tree editing", () => {
+  it("adds a child under a MENU as a new option with an empty bn/en label", () => {
+    const m = addChild(MENU, "main", "balance", "END");
+    expect(m.nodes.balance).toEqual({ type: "END", text: { bn: "", en: "" } });
+    expect(m.nodes.main!.options!.at(-1)).toEqual({ key: "3", label: { bn: "", en: "" }, next: "balance" });
+    expect(MENU.nodes.balance).toBeUndefined(); // the input menu is not changed
+  });
+
+  it("adds a child under an INPUT as its next, refuses a taken or bad id", () => {
+    const m = addChild({ start: "a", messages: {}, nodes: { a: { type: "INPUT", text: t("a", "a") } } }, "a", "b", "END");
+    expect(m.nodes.a!.next).toBe("b");
+    expect(addChild(MENU, "main", "p2p.pin", "END")).toBe(MENU);
+    expect(addChild(MENU, "main", "bad id", "END")).toBe(MENU);
+  });
+
+  it("moves a node under another MENU, keeping its option label", () => {
+    const m = moveNode(MENU, "cancelled", "main");
+    expect(m.nodes["p2p.confirm"]!.options!.map((o) => o.next)).toEqual(["p2p.pin"]);
+    expect(m.nodes.main!.options!.at(-1)).toEqual({ key: "3", label: t("বাতিল", "Cancel"), next: "cancelled" });
+    expect(moveNode(MENU, "main", "p2p.confirm")).toBe(MENU); // start never moves
+    expect(moveNode(MENU, "p2p.done", "p2p.done")).toBe(MENU);
+  });
+
+  it("reorders an option up or down", () => {
+    expect(moveOption(MENU, "main", 1, -1).nodes.main!.options!.map((o) => o.key)).toEqual(["9", "1"]);
+    expect(moveOption(MENU, "main", 0, -1)).toBe(MENU);
+  });
+
+  it("deletes a node and every reference to it", () => {
+    const m = deleteNode(MENU, "p2p.failed");
+    expect(m.nodes["p2p.failed"]).toBeUndefined();
+    expect(m.nodes["p2p.send"]!.onFailure).toBeUndefined();
+    const n = deleteNode(MENU, "cancelled");
+    expect(n.nodes["p2p.confirm"]!.options!.map((o) => o.key)).toEqual(["1"]);
+    expect(deleteNode(MENU, "main")).toBe(MENU);
   });
 });

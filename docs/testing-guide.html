@@ -1472,11 +1472,16 @@ curl -sk -X POST https://localhost/test/mock-control/dw/run -H 'apikey: e2e-test
         <span class="ui">Key</span>, <i>Option N label (bn/en)</i>, <span class="ui">Next</span>, <span class="ui">Remove option</span>, and <span class="ui">Add option</span>;
         for INPUT <span class="ui">Validator</span> (msisdn, amount, pin, numeric, regex), <span class="ui">Store as</span>, <span class="ui">Next</span>; for DYNAMIC
         <span class="ui">Lookup source</span>, <span class="ui">Store as</span>, <span class="ui">Next</span>; for ACTION <span class="ui">Flow</span>,
-        <span class="ui">On success</span>, <span class="ui">On failure</span>. <span class="ui">Delete node</span> is on every node but the start node.</li>
+        <span class="ui">On success</span>, <span class="ui">On failure</span>. <span class="ui">Delete node</span> is on every node but the start node.
+        Under every bn / en box a counter <code>n/70 UCS-2</code> (Bangla) or <code>n/182 GSM-7</code> (English), red past the limit; beside the node's
+        type its whole screen per language (<code>screen bn 85/70, 2 pages · en …</code>). Each option has up / down arrows to reorder it.</li>
       <li>Change the main menu's English text (e.g. add <code>TEST</code>). The warnings box says "No problems found (the API checks again when filed)."</li>
       <li><b>Break it on purpose</b>: clear a node's <i>Text (bn)</i>: the box says "Not ready yet (mw-admin-api would refuse it):" with
         <code>nodes.&lt;id&gt;.text: needs bn and en</code>; set an option's <span class="ui">Next</span> to <code>nowhere</code>: "…next: no node nowhere". Undo both.</li>
-      <li><b>Add a node</b>: <span class="ui">New node id</span> <code>test_end</code>, <span class="ui">Type</span> END, <span class="ui">Add node</span>: it appears as "test_end END, unreachable"; <span class="ui">Delete node</span> removes it.</li>
+      <li><b>Add a child</b>: select the main menu node, <span class="ui">New child id</span> <code>test_end</code>, <span class="ui">Type</span> END, <span class="ui">Add child</span>:
+        it appears under the main menu, which gains an option with an empty label leading to it (on an END or ACTION node the new node is
+        "unreachable" instead). <b>Move</b> it: <span class="ui">Move under</span> another MENU, <span class="ui">Move</span>: the option leaves the main menu and
+        joins that one with its label. <span class="ui">Delete node</span> removes it and the option that led to it.</li>
       <li><b>Engine messages (bn and en)</b>: the texts for invalid, tooManyAttempts, expired, processing, unavailable and more; change one and see it in the preview.</li>
       <li><b>JSON</b>: the whole tree as text. Type <code>{}</code>, <span class="ui">Apply JSON</span>: "Not a menu tree: JSON with start, messages and nodes". A tree with an
         error applied and requested: <code>MW-VAL-040</code> with details.</li>
@@ -1485,6 +1490,10 @@ curl -sk -X POST https://localhost/test/mock-control/dw/run -H 'apikey: e2e-test
         <code>1, 01711000002, 10, 1, 13579</code>: "Money sent. TxnID PREVIEW-TXN", "Session ended.", the PIN shown as <code>****</code>.
         Again with outcome failed (ends "Preview: the core refused"), processing (ends with the processing message), three invalid
         replies (ends with the tooManyAttempts message). A DYNAMIC node lists sample items "&lt;source&gt; 1", "&lt;source&gt; 2".</li>
+      <li><b>Paging in the preview</b>: <span class="ui">MNO</span> robi (its short code <code>*269#</code> shows under it), Language bn. Give a node a Bangla text
+        longer than 70 characters and walk to it: the screen ends with <code>0. পরবর্তী</code> and <code>00. পেছনে</code> and "page 1/2" shows under it; reply
+        <code>0</code>: page 2/2; <code>00</code>: page 1 again; <code>00</code> on a first page goes back to the screen before. On teletalk the same
+        screen is cut at 70 instead (overflow TRUNCATE).</li>
       <li><b>Propose</b> (card <i>Propose this version</i>, maker): MNOs gp / robi / bl / teletalk (all ticked), <span class="ui">Go-live &lt;mno&gt;</span> per MNO
         (UTC; empty = at approval), Reason, <span class="ui">Request publish</span>. Checker approves (<code>vN -&gt; vM</code>). Unticking every MNO:
         "activations: pick each MNO once…".</li>
