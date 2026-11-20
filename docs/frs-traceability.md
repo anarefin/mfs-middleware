@@ -145,16 +145,16 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-08` top-up | prepaid denominations and postpaid range landed in 112b; T1–T4 and T6–T10 are folder `tests/api/src/46-topup-operators` (112c). T5 waits out the inquiry schedule. T11 is ticket 125, T12 is ticket 127 |
 | `UC-09`, `UC-10` bills | five aggregators (billagg + ticket 114's four), catalogue 113; channel end-to-end at the gate |
 | `UC-11` merchant payment | app done (folder 04); USSD menu MERCHANT_PAY (109c); ticket 115 remains |
-| `UC-12` web checkout and refund | pay done; refund: core partial reversal built (116a), orchestrator refund as its own REVERSAL record, owning merchant only (116b), checkout refund API open (116c) |
+| `UC-12` web checkout and refund | pay done; refund: core partial reversal built (116a), orchestrator refund as its own REVERSAL record, owning merchant only (116b), checkout refund API `POST|GET /checkout/v1/payments/{id}/refunds` with the signed refund IPN built (116c) |
 | `UC-13` add money from card | ticket 118 |
 | `UC-14` add money from bank (C2W) | done (one bank); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
-| `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts, W2bFlow, app/USSD, simulator open (117b-d) |
+| `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts (117b); simulator (117d); orchestrator `W2bFlow` with a hold, bank routing V18, app `transfer-to-bank` preview/confirm and add money from a linked account (`linkedAccountId`, 117c); USSD Transfer to Bank menu and suite open (117c follow-up, 117e) |
 | `UC-16` remittance | USSD status by Upay txn id is core WAL-13 (109c); inbound credit is ticket 119 |
 | `UC-17` ATM | ticket 120 |
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |
 | `UC-21` AML | ticket 125 |
-| `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports, the exception queue and its maker-checker actions done (tickets 127, 127b); the trust position job and the API suite folder remain 127c |
+| `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports, the exception queue and its maker-checker actions done (tickets 127, 127b); the trust position job and API suite folder `61-recon-reports` done (ticket 127c; open item for Upay: the real core must serve the e-money total endpoint, see REC-07) |
 
 ## 3. Common platform (FRS 3)
 
@@ -220,7 +220,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-WEB-01 | done | mw-checkout session create with API key + HMAC |
 | CH-WEB-02 | done | checkout page flow with OTP and PIN (mw-checkout, D22) |
 | CH-WEB-03 | ticket 116 | redirect and signed IPN with retries built; 24 h retry horizon built (1m..24h, 116) |
-| CH-WEB-04 | ticket 116 | create, status and list by date built (116); refund API open |
+| CH-WEB-04 | ticket 116 | create, status and list by date built (116); refund API and refund IPN built (116c) |
 | CH-WEB-05 | done | session expiry `session-ttl: 15m` (mw-checkout `application.yml`) |
 | CH-POR-01 | ticket 129 | CSV upload and row validation built; XLSX and preview with totals in 129 |
 | CH-POR-02 | done | bulk maker-checker in mw-portal-api |
@@ -238,10 +238,10 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-03 | ticket 112 | postpaid quote fetches the bill once; confirm pays from the minimum due through the outstanding (112b) |
 | FL-04 | ticket 113 | two-step bill fetch then pay (billpay); the catalogue carries the amount rule (FIXED, MINIMUM, OPEN) and bill month, billpay checks field regex and `billMonth` on the fetch (`BillerCatalogTest`); mw-orchestrator projects each BILLER record (`txn.biller_rule` V17) and `BillPayFlow.amountRefusal` refuses MINIMUM below the minimum, OPEN outside its range and FIXED other than the fetched bill with `MW-VAL-032` before a hold (`BillPayFlowTest`, `BillerAmountRuleIT`, API folder `49-biller-catalogue`); FIXED is checked when the channel attaches the fetched bill (`billOutstandingMinor`): mw-app-gateway keeps each fetch in Redis (`BillFetchStore`) and its bill-pay preview attaches it, mw-ussd attaches the `bill` lookup's amount (ticket 113b, `PreviewServiceTest`, `TxnRequestMapperTest`, API folder 49) |
 | FL-05 | tickets 113, 132 | biller catalogue in mw-admin-api (`biller` table V16, 57-biller dev seed, `BillerChangeRequestIT`), published as `mw.config.changed.v1` BILLER; mw-adapter-billpay projection (`BillerProjectionIT`); mw-app-gateway projection (in-memory replay, `GET /app/v1/billers` with fields, labels, amount rule; app.v1 1.14.0) and mw-ussd projection (`ussd.biller_catalog` V7, DYNAMIC billers, bill-number prompt from the field label) (ticket 113b) |
-| FL-06 | ticket 116 | refund bounds enforced in mw-core-mock (`MW-CORE-REFUND_EXCEEDS`, 116a); mw-orchestrator refunds 1..original per request and ends an overshoot REJECTED (116b); checkout refund API open (116c) |
+| FL-06 | ticket 116 | refund bounds enforced in mw-core-mock (`MW-CORE-REFUND_EXCEEDS`, 116a); mw-orchestrator refunds 1..original per request and ends an overshoot REJECTED (116b); checkout refund API built, refusal passed through as 422 (116c) |
 | FL-07 | ticket 118 | card tokens only (card PAN never enters the middleware, root `CLAUDE.md`) |
 | FL-08 | ticket 117 | linked bank accounts with AVL: done (117b: `/app/v1/bank-accounts`, AVL API `/bank/v1/accounts/validate`) |
-| FL-09 | ticket 117 | W2B with AVL and a hold |
+| FL-09 | ticket 117 | W2B with AVL and a hold: partial (117c: `W2bFlow` hold until the bank confirms, app API; USSD menu open) |
 | FL-10 | ticket 119 | IMT push and lookup |
 | FL-11 | ticket 120 | ATM one-time token |
 | FL-12 | tickets 121, 122 | BanglaQR on-us and off-us |
@@ -300,9 +300,10 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | WAL-08 | done | `POST /core/v1/holds/{id}/release` (ticket 93). A hold the core auto-releases (FRS 7.3, HoldExpired) is confirmed with that release, or left in MANUAL_REVIEW when the partner already succeeded (ticket 95c, HoldExpirySagaIT) |
 | WAL-09 | done | `POST /core/v1/transfers` (ticket 93): the `PostTransfer` rules |
 | WAL-10 | done | `POST /core/v1/credits` (tickets 93, 94): from the partner settlement wallet `settlementWallet` names (`SETTLEMENT_NPSB`, `SETTLEMENT_UCB_IMT`, ...), else `SETTLEMENT` |
-| WAL-11 | ticket 116 | `POST /core/v1/reversals` built (ticket 93, full, idempotent, once); partial reversal for refunds in 116 |
+| WAL-11 | ticket 116 | `POST /core/v1/reversals` built (ticket 93, full, idempotent, once); partial reversal for refunds built (116a), used by the checkout refund API (116c) |
 | WAL-12 | done | `GET /core/v1/statements` (tickets 93, 94); the app statement `GET /app/v1/statement` (107b, max 90 days, JSON and CSV). USSD mini statement remains ticket 109 |
 | WAL-13 | done | `GET /core/v1/transactions/{txnId}` (ticket 93: status and entries); the orchestrator's HOLDING query, inquiry, reversal query and credit check use it (ticket 95a) |
+| (REC-07) | done, open item | not an FRS 7.2 id: `GET /core/v1/reports/emoney-total` (ticket 127c, user decision 2026-11-20), the sum of every e-money wallet (all types but SYSTEM) for mw-recon's trust position, only client mw-recon. **Open item for Upay:** the real core must provide this endpoint |
 
 ## 8. Supporting services (FRS 8)
 
@@ -323,7 +324,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | REC-04 | done | classes MATCHED, MISSING_IN_PARTNER, MISSING_IN_UPAY, AMOUNT_MISMATCH, STATUS_MISMATCH (`ReconMatchingIT`, ticket 126) |
 | REC-05 | tickets 127, 134 | exception work queue read and explain API built (ticket 127: `GET /internal/v1/recon/exceptions`, suggested action, `POST .../explanations`, `ReconReportsIT`); the `recon_exception` maker-checker action in mw-admin-api (FORCE_COMMIT / REVERSE through the ticket 37 paths, recon-maker / recon-checker) and ACTIONED / RESOLVED in mw-recon built (ticket 127b, `ExceptionActionIT` in both); console 134 |
 | REC-06 | tickets 127, 134 | reports built (ticket 127): `GET /internal/v1/recon/reports` CSV, XLSX, PDF, daily report stored in `recon.report` (`ReportServiceTest`); console download 134 |
-| REC-07 | ticket 127 | trust position computed and stored with an `AMOUNT_MISMATCH`/`TRUST_POSITION` exception on a gap (`TrustPositionService`, `TrustPositionTest`, ticket 127); the scheduled job waits for a core e-money total endpoint (ticket 127 follow-up) |
+| REC-07 | done | trust position computed and stored with an `AMOUNT_MISMATCH`/`TRUST_POSITION` exception on a gap (`TrustPositionService`, `TrustPositionTest`, ticket 127); the scheduled `TrustPositionJob` (00:45 Asia/Dhaka, yesterday) reads the core's `GET /core/v1/reports/emoney-total` with mw-recon's realm services token (`CoreEmoneyClient`, `TrustPositionJobIT`, core-mock `CoreWalletRestIT`, API folder `61-recon-reports`; ticket 127c). **Open item for Upay:** the real core must provide `GET /core/v1/reports/emoney-total` (contract `core-wallet.v1`, ideally its end-of-day snapshot); mw-core-mock answers its ledger as it is at the call |
 | REC-08 | done | file register, filename plus sha256, processed once (`FileRegisterIT`, ticket 126) |
 | CMP-01 | ticket 125 | AML file export |
 | CMP-02 | tickets 125, 134 | HOLD and BLOCK applied (wallet lock built in mw-auth and the core); release in 134 |

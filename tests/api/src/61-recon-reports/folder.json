@@ -1,0 +1,4 @@
+{
+  "name": "61 Recon reports",
+  "description": "Ticket 127c, FRS REC-07: the trust position job compares the core's e-money total (GET /core/v1/reports/emoney-total, mw-recon's realm services token) with the trust bank's MT940 closing balance. The test route is key-auth. partner-sftp is profile tester."
+}

@@ -20,7 +20,8 @@ import org.springframework.stereotype.Service;
  * and {@code path}): plays a checkout merchant's server that mw-checkout posts its signed IPN to. Answers
  * 200 unless mock control says otherwise (HTTP_5XX its {@code httpStatus}, default 500; BUSINESS_ERROR
  * its {@code httpStatus}, default 400; TIMEOUT holds the 200; CONNECTION_RESET and DOWN close the
- * connection; MAINTENANCE 503); records every IPN with the status it answered ({@code -1} = no answer;
+ * connection; MAINTENANCE 503); records every IPN (payment and refund IPNs, told apart by the body's
+ * {@code type}, ticket 116) with the status it answered ({@code -1} = no answer;
  * last {@code sim.record-limit}). State is in memory.
  */
 @Service
@@ -76,7 +77,7 @@ public class MerchantIpnService implements PartyState {
   }
 
   private synchronized void record(String path, String ipnId, Map<String, String> headers, String body, int status) {
-    received.add(new ReceivedIpn(++seq, clock.instant(), path, ipnId, Map.copyOf(headers), body, status));
+    received.add(new ReceivedIpn(++seq, clock.instant(), path, ipnId, type(body), Map.copyOf(headers), body, status));
     while (received.size() > recordLimit) {
       received.removeFirst();
     }
@@ -84,8 +85,24 @@ public class MerchantIpnService implements PartyState {
 
   /** What was received, oldest first; only IPNs with this {@code X-Bits-Ipn-Id} when given. */
   public synchronized List<ReceivedIpn> received(String ipnId) {
-    return received.stream().filter(r -> ipnId == null || ipnId.equals(r.ipnId())).toList();
+    return received(ipnId, null);
   }
+
+  /** As {@link #received(String)}, also only IPNs of this type ({@code PAYMENT} or {@code REFUND}) when given. */
+  public synchronized List<ReceivedIpn> received(String ipnId, String type) {
+    return received.stream()
+        .filter(r -> ipnId == null || ipnId.equals(r.ipnId()))
+        .filter(r -> type == null || type.equalsIgnoreCase(r.type()))
+        .toList();
+  }
+
+  /** A refund IPN says {@code "type":"REFUND"} in its body (mw-checkout's RefundIpn, ticket 116). */
+  static String type(String body) {
+    return body != null && REFUND_TYPE.matcher(body).find() ? ReceivedIpn.REFUND : ReceivedIpn.PAYMENT;
+  }
+
+  private static final java.util.regex.Pattern REFUND_TYPE =
+      java.util.regex.Pattern.compile("\"type\"\\s*:\\s*\"REFUND\"");
 
   /** Forgets the received IPNs. */
   public synchronized void reset() {

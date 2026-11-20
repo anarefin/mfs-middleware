@@ -57,6 +57,24 @@ public class LinkedBankAccountRepository {
         walletId);
   }
 
+  /** The stored row of this wallet (ticket 117c): bank, ciphertext, last 4; empty for another wallet's id. */
+  public java.util.Optional<Stored> find(String walletId, UUID id) {
+    return jdbc.query(
+            "select bank_code, account_ciphertext, account_last4 from linked_bank_account where id = ?::uuid and wallet_id = ?",
+            (rs, i) -> new Stored(rs.getString("bank_code"), rs.getString("account_ciphertext"), rs.getString("account_last4")),
+            id.toString(), walletId)
+        .stream()
+        .findFirst();
+  }
+
+  /** A stored account as read back for a payment; the number is still ciphertext. */
+  public record Stored(String bankCode, String ciphertext, String last4) {
+    @Override
+    public String toString() {
+      return "Stored[bankCode=" + bankCode + ", last4=" + last4 + "]";
+    }
+  }
+
   /** Deletes the row only when it belongs to this wallet. */
   public boolean delete(String walletId, UUID id) {
     return jdbc.update("delete from linked_bank_account where id = ?::uuid and wallet_id = ?", id.toString(), walletId) == 1;

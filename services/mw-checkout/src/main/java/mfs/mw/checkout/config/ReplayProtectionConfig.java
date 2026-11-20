@@ -24,6 +24,6 @@ public class ReplayProtectionConfig implements WebMvcConfigurer {
 
   @Override
   public void addInterceptors(InterceptorRegistry registry) {
-    registry.addInterceptor(new MerchantReplayInterceptor(guard)).addPathPatterns("/checkout/v1/sessions");
+    registry.addInterceptor(new MerchantReplayInterceptor(guard)).addPathPatterns("/checkout/v1/sessions", "/checkout/v1/payments/*/refunds");
   }
 }

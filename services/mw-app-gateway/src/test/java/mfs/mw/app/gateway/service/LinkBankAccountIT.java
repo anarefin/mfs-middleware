@@ -149,4 +149,20 @@ class LinkBankAccountIT {
     service.unlink(WALLET, linked.id());
     assertThat(service.list(WALLET).accounts()).isEmpty();
   }
+
+  @Test
+  void aLinkedAccountResolvesToItsNumberForItsOwnWalletOnly() {
+    BANK.stubFor(post(urlEqualTo("/bank/v1/accounts/validate"))
+        .willReturn(okJson("{\"bankCode\":\"dbbl\",\"accountLast4\":\"7890\",\"holderName\":\"R.\"}")));
+    var linked = service.link(WALLET, "dbbl", ACCOUNT);
+
+    var resolved = service.resolve(WALLET, linked.id()).orElseThrow();
+    assertThat(resolved.accountNumber()).isEqualTo(ACCOUNT);
+    assertThat(resolved.partnerId()).isEqualTo("bank-dbbl");
+    assertThat(resolved.toString()).doesNotContain(ACCOUNT).contains("****7890");
+    assertThat(service.resolve("01711000002", linked.id())).isEmpty();
+    assertThat(service.resolve(WALLET, "not-a-uuid")).isEmpty();
+    service.unlink(WALLET, linked.id());
+    assertThat(service.resolve(WALLET, linked.id())).isEmpty();
+  }
 }

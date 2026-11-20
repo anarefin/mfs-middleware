@@ -39,6 +39,9 @@ public class RequestMapper {
   public static final String BILL_PAY = "BILL_PAY";
   /** Add money from a linked bank account (C2W, ticket 23): debit party is the bank account. */
   public static final String ADD_MONEY_BANK = "ADD_MONEY_BANK";
+  /** Transfer to bank (ticket 117c): from the caller's wallet to a linked bank account. */
+  public static final String W2B = "W2B";
+
   /** Balance inquiry (ADR D26): moves no money, never in the app history. */
   public static final String BALANCE = "BALANCE";
   /** Partner-app disbursement: one organisation wallet pays one customer. */
@@ -108,17 +111,39 @@ public class RequestMapper {
       Instant now,
       PartnerRef partner,
       Map<String, String> bill) {
+    return toRequest(user, idempotencyKey, body, txnId, correlationId, now, partner, bill, null);
+  }
+
+  /**
+   * As above, with the account number of the linked account the body names ({@code linkedAccountId},
+   * ticket 117c), decrypted by the caller from the wallet's own stored row; never from the body. It is
+   * W2B's payee and a linked add money's payer.
+   */
+  public TxnRequest toRequest(
+      AppUser user,
+      String idempotencyKey,
+      TransactionRequest body,
+      String txnId,
+      String correlationId,
+      Instant now,
+      PartnerRef partner,
+      Map<String, String> bill,
+      String linkedAccount) {
     Party own = Party.wallet(user.msisdn(), user.walletType());
     boolean addMoney = ADD_MONEY_BANK.equals(body.txnType());
+    boolean w2b = W2B.equals(body.txnType());
+    Party bankAccount = linkedAccount != null
+        ? new Party("BANK_ACCOUNT", linkedAccount, null, null)
+        : addMoney ? new Party("BANK_ACCOUNT", body.debitParty().id(), null, null) : null;
     boolean bulk = BULK_DISBURSE.equals(body.txnType());
     // ADD_MONEY_BANK: the bank account pays, the caller's own wallet (its PIN) receives.
     // BULK_DISBURSE: the partner app keeps the role PARTNER; the core posts the existing
     // organisation wallet (party type ORG, stored as ORGANISATION) to a customer. The core
     // contract has no PARTNER wallet type.
     Party debit = addMoney
-        ? new Party("BANK_ACCOUNT", body.debitParty().id(), null, null)
+        ? bankAccount
         : bulk ? new Party("ORG", user.msisdn(), null, null) : own;
-    Party credit = addMoney ? own : creditParty(body, user.walletType());
+    Party credit = addMoney ? own : w2b ? bankAccount : creditParty(body, user.walletType());
     return new TxnRequest(
         1,
         txnId,
@@ -175,6 +200,9 @@ public class RequestMapper {
   public static String creditPartyType(String txnType) {
     if (BILL_PAY.equals(txnType)) {
       return "BILLER_ACCOUNT";
+    }
+    if (W2B.equals(txnType)) {
+      return "BANK_ACCOUNT";
     }
     return TOPUP.equals(txnType) ? "MSISDN" : "WALLET";
   }

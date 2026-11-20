@@ -18,10 +18,22 @@ public record PreviewRequest(
     @Valid TransactionRequest.Partner partner,
     @NotNull @Valid Amount amount,
     @Pattern(regexp = "bn|en") String locale,
-    @Size(max = 20) Map<@Size(max = 64) String, @Size(max = 256) String> attributes) {
+    @Size(max = 20) Map<@Size(max = 64) String, @Size(max = 256) String> attributes,
+    @Pattern(regexp = TransactionRequest.LINKED_ACCOUNT_ID) String linkedAccountId) {
+
+  /** A preview without a linked account. */
+  public PreviewRequest(
+      TransactionRequest.CounterParty creditParty,
+      TransactionRequest.BankAccount debitParty,
+      TransactionRequest.Partner partner,
+      Amount amount,
+      String locale,
+      Map<String, String> attributes) {
+    this(creditParty, debitParty, partner, amount, locale, attributes, null);
+  }
 
   /** The transaction as {@code POST /app/v1/transactions} would carry it, without a PIN. */
   public TransactionRequest toTransaction(String txnType) {
-    return new TransactionRequest(txnType, creditParty, amount, null, locale, attributes, partner, debitParty, null);
+    return new TransactionRequest(txnType, creditParty, amount, null, locale, attributes, partner, debitParty, null, linkedAccountId);
   }
 }

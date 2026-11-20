@@ -43,6 +43,18 @@ public class TrustPositionService {
     this.clock = clock;
   }
 
+  /** Whether the trust bank's MT940 closing balance of {@code businessDate} is in (ticket 127c). */
+  @Transactional(readOnly = true)
+  public boolean closingKnown(LocalDate businessDate) {
+    return store.trustClosing(businessDate, ReconService.MT940) != null;
+  }
+
+  /** The latest business date with an MT940 closing balance, or null (ticket 127c, the test API's default). */
+  @Transactional(readOnly = true)
+  public LocalDate latestClosingDate() {
+    return store.latestTrustClosingDate(ReconService.MT940);
+  }
+
   /** Computes and stores the position; a second run for the same day replaces the row. */
   @Transactional
   public TrustPosition compute(LocalDate businessDate, long emoneyTotalMinor) {

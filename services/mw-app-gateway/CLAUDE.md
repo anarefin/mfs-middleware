@@ -5,10 +5,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 
 ## Responsibilities
 
-- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, ADD_MONEY_BANK,
+- App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, ADD_MONEY_BANK, W2B,
   TOPUP, BILL_PAY, B2B_TRANSFER and BULK_DISBURSE, `mw.app-gateway.supported-txn-types`; ticket 105 runs preview then confirm on that body),
   `POST /app/v1/{group}/preview` and `POST /app/v1/{group}/confirm` (groups send-money, cash-in, cash-out, payment,
-  bill-pay, top-up, add-money, b2b, disburse; preview moves nothing and needs no PIN; a postpaid top-up preview
+  bill-pay, top-up, add-money, transfer-to-bank, b2b, disburse; preview moves nothing and needs no PIN; a postpaid top-up preview
   returns the outstanding bill and the minimum due, and confirm sends those stored amounts, ticket 112b), `GET /app/v1/transactions` (wallet history, ADR D25),
   `GET /app/v1/transactions/{txnId}`, `POST /app/v1/balance` (ADR D26), `GET /app/v1/pin-key`,
   `GET /app/v1/billers`, `POST /app/v1/billers/{code}/fetch-bill` and `GET /app/v1/merchant/collections` behind the APISIX
@@ -35,7 +35,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   OTP login) is 403 `MW-AUTH-045`; a token whose `deviceId` claim is not the request's `X-Device-Id` is 401
   `MW-AUTH-003` (device gate).
   Role per `txnType` (`mw.app-gateway.txn-type-roles`, checked at submit after the type check):
-  P2P, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY and ADD_MONEY_BANK customer only, CASH_IN agent only,
+  P2P, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY, ADD_MONEY_BANK and W2B customer only, CASH_IN agent only,
   B2B_TRANSFER distributor, DSO and agent (the caller pays from their own wallet), BULK_DISBURSE partner only
   (the request posts that wallet as party type ORG, the core's ORGANISATION, to a CUSTOMER; the role stays PARTNER);
   the merchant initiates nothing (`AppGatewayConfigTest` checks no type lists MERCHANT) (switch here, nowhere else). Deny by
@@ -127,6 +127,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   here). Forwarded as debit party `{type: BANK_ACCOUNT, id}`, credit party the token's wallet
   (its PIN authorises), partner `{partnerId, productCode: C2W}` (`RequestMapper.partnerOf`). A
   bank refusal is FAILED `MW-PTR-C2WBANK-*` -> 502; an outcome not known within the budget 202.
+- W2B and add money from a linked account (ticket 117c, app.v1 1.15.0, FRS UC-15, FL-09): body field
+  `linkedAccountId` (a UUID of `GET /app/v1/bank-accounts`). W2B (group `transfer-to-bank`, customer only)
+  requires it and refuses `creditParty`, `debitParty` and `partner`; ADD_MONEY_BANK may send it instead of
+  `debitParty` + `partner` (then neither is allowed); every other type refuses it (`MW-VAL-001` naming the
+  field). `TransactionService.linkedAccount` reads the wallet's own row (`LinkedAccountService.resolve`,
+  `LinkedBankAccountRepository.find`) and decrypts the number server-side; another wallet's or an unknown id is
+  404 `MW-VAL-003`, nothing asked. The request then carries the stored number: W2B debit = the token's wallet,
+  credit `{BANK_ACCOUNT, <number>}`, partner `{bank-<bankCode>, W2B}`; linked add money debit `{BANK_ACCOUNT,
+  <number>}`, partner `{bank-<bankCode>, C2W}`. The number goes only into `mw.txn.request.v1`, mw-auth's
+  txn-authorisation and the orchestrator quote (preview); the preview hash and the stored-answer hash cover the
+  `linkedAccountId`, never the number; `LinkedAccountService.Resolved.toString` shows the last 4 only.
+  `TransactionView` masks every `BANK_ACCOUNT` party to the last 4 (`****1234`), so the 200 answer, the
+  `app_transaction` projection and a replayed answer never show the number. Tests `TransactionServiceTest`,
+  `PreviewServiceTest`, `LinkBankAccountIT`. The SOAP facade takes the same: group `transfer-to-bank` and
+  element `linkedAccountId` in `PreviewRequest` / `ConfirmRequest` (`AppSoapEndpointTest`).
 - Billers and bill fetch (ticket 21, `controller/BillerController`, `service/BillerService`,
   `client/BillPayClient`): read-only calls to mw-adapter-billpay's internal API
   (`contracts/api/mw-adapter-billpay/billpay.v1.openapi.yaml`, `mw.app-gateway.billpay.base-url`

@@ -44,6 +44,19 @@ class MerchantIpnServiceTest {
   }
 
   @Test
+  void recordsRefundIpnsApartFromPaymentIpns() {
+    ipn("s1");
+    assertThat(merchant.receive("/merchant/ipn", Map.of("x-bits-ipn-id", "r1"),
+        "{\"type\":\"REFUND\",\"refundId\":\"r1\",\"sessionId\":\"s1\",\"status\":\"COMPLETED\"}")).isEqualTo(200);
+    assertThat(merchant.received(null, "REFUND")).singleElement().satisfies(r -> {
+      assertThat(r.ipnId()).isEqualTo("r1");
+      assertThat(r.type()).isEqualTo(ReceivedIpn.REFUND);
+    });
+    assertThat(merchant.received(null, "PAYMENT")).extracting(ReceivedIpn::ipnId).containsExactly("s1");
+    assertThat(merchant.received(null)).hasSize(2);
+  }
+
+  @Test
   void failsTheNextNThenAccepts() {
     scenarios.merchant(new MerchantIpnScenario(2, 503, null));
 

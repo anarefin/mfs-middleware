@@ -4,7 +4,8 @@ info:
   version: 1.0.0
   description: >
     Dev/test only (mw.recon.test-api.enabled). Pulls the trust bank's MT940 and MT942 so the API
-    suite can inject a mismatch and read the result. Key-auth at the test-only APISIX route.
+    suite can inject a mismatch and read the result, and runs the trust position job (ticket 127c).
+    Key-auth at the test-only APISIX route.
 paths:
   /test/v1/pull:
     post:
@@ -12,3 +13,28 @@ paths:
       responses:
         "200":
           description: The files that were new, and the ones already registered.
+  /test/v1/trust-position:
+    post:
+      operationId: runTrustPosition
+      description: >-
+        REC-07 (ticket 127c): the scheduled trust position job for one business date (default the latest with an
+        MT940 closing balance): the core's e-money total now against that closing balance. A difference raises an
+        AMOUNT_MISMATCH exception with detail TRUST_POSITION.
+      parameters:
+        - { name: date, in: query, required: false, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: The position
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [businessDate, emoneyTotalMinor, trustClosingMinor, differenceMinor]
+                properties:
+                  businessDate: { type: string, format: date }
+                  emoneyTotalMinor: { type: integer }
+                  trustClosingMinor: { type: integer }
+                  differenceMinor: { type: integer, description: trust minus e-money }
+                  exceptionId: { type: [string, "null"], format: uuid }
+        "404":
+          description: No MT940 closing balance for the date (MW-VAL-003)

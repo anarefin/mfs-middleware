@@ -70,6 +70,8 @@ public class SecurityConfig {
                     .access(caller(props, UNLOCK_CALLER))
                     .requestMatchers(HttpMethod.POST, "/core/v1/customers/*/verify-factors")
                     .access(caller(props, FACTORS_CALLER))
+                    .requestMatchers(HttpMethod.GET, "/core/v1/reports/emoney-total")
+                    .access(reportCaller(props))
                     .requestMatchers("/core/**")
                     .access(
                         (auth, ctx) ->
@@ -97,6 +99,17 @@ public class SecurityConfig {
             && auth.get().getPrincipal() instanceof Jwt jwt
             && client.equals(jwt.getClaimAsString("azp"))
             && props.allowedClients().contains(client));
+  }
+
+  /**
+   * A report reader (ticket 127c): an {@code azp} of {@code report-clients} (mw-recon), a list of its own, so a
+   * report reader is never an allowed client of the wallet operations.
+   */
+  private static AuthorizationManager<RequestAuthorizationContext> reportCaller(InternalAuthProperties props) {
+    return (auth, ctx) -> new AuthorizationDecision(
+        auth.get() != null
+            && auth.get().getPrincipal() instanceof Jwt jwt
+            && props.reportClients().contains(jwt.getClaimAsString("azp")));
   }
 
   /** Signature from the realm's JWKS (fetched on first use), expiry, exact issuer and audience. */

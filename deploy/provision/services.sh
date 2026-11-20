@@ -25,6 +25,7 @@ EDGE_SECRETS="ussd-gp:USSD_GP_GATEWAY_SECRET ussd-robi:USSD_ROBI_GATEWAY_SECRET 
 SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank mw-adapter-merchant:adapter-merchant
+  mw-adapter-card:adapter-card
   mw-portal-api:portal-api mw-checkout:checkout mw-data-export:data-export mw-recon:recon"
 
 # Ledger stand-in. No PIN key since ticket 72 (D22): it verifies mw-auth's assertions with the
@@ -65,6 +66,8 @@ provision_mw_simulators() {
   sync_env sim.callback-secrets.ekpay BILLAGG_HMAC_SECRET
   sync_env sim.callback-secrets.agg3 BILLAGG_HMAC_SECRET
   sync_env sim.callback-secrets.agg4 BILLAGG_HMAC_SECRET
+  # the card acquirer's 3-D Secure webhook (CyberSourceMock, ticket 118)
+  sync_env sim.callback-secrets.cybersource CYBERSOURCE_HMAC_SECRET
   # the push server mock checks the key mw-notify sends (ticket 110)
   sync_env sim.push.api-key PUSH_API_KEY
   sync_env sim.ussd-gateway.credentials.gp USSD_GP_GATEWAY_SECRET
@@ -244,6 +247,16 @@ provision_mw_adapter_merchant() {
   db_role adapter_merchant_rw merchant_ref
 }
 
+# The dev card acquirer's HMAC secret (ticket 118), shared with mw-simulators (CyberSourceMock): the
+# field hmac-secret of the partner's own secret secret/mw-adapter-card/cybersource, read by its route.
+provision_mw_adapter_card() {
+  gen_once spring.datasource.password 40
+  KV="secret/$SVC/cybersource"
+  sync_env hmac-secret CYBERSOURCE_HMAC_SECRET
+  KV="secret/$SVC"
+  db_role adapter_card_rw card_ref
+}
+
 # Realm services client secret: mw-orchestrator's internal query API (M3 gate).
 provision_mw_portal_api() {
   gen_once spring.datasource.password 40
@@ -262,10 +275,12 @@ provision_mw_data_export() {
   db_role data_export_rw data_export
 }
 
-# Trust-bank SFTP password (ticket 126). No mTLS certificate: the service does not call mw-crypto.
+# Trust-bank SFTP password (ticket 126) and the realm services client secret of the trust position job's core
+# e-money total (ticket 127c). No mTLS certificate: the service does not call mw-crypto.
 provision_mw_recon() {
   gen_once spring.datasource.password 40
   sync_env mw.recon.trust.password SFTP_DEV_PASSWORD
+  sync_env mw.recon.core.client-secret KC_MW_RECON_SECRET
   db_role recon_rw recon
 }
 

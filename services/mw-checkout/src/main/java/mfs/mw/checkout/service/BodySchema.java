@@ -34,6 +34,8 @@ public class BodySchema {
 
   /** {@code POST /checkout/v1/sessions}, from {@code CreateSessionRequest}. */
   public static final String CREATE_SESSION = "derived-schemas/checkout-v1-create-session.json";
+  /** {@code POST /checkout/v1/payments/{paymentId}/refunds}, from {@code RefundRequest} (ticket 116). */
+  public static final String CREATE_REFUND = "derived-schemas/checkout-v1-create-refund.json";
   /** {@code POST /checkout/pay/v1/{token}/otp}, from {@code OtpRequest}. */
   public static final String PAY_OTP = "derived-schemas/checkout-pay-v1-otp.json";
   /** {@code POST /checkout/pay/v1/{token}/confirm}, from {@code ConfirmRequest}. */

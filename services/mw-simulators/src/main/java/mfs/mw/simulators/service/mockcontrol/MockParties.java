@@ -65,6 +65,8 @@ public final class MockParties {
           new MockParty("agg4", "aggregator 4 (REST JSON envelope, Basic)",
               List.of("fetch", "pay", "status", "reverse"), List.of("biller", "billNumber", "txnRef")),
           new MockParty("merchant", "checkout merchant IPN receiver", List.of("ipn"), List.of("ipnId", "path")),
+          new MockParty("cybersource", "card acquirer (CyberSource style): hosted page, 3-D Secure webhook, capture, refund",
+              List.of("session", "authenticate", "capture", "status", "refund"), List.of("txnRef", "session")),
           new MockParty("smsc", "SMSC, the SMPP 3.4 server of mw-notify (the DLR is its callback)",
               List.of("bind", "submit"), List.of("systemId", "msisdn"), SMSC_BEHAVIOURS),
           new MockParty("ussdgw", "USSD gateway: SMPP server mw-ussd binds to; dial plays a session (SMPP or HTTP)",
