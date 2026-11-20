@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-recon/mw.recon.exception.v1.schema.json",
+  "title": "mw.recon.exception.v1",
+  "description": "One state change of a reconciliation exception (ticket 127b, FRS DAT-01 recon.exception, UC-22): OPEN when raised, EXPLAINED on an explanation, ACTIONED when an approved maker-checker action (mw-admin-api RECON_EXCEPTION) was taken, RESOLVED when the action's outcome was seen on mw.txn.status.v1. Key: exceptionId. mw-recon reports; it never posts money or changes a transaction. Consumers: mw-audit-dw (audit trail); mw-data-export reads it with a local shape (ticket 128).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "exceptionId", "state", "exceptionClass", "owner", "partnerId", "amountMinor",
+    "statementRef", "detectedAt", "changedAt", "correlationId"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "eventId": { "type": "string", "format": "uuid" },
+    "exceptionId": { "type": "string", "format": "uuid" },
+    "state": { "enum": ["OPEN", "EXPLAINED", "ACTIONED", "RESOLVED"] },
+    "exceptionClass": { "enum": ["MISSING_IN_PARTNER", "MISSING_IN_UPAY", "AMOUNT_MISMATCH", "STATUS_MISMATCH"] },
+    "detail": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "owner": { "type": "string", "minLength": 1, "maxLength": 32 },
+    "partnerId": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "txnId": { "type": "string", "format": "uuid" },
+    "amountMinor": { "type": "integer", "minimum": 0, "description": "The amount in question in poisha: the file amount, else the Upay amount, else the ledger amount (absolute)" },
+    "statementRef": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The partner ref, else the statement reference, else the exception id" },
+    "action": { "enum": ["FORCE_COMMIT", "REVERSE"], "description": "ACTIONED and RESOLVED: the approved action" },
+    "changeRequestId": { "type": "string", "format": "uuid", "description": "ACTIONED and RESOLVED: the mw-admin-api change request" },
+    "actor": { "type": "string", "minLength": 1, "maxLength": 128, "description": "EXPLAINED: the operator; ACTIONED: the checker; absent for system changes" },
+    "detectedAt": { "type": "string", "format": "date-time" },
+    "changedAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 }
+  }
+}

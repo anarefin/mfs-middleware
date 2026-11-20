@@ -106,6 +106,16 @@
             "access.token.claim": "true",
             "id.token.claim": "false"
           }
+        },
+        {
+          "name": "aud-mw-recon",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-recon",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
         }
       ]
     },

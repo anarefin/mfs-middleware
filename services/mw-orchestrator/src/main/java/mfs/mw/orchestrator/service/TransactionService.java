@@ -2,6 +2,9 @@ package mfs.mw.orchestrator.service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -26,6 +29,7 @@ import mfs.mw.orchestrator.service.routing.RoutingService;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.BalanceFlow;
+import mfs.mw.orchestrator.service.saga.RefundFlow;
 import mfs.mw.orchestrator.service.saga.BillPayFlow;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
@@ -247,6 +251,10 @@ public class TransactionService {
    * and changes nothing.
    */
   private void acceptReversal(TxnRequest req, String replyTo) {
+    if (properties.refundChannels().contains(req.channel())) {
+      acceptRefund(req, replyTo);
+      return;
+    }
     Instant now = clock.instant();
     if (!properties.reversalChannels().contains(req.channel())) {
       refuse(req, replyTo, now, ErrorCodes.AUTH_REVERSAL_CHANNEL, "This channel may not request a reversal");
@@ -258,8 +266,9 @@ public class TransactionService {
       return;
     }
     TransactionRecord original = found.get();
-    if (!flows.find(original.request().txnType()).map(f -> f.allows(Step.REVERSE)).orElse(true)) {
-      // a BALANCE check moved no money (ADR D26): nothing to compensate
+    if (RefundFlow.TXN_TYPE.equals(original.request().txnType())
+        || !flows.find(original.request().txnType()).map(f -> f.allows(Step.REVERSE)).orElse(true)) {
+      // a BALANCE check moved no money (ADR D26); a refund (ticket 116b) is not reversed in turn
       refuse(req, replyTo, now, ErrorCodes.VAL_NOT_REVERSIBLE, "This transaction cannot be reversed");
       return;
     }
@@ -299,6 +308,113 @@ public class TransactionService {
         original.withReversal(UUID.fromString(req.txnId())),
         new SagaEvent.ReversalRequested(partnerFirst),
         null);
+  }
+
+  /**
+   * A merchant refund (ticket 116b, FRS CH-WEB-03, FL-06): a REVERSAL from a refund channel is its
+   * own transaction record (txnType REVERSAL, its own txnId and idempotency key; {@code
+   * attributes.originalTxnId} and {@code attributes.refundOf} = the original's txnType), never a change
+   * of the original, which stays COMPLETED. The original's row is locked, so refunds of one payment
+   * serialise here as at the core. Refused (REJECTED under the request's txnId, nothing recorded, key
+   * not consumed): unknown original {@code MW-VAL-020}; a payment not made on this channel or not owned
+   * by the refund's merchant (initiator {@code MERCHANT} = the original's {@code metadata.merchantId})
+   * {@code MW-AUTH-022}; parties not the original's reversed {@code MW-VAL-001}; original not
+   * COMPLETED {@code MW-VAL-021}; amount not in 1..original
+   * {@code MW-VAL-022}. The refunded total across refunds is the core's rule ({@code
+   * MW-CORE-REFUND_EXCEEDS} ends the refund REJECTED).
+   */
+  private void acceptRefund(TxnRequest req, String replyTo) {
+    Instant now = clock.instant();
+    Optional<TransactionRecord> found = originalId(req).flatMap(transactions::findForUpdate);
+    if (found.isEmpty()) {
+      refuse(req, replyTo, now, ErrorCodes.VAL_ORIGINAL_NOT_FOUND, "Original transaction not found");
+      return;
+    }
+    TransactionRecord original = found.get();
+    if (!ownedByRefundingMerchant(original.request(), req)) {
+      refuse(req, replyTo, now, ErrorCodes.AUTH_REFUND_NOT_OWNER, "Only the merchant that was paid may refund this payment");
+      return;
+    }
+    if (original.status() != Status.COMPLETED) {
+      refuse(req, replyTo, now, ErrorCodes.VAL_NOT_REVERSIBLE, "Only a completed payment can be refunded");
+      return;
+    }
+    if (!samePartyAs(req.debitParty(), original.request().creditParty())
+        || !samePartyAs(req.creditParty(), original.request().debitParty())) {
+      // money goes back only from the merchant paid to the wallet that paid
+      refuse(req, replyTo, now, ErrorCodes.VAL_INVALID, "A refund goes from the merchant paid back to the payer only");
+      return;
+    }
+    Amount paid = original.request().amount();
+    if (req.amount() == null
+        || req.amount().valueMinor() <= 0
+        || req.amount().valueMinor() > paid.valueMinor()
+        || !paid.currency().equals(req.amount().currency())) {
+      refuse(req, replyTo, now, ErrorCodes.VAL_REVERSAL_AMOUNT, "Refund amount must be more than zero and at most the payment");
+      return;
+    }
+
+    UUID txnId = UUID.fromString(req.txnId());
+    byte[] hash = requestMapper.requestHash(req);
+    Optional<IdempotencyRepository.Stored> earlier =
+        idempotency.claim(
+            req.channel(), req.initiator().id(), req.idempotencyKey(), hash, txnId, now,
+            now.plus(properties.idempotencyTtl()));
+    if (earlier.isPresent()) {
+      answerRepeat(req, earlier.get(), hash, replyTo, now);
+      return;
+    }
+    TransactionRecord rec = requestMapper.toRecord(refundRecordRequest(req, original), replyTo, now);
+    transactions.insert(rec);
+    engine.created(rec);
+    engine.fire(rec, new SagaEvent.RefundStarted(), null);
+    log.atInfo()
+        .addKeyValue("event", "txn.refund.accepted")
+        .addKeyValue("txnId", req.txnId())
+        .addKeyValue("correlationId", req.correlationId())
+        .addKeyValue("originalTxnId", original.txnId().toString())
+        .log("merchant refund accepted as its own transaction");
+  }
+
+  /**
+   * The payment was made on the refund's channel as a MERCHANT_PAY, and the refund's initiator is the
+   * merchant named in its {@code metadata.merchantId} (set by the channel from the authenticated merchant).
+   */
+  private static boolean ownedByRefundingMerchant(TxnRequest paid, TxnRequest refund) {
+    String owner = paid.metadata() == null ? null : paid.metadata().get("merchantId");
+    Party initiator = refund.initiator();
+    return owner != null
+        && "MERCHANT_PAY".equals(paid.txnType())
+        && refund.channel().equals(paid.channel())
+        && initiator != null
+        && "MERCHANT".equals(initiator.type())
+        && owner.equals(initiator.id());
+  }
+
+  /** Same party type and id (a wallet in any MSISDN form). */
+  private static boolean samePartyAs(Party a, Party b) {
+    if (a == null || b == null || a.type() == null || !a.type().equals(b.type())) {
+      return false;
+    }
+    return "WALLET".equals(a.type()) ? SearchKeys.sameWallet(a, b) : Objects.equals(a.id(), b.id());
+  }
+
+  /**
+   * The stored refund request: the original's parties reversed (the merchant paid -> the payer), never
+   * the request's own, plus {@code originalTxnId} and {@code refundOf} in its attributes.
+   */
+  private static TxnRequest refundRecordRequest(TxnRequest req, TransactionRecord original) {
+    Map<String, String> attributes = new HashMap<>();
+    if (req.attributes() != null) {
+      attributes.putAll(req.attributes());
+    }
+    attributes.put("originalTxnId", original.txnId().toString());
+    attributes.put("refundOf", original.request().txnType());
+    return new TxnRequest(
+        req.schemaVersion(), req.txnId(), req.idempotencyKey(), req.correlationId(), req.channel(), req.txnType(),
+        req.initiator(), original.request().creditParty(), original.request().debitParty(), req.amount(), req.partner(), req.originalTxnId(),
+        req.assertion(), req.locale(), req.metadata(), Map.copyOf(attributes), req.requestedAt(),
+        req.confirmDuplicate());
   }
 
   private static Optional<UUID> originalId(TxnRequest req) {

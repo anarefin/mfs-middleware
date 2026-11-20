@@ -15,8 +15,8 @@
 # MVP subset of the 6.2 catalogue. Deferred and therefore left out: the interop and
 # compliance partner families and mw.compliance.instruction.v1.
 # dw.* topics are produced by mw-data-export (ticket 128). mw.recon.result.v1 is produced by
-# mw-recon (ticket 126). mw.recon.exception.v1 and mw.kyc.completed.v1 are created here so the
-# export can subscribe; their schemas arrive with tickets 127 and 124.
+# mw-recon (ticket 126); mw.recon.exception.v1 too (ticket 127b, consumed by mw-audit-dw and the export).
+# mw.kyc.completed.v1 is created here so the export can subscribe; its schema arrives with ticket 124.
 
 mw.txn.request.v1              48 7d retry=mw-orchestrator
 mw.txn.action.v1                6 7d retry=mw-orchestrator
@@ -38,7 +38,7 @@ mw.notify.push-token.v1        12 7d retry=mw-notify
 # ticket 111: promotional opt-out from the app (POST /app/v1/notifications/opt-out)
 mw.notify.opt-out.v1            12 7d retry=mw-notify
 mw.audit.event.v1              24 7d retry=mw-audit-dw,mw-data-export
-mw.recon.exception.v1           6 7d retry=mw-data-export
+mw.recon.exception.v1           6 7d retry=mw-audit-dw,mw-data-export
 mw.kyc.completed.v1             6 7d retry=mw-data-export
 dw.txn.created.v1              12 7d
 dw.txn.state-changed.v1        12 7d

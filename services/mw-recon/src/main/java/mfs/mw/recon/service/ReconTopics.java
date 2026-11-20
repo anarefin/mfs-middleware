@@ -9,6 +9,8 @@ public final class ReconTopics {
   public static final String PAYMENT_EVENTS = "core.payment.event.v1";
   public static final String RESULT = "mw.recon.result.v1";
   public static final String AUDIT = "mw.audit.event.v1";
+  /** Ticket 127b: one event per exception state change (FRS DAT-01 recon.exception). */
+  public static final String EXCEPTION = "mw.recon.exception.v1";
 
   private ReconTopics() {}
 }

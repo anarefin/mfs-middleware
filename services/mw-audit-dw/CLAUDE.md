@@ -159,7 +159,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   name in `before`/`after` (a number the scrub changes is stored as the masked string; property
   names that mask alike are never overwritten, later ones get `#2`, `#3`... in order). The scrub
   has no UUID exemption, so only system ids escape it: a `resource` that is exactly
-  `<type>/<uuid>` (type `[a-z][a-z0-9-]*`, a lower-case RFC 9562 UUID, version 1-8, variant 8-b;
+  `<type>/<uuid>` (type `[a-z][a-z0-9_-]*`, `_` since ticket 127b for `recon_exception/<id>`, a lower-case RFC 9562 UUID, version 1-8, variant 8-b;
   producers build these from system ids) and a `correlationId` that is such a UUID are stored as
   they are, on shape alone (`CorrelationIdFilter` is the gate: it replaces a caller correlation id
   with a 6+ digit run or one the scrub would change, e.g. a UUID spreading an MSISDN over its groups);
@@ -189,7 +189,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 ## Contracts used
 
 - Its own `mw.audit.event.v1`, `events/mw-orchestrator/mw.txn.status.v1` (search projection, ticket
-  130; own type `dto/TxnStatusEvent`), and `api/mw-crypto/crypto-internal.v1.openapi.yaml` (`/jws/sign`,
+  130; own type `dto/TxnStatusEvent`), `events/mw-recon/mw.recon.exception.v1` (ticket 127b:
+  `messaging/ReconExceptionListener` -> `service/ReconExceptionAudit`, each state change one audit row
+  `recon.exception.<state>` on `recon_exception/<exceptionId>`, audit id = `eventId`, actor the event's operator
+  (`user`) or `system`/`mw-recon`; retry group `mw-audit-dw`; `ReconExceptionKafkaIT`), and `api/mw-crypto/crypto-internal.v1.openapi.yaml` (`/jws/sign`,
   `/jwks/AUDIT_ANCHOR_SIGN`, ticket 74; `/tokens` TOKENISE_MSISDN, ticket 130).
 - `contracts.yml`: the machine-readable list of what this module produces and consumes (checked
   by `./gradlew :contractsLint`, tested by `contracts/ConsumedContractsTest` (every valid sample reads

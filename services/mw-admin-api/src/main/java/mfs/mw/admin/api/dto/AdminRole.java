@@ -103,7 +103,16 @@ public enum AdminRole {
 
   /** Decide some change request (the service checks the resource type's own checker set). */
   public static final Set<AdminRole> ANY_CHECKER =
-      Set.copyOf(EnumSet.of(OPS_CHECKER, INTEGRATION_CHECKER, SECURITY_ADMIN));
+      Set.copyOf(EnumSet.of(OPS_CHECKER, INTEGRATION_CHECKER, SECURITY_ADMIN, RECON_CHECKER));
+
+  /**
+   * Ask for an action (FORCE_COMMIT, REVERSE) on a reconciliation exception (ticket 127b, UC-22): finance /
+   * reconciliation staff; the action itself is the ticket 37 one.
+   */
+  public static final Set<AdminRole> RECON_EXCEPTION_MAKER = Set.copyOf(EnumSet.of(RECON_MAKER));
+
+  /** Approve or reject such a request; never the maker's own (spec 15.3). */
+  public static final Set<AdminRole> RECON_EXCEPTION_CHECKER = Set.copyOf(EnumSet.of(RECON_CHECKER));
 
   /**
    * Propose a new version of a USSD menu or a notify template (spec 15.2 USSD, Notifications;
