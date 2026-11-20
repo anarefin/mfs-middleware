@@ -174,6 +174,29 @@ class CompletedPartnerReversalIT {
   }
 
   @Test
+  void aSecondReversalOfACompletedBillPaymentIsIdempotent() {
+    String txn = completedBillPay();
+    String first = reverse(txn, 66_700);
+    assertThat(reverses("mw.partner.request.billpay.v1", txn)).hasSize(1);
+    assertThat(reverseCommands()).isEmpty();
+
+    String second = reverse(txn, 66_700);
+    assertThat(status(txn)).isEqualTo("REVERSING");
+    assertThat(reverses("mw.partner.request.billpay.v1", txn)).hasSize(1);
+    assertThat(lastStatus(txn).path("attributes").path("duplicate").asString()).isEqualTo("true");
+    assertThat(lastStatus(txn).path("attributes").path("reversalTxnId").asString()).isEqualTo(first);
+    assertThat(lastStatus(txn).path("attributes").path("requestTxnId").asString()).isEqualTo(second);
+
+    partnerReplies.handle(reverseReply("billpay", "billagg", txn, "SUCCESS", null));
+    coreEvents.answer(event("TransactionReversed", first, first + ":reverse", null, "{}"));
+    String third = reverse(txn, 66_700);
+    assertThat(status(txn)).isEqualTo("REVERSED");
+    assertThat(reverses("mw.partner.request.billpay.v1", txn)).hasSize(1);
+    assertThat(reverseCommands()).hasSize(1);
+    assertThat(lastStatus(txn).path("attributes").path("requestTxnId").asString()).isEqualTo(third);
+  }
+
+  @Test
   void aPartnerRefusalOfACompletedBillPaymentEndsManualReview() {
     String txn = completedBillPay();
     reverse(txn, 66_700);

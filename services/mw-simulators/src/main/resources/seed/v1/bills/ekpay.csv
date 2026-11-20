@@ -3,6 +3,8 @@ billerCode,billNumber,amount,dueDate,billPeriod,status
 # (UNPAID -> PAID -> REVERSED, which is UNPAID again); back to this file only on POST /mock-control/reset or
 # DELETE /mock-control/ekpay/journal. Amounts in BDT (major units). Plain CSV, no quoting.
 NESCO,1140000001,1250.50,2026-12-10,2026-11,UNPAID
+# DU is agg3's biller; the same unpaid bill lets a DOWN agg3 fail over here (ticket 114, T8).
+DU,1140000001,1250.50,2026-12-10,2026-11,UNPAID
 NESCO,1140000002,480.00,2026-12-10,2026-11,UNPAID
 NESCO,1140000003,999.00,2026-12-10,2026-11,PAID
 WZPDCL,1140000011,3200.00,2026-12-15,2026-11,UNPAID

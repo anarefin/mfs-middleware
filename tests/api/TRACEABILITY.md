@@ -172,6 +172,23 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 51 | [billpay] every bill aggregator answers a seeded bill in its own wire format | - | |
 | 51 | [billpay] a bill the aggregator holds as paid is a mapped aggregator error | 1 | BILL_PAY app failure |
 | 51 | [billpay] a bill paid through sslcommerz completes and is then fetched as paid | 1 | BILL_PAY app success |
+| 51 | [billpay frs] T1 a sslcommerz bill payment completes and debits the payer once | 1 | BILL_PAY app success |
+| 51 | [billpay frs] T1 an agg3 SOAP bill payment completes and debits the payer once | 1 | BILL_PAY app success |
+| 51 | [billpay frs] T2 a sslcommerz refusal shows the mapped aggregator error and moves nothing | 1 | BILL_PAY app failure |
+| 51 | [billpay frs] T2 an agg3 SOAP refusal shows the mapped aggregator error and moves nothing | 1 | BILL_PAY app failure |
+| 51 | [billpay tsq frs] T3 a sslcommerz payment answered unknown is completed by status inquiry and debited once | 1 | BILL_PAY app tsq-commit |
+| 51 | [billpay tsq frs] T3 an agg3 payment answered unknown is completed by status inquiry and debited once | 1 | BILL_PAY app tsq-commit |
+| 51 | [billpay tsq frs] T4 a sslcommerz payment the status inquiry says was not found is released and moves nothing | 1 | BILL_PAY app tsq-release |
+| 51 | [billpay tsq frs] T4 an agg3 payment the status inquiry says was not found is released and moves nothing | 1 | BILL_PAY app tsq-release |
+| 51 | [billpay frs] T6 the same Idempotency-Key twice pays a sslcommerz bill once | 2 | BILL_PAY app idempotent |
+| 51 | [billpay frs] T6 the same Idempotency-Key twice pays an agg3 bill once | 2 | BILL_PAY app idempotent |
+| 51 | [billpay frs] T7 a duplicate sslcommerz callback completes the payment once | 1 | BILL_PAY app success |
+| 51 | [billpay frs] T7 a duplicate agg3 callback completes the payment once | 1 | BILL_PAY app success |
+| 51 | [billpay frs] T8 a sslcommerz bill uses the billagg fallback when sslcommerz is DOWN | 1 | BILL_PAY app success |
+| 51 | [billpay frs] T8 an agg3 bill uses the ekpay fallback when agg3 is DOWN | 1 | BILL_PAY app success |
+| 51 | [billpay frs] T9 a limit is refused before any bill payment and an insufficient balance moves nothing | 1 | BILL_PAY app failure |
+| 51 | [billpay frs] T10 a sslcommerz payment keeps the ledger identity; mid-saga restart is scripts/chaos.sh | - | |
+| 51 | [billpay reversal frs] a second reverse of a completed sslcommerz payment reverses the aggregator once | - | |
 | 01 | [p2p] a P2P completes and moves the money once | 1 | P2P app success |
 | 01 | [p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves | 1 | P2P app failure |
 | 01 | [p2p] a core rejection (over per-txn limit) moves no money | 1 | P2P app failure |
@@ -332,7 +349,8 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 Ticket 104. P2P (UC-04) is filled in; T5 is the folder 90 request. UC-08 top-up (ticket 112c) is
 folder `46-topup-operators`; its T5 waits out the inquiry schedule, so that cell stays `n/a`.
 UC-12 merchant refund (ticket 116) is folder `50-checkout-refund`; a refund calls the core only, so the
-external-partner columns T3/T4/T5/T7/T8 are `n/a`. T11 and T12 stay `n/a` until tickets 125 and 127. T10 names the request that checks the ledger
+external-partner columns T3/T4/T5/T7/T8 are `n/a`. T11 and T12 stay `n/a` until tickets 125 and 127. UC-10 other-biller payments (ticket 114) are folder `51-bill-aggregators`
+against sslcommerz and agg3 (SOAP). Its T5 stays `n/a`: the generated aggregator read timeout is 27 s, so an inquiry that never answers is not in the default suite. T10 names the request that checks the ledger
 identity; the mid-saga kill is `scripts/chaos.sh` with `CHAOS_TARGETS=mw-orchestrator`. A use
 case still waiting on its ticket stays `n/a`.
 
@@ -347,7 +365,7 @@ case still waiting on its ticket stays `n/a`.
 | UC-07 | [b2b] a distributor float transfer to an agent completes | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-08 | [topup frs] T1 a GP top-up on gp-ocs completes with the seed tariff fee, VAT and commission and the SMS is sent | [topup frs] T2 a GP subscriber-barred refusal shows the English and Bangla text and moves nothing | [topup tsq frs] T3 a GP top-up that the OCS answers unknown is completed by a driven status inquiry and debited once | [topup tsq frs] T4 a GP top-up the status inquiry says failed is released and moves nothing | n/a waits out the inquiry schedule | [topup frs] T6 the same Idempotency-Key twice tops up once and returns the same txnId | [topup frs] T7 a duplicate core commit of a top-up posts the money once | [topup frs] T8 a GP top-up uses the ocs fallback when gp-ocs is DOWN | [topup frs] T9 a limit is refused before any recharge and an insufficient balance moves nothing | [topup frs] T10 a top-up keeps the ledger identity; mid-saga restart is scripts/chaos.sh | n/a ticket 125 | n/a ticket 127 |
 | UC-09 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
-| UC-10 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-10 | [billpay frs] T1 a sslcommerz bill payment completes and debits the payer once | [billpay frs] T2 a sslcommerz refusal shows the mapped aggregator error and moves nothing | [billpay tsq frs] T3 a sslcommerz payment answered unknown is completed by status inquiry and debited once | [billpay tsq frs] T4 a sslcommerz payment the status inquiry says was not found is released and moves nothing | n/a waits out the inquiry schedule (aggregator read timeout 27s) | [billpay frs] T6 the same Idempotency-Key twice pays a sslcommerz bill once | [billpay frs] T7 a duplicate sslcommerz callback completes the payment once | [billpay frs] T8 a sslcommerz bill uses the billagg fallback when sslcommerz is DOWN | [billpay frs] T9 a limit is refused before any bill payment and an insufficient balance moves nothing | [billpay frs] T10 a sslcommerz payment keeps the ledger identity; mid-saga restart is scripts/chaos.sh | n/a ticket 125 | n/a ticket 127 |
 | UC-11 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-12 | [checkout frs] T1 two partial refunds return the money to the payer and each sends a signed refund IPN | [checkout frs] T2 a refund past the payment is refused with MW-CORE-REFUND_EXCEEDS and moves nothing | n/a no external partner (core only; ticket 116) | n/a no external partner (core only; ticket 116) | n/a no external partner (core only; ticket 116) | [checkout frs] T6 the same Idempotency-Key twice refunds once and another body is MW-IDEM-001 | n/a no external partner (core only; ticket 116) | n/a no external partner (core only; ticket 116) | [checkout frs] T9 a session that was never paid is not refunded and nothing moves | [checkout frs] T10 a refund keeps the ledger identity: what the merchant gives back the payer gets | n/a ticket 125 | n/a ticket 127 |
 | UC-13 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |

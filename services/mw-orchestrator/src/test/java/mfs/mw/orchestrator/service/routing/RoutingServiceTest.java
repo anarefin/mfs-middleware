@@ -90,6 +90,45 @@ class RoutingServiceTest {
         .isEqualTo(new Decision.Blocked("MW-SYS-PARTNER_DISABLED", "DESCO is under maintenance", "ডেসকো রক্ষণাবেক্ষণে আছে"));
   }
 
+  /**
+   * Ticket 114 (FRS PLT-032, T8): the catalogue rule names the biller's aggregator and its fallback.
+   * A DOWN primary is skipped before anything is sent. A payment the partner already answered, or
+   * whose outcome is unknown, is not a pre-send refusal, so it is not tried on the fallback.
+   */
+  @Test
+  void aDownCatalogueAggregatorIsSkippedForItsFallbackAndASentPayIsNotRetried() {
+    RoutingRule amberit = billerRule("bill-amberit", "AMBERIT", "sslcommerz", List.of("billagg"));
+    RoutingRule du = billerRule("bill-du", "DU", "agg3", List.of("ekpay"));
+    RoutingRule generic = rule("billpay", "BILL_PAY", null, null, null, "billagg", List.of(), 0, true);
+    List<RoutingRule> rules = List.of(generic, amberit, du);
+
+    RoutingSnapshot up = snapshot(rules);
+    assertThat(wires(routing.decide(query("BILL_PAY", null, null, "AMBERIT", 125_050, "CUSTOMER_APP"), up, NOW)))
+        .containsExactly("sslcommerz", "billagg");
+    assertThat(wires(routing.decide(query("BILL_PAY", null, null, "DU", 125_050, "CUSTOMER_APP"), up, NOW)))
+        .containsExactly("agg3", "ekpay");
+
+    RoutingSnapshot sslDown =
+        new RoutingSnapshot(rules, List.of(), List.of(), List.of(), java.util.Map.of("sslcommerz", "DOWN"));
+    assertThat(wires(routing.decide(query("BILL_PAY", null, null, "AMBERIT", 125_050, "CUSTOMER_APP"), sslDown, NOW)))
+        .containsExactly("billagg");
+
+    RoutingSnapshot agg3Down =
+        new RoutingSnapshot(rules, List.of(), List.of(), List.of(), java.util.Map.of("agg3", "MAINTENANCE"));
+    assertThat(wires(routing.decide(query("BILL_PAY", null, null, "DU", 125_050, "CUSTOMER_APP"), agg3Down, NOW)))
+        .containsExactly("ekpay");
+
+    assertThat(RoutingCatalog.preSendRefusal("MW-SYS-PARTNER_CIRCUIT_OPEN")).isTrue();
+    assertThat(RoutingCatalog.preSendRefusal("MW-SYS-PARTNER_UNAVAILABLE")).isTrue();
+    assertThat(RoutingCatalog.preSendRefusal("MW-TMO-PARTNER_TIMEOUT")).isFalse();
+    assertThat(RoutingCatalog.preSendRefusal("MW-PTR-SSLCOMMERZ-BILL_ALREADY_PAID")).isFalse();
+    assertThat(RoutingCatalog.preSendRefusal("MW-PTR-AGG3-PAYMENT_REFUSED")).isFalse();
+  }
+
+  private static RoutingRule billerRule(String id, String biller, String primary, List<String> fallbacks) {
+    return new RoutingRule(id, "BILL_PAY", null, biller, null, null, null, null, null, primary, fallbacks, 10, true, 1);
+  }
+
   private static List<String> wires(Decision decision) {
     assertThat(decision).isInstanceOf(Decision.Ready.class);
     return ((Decision.Ready) decision).attempts().stream().map(Attempt::wirePartnerId).toList();

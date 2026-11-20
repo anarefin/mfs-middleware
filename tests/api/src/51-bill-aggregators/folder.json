@@ -1,4 +1,4 @@
 {
   "name": "51 Bill aggregators",
-  "description": "Ticket 114 (FRS UC-10, EXT-10, MCK-02, MCK-08). The four aggregators sslcommerz (REST, HMAC + key id), ekpay (REST, OAuth2), agg3 (SOAP, WS-Security) and agg4 (REST envelope, Basic) are generated partner routes in mw-adapter-billpay; mw-simulators plays them with seeded, stateful bills (seed/v1/bills/<id>.csv). A paid bill is fetched as paid and refused; the party reset puts the seed back. Folders 06-billpay and 07-billpay-callback stay green."
+  "description": "Ticket 114 (FRS UC-10, EXT-10, MCK-02, MCK-08). The four aggregators sslcommerz (REST, HMAC + key id), ekpay (REST, OAuth2), agg3 (SOAP, WS-Security) and agg4 (REST envelope, Basic) are generated partner routes in mw-adapter-billpay; mw-simulators plays them with seeded, stateful bills (seed/v1/bills/<id>.csv). A paid bill is fetched as paid and refused; the party reset puts the seed back. T1-T4 and T6-T10 run against sslcommerz and, where the wire differs, agg3. T5 stays out of this folder: the generated aggregator read timeout is 27s. T11 and T12 stay n/a (tickets 125 and 127). Folders 06-billpay and 07-billpay-callback stay green."
 }

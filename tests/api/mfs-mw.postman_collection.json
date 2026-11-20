@@ -5776,7 +5776,7 @@
     },
     {
       "name": "51 Bill aggregators",
-      "description": "Ticket 114 (FRS UC-10, EXT-10, MCK-02, MCK-08). The four aggregators sslcommerz (REST, HMAC + key id), ekpay (REST, OAuth2), agg3 (SOAP, WS-Security) and agg4 (REST envelope, Basic) are generated partner routes in mw-adapter-billpay; mw-simulators plays them with seeded, stateful bills (seed/v1/bills/<id>.csv). A paid bill is fetched as paid and refused; the party reset puts the seed back. Folders 06-billpay and 07-billpay-callback stay green.",
+      "description": "Ticket 114 (FRS UC-10, EXT-10, MCK-02, MCK-08). The four aggregators sslcommerz (REST, HMAC + key id), ekpay (REST, OAuth2), agg3 (SOAP, WS-Security) and agg4 (REST envelope, Basic) are generated partner routes in mw-adapter-billpay; mw-simulators plays them with seeded, stateful bills (seed/v1/bills/<id>.csv). A paid bill is fetched as paid and refused; the party reset puts the seed back. T1-T4 and T6-T10 run against sslcommerz and, where the wire differs, agg3. T5 stays out of this folder: the generated aggregator read timeout is 27s. T11 and T12 stay n/a (tickets 125 and 127). Folders 06-billpay and 07-billpay-callback stay green.",
       "item": [
         {
           "name": "[billpay] every bill aggregator answers a seeded bill in its own wire format",
@@ -5787,7 +5787,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay] every bill aggregator answers a seeded bill in its own wire format\", eval(MW.forRun(\";(async (MW, S) => {\\n      const cases = [['AMBERIT', '1140000001', null, 125050], ['NESCO', '1140000001', '202611', 125050],\\n        ['DU', '1140000001', '202611', 125050], ['METLIFE', '1140000002', null, 48000]];\\n      for (const [biller, bill, month, minor] of cases) {\\n        const f = S.record(await MW.app.fetchBill('customer01', biller, bill, month));\\n        S.status(200);\\n        S.eq(biller + ' amount due', f.body.amount && f.body.amount.valueMinor, minor, String(f));\\n      }\\n      await S.noChange();\\n    })\")), null);"
+                  "MW.run(\"[billpay] every bill aggregator answers a seeded bill in its own wire format\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      const cases = [['AMBERIT', '1140000001', null, 125050], ['NESCO', '1140000001', '202611', 125050],\\n        ['DU', '1140000001', '202611', 125050], ['METLIFE', '1140000002', null, 48000]];\\n      for (const [biller, bill, month, minor] of cases) {\\n        const f = S.record(await MW.app.fetchBill('customer01', biller, bill, month));\\n        S.status(200);\\n        S.eq(biller + ' amount due', f.body.amount && f.body.amount.valueMinor, minor, String(f));\\n      }\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
@@ -5808,7 +5808,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay] a bill the aggregator holds as paid is a mapped aggregator error\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.record(await MW.app.fetchBill('customer01', 'AMBERIT', '1140000003', null));\\n      S.status(502);\\n      S.code('MW-PTR-SSLCOMMERZ-BILL_ALREADY_PAID');\\n      S.record(await MW.app.fetchBill('customer01', 'DU', '1140000003', '202611'));\\n      S.status(502);\\n      S.code('MW-PTR-AGG3-BILL_ALREADY_PAID');\\n    })\")), null);"
+                  "MW.run(\"[billpay] a bill the aggregator holds as paid is a mapped aggregator error\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      S.record(await MW.app.fetchBill('customer01', 'AMBERIT', '1140000003', null));\\n      S.status(502);\\n      S.code('MW-PTR-SSLCOMMERZ-BILL_ALREADY_PAID');\\n      S.record(await MW.app.fetchBill('customer01', 'DU', '1140000003', '202611'));\\n      S.status(502);\\n      S.code('MW-PTR-AGG3-BILL_ALREADY_PAID');\\n    })\")), null);"
                 ]
               }
             }
@@ -5829,7 +5829,364 @@
                 "type": "text/javascript",
                 "exec": [
                   "const MW = eval(pm.collectionVariables.get('lib'));",
-                  "MW.run(\"[billpay] a bill paid through sslcommerz completes and is then fetched as paid\", eval(MW.forRun(\";(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      const f = S.record(await MW.app.fetchBill('customer01', 'CARNIVAL', '1140000011', null));\\n      S.status(200);\\n      S.eq('the amount due is 320000 poisha', f.body.amount && f.body.amount.valueMinor, 320000, String(f));\\n      await S.billPay('customer01', 'CARNIVAL', '1140000011', 320000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.noHold('01711000001');\\n      S.record(await MW.app.fetchBill('customer01', 'CARNIVAL', '1140000011', null));\\n      S.status(502);\\n      S.code('MW-PTR-SSLCOMMERZ-BILL_ALREADY_PAID');\\n      await MW.mock.reset('sslcommerz');\\n    })\")), null);"
+                  "MW.run(\"[billpay] a bill paid through sslcommerz completes and is then fetched as paid\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      const f = S.record(await MW.app.fetchBill('customer01', 'CARNIVAL', '1140000011', null));\\n      S.status(200);\\n      S.eq('the amount due is 320000 poisha', f.body.amount && f.body.amount.valueMinor, 320000, String(f));\\n      await S.billPay('customer01', 'CARNIVAL', '1140000011', 320000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.noHold('01711000001');\\n      S.record(await MW.app.fetchBill('customer01', 'CARNIVAL', '1140000011', null));\\n      S.status(502);\\n      S.code('MW-PTR-SSLCOMMERZ-BILL_ALREADY_PAID');\\n      await MW.mock.reset('sslcommerz');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T1 a sslcommerz bill payment completes and debits the payer once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T1 a sslcommerz bill payment completes and debits the payer once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      await S.note(books());\\n      const f = S.record(await MW.app.fetchBill('customer01', 'CARNIVAL', '1140000011', null));\\n      S.status(200);\\n      S.eq('the amount due is 320000 poisha', f.body.amount && f.body.amount.valueMinor, 320000, String(f));\\n      await S.billPay('customer01', 'CARNIVAL', '1140000011', 320000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved(320000));\\n      await S.noHold('01711000001');\\n      await MW.mock.reset('sslcommerz');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T1 an agg3 SOAP bill payment completes and debits the payer once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T1 an agg3 SOAP bill payment completes and debits the payer once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('agg3');\\n      await S.note(books());\\n      const f = S.record(await MW.app.fetchBill('customer01', 'DU', '1140000001', '202611'));\\n      S.status(200);\\n      S.eq('the amount due is 125050 poisha', f.body.amount && f.body.amount.valueMinor, 125050, String(f));\\n      await S.billPay('customer01', 'DU', '1140000001', 125050, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved(125050));\\n      await S.noHold('01711000001');\\n      await MW.mock.reset('agg3');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T2 a sslcommerz refusal shows the mapped aggregator error and moves nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T2 a sslcommerz refusal shows the mapped aggregator error and moves nothing\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      S.after(() => MW.mock.reset('sslcommerz'));\\n      await MW.mockScenario('sslcommerz', 'pay', 'BUSINESS_ERROR', { code: 'E103', nextN: 1 });\\n      await S.note(books());\\n      await S.billPay('customer01', 'AMBERIT', '1140000002', 48000, MW.pin);\\n      S.status(502);\\n      S.code('MW-PTR-SSLCOMMERZ-PAYMENT_REFUSED');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T2 an agg3 SOAP refusal shows the mapped aggregator error and moves nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T2 an agg3 SOAP refusal shows the mapped aggregator error and moves nothing\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('agg3');\\n      S.after(() => MW.mock.reset('agg3'));\\n      await MW.mockScenario('agg3', 'pay', 'BUSINESS_ERROR', { code: 'A3-03', nextN: 1 });\\n      await S.note(books());\\n      await S.billPay('customer01', 'DU', '1140000002', 48000, MW.pin);\\n      S.status(502);\\n      S.code('MW-PTR-AGG3-PAYMENT_REFUSED');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay tsq frs] T3 a sslcommerz payment answered unknown is completed by status inquiry and debited once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay tsq frs] T3 a sslcommerz payment answered unknown is completed by status inquiry and debited once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      S.after(() => MW.mock.reset('sslcommerz'));\\n      await MW.mockScenario('sslcommerz', 'pay', 'HTTP_5XX', { nextN: 1 });\\n      await S.note(books());\\n      await S.billPay('customer01', 'AMBERIT', '1140000001', 125050, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await driveInquiry(MW, S);\\n      const done = await MW.waitForState(S.txnId(), ['COMPLETED'], 20000);\\n      S.eq('the driven inquiry completed it', done.body && done.body.status, 'COMPLETED', String(done));\\n      await S.changedBy(moved(125050));\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay tsq frs] T3 an agg3 payment answered unknown is completed by status inquiry and debited once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay tsq frs] T3 an agg3 payment answered unknown is completed by status inquiry and debited once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('agg3');\\n      S.after(() => MW.mock.reset('agg3'));\\n      await MW.mockScenario('agg3', 'pay', 'HTTP_5XX', { nextN: 1 });\\n      await S.note(books());\\n      await S.billPay('customer01', 'BUET', '1140000011', 320000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await driveInquiry(MW, S);\\n      const done = await MW.waitForState(S.txnId(), ['COMPLETED'], 20000);\\n      S.eq('the driven inquiry completed it', done.body && done.body.status, 'COMPLETED', String(done));\\n      await S.changedBy(moved(320000));\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay tsq frs] T4 a sslcommerz payment the status inquiry says was not found is released and moves nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay tsq frs] T4 a sslcommerz payment the status inquiry says was not found is released and moves nothing\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      S.after(() => MW.mock.reset('sslcommerz'));\\n      await MW.mockScenario('sslcommerz', 'pay', 'HTTP_5XX', { nextN: 1 });\\n      await MW.mockScenario('sslcommerz', 'status', 'HTTP_5XX', { httpStatus: 404, nextN: 1 });\\n      await S.note(books());\\n      await S.billPay('customer01', 'AMBERIT', '1140000002', 48000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await driveInquiry(MW, S);\\n      const done = await MW.waitForState(S.txnId(), ['FAILED'], 20000);\\n      S.eq('the driven inquiry failed it', done.body && done.body.status, 'FAILED', String(done));\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay tsq frs] T4 an agg3 payment the status inquiry says was not found is released and moves nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay tsq frs] T4 an agg3 payment the status inquiry says was not found is released and moves nothing\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('agg3');\\n      S.after(() => MW.mock.reset('agg3'));\\n      await MW.mockScenario('agg3', 'pay', 'HTTP_5XX', { nextN: 1 });\\n      await MW.mockScenario('agg3', 'status', 'HTTP_5XX', { httpStatus: 404, nextN: 1 });\\n      await S.note(books());\\n      await S.billPay('customer01', 'DU', '1140000002', 48000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await driveInquiry(MW, S);\\n      const done = await MW.waitForState(S.txnId(), ['FAILED'], 20000);\\n      S.eq('the driven inquiry failed it', done.body && done.body.status, 'FAILED', String(done));\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T6 the same Idempotency-Key twice pays a sslcommerz bill once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T6 the same Idempotency-Key twice pays a sslcommerz bill once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      await S.note(books());\\n      await S.billPay('customer01', 'AMBERIT', '1140000001', 125050, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved(125050));\\n      await MW.mock.reset('sslcommerz');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T6 the same Idempotency-Key twice pays an agg3 bill once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T6 the same Idempotency-Key twice pays an agg3 bill once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('agg3');\\n      await S.note(books());\\n      await S.billPay('customer01', 'DU', '1140000001', 125050, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved(125050));\\n      await MW.mock.reset('agg3');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T7 a duplicate sslcommerz callback completes the payment once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T7 a duplicate sslcommerz callback completes the payment once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      S.after(() => MW.mock.reset('sslcommerz'));\\n      await duplicateCallbacks(MW, 'sslcommerz');\\n      await S.note(books());\\n      await S.billPay('customer01', 'AMBERIT', '1140000002', 48000, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      await S.changedBy(moved(48000));\\n      await S.noHold('01711000001');\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T7 a duplicate agg3 callback completes the payment once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T7 a duplicate agg3 callback completes the payment once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('agg3');\\n      S.after(() => MW.mock.reset('agg3'));\\n      await duplicateCallbacks(MW, 'agg3');\\n      await S.note(books());\\n      await S.billPay('customer01', 'DU', '1140000002', 48000, MW.pin);\\n      await S.appShows('COMPLETED', 25);\\n      await S.changedBy(moved(48000));\\n      await S.noHold('01711000001');\\n      await S.appShows('COMPLETED');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T8 a sslcommerz bill uses the billagg fallback when sslcommerz is DOWN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T8 a sslcommerz bill uses the billagg fallback when sslcommerz is DOWN\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      S.after(async () => {\\n        await MW.mock.reset('sslcommerz');\\n        await MW.mockSwitch('sslcommerz', 'UP');\\n      });\\n      const sslAt = await journalSince(MW, 'sslcommerz');\\n      const aggAt = await journalSince(MW, 'billagg');\\n      await MW.mockSwitch('sslcommerz', 'DOWN');\\n      await untilHealth(MW, S, 'sslcommerz', 'DOWN');\\n      await S.note(books());\\n      const f = S.record(await MW.app.fetchBill('customer01', 'AMBERIT', '1140000001', null));\\n      S.status(200);\\n      S.eq('the fallback computed 10100 poisha', f.body.amount && f.body.amount.valueMinor, 10100, String(f));\\n      await S.billPay('customer01', 'AMBERIT', '1140000001', 10100, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved(10100));\\n      const ssl = (await MW.mockJournal('sslcommerz', { path: 'payments' })).filter(r => (r.seq || 0) > sslAt);\\n      const agg = (await MW.mockJournal('billagg', { path: 'payments' })).filter(r => (r.seq || 0) > aggAt);\\n      S.eq('sslcommerz was not paid', ssl.length, 0, ssl);\\n      S.eq('billagg was paid once', agg.length, 1, agg);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T8 an agg3 bill uses the ekpay fallback when agg3 is DOWN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T8 an agg3 bill uses the ekpay fallback when agg3 is DOWN\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('agg3');\\n      await MW.mock.reset('ekpay');\\n      S.after(async () => {\\n        await MW.mock.reset('agg3');\\n        await MW.mockSwitch('agg3', 'UP');\\n        await MW.mock.reset('ekpay');\\n      });\\n      const soapAt = await journalSince(MW, 'agg3');\\n      const ekAt = await journalSince(MW, 'ekpay');\\n      await MW.mockSwitch('agg3', 'DOWN');\\n      await untilHealth(MW, S, 'agg3', 'DOWN');\\n      await S.note(books());\\n      const f = S.record(await MW.app.fetchBill('customer01', 'DU', '1140000001', '202611'));\\n      S.status(200);\\n      S.eq('ekpay has the same 125050 poisha bill', f.body.amount && f.body.amount.valueMinor, 125050, String(f));\\n      await S.billPay('customer01', 'DU', '1140000001', 125050, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved(125050));\\n      const soap = (await MW.mockJournal('agg3', { path: 'v1/soap', contains: 'PayBill' })).filter(r => (r.seq || 0) > soapAt);\\n      const ek = (await MW.mockJournal('ekpay', { path: 'payments' })).filter(r => (r.seq || 0) > ekAt);\\n      S.eq('agg3 was not paid', soap.length, 0, soap);\\n      S.eq('ekpay was paid once', ek.length, 1, ek);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T9 a limit is refused before any bill payment and an insufficient balance moves nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T9 a limit is refused before any bill payment and an insufficient balance moves nothing\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      await S.note(books());\\n      const since = await journalSince(MW, 'sslcommerz');\\n      const over = S.record(await MW.app.preview('customer01', 'bill-pay', {\\n        creditParty: { type: 'BILLER_ACCOUNT', id: '1140000001' },\\n        partner: { billerCode: 'AMBERIT' },\\n        amount: { valueMinor: 600000, currency: 'BDT' },\\n      }));\\n      S.status(422, over);\\n      S.code('MW-CORE-LIMIT_EXCEEDED_PER_TXN', over);\\n      const pays = (await MW.mockJournal('sslcommerz', { path: 'payments' })).filter(r => (r.seq || 0) > since);\\n      S.eq('the limit stopped it before a payment', pays.length, 0, pays);\\n      await S.noChange();\\n\\n      const payer = '01711000001';\\n      const was = await MW.coreBalance(payer);\\n      S.after(async () => {\\n        await MW.http('PUT', '/test/core-mock/v1/wallets/' + payer, { apikey: true, json: {\\n          type: 'CUSTOMER', openingBalanceMinor: was.balanceMinor, balanceMinor: was.availableMinor,\\n        } });\\n      });\\n      const set = await MW.http('PUT', '/test/core-mock/v1/wallets/' + payer, { apikey: true, json: {\\n        type: 'CUSTOMER', openingBalanceMinor: was.balanceMinor, balanceMinor: 100,\\n      } });\\n      S.status(200, set);\\n      await S.note(books());\\n      await S.billPay('customer01', 'AMBERIT', '1140000001', 125050, MW.pin);\\n      S.status(422);\\n      S.code('MW-CORE-INSUFFICIENT_BALANCE');\\n      await S.noChange();\\n      await MW.mock.reset('sslcommerz');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay frs] T10 a sslcommerz payment keeps the ledger identity; mid-saga restart is scripts/chaos.sh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay frs] T10 a sslcommerz payment keeps the ledger identity; mid-saga restart is scripts/chaos.sh\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE']);\\n      await S.billPay('customer01', 'CARNIVAL', '1140000011', 320000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy({\\n        '01711000001': -320300, 'SETTLEMENT': 320000, 'FEE_INCOME': 261, 'VAT_PAYABLE': 39, 'COMMISSION_PAYABLE': 0,\\n      });\\n      const d = await S.deltas();\\n      S.eq('debits equal credits', -d['01711000001'], d.SETTLEMENT + d.FEE_INCOME + d.VAT_PAYABLE + d.COMMISSION_PAYABLE);\\n      await MW.mock.reset('sslcommerz');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay reversal frs] a second reverse of a completed sslcommerz payment reverses the aggregator once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay reversal frs] a second reverse of a completed sslcommerz payment reverses the aggregator once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME'];\\n  }\\nfunction moved(amount) {\\n    return { '01711000001': -(amount + 300), 'SETTLEMENT': amount, 'FEE_INCOME': 261 };\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function duplicateCallbacks(MW, partner) {\\n    await MW.http('PUT', '/test/mock-control/' + partner + '/settings', {\\n      apikey: true,\\n      json: {\\n        callbackUrl: 'http://apisix:9080/partner/' + partner + '/callback/payments',\\n        callbackOnly: true,\\n      },\\n    });\\n    await MW.mockScenario(partner, null, 'DUPLICATE_CALLBACK', { nextN: 1 });\\n  }\\n;(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      S.after(() => MW.mock.reset('sslcommerz'));\\n      await S.note(books());\\n      await S.billPay('customer01', 'AMBERIT', '1140000002', 48000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      const at = await journalSince(MW, 'sslcommerz');\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('REVERSED', 30);\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('REVERSED', 30);\\n      const reverses = (await MW.mockJournal('sslcommerz', { path: 'reverse' })).filter(r => (r.seq || 0) > at);\\n      S.eq('the aggregator was reversed once', reverses.length, 1, reverses);\\n      await S.noChange();\\n    })\")), null);"
                 ]
               }
             }
