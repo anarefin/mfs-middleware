@@ -1,0 +1,69 @@
+# mw-classify (ADR D28, ticket 82): the partner's answer to the route result, fail closed, checked
+# against the result schema.
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-classify
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW classify
+    description: >-
+      Maps the partner's {status, body} with the record's response mapping to {outcome, partnerRef,
+      code, message, reason}, then applies the rules no mapping can override: SUCCESS and PENDING need a
+      2xx and a partner reference, FAILED a code and one of definiteStatuses (the record's ambiguousCodes
+      make it AMBIGUOUS, its errorMap gives the canonical suffix), NOT_FOUND a STATUS_QUERY; anything else
+      is UNKNOWN. The result is checked with json-validator against
+      classpath:partner/partner-result.schema.json; a result that fails is UNKNOWN MALFORMED_REPLY. An
+      outcome mw-http-call already decided passes unchanged. Output: the route result JSON.
+    type: object
+    required: [mapping, partnerId]
+    properties:
+      mapping:
+        title: Response mapping
+        description: Name of the record's mapping, e.g. PAY.response.
+        type: string
+      definiteStatuses:
+        title: Definite statuses
+        description: Comma-separated HTTP statuses whose FAILED and NOT_FOUND answers are believed.
+        type: string
+        default: ""
+      pending:
+        title: Pending allowed
+        description: True for a partner that acknowledges first and calls back with the outcome.
+        type: boolean
+        default: false
+      partnerId:
+        title: Partner id
+        description: Set by the route loader.
+        type: string
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - setProperty:
+            name: mwMapping
+            constant: "{{mapping}}"
+        - setProperty:
+            name: mwDefiniteStatuses
+            constant: "{{definiteStatuses}}"
+        - setProperty:
+            name: mwAllowPending
+            constant: "{{pending}}"
+        - bean:
+            ref: mwClassify
+            method: classify
+        - doTry:
+            steps:
+              - to: "json-validator:classpath:partner/partner-result.schema.json"
+            doCatch:
+              - exception:
+                  - java.lang.Exception
+                steps:
+                  - bean:
+                      ref: mwClassify
+                      method: malformed
