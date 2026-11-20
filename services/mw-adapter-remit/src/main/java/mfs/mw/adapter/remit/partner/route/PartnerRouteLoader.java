@@ -104,10 +104,10 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 @Component
 public class PartnerRouteLoader {
 
-  /** Kamelet parameters that end up in the HTTP request: no {@code % ? & #}, before or after decoding. */
   /** The client secret a dry-run candidate's OAuth2 token request sends (M9 review, ticket 139). */
   public static final String DRY_RUN_CLIENT_SECRET = "dry-run-client-secret";
 
+  /** Kamelet parameters that end up in the HTTP request: no {@code % ? & #}, before or after decoding. */
   static final Set<String> STRICT_PARAMS = Set.of("url", "path", "authHeader", "keyId", "method", "auth", "secretField",
       "userField", "tokenUrl", "clientId", "scope", "audience", "alg", "sslContextRef");
 
