@@ -9,6 +9,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import javax.xml.parsers.ParserConfigurationException;
@@ -18,9 +19,10 @@ import mfs.mw.portal.api.dto.ErrorDetail;
 import mfs.mw.portal.api.exception.MwException;
 import org.apache.poi.openxml4j.exceptions.OpenXML4JException;
 import org.apache.poi.openxml4j.opc.OPCPackage;
+import org.apache.poi.openxml4j.opc.PackagePart;
 import org.apache.poi.util.XMLHelper;
-import org.apache.poi.xssf.eventusermodel.ReadOnlySharedStringsTable;
 import org.apache.poi.xssf.eventusermodel.XSSFReader;
+import org.apache.poi.xssf.usermodel.XSSFRelation;
 import org.xml.sax.Attributes;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
@@ -33,7 +35,8 @@ import org.xml.sax.helpers.DefaultHandler;
  * comes from outside: the ZIP is first inflated into nothing with a cap on entries and inflated
  * bytes (zip bomb guard), a workbook with an external link part is refused, the sheet is read
  * with a SAX parser (never the POI user model) and stops after the row and cell caps, cell text is
- * cut at {@link #MAX_CELL_CHARS}, and a formula anywhere is refused, never evaluated (its cached
+ * cut at {@link #MAX_CELL_CHARS}, the shared strings are read with their own SAX parser under a
+ * count cap, numbers are expanded only when small ({@link #plainNumber}), and a formula anywhere is refused, never evaluated (its cached
  * result is not trusted either). Cell values: shared and inline strings as text, numbers in plain
  * decimal notation ({@code 1500.5}, {@code 10000000}), booleans {@code TRUE}/{@code FALSE}. Line
  * numbers are the sheet's row numbers (header = row 1).
@@ -43,6 +46,9 @@ final class BulkXlsxReader {
   static final int MAX_ZIP_ENTRIES = 1_000;
   static final long MAX_INFLATED_BYTES = 64L * 1024 * 1024;
   static final int MAX_CELL_CHARS = 256;
+  static final int MAX_SCALE = 20;
+  static final int MAX_PRECISION = 30;
+  private static final Pattern NUMBER = Pattern.compile("-?[0-9]{1,30}(?:\\.[0-9]{1,30})?(?:[eE][+-]?[0-9]{1,2})?");
   /** Columns kept per row; a value further right only makes the row "too wide". */
   private static final int KEPT_COLUMNS = 4;
 
@@ -56,12 +62,11 @@ final class BulkXlsxReader {
     preScan(file);
     SheetHandler sheet = new SheetHandler();
     try (OPCPackage pkg = OPCPackage.open(new ByteArrayInputStream(file))) {
-      ReadOnlySharedStringsTable strings = new ReadOnlySharedStringsTable(pkg);
+      sheet.strings = sharedStrings(pkg);
       Iterator<InputStream> sheets = new XSSFReader(pkg).getSheetsData();
       if (!sheets.hasNext()) {
         throw notAWorkbook();
       }
-      sheet.strings = strings;
       try (InputStream in = sheets.next()) {
         XMLReader reader = XMLHelper.newXMLReader();
         reader.setContentHandler(sheet);
@@ -75,6 +80,80 @@ final class BulkXlsxReader {
       throw notAWorkbook();
     }
     return BulkRowValidator.validate(sheet.header, sheet.rows, maxRows);
+  }
+
+  /**
+   * The workbook's shared strings, read with a SAX parser (never POI's table, which loads them
+   * all): at most {@link #maxSharedStrings()} entries, else {@code MW-VAL-030}, each cut at {@link
+   * #MAX_CELL_CHARS} while parsing; phonetic runs ({@code rPh}) are skipped. None when the part is
+   * absent.
+   */
+  private List<String> sharedStrings(OPCPackage pkg)
+      throws IOException, SAXException, ParserConfigurationException {
+    List<PackagePart> parts = pkg.getPartsByContentType(XSSFRelation.SHARED_STRINGS.getContentType());
+    if (parts.isEmpty()) {
+      return List.of();
+    }
+    SharedStringsHandler handler = new SharedStringsHandler(maxSharedStrings());
+    try (InputStream in = parts.get(0).getInputStream()) {
+      XMLReader reader = XMLHelper.newXMLReader();
+      reader.setContentHandler(handler);
+      reader.parse(new InputSource(in));
+    }
+    return handler.strings;
+  }
+
+  /** Shared strings a valid file can need: a few per row (header and three columns). */
+  private long maxSharedStrings() {
+    return (long) (maxRows + 1) * 4;
+  }
+
+  private final class SharedStringsHandler extends DefaultHandler {
+
+    final List<String> strings = new ArrayList<>();
+    private final long max;
+    private StringBuilder text;
+    private boolean capture;
+    private int phonetic;
+
+    SharedStringsHandler(long max) {
+      this.max = max;
+    }
+
+    @Override
+    public void startElement(String uri, String localName, String qName, Attributes atts) {
+      switch (name(localName, qName)) {
+        case "si" -> {
+          if (strings.size() >= max) {
+            throw new Stop(BulkRowValidator.tooLarge("File has more shared strings than " + max));
+          }
+          text = new StringBuilder();
+        }
+        case "rPh" -> phonetic++;
+        case "t" -> capture = text != null && phonetic == 0;
+        default -> { }
+      }
+    }
+
+    @Override
+    public void characters(char[] ch, int start, int length) {
+      if (capture && text.length() < MAX_CELL_CHARS) {
+        text.append(ch, start, Math.min(length, MAX_CELL_CHARS - text.length()));
+      }
+    }
+
+    @Override
+    public void endElement(String uri, String localName, String qName) {
+      switch (name(localName, qName)) {
+        case "t" -> capture = false;
+        case "rPh" -> phonetic--;
+        case "si" -> {
+          strings.add(text.toString());
+          text = null;
+        }
+        default -> { }
+      }
+    }
   }
 
   /** Inflates every entry once, counting: too many entries or bytes, or an external link, refuse. */
@@ -125,7 +204,7 @@ final class BulkXlsxReader {
 
   private final class SheetHandler extends DefaultHandler {
 
-    ReadOnlySharedStringsTable strings;
+    List<String> strings;
     List<String> header;
     final List<BulkRecord> rows = new ArrayList<>();
 
@@ -217,11 +296,7 @@ final class BulkXlsxReader {
 
     private String value(String raw) {
       if (type == null || type.equals("n")) {
-        try {
-          return new BigDecimal(raw.strip()).stripTrailingZeros().toPlainString();
-        } catch (NumberFormatException e) {
-          return raw;
-        }
+        return plainNumber(raw.strip());
       }
       return switch (type) {
         case "s" -> sharedString(raw);
@@ -232,8 +307,7 @@ final class BulkXlsxReader {
 
     private String sharedString(String raw) {
       try {
-        String s = strings.getItemAt(Integer.parseInt(raw.strip())).getString();
-        return s.length() > MAX_CELL_CHARS ? s.substring(0, MAX_CELL_CHARS) : s;
+        return strings.get(Integer.parseInt(raw.strip()));
       } catch (RuntimeException e) {
         throw new Stop(notAWorkbook());
       }
@@ -242,6 +316,24 @@ final class BulkXlsxReader {
     private MwException oversize() {
       return BulkRowValidator.tooLarge("File has more than " + maxRows + " rows (or too many cells)");
     }
+  }
+
+  /**
+   * A numeric cell in plain decimal notation ({@code 9.87654321E8} -> {@code 987654321}), only
+   * when it is small: the raw text must match {@link #NUMBER} (an exponent of at most 2 digits) and
+   * the value have a scale within +-{@link #MAX_SCALE} and at most {@link #MAX_PRECISION} digits.
+   * Anything else keeps its raw text, which then fails the amount or MSISDN rule; a value like
+   * {@code 1E999999999} is never expanded (it would take the heap).
+   */
+  static String plainNumber(String raw) {
+    if (!NUMBER.matcher(raw).matches()) {
+      return raw;
+    }
+    BigDecimal value = new BigDecimal(raw);
+    if (Math.abs(value.scale()) > MAX_SCALE || value.precision() > MAX_PRECISION) {
+      return raw;
+    }
+    return value.stripTrailingZeros().toPlainString();
   }
 
   private static String name(String localName, String qName) {

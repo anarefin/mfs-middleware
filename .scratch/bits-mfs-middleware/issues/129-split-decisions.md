@@ -9,7 +9,9 @@ for one part. Split by seam, each part shippable on its own and leaving the live
   `BulkRowValidator`; upload `POST /portal/org/v1/bulk/batches` accepts `text/csv` and the XLSX media type; the
   all-or-nothing rule is kept (no state machine change yet, so the test console, Playwright `@bulk` and the Newman
   folders are unchanged). Bounds: zip pre-scan (<= 1000 entries, <= 64 MiB inflated), external-link part refused,
-  formula refused (never evaluated), row cap = `bulk.max-rows`, cell cap (rows+1)*32, cell text cut at 256 chars.
+  formula refused (never evaluated), row cap = `bulk.max-rows`, cell cap (rows+1)*32, cell text cut at 256 chars,
+  shared strings by an own SAX handler capped at (rows+1)*4 entries, numbers expanded only when small (security
+  review fix: `1E999999999` exhausted the heap through BigDecimal).
   Contract `portal-org.v1` upload: XLSX media type + rules. Tests `BulkFileParserTest`, `BulkBatchControllerTest`
   (format by Content-Type), `BulkBatchApiIT.anXlsxUploadIsStoredLikeTheSameCsv`.
 - **129b-bulk-preview** (129a): status `PREVIEW` on upload with totals, valid/invalid rows and per-row error codes

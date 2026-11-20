@@ -37,7 +37,10 @@ paths:
         text (a number loses its leading 0). Numbers are read in plain decimal notation. A formula
         anywhere is 400 MW-VAL-031 (never evaluated), as are an external link and a file that is
         not a workbook (`field` `file`); more rows or cells than the caps, or a workbook that
-        inflates beyond 64 MiB, is 400 MW-VAL-030. Cell text is read up to 256 characters.
+        inflates beyond 64 MiB, or holds more than 4 shared strings per allowed row, is 400
+        MW-VAL-030. Cell text is read up to 256 characters. A number with an exponent of more
+        than 2 digits, more than 30 digits or more than 20 decimals is kept as typed and fails
+        the amount rule.
       parameters:
         - $ref: "#/components/parameters/CorrelationId"
       requestBody:

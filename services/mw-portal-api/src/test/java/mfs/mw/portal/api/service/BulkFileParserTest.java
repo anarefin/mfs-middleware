@@ -182,6 +182,69 @@ class BulkFileParserTest {
     assertThat(e.code()).isEqualTo("MW-VAL-030");
   }
 
+  /** Rewrites one entry of a workbook, replacing {@code from} by {@code to} in its text. */
+  static byte[] rewrite(byte[] xlsx, String entry, String from, String to) throws IOException {
+    ByteArrayOutputStream out = new ByteArrayOutputStream();
+    try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(xlsx));
+        ZipOutputStream zip = new ZipOutputStream(out)) {
+      for (ZipEntry e = in.getNextEntry(); e != null; e = in.getNextEntry()) {
+        zip.putNextEntry(new ZipEntry(e.getName()));
+        byte[] data = in.readAllBytes();
+        if (e.getName().equals(entry)) {
+          String text = new String(data, StandardCharsets.UTF_8);
+          assertThat(text).contains(from);
+          data = text.replace(from, to).getBytes(StandardCharsets.UTF_8);
+        }
+        zip.write(data);
+        zip.closeEntry();
+      }
+    }
+    return out.toByteArray();
+  }
+
+  @Test
+  void aHugeExponentNumberIsNotExpandedAndFailsAsAnAmount() throws IOException {
+    byte[] file;
+    try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+      Sheet sheet = wb.createSheet();
+      Row h = sheet.createRow(0);
+      h.createCell(0).setCellValue("msisdn");
+      h.createCell(1).setCellValue("amount");
+      h.createCell(2).setCellValue("reference");
+      Row r = sheet.createRow(1);
+      r.createCell(0).setCellValue("01711000001");
+      r.createCell(1).setCellValue(987654321d);
+      r.createCell(2).setCellValue("R1");
+      wb.write(out);
+      file = out.toByteArray();
+    }
+    byte[] hostile = rewrite(file, "xl/worksheets/sheet1.xml", "<v>9.87654321E8</v>", "<v>1E999999999</v>");
+    MwException e =
+        org.junit.jupiter.api.Assertions.assertTimeoutPreemptively(
+            java.time.Duration.ofSeconds(2), () -> rejected(hostile, BulkFileFormat.XLSX));
+    assertThat(e.code()).isEqualTo("MW-VAL-031");
+    assertThat(e.details()).extracting(ErrorDetail::field).containsExactly("line 2: amount");
+  }
+
+  @Test
+  void anOversizedSharedStringsTableIsRefusedAsTooLarge() throws IOException {
+    byte[] file;
+    try (XSSFWorkbook wb = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+      Sheet sheet = wb.createSheet();
+      Row h = sheet.createRow(0);
+      h.createCell(0).setCellValue("msisdn");
+      h.createCell(1).setCellValue("amount");
+      h.createCell(2).setCellValue("reference");
+      Sheet hidden = wb.createSheet("hidden");
+      for (int i = 0; i < 200; i++) {
+        hidden.createRow(i).createCell(0).setCellValue("filler-" + i);
+      }
+      wb.write(out);
+      file = out.toByteArray();
+    }
+    assertThat(rejected(file, BulkFileFormat.XLSX).code()).isEqualTo("MW-VAL-030");
+  }
+
   @Test
   void aWorkbookWithAnExternalLinkIsRefused() throws IOException {
     byte[] plain = xlsx(row("msisdn", "amount", "reference"), row("01711000001", "1.00", "R1"));

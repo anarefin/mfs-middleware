@@ -48,7 +48,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   entries, 64 MiB inflated, else `MW-VAL-030`), an `xl/externalLinks/` part refused, then the first
   sheet through POI's SAX reader (never the user model): a formula anywhere `MW-VAL-031` (never
   evaluated), more data rows than `bulk.max-rows` or more than (rows+1)*32 cells `MW-VAL-030`, cell
-  text cut at 256 chars, numbers in plain decimal notation, `line` = the sheet row; not a workbook
+  text cut at 256 chars; shared strings read by their own SAX handler, at most (rows+1)*4 entries
+  (else `MW-VAL-030`), each cut at 256 chars (never POI's whole table); a number in plain decimal
+  notation only when small (exponent of at most 2 digits, scale within +-20, at most 30 digits),
+  else its raw text, which fails the amount rule (`1E999999999` is never expanded); `line` = the
+  sheet row; not a workbook
   `MW-VAL-031` field `file`. Rules (both formats): header
   `msisdn,amount,reference`, MSISDN in any accepted form (`util/Msisdn`, stored canonical), amount in
   taka > 0 with at most 2 decimals (stored in poisha), reference `[A-Za-z0-9._-]{1,32}` unique in
