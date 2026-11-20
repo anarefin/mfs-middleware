@@ -205,6 +205,57 @@
               "maxLength": 512
             }
           }
+        },
+        "maintenance": {
+          "type": "boolean"
+        },
+        "healthCheck": {
+          "type": "boolean"
+        },
+        "maintenanceWindow": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start": {
+              "type": "string"
+            },
+            "end": {
+              "type": "string"
+            },
+            "messageEn": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "messageBn": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          }
+        },
+        "endpoint": {
+          "type": "string",
+          "enum": [
+            "MOCK",
+            "REAL"
+          ]
+        },
+        "endpoints": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "MOCK": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 512
+            },
+            "REAL": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 512
+            }
+          }
         }
       }
     }

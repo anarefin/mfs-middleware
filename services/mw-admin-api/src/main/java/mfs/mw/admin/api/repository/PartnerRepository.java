@@ -28,10 +28,13 @@ public class PartnerRepository {
   private static final TypeReference<List<String>> LIST = new TypeReference<>() {};
   private static final TypeReference<PartnerConfigValue.DryRun> DRY_RUN = new TypeReference<>() {};
   private static final TypeReference<Map<String, Object>> VALUE = new TypeReference<>() {};
+  private static final TypeReference<PartnerConfigValue.MaintenanceWindow> WINDOW = new TypeReference<>() {};
 
   private static final String SELECT =
       "select p.id, p.family, p.enabled, p.connect_timeout_ms, p.timeout_ms, p.read_timeout_ms,"
           + " p.ambiguous_codes::text as ambiguous_codes, p.sensitive_fields::text as sensitive_fields, p.resilience,"
+          + " p.maintenance, p.health_check, p.maintenance_window::text as maintenance_window,"
+          + " e.endpoint_profile, e.endpoints::text as endpoints,"
           + " p.version, p.updated_at, p.updated_by, p.approved_by, e.headers::text as headers,"
           + " e.auth_scheme, e.credentials_ref, e.auth_params::text as auth_params"
           + " from partner.partner p left join partner.endpoint e on e.partner_id = p.id";
@@ -63,10 +66,12 @@ public class PartnerRepository {
     PartnerConfigValue c = p.config();
     jdbc.update(
         "insert into partner.partner (id, family, enabled, connect_timeout_ms, timeout_ms, read_timeout_ms,"
-            + " ambiguous_codes, sensitive_fields, resilience, version, updated_at, updated_by, approved_by)"
-            + " values (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?)",
+            + " ambiguous_codes, sensitive_fields, resilience, maintenance, health_check, maintenance_window, version,"
+            + " updated_at, updated_by, approved_by)"
+            + " values (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?::jsonb, ?, ?, ?, ?)",
         p.id(), p.family(), c.isEnabled(), c.connectTimeoutMs(), c.timeoutMs(), c.readTimeoutMs(),
-        jsonOrNull(c.ambiguousCodes()), jsonOrNull(c.sensitiveFields()), c.resilience(), p.version(),
+        jsonOrNull(c.ambiguousCodes()), jsonOrNull(c.sensitiveFields()), c.resilience(), c.maintenance(),
+        c.healthCheck(), jsonOrNull(c.maintenanceWindow()), p.version(),
         Timestamp.from(p.updatedAt()), p.updatedBy(), p.approvedBy());
     insertChildren(p);
   }
@@ -82,9 +87,11 @@ public class PartnerRepository {
         jdbc.update(
             "update partner.partner set enabled = ?, connect_timeout_ms = ?, timeout_ms = ?,"
                 + " read_timeout_ms = ?, ambiguous_codes = ?::jsonb, sensitive_fields = ?::jsonb, resilience = ?,"
+                + " maintenance = ?, health_check = ?, maintenance_window = ?::jsonb,"
                 + " version = ?, updated_at = ?, updated_by = ?, approved_by = ? where id = ? and version = ?",
             c.isEnabled(), c.connectTimeoutMs(), c.timeoutMs(), c.readTimeoutMs(),
-            jsonOrNull(c.ambiguousCodes()), jsonOrNull(c.sensitiveFields()), c.resilience(), p.version(),
+            jsonOrNull(c.ambiguousCodes()), jsonOrNull(c.sensitiveFields()), c.resilience(), c.maintenance(),
+            c.healthCheck(), jsonOrNull(c.maintenanceWindow()), p.version(),
             Timestamp.from(p.updatedAt()), p.updatedBy(), p.approvedBy(), p.id(), expectedVersion);
     if (n != 1) {
       return false;
@@ -198,10 +205,11 @@ public class PartnerRepository {
     PartnerConfigValue c = p.config();
     PartnerConfigValue.Auth auth = c.auth();
     jdbc.update(
-        "insert into partner.endpoint (partner_id, headers, auth_scheme, credentials_ref, auth_params)"
-            + " values (?, ?::jsonb, ?, ?, ?::jsonb)",
+        "insert into partner.endpoint (partner_id, headers, auth_scheme, credentials_ref, auth_params, endpoint_profile,"
+            + " endpoints) values (?, ?::jsonb, ?, ?, ?::jsonb, ?, ?::jsonb)",
         p.id(), jsonOrNull(c.headers()), auth == null ? null : auth.scheme(),
-        auth == null ? null : auth.credentialsRef(), auth == null ? null : jsonOrNull(auth.params()));
+        auth == null ? null : auth.credentialsRef(), auth == null ? null : jsonOrNull(auth.params()), c.endpoint(),
+        jsonOrNull(c.endpoints()));
     if (c.errorMap() != null) {
       c.errorMap().forEach(
           (code, m) ->
@@ -227,7 +235,7 @@ public class PartnerRepository {
         new PartnerConfigValue(
             c.enabled(), c.connectTimeoutMs(), c.timeoutMs(), c.readTimeoutMs(), c.headers(), c.auth(),
             errors.isEmpty() ? null : errors, c.ambiguousCodes(), c.sensitiveFields(), c.resilience(), null, null, null,
-            null),
+            null, c.maintenance(), c.healthCheck(), c.maintenanceWindow(), c.endpoint(), c.endpoints()),
         p.updatedAt(), p.updatedBy(), p.approvedBy());
   }
 
@@ -242,7 +250,9 @@ public class PartnerRepository {
             rs.getBoolean("enabled"), longOrNull(rs, "connect_timeout_ms"), longOrNull(rs, "timeout_ms"),
             longOrNull(rs, "read_timeout_ms"), read(rs.getString("headers"), STRINGS), auth, null,
             read(rs.getString("ambiguous_codes"), LIST), read(rs.getString("sensitive_fields"), STRINGS),
-            rs.getString("resilience"), null, null, null, null);
+            rs.getString("resilience"), null, null, null, null, booleanOrNull(rs, "maintenance"),
+            booleanOrNull(rs, "health_check"), read(rs.getString("maintenance_window"), WINDOW),
+            rs.getString("endpoint_profile"), read(rs.getString("endpoints"), STRINGS));
     return new Partner(
         rs.getString("id"), rs.getString("family"), rs.getLong("version"), config,
         rs.getTimestamp("updated_at").toInstant(), rs.getString("updated_by"), rs.getString("approved_by"));
@@ -254,6 +264,11 @@ public class PartnerRepository {
 
   private String jsonOrNull(Object value) {
     return value == null ? null : json.writeValueAsString(value);
+  }
+
+  private static Boolean booleanOrNull(ResultSet rs, String column) throws SQLException {
+    boolean v = rs.getBoolean(column);
+    return rs.wasNull() ? null : v;
   }
 
   private static Long longOrNull(ResultSet rs, String column) throws SQLException {

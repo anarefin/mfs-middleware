@@ -257,6 +257,39 @@ class PartnerConfigApiIT {
     assertThat(value.path("enabled").asBoolean()).isFalse();
   }
 
+  // --- ticket 97 / 131b fields: never dropped by a republish ----------------------------------
+
+  @Test
+  void theHealthMaintenanceAndEndpointFieldsSurviveEveryRepublish() {
+    String body =
+        """
+        {"action":"UPSERT_ROUTE","reason":"onboard mtco","family":"telco","config":{
+          "allowedHosts":["mock.mtco.example.test","api.mtco.example.test"],"dryRun":{"operation":"PAY"},
+          "maintenance":true,"healthCheck":true,
+          "maintenanceWindow":{"start":"2026-11-07T00:00:00Z","end":"2026-11-07T02:00:00Z",
+            "messageEn":"MTCO top-up is under maintenance","messageBn":"এমটিকো টপ-আপ রক্ষণাবেক্ষণে আছে"},
+          "endpoint":"MOCK",
+          "endpoints":{"MOCK":"http://mock.mtco.example.test:8080","REAL":"https://api.mtco.example.test"},
+          "route":"- route:\\n    from:\\n      uri: direct:partner-mtco\\n      steps:\\n        - to: \\"kamelet:mw-map?mapping=PAY.request\\"\\n        - to: \\"kamelet:mw-http-call?url={{endpoint}}&method=POST&path=/topup\\"\\n        - to: \\"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=422\\"\\n        - to: \\"kamelet:mw-audit\\"\\n",
+          "mappings":{"PAY.request":"{\\"ref\\": reference}","PAY.response":"{\\"outcome\\": \\"UNKNOWN\\"}"}}}
+        """;
+    assertThat(approve(CHECKER, asked(INTEGRATION_MAKER, "mtco", body))).hasStatus(200);
+    assertThat(approve(CHECKER, asked(MAKER, "mtco", "{\"action\":\"SET_TIMEOUTS\",\"reason\":\"x\",\"timeouts\":{\"timeoutMs\":9000}}")))
+        .hasStatus(200);
+
+    JsonNode record = outbox(CONFIG_TOPIC).getLast();
+    assertEvent(CONFIG_SCHEMA, record);
+    for (JsonNode config : List.of(record.path("value"), partner("mtco").path("config"))) {
+      assertThat(config.path("timeoutMs").asLong()).isEqualTo(9000);
+      assertThat(config.path("maintenance").asBoolean()).as("%s", config).isTrue();
+      assertThat(config.path("healthCheck").asBoolean()).isTrue();
+      assertThat(config.path("maintenanceWindow").path("end").asString()).isEqualTo("2026-11-07T02:00:00Z");
+      assertThat(config.path("maintenanceWindow").path("messageBn").asString()).isEqualTo("এমটিকো টপ-আপ রক্ষণাবেক্ষণে আছে");
+      assertThat(config.path("endpoint").asString()).isEqualTo("MOCK");
+      assertThat(config.path("endpoints").path("REAL").asString()).isEqualTo("https://api.mtco.example.test");
+    }
+  }
+
   // --- onboarding -----------------------------------------------------------------------------
 
   @Test

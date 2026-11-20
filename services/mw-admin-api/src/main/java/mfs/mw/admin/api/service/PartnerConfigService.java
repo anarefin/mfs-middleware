@@ -59,6 +59,17 @@ public class PartnerConfigService {
 
   static final Pattern SAFE_PATH = Pattern.compile("^/[A-Za-z0-9._~/{}-]*$");
   static final Pattern SUFFIX = Pattern.compile("^[A-Z0-9_]+$");
+
+  /**
+   * An endpoint base URL (ticket 131b, the adapters' {@code PartnerConfig.ENDPOINT_URL}): http(s),
+   * host, port, plain path segments; nothing that could change the meaning of the route it is
+   * written into.
+   */
+  static final Pattern ENDPOINT_URL =
+      Pattern.compile("^https?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*/?$");
+
+  /** The longest maintenance message per language (the adapters' rule). */
+  static final int MAX_MAINTENANCE_MESSAGE = 500;
   static final Set<String> FAMILIES = Set.of("telco", "billpay", "bank");
   static final Set<String> AUTH_SCHEMES = Set.of("none", "api-key", "hmac-sha256");
   static final Set<String> DRY_RUN_OPERATIONS = Set.of("PAY", "INQUIRY", "STATUS_QUERY");
@@ -320,6 +331,48 @@ public class PartnerConfigService {
     if (c.readTimeoutMs() != null && c.timeoutMs() != null && c.readTimeoutMs() < c.timeoutMs()) {
       problems.add(new ErrorDetail("config.readTimeoutMs", "must not be below timeoutMs (the time limiter decides first)"));
     }
+    maintenanceAndEndpoint(c, problems);
+  }
+
+  /** The ticket 131b rules: the maintenance window and the endpoint profile (the adapters' rules). */
+  static void maintenanceAndEndpoint(PartnerConfigValue c, List<ErrorDetail> problems) {
+    PartnerConfigValue.MaintenanceWindow w = c.maintenanceWindow();
+    if (w != null) {
+      if (w.start() != null && w.end() != null && !w.end().isAfter(w.start())) {
+        problems.add(new ErrorDetail("config.maintenanceWindow.end", "must be after start"));
+      }
+      for (String m : java.util.Arrays.asList(w.messageEn(), w.messageBn())) {
+        if (m != null && (m.isBlank() || m.length() > MAX_MAINTENANCE_MESSAGE)) {
+          problems.add(new ErrorDetail("config.maintenanceWindow", "a message is 1 to 500 characters"));
+          break;
+        }
+      }
+    }
+    if (c.endpoints() != null) {
+      c.endpoints().forEach((profile, url) -> {
+        if (!PartnerConfigValue.ENDPOINT_PROFILES.contains(profile)) {
+          problems.add(new ErrorDetail("config.endpoints", "profiles are MOCK and REAL"));
+        } else if (!validEndpointUrl(url)) {
+          problems.add(new ErrorDetail("config.endpoints." + profile,
+              "must be an http(s) URL of host, port and plain path segments"));
+        } else if (c.allowedHosts() != null && c.allowedHosts().stream()
+            .noneMatch(h -> h.equalsIgnoreCase(java.net.URI.create(url).getHost()))) {
+          problems.add(new ErrorDetail("config.endpoints." + profile, "its host must be in allowedHosts"));
+        }
+      });
+    }
+    if (c.endpoint() != null && !PartnerConfigValue.ENDPOINT_PROFILES.contains(c.endpoint())) {
+      problems.add(new ErrorDetail("config.endpoint", "must be MOCK or REAL"));
+    } else if (c.endpoint() != null && (c.endpoints() == null || c.endpoints().get(c.endpoint()) == null)) {
+      problems.add(new ErrorDetail("config.endpoints", "the selected endpoint needs its URL"));
+    } else if (c.endpoint() == null && c.route() != null && c.route().contains(PartnerConfigValue.ENDPOINT_PLACEHOLDER)) {
+      problems.add(new ErrorDetail("config.endpoint", "the route calls {{endpoint}}: select MOCK or REAL"));
+    }
+  }
+
+  /** True for an endpoint base URL the adapters accept ({@link #ENDPOINT_URL}, no {@code ..} segment). */
+  static boolean validEndpointUrl(String url) {
+    return url != null && ENDPOINT_URL.matcher(url).matches() && !url.contains("/../") && !url.endsWith("/..");
   }
 
   /**
@@ -365,7 +418,8 @@ public class PartnerConfigService {
     }
     common(c, problems);
     if (c.route() != null && !c.route().isBlank()) {
-      routes.problems(id, c.route(), c.mappings(), c.allowedHosts())
+      // ticket 131b: the route as the adapter loads it, {{endpoint}} filled from the selected profile
+      routes.problems(id, c.resolvedRoute(), c.mappings(), c.allowedHosts())
           .forEach(p -> route.add(new ErrorDetail("config.route", p.toString())));
     }
   }

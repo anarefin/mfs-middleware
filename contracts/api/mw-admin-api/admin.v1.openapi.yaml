@@ -1336,6 +1336,38 @@ components:
           items: { type: string, minLength: 1, maxLength: 253, pattern: "^[A-Za-z0-9.-]+$" }
           description: The hosts the route may call (guardrail 4)
         dryRun: { $ref: "#/components/schemas/PartnerDryRun" }
+        maintenance:
+          type: boolean
+          description: "In maintenance now, until cleared (ticket 97): health MAINTENANCE, every call refused MW-SYS-PARTNER_MAINTENANCE (ticket 131b)"
+        healthCheck: { type: boolean, description: "The route has a HEALTH_CHECK branch the adapter probes on a schedule (ticket 97)" }
+        maintenanceWindow: { $ref: "#/components/schemas/PartnerMaintenanceWindow" }
+        endpoint:
+          type: string
+          enum: [MOCK, REAL]
+          description: "The selected endpoint profile (ticket 131b): the route's url={{endpoint}} is filled from endpoints[endpoint]"
+        endpoints: { $ref: "#/components/schemas/PartnerEndpoints" }
+    PartnerMaintenanceWindow:
+      type: object
+      additionalProperties: false
+      description: >-
+        A maintenance window (ticket 131b, FRS PLT-043): from start (absent: now) until end (absent:
+        until cleared); inside it the adapter refuses every call with MW-SYS-PARTNER_MAINTENANCE and
+        the bn/en message (absent: the adapters' default text), and its health is MAINTENANCE.
+      properties:
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        messageEn: { type: string, minLength: 1, maxLength: 500 }
+        messageBn: { type: string, minLength: 1, maxLength: 500 }
+    PartnerEndpoints:
+      type: object
+      additionalProperties: false
+      description: >-
+        The base URL of each endpoint profile (ticket 131b, FRS 10.4 criterion 3): http(s), host,
+        port and plain path segments, host in allowedHosts. Switching the profile is a config
+        change, never a route edit.
+      properties:
+        MOCK: { type: string, minLength: 8, maxLength: 512, pattern: "^https?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*/?$" }
+        REAL: { type: string, minLength: 8, maxLength: 512, pattern: "^https?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*/?$" }
     PartnerDryRun:
       type: object
       required: [operation]
