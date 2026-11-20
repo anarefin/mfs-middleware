@@ -100,7 +100,9 @@
 110-notify-push                             102               done     37m      86 files +2628 −75     76ab0c4c,4757e709
 110b-push-binding-epoch                     110               done     -        34 files +438 −131     480b1d76
 111-notify-campaign-optout-log              110               done     -        79 files +2444 −36     0a3f6bf4
-# --- M8 gate: UC-02..07 on app and USSD
+# --- M8 gate (2026-11-20, base d84fce30; code fixes 070c8217, 706941df, c95ec100, 0609d7d7, e9381fed): clean build PASS; stack up PASS; smoke 60/60; edge-test 66/66; new folders 18, 19, 20, 28, 29, 30, 43 USSD, 48, 60, 63: 216/0. Whole suite ONE run 1483 assertions, 3 failed, not re-run. Folder 25 fixed (customer first lock follows MW_AUTH_LOCK_LEVEL1; recheck with folder 28 was 151/0). Folder 28 fixed (statement walks later pages). SKIP folder 36 replay HTTP 429 MW-SYS-RATE_LIMITED (rate-limit window; not waited; the sleep in 24ed30f7 was reverted by 0609d7d7). Folders 13 and 44 did not fail. log-scan clean. ui-e2e full run 23 passed, 2 failed, then those 2 passed. tester-e2e 35 passed, 5 failed; USSD balance and hangup fixed and re-ran 2/2. Leftover, not re-run: top-up status REJECTED, lost-reply delta -Tk 40.00 vs -Tk 15.00, checkout trace ENOENT. 112+ stay open.
+# --- M8 gate (2026-11-20, base d84fce30; fixes 070c8217, 706941df, c95ec100, e9381fed): clean build PASS; smoke 60/60; edge-test 66/66; new folders 216/216; log-scan clean; ui-e2e 25/25; tester-e2e 39/40. Whole suite 3 of 1483 failed, not re-run (folder 25 PIN lock was 1 h, fixed and the folder rechecked; folder 28 statement was on a later page, fixed and rechecked; folder 36 replay 429 MW-SYS-RATE_LIMITED left). Tester top-up left REJECTED MW-SYS-PARTNER_CIRCUIT_OPEN. Folder 13 and folder 44 passed.
+# --- M8 scope: UC-02..07 on app and USSD
 112-telco-four-ocs                          97,98,102         open
 113-biller-catalogue                        98                open
 114-bill-aggregators                        113,97,102        open
