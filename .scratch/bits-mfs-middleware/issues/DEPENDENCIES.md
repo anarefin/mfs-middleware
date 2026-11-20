@@ -131,8 +131,8 @@
 117d-bank-gateway-simulator                 117a              done     19m      44 files +1416 −98     36bea5a1
 117e-bank-suite-regression                  117b,117c,117d    open
 118-mw-adapter-card                         95,97,102         split (118-split-decisions.md, 2026-11-20)
-118a-card-adapter                           95,97,102         in progress
-118b-card-flow-channels                     118a              open
+118a-card-adapter                           95,97,102         done     27m      274 files +25935 −28   4f974e08,005a0983  (admin-api V18; postgres max_connections 100->120; 3DS webhook endpoint -> 118b)
+118b-card-flow-channels                     118a              open   (incl. adapter 3DS webhook controller: HMAC, nonce, partner-ref dedup PLT-014; admin-api cybersource seed copy)
 119-mw-adapter-remit                        95,97,102         open
 120-mw-adapter-atm                          95,97,102         open
 # --- M10 gate: UC-13..17
