@@ -12,7 +12,9 @@ import mfs.mw.orchestrator.dto.AuditEvent;
 import mfs.mw.orchestrator.dto.Balance;
 import mfs.mw.orchestrator.dto.CoreCommand;
 import mfs.mw.orchestrator.dto.ErrorInfo;
+import mfs.mw.orchestrator.dto.PartnerRef;
 import mfs.mw.orchestrator.dto.PartnerRequest;
+import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.dto.StatusMessage;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.mapper.AuditMapper;
@@ -26,10 +28,15 @@ import mfs.mw.orchestrator.repository.CoreCallRepository;
 import mfs.mw.orchestrator.repository.PartnerCallRepository;
 import mfs.mw.orchestrator.repository.SagaTimerRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
+import mfs.mw.orchestrator.service.routing.Attempt;
+import mfs.mw.orchestrator.service.routing.Decision;
+import mfs.mw.orchestrator.service.routing.RoutingCatalog;
+import mfs.mw.orchestrator.service.routing.RoutingService;
 import mfs.mw.orchestrator.service.saga.Effect;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
+import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.SagaMachine;
@@ -74,6 +81,7 @@ public class SagaEngine {
   private final CoreCallRepository coreCalls;
   private final CoreCallDispatcher core;
   private final SagaAlerts alerts;
+  private final RoutingCatalog routing;
   private final Clock clock;
 
   public SagaEngine(
@@ -91,6 +99,7 @@ public class SagaEngine {
       CoreCallRepository coreCalls,
       CoreCallDispatcher core,
       SagaAlerts alerts,
+      RoutingCatalog routing,
       Clock clock) {
     this.transactions = transactions;
     this.timers = timers;
@@ -106,6 +115,7 @@ public class SagaEngine {
     this.coreCalls = coreCalls;
     this.core = core;
     this.alerts = alerts;
+    this.routing = routing;
     this.clock = clock;
   }
 
@@ -327,7 +337,70 @@ public class SagaEngine {
   }
 
   private void callPartner(TransactionRecord rec, PartnerCall call, Instant now) {
-    sendToPartner(rec, call, partnerMapper.pay(rec, call, now, properties.partnerTimeout()), now);
+    switch (routing.decide(rec.request())) {
+      case Decision.Ready ready -> {
+        Optional<Attempt> next = routing.nextUnsent(rec);
+        if (next.isEmpty()) {
+          failPartner(rec, new ErrorInfo(RoutingService.CIRCUIT_OPEN, "No partner is available", null, true));
+        } else {
+          sendAttempt(rec, call, next.get(), now);
+        }
+      }
+      case Decision.Blocked blocked -> failPartner(rec, blockedError(blocked));
+      case Decision.UnknownPartner ignored ->
+          failPartner(rec, new ErrorInfo(ErrorCodes.PTR_UNKNOWN, "Unknown partner", null, false));
+    }
+  }
+
+  /**
+   * Sends the next attempt after a definite pre-send refusal (ticket 98). An ambiguous timeout does
+   * not come here. Returns false when nothing usable remains, so the refusal stands.
+   */
+  public boolean failOver(TransactionRecord rec) {
+    Optional<Attempt> next = routing.nextUnsent(rec);
+    if (next.isEmpty()) {
+      return false;
+    }
+    Optional<Flow> flow = flows.find(rec.request().txnType());
+    if (flow.isEmpty() || flow.get().partnerCall().isEmpty()) {
+      return false;
+    }
+    sendAttempt(rec, flow.get().partnerCall().get(), next.get(), clock.instant());
+    timers.arm(rec.txnId(), Status.PARTNER_PENDING.name(), clock.instant().plus(properties.partnerTimeout()), false);
+    return true;
+  }
+
+  private void sendAttempt(TransactionRecord rec, PartnerCall call, Attempt attempt, Instant now) {
+    boolean later = sentPay(rec);
+    rec = persistPartner(rec, attempt);
+    String key = later ? PartnerRequestMapper.PAY + ":" + attempt.wirePartnerId() : PartnerRequestMapper.PAY;
+    sendToPartner(rec, call, partnerMapper.pay(rec, call, now, properties.partnerTimeout(), key), now);
+  }
+
+  private TransactionRecord persistPartner(TransactionRecord rec, Attempt attempt) {
+    TxnRequest req = rec.request();
+    PartnerRef current = req.partner();
+    if (current != null && attempt.wirePartnerId().equals(current.partnerId())) {
+      return rec;
+    }
+    String product = current == null ? null : current.productCode();
+    String biller = current == null ? null : current.billerCode();
+    TxnRequest routed = req.withPartner(new PartnerRef(attempt.wirePartnerId(), product, biller));
+    transactions.updateRequest(rec.txnId(), routed);
+    return rec.withRequest(routed);
+  }
+
+  private boolean sentPay(TransactionRecord rec) {
+    return partnerCalls.of(rec.txnId()).stream().anyMatch(c -> PartnerRequestMapper.PAY.equals(c.operation()));
+  }
+
+  private void failPartner(TransactionRecord rec, ErrorInfo error) {
+    fire(rec, new SagaEvent.PartnerFailed(rec.holdsFunds(flows)), error);
+  }
+
+  private static ErrorInfo blockedError(Decision.Blocked blocked) {
+    boolean retryable = RoutingService.CIRCUIT_OPEN.equals(blocked.code());
+    return new ErrorInfo(blocked.code(), blocked.message(), blocked.messageBn(), retryable);
   }
 
   /** Sends a partner request through the outbox and records it on the saga timeline (ticket 35). */

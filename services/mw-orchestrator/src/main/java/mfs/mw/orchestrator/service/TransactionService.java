@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 import mfs.mw.orchestrator.config.OrchestratorProperties;
 import mfs.mw.orchestrator.dto.ErrorInfo;
+import mfs.mw.orchestrator.dto.PartnerRef;
 import mfs.mw.orchestrator.dto.StatusMessage;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.entity.TransactionRecord;
@@ -14,6 +15,10 @@ import mfs.mw.orchestrator.mapper.RequestMapper;
 import mfs.mw.orchestrator.mapper.StatusMapper;
 import mfs.mw.orchestrator.repository.IdempotencyRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
+import mfs.mw.orchestrator.service.routing.Attempt;
+import mfs.mw.orchestrator.service.routing.Decision;
+import mfs.mw.orchestrator.service.routing.RoutingCatalog;
+import mfs.mw.orchestrator.service.routing.RoutingService;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.BalanceFlow;
@@ -49,6 +54,7 @@ public class TransactionService {
   private final IdempotencyGate gate;
   private final DuplicateGuard duplicates;
   private final OrchestratorProperties properties;
+  private final RoutingCatalog routing;
   private final Clock clock;
 
   public TransactionService(
@@ -61,6 +67,7 @@ public class TransactionService {
       IdempotencyGate gate,
       DuplicateGuard duplicates,
       OrchestratorProperties properties,
+      RoutingCatalog routing,
       Clock clock) {
     this.idempotency = idempotency;
     this.transactions = transactions;
@@ -71,6 +78,7 @@ public class TransactionService {
     this.gate = gate;
     this.duplicates = duplicates;
     this.properties = properties;
+    this.routing = routing;
     this.clock = clock;
   }
 
@@ -131,11 +139,12 @@ public class TransactionService {
       return;
     }
 
-    TransactionRecord rec = requestMapper.toRecord(req, replyTo, now);
+    ErrorInfo refusal = refusal(req);
+    TxnRequest storedReq = refusal == null ? withChosenPartner(req) : req;
+    TransactionRecord rec = requestMapper.toRecord(storedReq, replyTo, now);
     transactions.insert(rec);
     engine.created(rec);
 
-    ErrorInfo refusal = refusal(req);
     if (refusal != null) {
       engine.fire(rec, new SagaEvent.RequestRejected(), refusal);
     } else if (flows.find(req.txnType()).orElseThrow().allows(Step.BALANCE_INQUIRY)) {
@@ -295,10 +304,11 @@ public class TransactionService {
       return new ErrorInfo(
           ErrorCodes.AUTH_BULK_CHANNEL, "This channel may not send a bulk disbursement", null, false);
     }
-    if (flow.get().partnerCall().isPresent()
-        && (req.partner() == null || req.partner().partnerId() == null || req.partner().productCode() == null)) {
-      return new ErrorInfo(
-          ErrorCodes.VAL_PARTNER_REQUIRED, "Partner and product are required for this transaction type", null, false);
+    if (flow.get().partnerCall().isPresent()) {
+      ErrorInfo partner = partnerRefusal(req);
+      if (partner != null) {
+        return partner;
+      }
     }
     if (BalanceFlow.TXN_TYPE.equals(req.txnType())) {
       return balanceRefusal(req);
@@ -307,6 +317,47 @@ public class TransactionService {
       return new ErrorInfo(ErrorCodes.VAL_AMOUNT, "Amount must be greater than zero", null, false);
     }
     return null;
+  }
+
+  /**
+   * A partner flow (ticket 98). A top-up without a partner id is routed from the MSISDN. A bill still
+   * needs its biller and add-money still needs its bank. An unknown partner, a disabled biller and a
+   * connector that cannot be called are refused here, before any money is held.
+   */
+  private ErrorInfo partnerRefusal(TxnRequest req) {
+    if ("BILL_PAY".equals(req.txnType())
+        && (req.partner() == null || req.partner().billerCode() == null || req.partner().billerCode().isBlank())) {
+      return new ErrorInfo(ErrorCodes.VAL_PARTNER_REQUIRED, "A biller is required for this transaction type", null, false);
+    }
+    if ("ADD_MONEY_BANK".equals(req.txnType())
+        && (req.partner() == null || req.partner().partnerId() == null || req.partner().partnerId().isBlank())) {
+      return new ErrorInfo(ErrorCodes.VAL_PARTNER_REQUIRED, "A partner bank is required for this transaction type", null, false);
+    }
+    if ("TOPUP".equals(req.txnType())
+        && (req.partner() == null || req.partner().productCode() == null || req.partner().productCode().isBlank())) {
+      return new ErrorInfo(ErrorCodes.VAL_PARTNER_REQUIRED, "A product is required for this transaction type", null, false);
+    }
+    return switch (routing.decide(req)) {
+      case Decision.UnknownPartner ignored -> new ErrorInfo(ErrorCodes.PTR_UNKNOWN, "Unknown partner", null, false);
+      case Decision.Blocked blocked ->
+          new ErrorInfo(
+              blocked.code(), blocked.message(), blocked.messageBn(), RoutingService.CIRCUIT_OPEN.equals(blocked.code()));
+      case Decision.Ready ignored -> null;
+    };
+  }
+
+  /** A top-up that named no partner keeps the connector routing chose, so later steps and the status query use it. */
+  private TxnRequest withChosenPartner(TxnRequest req) {
+    if (!(routing.decide(req) instanceof Decision.Ready ready)) {
+      return req;
+    }
+    PartnerRef current = req.partner();
+    if (current != null && current.partnerId() != null && !current.partnerId().isBlank()) {
+      return req;
+    }
+    Attempt chosen = ready.attempts().get(0);
+    return req.withPartner(
+        new PartnerRef(chosen.wirePartnerId(), current == null ? null : current.productCode(), current == null ? null : current.billerCode()));
   }
 
   /**

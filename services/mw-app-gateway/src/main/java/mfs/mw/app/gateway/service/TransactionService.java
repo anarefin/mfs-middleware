@@ -180,9 +180,12 @@ public class TransactionService {
     } else if (body.creditParty() == null) {
       field = "creditParty";
       issue = "is required for " + body.txnType();
-    } else if (topup && (partner == null || !partner.isOperator())) {
+    } else if (topup && (partner == null || partner.productCode() == null || partner.billerCode() != null)) {
       field = "partner";
-      issue = "partnerId and productCode are required for TOPUP";
+      issue = "productCode is required for TOPUP";
+    } else if (topup && partner.partnerId() != null && TransactionRequest.BANKS.contains(partner.partnerId())) {
+      field = "partner.partnerId";
+      issue = "a bank is not a mobile operator";
     } else if (bill && (partner == null || !partner.isBiller())) {
       field = "partner.billerCode";
       issue = "is required for BILL_PAY, without partnerId or productCode";

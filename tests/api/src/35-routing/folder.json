@@ -1,0 +1,4 @@
+{
+  "name": "35 Routing (operator from the MSISDN, MNP, a down connector, a maintenance message)",
+  "description": "Ticket 98. A top-up with no partnerId, an MNP override, ocs switched DOWN, and a biller maintenance message. Cleaned up in the scenario so later folders are unchanged."
+}

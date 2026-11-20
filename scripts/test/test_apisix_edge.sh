@@ -368,7 +368,9 @@ test_app_submit_schema_is_the_openapi_transaction_request_minus_value_echoing_ke
   jq -e '.required == ["txnType", "amount", "encryptedPin"]
     and (.properties.txnType.enum | index("P2P") != null and index("TOPUP") != null)
     and .properties.partner.additionalProperties == false
-    and .properties.partner.properties.partnerId.enum == ["gp", "robi", "banglalink", "teletalk", "c2wbank"]
+    and .properties.partner.properties.partnerId.type == "string"
+    and (.properties.partner.properties.partnerId | has("enum") | not)
+    and any(.properties.partner.anyOf[]; .required == ["productCode"])
     and .properties.debitParty.required == ["type", "id"] and .properties.debitParty.additionalProperties == false
     and .properties.amount.required == ["valueMinor", "currency"]
     and .properties.amount.additionalProperties == false
