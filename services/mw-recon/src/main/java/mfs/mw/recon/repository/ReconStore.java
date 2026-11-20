@@ -356,10 +356,31 @@ public class ReconStore {
         """, (rs, n) -> rs.getObject(1, UUID.class), day).stream().findFirst().orElse(null);
   }
 
-  /** The amounts of a run-less exception after a re-computation. */
-  public void updateStandaloneAmounts(UUID id, Long fileAmountMinor, Long upayAmountMinor) {
-    jdbc.update("update recon_exception set file_amount_minor = ?, upay_amount_minor = ? where id = ?",
-        fileAmountMinor, upayAmountMinor, id);
+  /**
+   * The amounts of a run-less exception after a re-computation; 0 rows when they did not change. An EXPLAINED
+   * exception whose gap (file - upay) changed goes back to OPEN and loses its explanation, so an old explanation
+   * never approves a new gap (security review); the same gap keeps it.
+   */
+  public int updateStandaloneAmounts(UUID id, long fileAmountMinor, long upayAmountMinor) {
+    return jdbc.update("""
+        update recon_exception set
+          state = case when state = 'EXPLAINED' and file_amount_minor - upay_amount_minor <> ? then 'OPEN'
+            else state end,
+          explanation = case when state = 'EXPLAINED' and file_amount_minor - upay_amount_minor <> ? then null
+            else explanation end,
+          explained_by = case when state = 'EXPLAINED' and file_amount_minor - upay_amount_minor <> ? then null
+            else explained_by end,
+          explained_at = case when state = 'EXPLAINED' and file_amount_minor - upay_amount_minor <> ? then null
+            else explained_at end,
+          file_amount_minor = ?, upay_amount_minor = ?
+        where id = ? and (file_amount_minor is distinct from ? or upay_amount_minor is distinct from ?)
+        """, gap(fileAmountMinor, upayAmountMinor), gap(fileAmountMinor, upayAmountMinor),
+        gap(fileAmountMinor, upayAmountMinor), gap(fileAmountMinor, upayAmountMinor), fileAmountMinor,
+        upayAmountMinor, id, fileAmountMinor, upayAmountMinor);
+  }
+
+  private static long gap(long fileAmountMinor, long upayAmountMinor) {
+    return fileAmountMinor - upayAmountMinor;
   }
 
   /** OPEN or EXPLAINED -> RESOLVED because a later computation no longer shows the difference; 0 rows otherwise. */

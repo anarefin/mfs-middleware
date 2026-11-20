@@ -61,6 +61,7 @@ class TrustPositionTest {
     java.util.UUID open = java.util.UUID.randomUUID();
     when(store.trustClosing(DAY, "TRUST_MT940")).thenReturn(1_000_000L);
     when(store.openTrustException(DAY)).thenReturn(open);
+    when(store.updateStandaloneAmounts(open, 1_000_000L, 1_000_200L)).thenReturn(1);
 
     TrustPosition position = service.compute(DAY, 1_000_200L);
 
@@ -70,6 +71,17 @@ class TrustPositionTest {
     verify(store).updateStandaloneAmounts(open, 1_000_000L, 1_000_200L);
     verify(events).changed(open, null, NOW);
     verify(store).saveTrustPosition(DAY, 1_000_200L, 1_000_000L, -200L, open, NOW);
+  }
+
+  @Test
+  void aReRunWithUnchangedAmountsEmitsNothing() {
+    java.util.UUID open = java.util.UUID.randomUUID();
+    when(store.trustClosing(DAY, "TRUST_MT940")).thenReturn(1_000_000L);
+    when(store.openTrustException(DAY)).thenReturn(open);
+    when(store.updateStandaloneAmounts(open, 1_000_000L, 1_000_200L)).thenReturn(0);
+
+    assertThat(service.compute(DAY, 1_000_200L).exceptionId()).isEqualTo(open);
+    verify(events, never()).changed(any(), any(), any());
   }
 
   @Test
