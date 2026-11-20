@@ -80,9 +80,9 @@ class UssdMenuWalkTest {
     return new UssdProperties(
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
         "bn", 3, Map.of(
-            "robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
+            "robi", UssdProperties.Mno.of(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
                 Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END", null),
-            "bl", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
+            "bl", UssdProperties.Mno.of(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
                 Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END", "banglalink")),
         Map.of("operators", List.of(
             new UssdProperties.ListItem("gp", new Text("গ্রামীণফোন", "Grameenphone")),
@@ -124,7 +124,8 @@ class UssdMenuWalkTest {
     return new UssdEngine(
         catalog, sessions, new InputValidator(), new ScreenFormatter(), flow,
         TestPinTransport.create(), new DynamicLists(p, bills), new Lookups(bills), p,
-        Clock.fixed(Instant.parse("2026-11-04T10:00:00Z"), ZoneOffset.UTC));
+        Clock.fixed(Instant.parse("2026-11-04T10:00:00Z"), ZoneOffset.UTC),
+        new OpenShortCodes(), new MemoryPrefs(), new FixedAccounts());
   }
 
   UssdResponse dial(String session) {
@@ -328,7 +329,6 @@ class UssdMenuWalkTest {
     send("b6", "4");
     assertThat(send("b6", "1").text()).isEqualTo("Select biller\n1 BREB\n2 DESCO\n3 DPDC");
     dial("b7");
-    send("b7", "9");
     send("b7", "4");
     assertThat(send("b7", "2").text()).isEqualTo("Select biller\n1 CWASA\n2 WASA");
   }

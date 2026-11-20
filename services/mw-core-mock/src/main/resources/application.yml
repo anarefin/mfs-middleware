@@ -174,7 +174,7 @@ mw:
     jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
     issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
     audience: mw-core-mock
-    allowed-clients: mw-orchestrator,mw-auth,mw-admin-api
+    allowed-clients: mw-orchestrator,mw-auth,mw-admin-api,mw-ussd
   coremock:
     # Test-only wallet seed API (ticket 57, WalletSeedController; mw-seeder): off unless the stack sets it.
     seed-api:

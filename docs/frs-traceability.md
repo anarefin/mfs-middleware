@@ -211,12 +211,12 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-USSD-02 | done | mw-ussd SMPP binds: enquire_link 30 s, reconnect with backoff, window (`UssdSmppProperties`) |
 | CH-USSD-03 | ticket 109 | per-MNO TLV adapters |
 | CH-USSD-04 | ticket 133 | menu JSON in the database with maker-checker built (M6); visual tree editor in 133 |
-| CH-USSD-05 | ticket 109 | sessions in Redis built (ticket 90); 30 s per-screen timeout 109 |
-| CH-USSD-06 | tickets 109, 133 | GSM-7 182-character screen limit built (`UssdProperties`); "0. Next" / "00. Back" pagination 109, preview 133 |
+| CH-USSD-05 | done | 30 s per-screen timeout beside the overall session timeout; Redis TTL stays the overall timeout plus grace (mw-ussd) |
+| CH-USSD-06 | ticket 133 | GSM-7 182 and UCS-2 70 built; "0. Next" / "00. Back" pagination built (mw-ussd); preview in 133 |
 | CH-USSD-07 | done | PIN encrypted on receipt, never logged or kept in the session (spec 18.3, `scripts/log-scan.sh`) |
-| CH-USSD-08 | ticket 109 | short code to root menu and allowed types |
+| CH-USSD-08 | done | ussd.short_code (code, MNO, root menu, allowed types) and the account type from the core (mw-ussd) |
 | CH-USSD-09 | done | a result that arrives after the session ended goes out by SMS (mw-ussd) |
-| CH-USSD-10 | ticket 109 | language per customer, default Bangla |
+| CH-USSD-10 | done | ussd.customer_pref stores the SHA-256 of the MSISDN and the language, default bn (mw-ussd) |
 | CH-WEB-01 | done | mw-checkout session create with API key + HMAC |
 | CH-WEB-02 | done | checkout page flow with OTP and PIN (mw-checkout, D22) |
 | CH-WEB-03 | ticket 116 | redirect and signed IPN with retries built; 24 h retry horizon in 116 |

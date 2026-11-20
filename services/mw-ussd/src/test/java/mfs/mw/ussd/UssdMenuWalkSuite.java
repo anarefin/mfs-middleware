@@ -34,6 +34,12 @@ public abstract class UssdMenuWalkSuite {
   }
 
   private OrchestratorStub orchestrator;
+  private org.springframework.jdbc.core.JdbcTemplate prefs;
+
+  /** The subclass's JDBC, so each walk starts in Bangla again. */
+  protected final void rememberJdbc(org.springframework.jdbc.core.JdbcTemplate jdbc) {
+    this.prefs = jdbc;
+  }
 
   /** Dials robi's own code *269# (over HTTP or, by configuration, SMPP) as {@link #CUSTOMER} and sends {@code inputs} while the session is open. */
   protected abstract Walk walk(List<String> inputs);
@@ -54,6 +60,9 @@ public abstract class UssdMenuWalkSuite {
 
   @BeforeEach
   void replyConsumerReady() {
+    if (prefs != null) {
+      LanguageReset.banglaAgain(prefs, "01712345678");
+    }
     TestTopics.awaitGroupStable("mw-ussd.reply." + instanceId(), Duration.ofSeconds(60));
   }
 

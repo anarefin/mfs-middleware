@@ -130,6 +130,13 @@ resilience4j:
         record-exceptions: mfs.mw.ussd.exception.BillPayUnavailableException
         ignore-exceptions: mfs.mw.ussd.exception.BillPayRefusedException
       # mw-auth (client/AuthClient, ticket 72): a refusal (4xx envelope) is an answer, not a failure.
+      # Core account read (client/CoreAccountClient). A 404 is an answer; transport failures count.
+      core:
+        base-config: default
+        minimum-number-of-calls: 10
+        slow-call-duration-threshold: 1500ms
+        wait-duration-in-open-state: 10s
+        record-exceptions: mfs.mw.ussd.exception.CoreUnavailableException
       mw-auth:
         base-config: default
         sliding-window-type: COUNT_BASED
@@ -296,6 +303,13 @@ mw:
       timeout: 2s
       connect-timeout: 1s
       pin-key-ttl: 10m
+    # Core account read (CH-USSD-08): GET /core/v1/accounts/{msisdn} with this service's JWT
+    # (audience mw-core-mock). mode=stub is the test double and does not call the core.
+    core:
+      mode: http
+      base-url: http://mw-core-mock:8080
+      connect-timeout: 1s
+      read-timeout: 2s
     # Per MNO (spec 9.2): transport, short codes (each MNO its own; a BEGIN with another code ends
     # at once with the wrong-code screen), screen limits (GSM-7 / UCS-2), session timeout
     # (MNO limit, TBC), overflow TRUNCATE|PAGE and the HTTP continue/end flag values. GP runs
@@ -307,6 +321,7 @@ mw:
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 180s
+        screen-timeout: 30s
         overflow: PAGE
         continue-flag: CON
         end-flag: END
@@ -316,6 +331,7 @@ mw:
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 120s
+        screen-timeout: 30s
         overflow: PAGE
         continue-flag: CON
         end-flag: END
@@ -325,6 +341,7 @@ mw:
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 120s
+        screen-timeout: 30s
         overflow: PAGE
         continue-flag: CON
         end-flag: END
@@ -336,6 +353,7 @@ mw:
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 120s
+        screen-timeout: 30s
         overflow: TRUNCATE
         continue-flag: CON
         end-flag: END

@@ -20,6 +20,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -60,10 +61,11 @@ class UssdSmppMenuWalkIT extends UssdMenuWalkSuite {
   private final MeterRegistry meters;
 
   @Autowired
-  UssdSmppMenuWalkIT(MockMvcTester http, StringRedisTemplate redis, MeterRegistry meters) {
+  UssdSmppMenuWalkIT(MockMvcTester http, StringRedisTemplate redis, MeterRegistry meters, JdbcTemplate jdbc) {
     this.http = http;
     this.redis = redis;
     this.meters = meters;
+    rememberJdbc(jdbc);
   }
 
   @AfterAll

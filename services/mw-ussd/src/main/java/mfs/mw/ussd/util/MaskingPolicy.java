@@ -2,6 +2,10 @@ package mfs.mw.ussd.util;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.RecordComponent;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -47,6 +51,19 @@ public final class MaskingPolicy {
   private static final Pattern LONG_NUMBER_IN_TEXT = Pattern.compile("(?<!\\d)\\d{10,}(?!\\d)");
 
   private MaskingPolicy() {}
+
+  /**
+   * SHA-256 hex of an MSISDN (CH-USSD-10). {@code ussd.customer_pref} stores this and never the
+   * number. The same digest the SMPP session id is cut from, over the canonical digits.
+   */
+  public static String msisdnHash(String msisdn) {
+    try {
+      return HexFormat.of().formatHex(
+          MessageDigest.getInstance("SHA-256").digest(msisdn.getBytes(StandardCharsets.UTF_8)));
+    } catch (NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
+  }
 
   /** Masks one value according to its type. {@code null} and empty stay as they are. */
   public static String mask(SensitiveType type, String value) {

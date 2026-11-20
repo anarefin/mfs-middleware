@@ -44,12 +44,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   403), 4 KiB body cap, quota per MSISDN hash; this service sees no credential).
 - Per MNO (`mw.ussd.mno.<gp|robi|bl|teletalk>`, spec 9.2; `config/UssdProperties`): transport,
   short codes, screen limits (182 GSM-7 / 70 UCS-2), session timeout, overflow TRUNCATE|PAGE.
-  Dev: gp SMPP; robi, bl HTTP + PAGE; teletalk HTTP + TRUNCATE. Short codes, one per MNO: gp `*268#`, robi
-  `*269#`, bl `*270#`, teletalk `*271#`. `UssdEngine` checks the dialled code on BEGIN (`dto/UssdRequest.serviceCode`:
-  HTTP `serviceCode`, SMPP destination address; whitespace ignored): another code ends the session at once with
-  the built-in `UssdEngine.WRONG_CODE_TEXT` ("Dial {code}", the MNO's first code; default language), no
-  session stored, event `ussd.session.refused`; a step without a code, or an MNO without `short-codes`, is
-  not checked. `operator` = the MNO's top-up partnerId
+  Dev: gp SMPP; robi, bl HTTP + PAGE; teletalk HTTP + TRUNCATE. `screen-timeout` is 30 s
+  (CH-USSD-05): the next step after an idle screen ends the session; the Redis TTL stays the overall
+  session timeout plus grace. Short codes live in `ussd.short_code` (V6: code, MNO, root menu id,
+  allowed types). When that table has rows for the MNO it is authoritative; otherwise the yaml
+  `short-codes` (gp `*268#`, robi `*269#`, bl `*270#`, teletalk `*271#`) are the fallback.
+  `UssdEngine` checks the dialled code on BEGIN (`dto/UssdRequest.serviceCode`: HTTP `serviceCode`,
+  SMPP destination address; whitespace ignored). An unknown code ends the session with
+  `UssdEngine.WRONG_CODE_TEXT` ("Dial {code}", the yaml list's first code, in the customer's
+  language), no session stored, event `ussd.session.refused`. A code whose allowed types do not
+  include the account type from core `GET /core/v1/accounts/{msisdn}` (`client/CoreAccountClient`,
+  service JWT, audience mw-core-mock; `mw.ussd.core.mode=stub` in tests) ends with
+  `UssdEngine.TYPE_TEXT` in bn or en. A step without a code is not checked. The root menu id
+  selects that menu when it is not the MNO's active one. `operator` = the MNO's top-up partnerId
   at mw-adapter-telco, filled into `{mno}` of an own-number top-up (bl: `banglalink`; default the key).
 - Menus are data (`dto/Menu`, `MenuNode`, node types MENU, INPUT, CONFIRM, ACTION, DYNAMIC, END,
   text `{bn, en}`): versioned JSON in `ussd.menu`, activated per MNO with a go-live time in
@@ -68,7 +75,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   "Select category\n1 Electricity\n2 Water\n3 Gas\n4 Telecom\n5 Internet", after 3 "Select biller\n1 JGTDSL\n2
   KGDCL\n3 TITAS"; the same nodes in `main-v2.json` and mw-seeder's `seed-content/menus/main.json`), 5 Balance (v3, ADR D26: `bal.pin` ->
   ACTION `bal.check` flow BALANCE, empty mapping -> `bal.done` "Tk {balance}" / `bal.failed`), 9 language
-  (v3 labels option 3 "রিচার্জ" / "Recharge" so the main screen stays within 70 UCS-2 characters). Every Bangla screen of
+  (v3 labels option 3 "রিচার্জ" / "Recharge" so the main screen stays within 70 UCS-2 characters).
+  `w2b.maintenance` is an END node ("Transfer to bank is under maintenance." / the Bangla line) until
+  ticket 117; the main screen is already 70 UCS-2 characters, so the node is not a numbered row on
+  that screen (a row would push "9 English" onto the next page). Messages `more` are "0. পরবর্তী" /
+  "0. Next" and `back` are "00. পেছনে" / "00. Back". Every Bangla screen of
   the seed fits 70 UCS-2 characters (`UssdMenuWalkTest`).
 - Published menus (ticket 39, spec 9.2, 20.4): mw-admin-api's approved versions arrive on
   `mw.config.changed.v1` (compacted; `messaging/ConfigChangedListener`, a retried `@KafkaListener`, group
@@ -85,13 +96,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   it; a running session keeps its version (`MenuPublisherIT`, on a test-only MNO `itmenu`). Events
   `ussd.menu.published`, `ussd.menu.activated`, `ussd.menu.publish_skipped`.
 - Engine (`service/UssdEngine`): one step per request, never throws (a failure ends with the
-  menu's `unavailable` text). Language `mw.ussd.default-language` (bn) at dial-in, toggled by a
-  MENU option with `switchLanguage` (no profile lookup yet). Validators (`service/InputValidator`):
+  menu's `unavailable` text). Language at dial-in is `ussd.customer_pref` for the SHA-256 of the
+  MSISDN (`util/MaskingPolicy.msisdnHash`; the number is never stored), else bn, toggled by a MENU
+  option with `switchLanguage` (the choice is remembered). Validators (`service/InputValidator`):
   msisdn (canonical, `notSelf`), amount (taka, <= 2 decimals, min/max, stored as `500.00`), pin
   (5 digits unless `pattern`: mw-crypto's PIN rule since ticket 72), numeric (digit count min/max), regex. A bad input re-prompts with
   the validator's `error` (or the menu's `invalid`) above the screen; `max-invalid-attempts` (3)
   in a row end the session. Placeholders `{input}` / `{txnId}` / `{error}` / `{balance}` in texts. A screen over
-  the MNO limit is cut (TRUNCATE) or paged with the menu's `more` option ("0 More", PAGE).
+  the MNO limit is cut (TRUNCATE) or paged (PAGE): a page that continues ends with `more` ("0. Next")
+  and `back` ("00. Back"); the last page ends with `back`. `0` shows the next page, `00` the previous
+  page, and `00` on the first page returns to the previous node (a stack of node ids on the session).
+  A screen that already fits is sent as it is. The PIN input is not pushed, so `00` there returns to
+  the screen before it.
   DYNAMIC sources (`service/DynamicLists.items(source, inputs)`): `billers` = mw-adapter-billpay's live
   catalogue (`service/BillPayDirectory`, sorted by code, label = code, cached `catalogue-ttl` 60 s and kept
   through an outage), only the billers of the session input `category` when it is set;
@@ -110,8 +126,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   ACTION `mapping` values are input names or literals `=VALUE`; `MenuValidator` checks each flow's
   required fields (`TxnRequestMapper.REQUIRED_FIELDS`) and each lookup's arguments.
 - Sessions: Redis `ussd:{mno}:{sessionId}` (`repository/RedisSessionStore`, JSON
-  `dto/UssdSession`: node, path, inputs, language, menu version, pending pages), TTL = MNO session
-  timeout + `session-grace` (30 s); a CONTINUE from another MSISDN is treated as expired. The PIN
+  `dto/UssdSession`: node, path, inputs, language, menu version, pages, the back stack, `screenAt`),
+  TTL = MNO session timeout + `session-grace` (30 s). A CONTINUE whose screen is 30 s old, or whose
+  session is older than the MNO's overall timeout, ends with the menu's `expired` text (both checked
+  before the input; the Redis TTL is not shortened). A CONTINUE from another MSISDN is treated as
+  expired. The PIN
   never reaches the session: it is encrypted on receipt (`util/PinCipher`, RSA-OAEP SHA-256 /
   MGF1-SHA-256 under the mw-crypto `PIN_TRANSPORT` key held by `service/PinTransport`) and handed
   straight to the ACTION, which sends it once to mw-auth (never to Kafka).

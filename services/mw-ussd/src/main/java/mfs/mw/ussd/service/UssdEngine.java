@@ -2,6 +2,7 @@ package mfs.mw.ussd.service;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -82,6 +83,13 @@ public class UssdEngine {
   /** A BEGIN with a code this MNO does not serve: {code} = the MNO's own (first) short code. */
   static final Text WRONG_CODE_TEXT =
       new Text("এই কোডটি এই নেটওয়ার্কে নেই। ডায়াল করুন {code}", "This code is not served on this network. Dial {code}");
+  /** The dialled short code does not allow this customer's account type (CH-USSD-08). */
+  static final Text TYPE_TEXT =
+      new Text("এই কোডটি আপনার অ্যাকাউন্টের জন্য নয়।", "This code is not available for your account.");
+  /** Shown with a paged screen when the menu carries no {@code back} text (CH-USSD-06). */
+  static final Text BACK_TEXT = new Text("00. পেছনে", "00. Back");
+  /** Previous page, or the previous node when this screen's first page is showing. */
+  static final String BACK_INPUT = "00";
 
   private final MenuCatalog menus;
   private final UssdSessionStore sessions;
@@ -93,6 +101,9 @@ public class UssdEngine {
   private final Lookups lookups;
   private final UssdProperties props;
   private final Clock clock;
+  private final ShortCodeBook shortCodes;
+  private final CustomerPrefs prefs;
+  private final CoreAccounts accounts;
 
   public UssdEngine(
       MenuCatalog menus,
@@ -104,7 +115,10 @@ public class UssdEngine {
       DynamicLists lists,
       Lookups lookups,
       UssdProperties props,
-      Clock clock) {
+      Clock clock,
+      ShortCodeBook shortCodes,
+      CustomerPrefs prefs,
+      CoreAccounts accounts) {
     this.menus = menus;
     this.sessions = sessions;
     this.validator = validator;
@@ -115,6 +129,9 @@ public class UssdEngine {
     this.lookups = lookups;
     this.props = props;
     this.clock = clock;
+    this.shortCodes = shortCodes;
+    this.prefs = prefs;
+    this.accounts = accounts;
   }
 
   /** One step. Never throws: a failure ends the session with "service unavailable". */
@@ -140,18 +157,35 @@ public class UssdEngine {
 
   private UssdResponse begin(UssdRequest r) {
     UssdProperties.Mno config = props.mno().get(r.mno());
-    if (config != null && !servesCode(config, r.serviceCode())) {
-      log.atInfo()
-          .addKeyValue("event", "ussd.session.refused")
-          .addKeyValue("mno", r.mno())
-          .log("USSD session refused: the dialled code is not this MNO's");
-      String text = WRONG_CODE_TEXT.in(props.defaultLanguage()).replace("{code}", config.shortCodes().getFirst());
-      return new UssdResponse(r.sessionId(), text, true);
+    String lang = prefs.language(r.msisdn());
+    ShortCode code = null;
+    if (config != null && shortCodes.configured(r.mno()) && r.serviceCode() != null && !r.serviceCode().isBlank()) {
+      String dialled = r.serviceCode().replaceAll("\\s", "");
+      code = shortCodes.find(r.mno(), dialled).orElse(null);
+      if (code == null) {
+        return refuseCode(r, config, lang);
+      }
+      ShortCode dialledCode = code;
+      Optional<String> type = accounts.type(r.msisdn());
+      boolean allowed =
+          type.filter(t -> dialledCode.allowedTypes().stream().anyMatch(a -> a.equalsIgnoreCase(t))).isPresent();
+      if (!allowed) {
+        log.atInfo()
+            .addKeyValue("event", "ussd.session.refused")
+            .addKeyValue("mno", r.mno())
+            .log("USSD session refused: the short code does not allow this account type");
+        return new UssdResponse(r.sessionId(), TYPE_TEXT.in(lang), true);
+      }
+    } else if (config != null && !servesCode(config, r.serviceCode())) {
+      return refuseCode(r, config, lang);
     }
     Menu menu = menus.active(r.mno());
+    if (code != null && !code.rootMenuId().equals(menu.menuId())) {
+      menu = menus.latest(code.rootMenuId());
+    }
     UssdSession s =
         new UssdSession(
-            r.mno(), r.sessionId(), r.msisdn(), menu.menuId(), menu.version(), props.defaultLanguage(),
+            r.mno(), r.sessionId(), r.msisdn(), menu.menuId(), menu.version(), lang,
             menu.start(), List.of(), Map.of(), 0, List.of(), false, clock.instant());
     log.atInfo()
         .addKeyValue("event", "ussd.session.started")
@@ -171,8 +205,16 @@ public class UssdEngine {
     }
     UssdSession s = found.get();
     Menu menu = menus.version(s.menuId(), s.menuVersion());
+    if (timedOut(s)) {
+      sessions.delete(s.mno(), s.sessionId());
+      return new UssdResponse(s.sessionId(), menu.message(Menu.EXPIRED, s.language()), true);
+    }
     String input = r.input() == null ? "" : r.input().trim();
-    if (!s.pages().isEmpty() && (s.endAfterPages() || input.equals(moreKey(menu, s.language())))) {
+    if (BACK_INPUT.equals(input)) {
+      return goBack(menu, s);
+    }
+    boolean moreLeft = s.pageIndex() + 1 < s.pages().size();
+    if (moreLeft && (s.endAfterPages() || input.equals(moreKey(menu, s.language())))) {
       return nextPage(s);
     }
     MenuNode node = menu.node(s.nodeId());
@@ -194,6 +236,9 @@ public class UssdEngine {
       return invalid(menu, s, node);
     }
     String lang = option.switchLanguage() ? toggle(s.language()) : s.language();
+    if (option.switchLanguage()) {
+      prefs.remember(s.msisdn(), lang);
+    }
     Map<String, String> inputs = s.inputs();
     if (!option.set().isEmpty()) {
       // {mno} is the session MNO's top-up operator (the telco partnerId, e.g. bl -> banglalink)
@@ -205,7 +250,7 @@ public class UssdEngine {
         inputs.put(e.getKey(), interpolate(e.getValue(), s.inputs(), own));
       }
     }
-    return enter(menu, s.at(option.next(), append(s.path(), s.nodeId() + ":" + option.key()), inputs, lang),
+    return enter(menu, s.forward(option.next(), append(s.path(), s.nodeId() + ":" + option.key()), inputs, lang),
         Map.of(), null);
   }
 
@@ -222,7 +267,7 @@ public class UssdEngine {
     }
     Map<String, String> inputs = new HashMap<>(s.inputs());
     inputs.put(node.store(), items.get(index).value());
-    return enter(menu, s.at(node.next(), append(s.path(), s.nodeId() + ":" + input), inputs, s.language()),
+    return enter(menu, s.forward(node.next(), append(s.path(), s.nodeId() + ":" + input), inputs, s.language()),
         Map.of(), null);
   }
 
@@ -235,6 +280,7 @@ public class UssdEngine {
     if (node.validator().isPin()) {
       // encrypted on receipt, forwarded once to the ACTION, never stored (spec 9.2)
       EncryptedPin pin = pins.encrypt(valid.get());
+      // not pushed: a wrong PIN returns to this same input, and 00 from it returns to the screen before it
       return enter(menu, s.at(node.next(), path, s.inputs(), s.language()), Map.of(), pin);
     }
     Map<String, String> inputs = new HashMap<>(s.inputs());
@@ -253,7 +299,7 @@ public class UssdEngine {
         }
       }
     }
-    return enter(menu, s.at(node.next(), path, inputs, s.language()), Map.of(), null);
+    return enter(menu, s.forward(node.next(), path, inputs, s.language()), Map.of(), null);
   }
 
   private UssdResponse invalid(Menu menu, UssdSession s, MenuNode node) {
@@ -392,28 +438,75 @@ public class UssdEngine {
 
   /** Sends the first page, keeps the rest (and the session) when the screen is too long. */
   private UssdResponse show(Menu menu, UssdSession s, String text, boolean end) {
-    List<String> pages = formatter.pages(text, mno(s.mno()), menu.message(Menu.MORE, s.language()));
+    String more = menu.message(Menu.MORE, s.language());
+    String back = backLabel(menu, s);
+    List<String> pages = formatter.pages(text, mno(s.mno()), more, back);
+    Instant now = clock.instant();
     if (pages.size() == 1) {
       if (end) {
         sessions.delete(s.mno(), s.sessionId());
       } else {
-        sessions.save(s.withPages(List.of(), false), ttl(s.mno()));
+        sessions.save(s.withPages(List.of(), false).atPage(0).shown(now), ttl(s.mno()));
       }
       return new UssdResponse(s.sessionId(), pages.getFirst(), end);
     }
-    sessions.save(s.withPages(pages.subList(1, pages.size()), end), ttl(s.mno()));
+    sessions.save(s.withPages(pages, end).atPage(0).shown(now), ttl(s.mno()));
     return new UssdResponse(s.sessionId(), pages.getFirst(), false);
   }
 
   private UssdResponse nextPage(UssdSession s) {
-    List<String> rest = s.pages();
-    List<String> remaining = rest.subList(1, rest.size());
-    if (remaining.isEmpty() && s.endAfterPages()) {
+    int i = s.pageIndex() + 1;
+    List<String> all = s.pages();
+    boolean last = i >= all.size() - 1;
+    if (last && s.endAfterPages()) {
       sessions.delete(s.mno(), s.sessionId());
-      return new UssdResponse(s.sessionId(), rest.getFirst(), true);
+      return new UssdResponse(s.sessionId(), all.get(i), true);
     }
-    sessions.save(s.withPages(remaining, s.endAfterPages()), ttl(s.mno()));
-    return new UssdResponse(s.sessionId(), rest.getFirst(), false);
+    sessions.save(s.atPage(i).shown(clock.instant()), ttl(s.mno()));
+    return new UssdResponse(s.sessionId(), all.get(i), false);
+  }
+
+  /** Previous page of this screen, else the node the customer came from. */
+  private UssdResponse goBack(Menu menu, UssdSession s) {
+    if (s.pageIndex() > 0) {
+      int i = s.pageIndex() - 1;
+      UssdSession prev = s.atPage(i).shown(clock.instant());
+      sessions.save(prev, ttl(s.mno()));
+      return new UssdResponse(s.sessionId(), prev.pages().get(i), false);
+    }
+    if (!s.back().isEmpty()) {
+      ArrayList<String> stack = new ArrayList<>(s.back());
+      String node = stack.remove(stack.size() - 1);
+      List<String> path = s.path().isEmpty() ? List.of() : s.path().subList(0, s.path().size() - 1);
+      UssdSession prev =
+          new UssdSession(
+              s.mno(), s.sessionId(), s.msisdn(), s.menuId(), s.menuVersion(), s.language(), node, path,
+              s.inputs(), 0, List.of(), false, s.startedAt(), s.screenAt(), List.copyOf(stack), 0);
+      return show(menu, prev, render(menu.node(node), prev, Map.of()), false);
+    }
+    return invalid(menu, s, menu.node(s.nodeId()));
+  }
+
+  private boolean timedOut(UssdSession s) {
+    UssdProperties.Mno cfg = mno(s.mno());
+    Instant now = clock.instant();
+    Instant shown = s.screenAt() == null ? s.startedAt() : s.screenAt();
+    return !now.isBefore(s.startedAt().plus(cfg.sessionTimeout()))
+        || !now.isBefore(shown.plus(cfg.screenTimeout()));
+  }
+
+  private String backLabel(Menu menu, UssdSession s) {
+    String t = menu.message(Menu.BACK, s.language());
+    return t.isEmpty() ? BACK_TEXT.in(s.language()) : t;
+  }
+
+  private UssdResponse refuseCode(UssdRequest r, UssdProperties.Mno config, String lang) {
+    log.atInfo()
+        .addKeyValue("event", "ussd.session.refused")
+        .addKeyValue("mno", r.mno())
+        .log("USSD session refused: the dialled code is not this MNO's");
+    String own = config.shortCodes().isEmpty() ? "" : config.shortCodes().getFirst();
+    return new UssdResponse(r.sessionId(), WRONG_CODE_TEXT.in(lang).replace("{code}", own), true);
   }
 
   private String render(MenuNode node, UssdSession s, Map<String, String> vars) {
@@ -453,11 +546,12 @@ public class UssdEngine {
     return error.message() == null ? error.code() : error.message();
   }
 
-  /** The key that shows the next page: the first word of the menu's "more" text. */
+  /** The key that shows the next page: the first word of the menu's "more" text, without a trailing dot. */
   private static String moreKey(Menu menu, String lang) {
     String more = menu.message(Menu.MORE, lang).trim();
     int sp = more.indexOf(' ');
-    return sp < 0 ? more : more.substring(0, sp);
+    String key = sp < 0 ? more : more.substring(0, sp);
+    return key.endsWith(".") ? key.substring(0, key.length() - 1) : key;
   }
 
   /**

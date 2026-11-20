@@ -20,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.annotation.DirtiesContext;
@@ -48,14 +49,16 @@ class UssdHttpFlowIT {
 
   private final MockMvcTester http;
   private final StringRedisTemplate redis;
+  private final JdbcTemplate jdbc;
   /** Every session value seen while a step was in flight or after it. */
   private final List<String> seenSessions = new CopyOnWriteArrayList<>();
   private OrchestratorStub orchestrator;
 
   @Autowired
-  UssdHttpFlowIT(MockMvcTester http, StringRedisTemplate redis) {
+  UssdHttpFlowIT(MockMvcTester http, StringRedisTemplate redis, JdbcTemplate jdbc) {
     this.http = http;
     this.redis = redis;
+    this.jdbc = jdbc;
   }
 
   @BeforeAll
@@ -67,6 +70,7 @@ class UssdHttpFlowIT {
 
   @BeforeEach
   void replyConsumerReady() {
+    LanguageReset.banglaAgain(jdbc, "01712345678");
     TestTopics.awaitGroupStable("mw-ussd.reply.it-ussd-1", Duration.ofSeconds(60));
   }
 
@@ -261,8 +265,11 @@ class UssdHttpFlowIT {
     List<String> keys = new ArrayList<>();
     for (int i = 0; i < 2; i++) {
       String session = "it-" + UUID.randomUUID();
-      assertThat(step(session, "BEGIN", "").path("message").asString()).contains("5 ব্যালেন্স");
-      step(session, "CONTINUE", "9");
+      String menu = step(session, "BEGIN", "").path("message").asString();
+      if (menu.contains("সেন্ড")) {
+        assertThat(menu).contains("5 ব্যালেন্স");
+        step(session, "CONTINUE", "9");
+      }
       assertThat(step(session, "CONTINUE", "5").path("message").asString()).isEqualTo("Enter your PIN");
 
       JsonNode done = step(session, "CONTINUE", PIN);

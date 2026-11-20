@@ -49,13 +49,14 @@ class ApiContractsTest {
   static final String USSD_API = "api/mw-ussd/ussd-http.v1.openapi.yaml";
   static final String BILLPAY_API = "api/mw-adapter-billpay/billpay.v1.openapi.yaml";
   static final String AUTH_API = "api/mw-auth/auth-internal.v1.openapi.yaml";
+  static final String CORE_API = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
   static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
 
   @Test
   void theManifestListsTheseApis() {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(USSD_API);
-    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API);
+    assertThat(manifest.consumedApis()).containsExactly(BILLPAY_API, AUTH_API, CORE_API);
   }
 
   // ---- served: ussd-http.v1 ----

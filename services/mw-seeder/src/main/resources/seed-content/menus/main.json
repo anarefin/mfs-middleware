@@ -24,8 +24,12 @@
       "en": "Service temporarily unavailable. Please try later."
     },
     "more": {
-      "bn": "0 আরও",
-      "en": "0 More"
+      "bn": "0. পরবর্তী",
+      "en": "0. Next"
+    },
+    "back": {
+      "bn": "00. পেছনে",
+      "en": "00. Back"
     },
     "wrongPin": {
       "bn": "ভুল পিন। আর {triesLeft} বার চেষ্টা করা যাবে।",
@@ -594,6 +598,13 @@
       "text": {
         "bn": "বাতিল করা হয়েছে।",
         "en": "Cancelled."
+      }
+    },
+    "w2b.maintenance": {
+      "type": "END",
+      "text": {
+        "bn": "ব্যাংকে স্থানান্তর সাময়িকভাবে বন্ধ।",
+        "en": "Transfer to bank is under maintenance."
       }
     }
   }

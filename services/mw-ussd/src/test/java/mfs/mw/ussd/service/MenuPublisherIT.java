@@ -92,6 +92,7 @@ class MenuPublisherIT {
 
   @Test
   void anApprovedTextChangeShowsInTheNextSessionButNotInARunningOne() throws Exception {
+    jdbc.update("DELETE FROM customer_pref WHERE msisdn_hash = ?", mfs.mw.ussd.util.MaskingPolicy.msisdnHash(CUSTOMER));
     String running = "it-" + UUID.randomUUID();
     assertThat(step(running, "BEGIN", "").path("message").asString()).startsWith("Bits\n1 সেন্ড মানি");
 
@@ -102,7 +103,7 @@ class MenuPublisherIT {
         .startsWith("Bits\n1 Send Money");
     assertThat(step("it-" + UUID.randomUUID(), "BEGIN", "").path("message").asString())
         .as("the next session gets the published version")
-        .startsWith("Bits নতুন\n1 সেন্ড মানি");
+        .startsWith("Bits new\n1 Send Money");
     assertThat(menus.active("itmenu", Instant.now()).orElseThrow().version()).isGreaterThanOrEqualTo(MenuPublisher.FIRST_PUBLISHED);
   }
 

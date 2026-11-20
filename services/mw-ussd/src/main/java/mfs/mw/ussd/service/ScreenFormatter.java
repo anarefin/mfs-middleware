@@ -27,6 +27,15 @@ public class ScreenFormatter {
   }
 
   public List<String> pages(String text, UssdProperties.Mno mno, String more) {
+    return pages(text, mno, more, "");
+  }
+
+  /**
+   * Like {@link #pages(String, UssdProperties.Mno, String)}. A non-blank {@code back} is the
+   * {@code 00. Back} line: every page but the last ends with the next line and the back line, and
+   * the last page ends with the back line. A screen that already fits is returned as it is.
+   */
+  public List<String> pages(String text, UssdProperties.Mno mno, String more, String back) {
     int limit = limit(text, mno);
     if (text.length() <= limit) {
       return List.of(text);
@@ -34,23 +43,28 @@ public class ScreenFormatter {
     if (mno.overflow() == UssdProperties.Overflow.TRUNCATE) {
       return List.of(text.substring(0, limit));
     }
-    String suffix = "\n" + more;
-    int pageLimit = Math.min(limit, limit(text + more, mno));
-    int room = pageLimit - suffix.length();
+    String nextSuffix = "\n" + more;
+    String backSuffix = back == null || back.isBlank() ? "" : "\n" + back;
+    String fullSuffix = nextSuffix + backSuffix;
+    int pageLimit = Math.min(limit, limit(text + more + backSuffix, mno));
+    int room = pageLimit - fullSuffix.length();
     if (room < 1) {
       return List.of(text.substring(0, limit));
     }
     List<String> pages = new ArrayList<>();
     String rest = text;
-    while (rest.length() > pageLimit) {
+    while (rest.length() + backSuffix.length() > pageLimit) {
       int cut = breakAt(rest, room);
-      pages.add(rest.substring(0, cut) + suffix);
+      pages.add(rest.substring(0, cut) + fullSuffix);
       rest = rest.substring(cut);
       if (!rest.isEmpty() && (rest.charAt(0) == '\n' || rest.charAt(0) == ' ')) {
         rest = rest.substring(1);
       }
+      if (rest.isEmpty()) {
+        break;
+      }
     }
-    pages.add(rest);
+    pages.add(backSuffix.isEmpty() ? rest : rest + backSuffix);
     return List.copyOf(pages);
   }
 

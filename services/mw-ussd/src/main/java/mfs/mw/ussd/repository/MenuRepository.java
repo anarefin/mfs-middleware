@@ -41,6 +41,19 @@ public class MenuRepository {
     return rows.stream().findFirst();
   }
 
+  /** The newest version of a menu (a short code's root, when it is not the MNO's live activation). */
+  public Optional<MenuVersion> latest(String menuId) {
+    return jdbc.query(
+            """
+            SELECT menu_id, version, tree::text AS tree FROM menu
+             WHERE menu_id = ? ORDER BY version DESC LIMIT 1
+            """,
+            ROW,
+            menuId)
+        .stream()
+        .findFirst();
+  }
+
   public Optional<MenuVersion> find(String menuId, int version) {
     return jdbc.query(
             "SELECT menu_id, version, tree::text AS tree FROM menu WHERE menu_id = ? AND version = ?",
