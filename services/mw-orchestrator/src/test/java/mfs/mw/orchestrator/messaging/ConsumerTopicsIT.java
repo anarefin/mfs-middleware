@@ -14,7 +14,7 @@ import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.kafka.listener.MessageListenerContainer;
 
 /**
- * The orchestrator's six consumed topics (ADR D27): each has a listener in the service's consumer
+ * The orchestrator's consumed topics (ADR D27): each has a listener in the service's consumer
  * group with its three retry consumers and its DLQ under the platform's names ({@code
  * deploy/kafka/topics.txt}, {@code retry=mw-orchestrator}), and {@code
  * mw.orchestrator.consumers.enabled=false} (the test default) keeps every one of them stopped.
@@ -31,7 +31,9 @@ class ConsumerTopicsIT {
           "core.wallet.event.v1",
           "core.payment.event.v1",
           "mw.partner.reply.v1",
-          "mw.partner.inbound.v1");
+          "mw.partner.inbound.v1",
+          "mw.config.changed.v1",
+          "mw.partner.route.status.v1");
 
   private final KafkaListenerEndpointRegistry registry;
 

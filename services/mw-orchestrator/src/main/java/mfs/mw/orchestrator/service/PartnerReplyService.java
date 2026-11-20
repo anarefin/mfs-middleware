@@ -11,6 +11,7 @@ import mfs.mw.orchestrator.mapper.PartnerRequestMapper;
 import mfs.mw.orchestrator.messaging.Inbox;
 import mfs.mw.orchestrator.repository.PartnerCallRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
+import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.Outcome;
@@ -92,6 +93,11 @@ public class PartnerReplyService {
       return;
     }
     ErrorInfo error = saga.get() instanceof SagaEvent.PartnerFailed ? mapper.error(reply) : null;
+    if (saga.get() instanceof SagaEvent.PartnerFailed
+        && RoutingCatalog.preSendRefusal(error == null ? null : error.code())
+        && engine.failOver(found.get())) {
+      return;
+    }
     TransactionRecord rec = found.get().withPartnerRef(reply.payload().partnerRef());
     try {
       engine.fire(rec, saga.get(), error);

@@ -42,7 +42,11 @@ public record ConfigChangedEvent(
     USSD_MENU,
     LIMIT,
     FEATURE_FLAG,
-    ERROR_MAP
+    ERROR_MAP,
+    ROUTING_RULE,
+    MSISDN_PREFIX,
+    MNP_OVERRIDE,
+    MAINTENANCE_MESSAGE
   }
 
   public enum Change {

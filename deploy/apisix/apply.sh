@@ -10,7 +10,9 @@
 #      deploy/apisix/consumers/<username>.json as consumer <username> (the MNO USSD gateways; a
 #      consumer labelled managed-by=mw-admin-api is skipped: the channel client registry of
 #      mw-admin-api owns it from its first projection on, ticket 100a),
-#      then every deploy/apisix/routes/<id>.json as route <id>; then DELETEs every object listed
+#      then every deploy/apisix/routes/<id>.json as route <id> (a route with that same label is
+#      skipped too: an OAUTH2_CC projection owns its bearer check and client-id limit, ticket 100b);
+#      then DELETEs every object listed
 #      in deploy/apisix/retired.txt (a file that was removed or renamed)
 #   4. test-only objects for the host API suite (tests/api): with MW_E2E_ROUTES=1 PUTs
 #      consumers-test/<username>.json and routes-test/<id>.json; without it DELETEs them, so a
@@ -185,7 +187,7 @@ for kind in global_rules consumers routes; do
   for f in "$dir/$kind"/*.json; do
     [ -f "$f" ] || continue
     path="/apisix/admin/$kind/$(basename "$f" .json)"
-    if [ "$kind" = consumers ] && managed "$path"; then
+    if { [ "$kind" = consumers ] || [ "$kind" = routes ]; } && managed "$path"; then
       echo "apisix-init: $path belongs to the mw-admin-api channel client registry, left as it is"
       continue
     fi

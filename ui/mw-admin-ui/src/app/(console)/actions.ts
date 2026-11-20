@@ -5,9 +5,10 @@
 // operator goes to the approvals inbox; a refusal comes back as the API's envelope.
 
 import { redirect } from "next/navigation";
-import type { KeyChangeBody, PartnerChangeBody } from "@/lib/admin-api";
+import type { CredentialUploadBody, ErrorMapBody, KeyChangeBody, PartnerChangeBody } from "@/lib/admin-api";
 import { CEREMONY_PURPOSE, parseCheckValue, parseComponent, parseKeyId, parsePurpose } from "@/lib/keys";
 import { parseReason, parseTimeouts, parseWalletId } from "@/lib/approvals";
+import { parseCredentialUpload, parseEndpoint, parseErrorMap, parseMaintenance } from "@/lib/partner-tabs";
 import { parseRouteForm } from "@/lib/partner-route";
 import { adminApi, operatorToken } from "@/lib/server/admin";
 import { parseTemplateKey, templateProblems, type TemplateKey, type TemplateTexts } from "@/lib/templates";
@@ -134,6 +135,88 @@ export async function requestPartnerRoute(partnerId: string, _prev: ActionState,
     body.family = family as PartnerChangeBody["family"];
   }
   const r = await adminApi().requestPartnerChange(await token(), partnerId, body);
+  if (!r.ok) return refused(r);
+  redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
+}
+
+function raw(form: FormData, name: string): string | undefined {
+  const v = form.get(name);
+  return typeof v === "string" && v !== "" ? v : undefined;
+}
+
+/** Maker (ops-maker, integration-maker): the maintenance flag and window (ticket 131c). */
+export async function requestPartnerMaintenance(partnerId: string, _prev: ActionState, form: FormData): Promise<ActionState> {
+  const reason = parseReason(form.get("reason"));
+  if (!PARTNER_ID.test(partnerId)) return invalid("partnerId", "not a partner id");
+  const parsed = parseMaintenance({
+    maintenance: text(form, "maintenance"), start: text(form, "start"), end: text(form, "end"),
+    messageEn: text(form, "messageEn"), messageBn: text(form, "messageBn"),
+  });
+  if (!parsed.ok) return invalid(parsed.field, parsed.issue);
+  if (!reason) return invalid("reason", "1 to 500 characters");
+  const body: PartnerChangeBody = {
+    action: "SET_MAINTENANCE", reason,
+    config: {
+      maintenance: parsed.value.maintenance,
+      ...(parsed.value.maintenanceWindow ? { maintenanceWindow: parsed.value.maintenanceWindow } : {}),
+    },
+  };
+  const r = await adminApi().requestPartnerChange(await token(), partnerId, body);
+  if (!r.ok) return refused(r);
+  redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
+}
+
+/** Maker (ops-maker, integration-maker): MOCK or REAL and both endpoint URLs (ticket 131c). */
+export async function requestPartnerEndpoint(partnerId: string, _prev: ActionState, form: FormData): Promise<ActionState> {
+  const reason = parseReason(form.get("reason"));
+  if (!PARTNER_ID.test(partnerId)) return invalid("partnerId", "not a partner id");
+  const parsed = parseEndpoint({
+    endpoint: text(form, "endpoint"), mockUrl: text(form, "mockUrl"), realUrl: text(form, "realUrl"),
+    allowedHosts: text(form, "allowedHosts"),
+  });
+  if (!parsed.ok) return invalid(parsed.field, parsed.issue);
+  if (!reason) return invalid("reason", "1 to 500 characters");
+  const body: PartnerChangeBody = {
+    action: "SET_ENDPOINT", reason,
+    config: { endpoint: parsed.value.endpoint, endpoints: parsed.value.endpoints },
+  };
+  const r = await adminApi().requestPartnerChange(await token(), partnerId, body);
+  if (!r.ok) return refused(r);
+  redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
+}
+
+/** Maker (ops-maker, integration-maker): replace the partner-code map (ticket 131c). */
+export async function requestPartnerErrorMap(partnerId: string, _prev: ActionState, form: FormData): Promise<ActionState> {
+  const reason = parseReason(form.get("reason"));
+  if (!PARTNER_ID.test(partnerId)) return invalid("partnerId", "not a partner id");
+  const parsed = parseErrorMap({ errorMap: text(form, "errorMap"), ambiguousCodes: text(form, "ambiguousCodes") });
+  if (!parsed.ok) return invalid(parsed.field, parsed.issue);
+  if (!reason) return invalid("reason", "1 to 500 characters");
+  const body: ErrorMapBody = {
+    action: "SET_ERROR_MAP", reason, errorMap: parsed.value.errorMap, ambiguousCodes: parsed.value.ambiguousCodes,
+  };
+  const r = await adminApi().requestErrorMapChange(await token(), partnerId, body);
+  if (!r.ok) return refused(r);
+  redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
+}
+
+/**
+ * Maker (integration-maker): upload a credential. The secret is posted and then dropped: a refusal
+ * from this check never contains it, and the redirect carries only the change-request id (ticket 131c).
+ */
+export async function requestPartnerCredential(partnerId: string, _prev: ActionState, form: FormData): Promise<ActionState> {
+  const reason = parseReason(form.get("reason"));
+  if (!PARTNER_ID.test(partnerId)) return invalid("partnerId", "not a partner id");
+  const parsed = parseCredentialUpload({
+    name: text(form, "name"), type: text(form, "type"), secret: raw(form, "secret"),
+    certificatePem: raw(form, "certificatePem"), privateKeyPem: raw(form, "privateKeyPem"),
+    pkcs12: raw(form, "pkcs12"), pkcs12Password: raw(form, "pkcs12Password"), notAfter: text(form, "notAfter"),
+  });
+  if (!parsed.ok) return invalid(parsed.field, parsed.issue);
+  if (!reason) return invalid("reason", "1 to 500 characters");
+  const { name, ...fields } = parsed.value;
+  const body: CredentialUploadBody = { action: "UPLOAD", reason, ...fields };
+  const r = await adminApi().uploadCredential(await token(), partnerId, name, body);
   if (!r.ok) return refused(r);
   redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
 }

@@ -81,10 +81,11 @@ Rate limits (ticket 99, FRS PLT-004): every 429 carries `Retry-After` in whole s
 edge header filter (`lua/edge-error-headers.lua`): limit-count's `X-RateLimit-Reset` (seconds to the
 window's end), else 1 (limit-req), also on an upstream's own 429 that set none. A bucket is per
 client and API: every limited route counts in its own `group` (the API) and keys the counter by a
-per-client variable (`consumer_name`, `mw_consumer`, `mw_auth_key`, `mw_ussd_msisdn`, or
+per-client variable (`consumer_name`, `mw_consumer`, `mw_client_id`, `mw_auth_key`, `mw_ussd_msisdn`, or
 `remote_addr` where there is no consumer); `scripts/test/test_apisix_edge.sh` refuses a shared group or
-another key. The window is fixed per group (limit-count); token-bucket quotas per registered client are
-ticket 100.
+another key. The window is fixed per group (limit-count). A BASIC client carries its quota in a consumer
+group (ticket 100a). An OAUTH2_CC client has no consumer: the route's `limit-count` / `limit-req` key
+`mw_client_id`, set from the token's `azp` (ticket 100b).
 
 Route `app-v1` (`/app/v1/*`), in plugin order:
 
@@ -165,6 +166,27 @@ Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, tick
 Route `partner-c2wbank-callback` (`/partner/c2wbank/callback/*`, POST only, ticket 23) ->
 `mw-adapter-bank:8080`: the same four rules (own `limit-count` group
 `partner-c2wbank-callback`); the C2W bank's debit outcome callbacks, verified by mw-adapter-bank.
+Neither callback route uses `openid-connect`: billagg and c2wbank are HMAC clients.
+
+Route `test-oauth2-cc` (`GET|POST /test/oauth2-cc`, ticket 100b) -> `mw-simulators:8080`
+`/sim/oauth2-cc/ping` (204). An `OAUTH2_CC` client's route, not an HMAC callback:
+
+1. `ip-restriction` as on the partner callbacks (dev private ranges).
+2. `openid-connect` bearer-only against the Keycloak realm `partners`
+   (`http://keycloak:8080/realms/partners/.well-known/openid-configuration`, `use_jwks`, `client_id`
+   `mw-partner-edge` because the plugin schema requires one, `iat_slack` 10). No `client_secret`:
+   partners authenticate with `private_key_jwt` (realm `partners`, client `partner-sim`). A missing
+   or bad token is 401 `MW-AUTH-001`.
+3. `serverless-pre-function` (access, `lua/client-id-from-jwt.lua`, rewritten by mw-admin-api when
+   the registry changes): `ctx.var.mw_client_id` is the token's `azp`, and only a client registered
+   for this route passes (403 otherwise).
+4. `limit-count` 5000 / 24 h and `limit-req` 20/s, both keyed by `mw_client_id` (one bucket per
+   token client id, group `test-oauth2-cc`). Redis as on `app-v1`.
+
+mw-admin-api labels the route `managed-by=mw-admin-api` once it has projected an `OAUTH2_CC` client
+onto it; `apisix-init` then leaves that route alone, the same way it leaves a managed consumer. The
+bootstrap file is what a fresh etcd gets before the first projection. `scripts/edge-test.sh` checks
+401 without a token and 204 with the simulator's partner-sim token (`GET /sim/partner-token`).
 
 Routes `ussd-http-<mno>` (`/ussd/<mno>` for gp, robi, bl, teletalk; POST only; ticket 26, M3 gate)
 -> `mw-ussd:8080`, path and body unchanged: the MNO HTTP USSD gateways (`HttpUssdTransport`,
@@ -452,7 +474,8 @@ is on it (known gap: no network split until a second, internal APISIX exists).
    correlation ID, the `X-Mw-*` strip and the error envelope.
 2. Quota: copy the `limit-count` block with its own `group` and `count` (keep
    `allow_degradation: true` and `show_limit_quota_header: true`: the degradation alert needs it). Keyed per consumer:
-   on `openid-connect` routes reuse `lua/consumer-from-jwt.lua`; on `hmac-auth`/`key-auth`/
+   on `openid-connect` routes reuse `lua/consumer-from-jwt.lua` (a user token) or
+   `lua/client-id-from-jwt.lua` (an OAUTH2_CC token's client id, `mw_client_id`); on `hmac-auth`/`key-auth`/
    `jwt-auth` routes APISIX sets a consumer, so use `"key": "consumer_name"`.
 3. Body schema: never here. The owning service adds
    `src/main/resources/derived-schemas/<id>-<op>.json` with only `x-mw-derived-from`, runs

@@ -14,7 +14,9 @@ public interface ApisixAdmin {
   /** The object kinds, by their Admin API path segment. */
   enum Kind {
     CONSUMERS("consumers"),
-    CONSUMER_GROUPS("consumer_groups");
+    CONSUMER_GROUPS("consumer_groups"),
+    /** Routes an OAUTH2_CC client is allowed to call (ticket 100b): the projection merges plugins, it does not create the route. */
+    ROUTES("routes");
 
     private final String path;
 

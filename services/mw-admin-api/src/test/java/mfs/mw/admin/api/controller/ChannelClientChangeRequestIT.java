@@ -141,6 +141,12 @@ class ChannelClientChangeRequestIT {
        "allowedRoutes":["ussd-http-gp"],"ipAllowList":["10.20.0.0/16"],"ratePerSec":40,"dailyQuota":200000,"enabled":true}}
       """;
 
+  static final String OAUTH =
+      """
+      {"action":"UPSERT","reason":"register partner client credentials","client":{"type":"PARTNER","authMethod":"OAUTH2_CC",
+       "allowedRoutes":["test-oauth2-cc"],"ipAllowList":[],"ratePerSec":20,"dailyQuota":5000,"enabled":true}}
+      """;
+
   private final MockMvcTester mvc;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
@@ -247,6 +253,38 @@ class ChannelClientChangeRequestIT {
     CALLS.clear();
     assertThat(projection.reconcile()).hasValueSatisfying(r -> assertThat(r.written()).isZero());
     assertThat(CALLS).noneMatch(call -> call.startsWith("PUT") || call.startsWith("DELETE"));
+  }
+
+  /**
+   * Ticket 100b: approving an OAUTH2_CC client stores no secret and enforces its route (openid-connect
+   * bearer-only, limit keyed by the token client id). The partners realm client stays private_key_jwt;
+   * this row never carries a client secret.
+   */
+  @Test
+  void anOauth2ClientCredentialsApprovalStoresNoSecretAndProjectsTheBearerRoute() {
+    OBJECTS.put(
+        "routes/test-oauth2-cc",
+        "{\"id\":\"test-oauth2-cc\",\"uri\":\"/test/oauth2-cc\",\"plugins\":{\"limit-count\":{\"key\":\"remote_addr\",\"count\":600,\"time_window\":60,\"group\":\"test-oauth2-cc\"}}}");
+    String id = asked("partner-sim", OAUTH);
+
+    MvcTestResult approved = approve(CHECKER, id);
+
+    assertThat(approved).hasStatus(200);
+    JsonNode route = stored("routes/test-oauth2-cc");
+    assertThat(route.path("plugins").path("openid-connect").path("bearer_only").asBoolean()).isTrue();
+    assertThat(route.path("plugins").path("openid-connect").path("discovery").asString())
+        .isEqualTo("http://keycloak:8080/realms/partners/.well-known/openid-configuration");
+    assertThat(route.path("plugins").path("openid-connect").has("client_secret")).isFalse();
+    assertThat(route.path("plugins").path("limit-count").path("key").asString()).isEqualTo("mw_client_id");
+    assertThat(route.path("plugins").path("limit-req").path("key").asString()).isEqualTo("mw_client_id");
+    assertThat(route.path("plugins").path("serverless-pre-function").toString()).contains("azp", "partner-sim");
+    assertThat(OBJECTS).doesNotContainKey("consumers/partner_sim");
+    assertThat(OBJECTS.values().toString()).doesNotContain("client_secret", "clientSecret");
+
+    Map<String, Object> row = jdbc.queryForMap("select * from channel_client where client_id = 'partner-sim'");
+    assertThat(row).containsEntry("auth_method", "OAUTH2_CC");
+    assertThat(row.keySet()).doesNotContain("secret", "client_secret");
+    assertThat(row.values().toString()).doesNotContain("client_secret", "clientSecret");
   }
 
   @Test

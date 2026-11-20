@@ -17,6 +17,7 @@ import mfs.mw.orchestrator.dto.PartnerRef;
 import mfs.mw.orchestrator.dto.PartnerReply;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.mapper.PartnerRequestMapper;
+import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,6 +52,7 @@ class InquirySagaIT {
   private final CoreCalls coreEvents;
   private final PartnerReplyService partnerReplies;
   private final SagaTimerService timers;
+  private final RoutingCatalog catalog;
   private final MutableClock clock;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
@@ -62,6 +64,7 @@ class InquirySagaIT {
       CoreCalls coreEvents,
       PartnerReplyService partnerReplies,
       SagaTimerService timers,
+      RoutingCatalog catalog,
       Clock clock,
       JdbcTemplate jdbc,
       JsonMapper json,
@@ -70,6 +73,7 @@ class InquirySagaIT {
     this.coreEvents = coreEvents;
     this.partnerReplies = partnerReplies;
     this.timers = timers;
+    this.catalog = catalog;
     this.clock = (MutableClock) clock;
     this.jdbc = jdbc;
     this.json = json;
@@ -82,6 +86,11 @@ class InquirySagaIT {
     for (String t : List.of("outbox", "inbox", "saga_timer", "saga_step", "idempotency", "transaction")) {
       jdbc.update("delete from " + t);
     }
+    jdbc.update(
+        "insert into routing_rule (id, txn_type, operator_code, primary_partner_id, priority)"
+            + " values ('topup-tsqfast', 'TOPUP', 'tsqfast', 'tsqfast', 20)"
+            + " on conflict (id) do nothing");
+    catalog.reload();
   }
 
   // --- helpers -------------------------------------------------------------------------------

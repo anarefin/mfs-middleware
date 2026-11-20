@@ -197,7 +197,7 @@ class TransactionControllerTest {
         .bodyJson()
         .extractingPath("$.details[*].field")
         .asArray()
-        .containsExactlyInAnyOrder("partner.partnerId", "partner.productCode");
+        .containsExactly("partner.productCode");
     verify(previews, never()).submitOneShot(any(), any(), any());
   }
 

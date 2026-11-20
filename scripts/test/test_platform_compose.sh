@@ -781,6 +781,12 @@ test_partner_sim_uses_private_key_jwt_and_has_no_client_secret() {
     and .attributes["use.jwks.url"] == "false"' "$f" >/dev/null \
     || fail "partner-sim: $(jq -c '.clients[] | select(.clientId == "partner-sim")' "$f")"
   grep -q KC_PARTNER_SIM_SECRET "$REPO_DIR/deploy/dev.env.defaults" "$STACK_FILE" && fail "KC_PARTNER_SIM_SECRET still in deploy/"
+  # the channel-client row (ticket 100b) is OAUTH2_CC and holds no secret; the private key stays in Vault
+  local row
+  row="$(grep -E 'client-id: partner-sim' "$REPO_DIR/services/mw-seeder/src/main/resources/application.yml")"
+  printf '%s' "$row" | grep -q 'auth-method: OAUTH2_CC' \
+    || fail "partner-sim registry row is not OAUTH2_CC: $row"
+  printf '%s' "$row" | grep -qi 'secret\|password' && fail "partner-sim registry row holds a secret: $row"
   return 0
 }
 
