@@ -530,6 +530,37 @@ class DeviceBindingIT {
         .contains("\"deviceId\": \"" + d.id() + "\"");
   }
 
+  /** The bindingEpoch param of the wallet's DEVICE_BOUND notices in the outbox, oldest first. */
+  List<Long> noticeEpochs() {
+    return jdbc.queryForList(
+        "select (payload->'params'->>'bindingEpoch')::bigint from outbox where topic = 'mw.notify.request.v1'"
+            + " and payload->>'templateCode' = 'DEVICE_BOUND' and payload->'recipient'->>'msisdn' = ? order by id",
+        Long.class, msisdn);
+  }
+
+  long sessionEpoch(Device d) throws Exception {
+    return ((Number) com.jayway.jsonpath.JsonPath.read(session(d).getResponse().getContentAsString(),
+        "$.bindingEpoch")).longValue();
+  }
+
+  @Test
+  void eachBindingGetsANewerEpochThatItsNoticeAndTheLiveSessionCarry() throws Exception {
+    // ticket 110b: mw-notify orders bindings and push token registrations by this epoch, never by a clock
+    Device first = Device.create();
+    assertThat(bind(first)).hasStatus(201);
+    assertThat(openSession(first)).hasStatus(200);
+    long e1 = sessionEpoch(first);
+
+    Device second = Device.create();
+    assertThat(bind(second)).hasStatus(201);
+    assertThat(openSession(second)).hasStatus(200);
+    long e2 = sessionEpoch(second);
+
+    assertThat(e1).isPositive();
+    assertThat(e2).isGreaterThan(e1);
+    assertThat(noticeEpochs()).containsExactly(e1, e2);
+  }
+
   @Test
   void aRefusedBindingSendsNoNewDeviceSms() throws Exception {
     Device d = Device.create();

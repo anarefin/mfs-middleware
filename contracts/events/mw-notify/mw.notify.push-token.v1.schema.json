@@ -2,16 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://contracts.bits.mw/events/mw-notify/mw.notify.push-token.v1.schema.json",
   "title": "mw.notify.push-token.v1",
-  "description": "A push device token the app registered for its wallet's bound device (ticket 110, FRS EXT-04): mw-app-gateway publishes it for PUT /app/v1/notifications/push-token, mw-notify (the consumer, so the owner, as with mw.notify.request.v1) keeps it in notify.push_device. One wallet has one bound device, so a registration replaces the wallet's other devices; a registration older than the stored one is ignored. Key: walletId. Consumers ignore unknown fields; only additive changes within v1.",
+  "description": "A push device token the app registered for its wallet's bound device (ticket 110, FRS EXT-04): mw-app-gateway publishes it for PUT /app/v1/notifications/push-token, mw-notify (the consumer, so the owner, as with mw.notify.request.v1) keeps it in notify.push_device. One wallet has one bound device, so a registration replaces the wallet's other devices; a registration older than the stored one is ignored, and one from a binding older than the wallet's or the device's newest known binding (bindingEpoch, ticket 110b) is refused. Key: walletId. Consumers ignore unknown fields; only additive changes within v1.",
   "type": "object",
-  "required": ["schemaVersion", "walletId", "deviceId", "token", "platform", "registeredAt"],
+  "required": ["schemaVersion", "walletId", "deviceId", "token", "platform", "registeredAt", "bindingEpoch"],
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "walletId": { "type": "string", "minLength": 1, "maxLength": 64, "description": "The core's wallet id (the MSISDN for app wallets), from the caller's token." },
     "deviceId": { "type": "string", "minLength": 1, "maxLength": 128, "description": "The bound device the request came from (X-Device-Id, checked by the device gate)." },
     "token": { "type": "string", "minLength": 1, "maxLength": 4096, "description": "The FCM / APNs device token. Not personal data; logged masked to its last 6 characters." },
     "platform": { "enum": ["ANDROID", "IOS"] },
-    "registeredAt": { "type": "string", "format": "date-time" },
+    "registeredAt": { "type": "string", "format": "date-time", "description": "When the gateway took the registration (its clock): orders two registrations of the same binding, never compared with a binding." },
+    "bindingEpoch": { "type": "integer", "minimum": 1, "description": "mw-auth's binding epoch of this device to this wallet (ticket 110b), from the live session the gateway checked: strictly increasing over every binding of any device to any wallet, also carried by mw-auth's DEVICE_BOUND notice (param bindingEpoch). mw-notify refuses a registration whose epoch is older than a binding it knows of the wallet or the device, so a registration from an earlier binding that arrives late is ignored whatever the services' clocks say." },
     "correlationId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CorrelationId" }
   }
 }

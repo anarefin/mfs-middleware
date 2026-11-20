@@ -65,7 +65,7 @@ class ProducedContractsTest {
     return List.of(
         mapper.otp("01711000001", "123456", null, NOW.plusSeconds(120), CORRELATION_ID),
         mapper.otp("01711000001", "654321", "en", NOW.plusSeconds(120), CORRELATION_ID),
-        mapper.bound("01711000001", "dev-0001", "bn", CORRELATION_ID),
+        mapper.bound("01711000001", "dev-0001", 42L, "bn", CORRELATION_ID),
         mapper.otp("01711000001", "123456", "en", NOW.plusSeconds(120), CORRELATION_ID, "RESET"),
         mapper.notice("01711000001", DeviceNotificationMapper.PIN_CHANGED_TEMPLATE, null, CORRELATION_ID),
         mapper.notice("01711000001", DeviceNotificationMapper.RESET_APPROVED_TEMPLATE, "en", CORRELATION_ID));

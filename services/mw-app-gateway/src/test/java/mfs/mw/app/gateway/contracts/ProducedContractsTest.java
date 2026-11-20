@@ -48,7 +48,10 @@ class ProducedContractsTest {
     for (String platform : List.of("ANDROID", "IOS")) {
       mfs.mw.app.gateway.messaging.EventPublisher publisher =
           org.mockito.Mockito.mock(mfs.mw.app.gateway.messaging.EventPublisher.class);
-      new mfs.mw.app.gateway.service.PushTokenService(publisher, java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC))
+      mfs.mw.app.gateway.client.AuthClient auth = org.mockito.Mockito.mock(mfs.mw.app.gateway.client.AuthClient.class);
+      org.mockito.Mockito.when(auth.session("01711000001", "dev-0001")).thenReturn(java.util.Optional.of(
+          new mfs.mw.app.gateway.dto.LiveSession("01711000001", "dev-0001", 300, "ab".repeat(32), NOW, 42L)));
+      new mfs.mw.app.gateway.service.PushTokenService(publisher, auth, java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC))
           .register(CUSTOMER, "dev-0001", new mfs.mw.app.gateway.dto.PushTokenRequest("fcm-test-token-abc123", platform));
       org.mockito.ArgumentCaptor<Object> payload = org.mockito.ArgumentCaptor.forClass(Object.class);
       org.mockito.Mockito.verify(publisher).publish(org.mockito.ArgumentMatchers.eq("mw.notify.push-token.v1"),

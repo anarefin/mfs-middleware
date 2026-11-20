@@ -94,7 +94,7 @@ class TestAccountServiceTest {
         new DeviceOtp(WALLET, "dev-1", "hash", "en", NOW.plusSeconds(100), 3, 2, "LOGIN")));
     when(channelOtps.quotaSends(WALLET)).thenReturn(4);
     when(devices.findByWallet(WALLET)).thenReturn(List.of(
-        new AuthDevice("dev-2", WALLET, "pk", NOW, null), new AuthDevice("dev-1", WALLET, "pk", NOW.minusSeconds(9), NOW)));
+        new AuthDevice("dev-2", WALLET, "pk", NOW, null, 2), new AuthDevice("dev-1", WALLET, "pk", NOW.minusSeconds(9), NOW, 1)));
 
     TestAccount a = service.view(WALLET);
 

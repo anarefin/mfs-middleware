@@ -18,7 +18,7 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class DeviceRepository {
 
-  private static final String COLUMNS = "device_id, wallet_id, public_key, bound_at, unbound_at";
+  private static final String COLUMNS = "device_id, wallet_id, public_key, bound_at, unbound_at, binding_epoch";
 
   private final JdbcTemplate jdbc;
 
@@ -73,23 +73,28 @@ public class DeviceRepository {
         Timestamp.from(at), walletId, deviceId);
   }
 
-  /** Binds (or re-binds, with a new key and possibly to another wallet) the device. */
-  public void bind(String deviceId, String walletId, String publicKey, Instant at) {
-    jdbc.update(
+  /**
+   * Binds (or re-binds, with a new key and possibly to another wallet) the device; returns the binding's epoch,
+   * the next value of {@code device_binding_epoch_seq} (ticket 110b), new for every binding.
+   */
+  public long bind(String deviceId, String walletId, String publicKey, Instant at) {
+    Long epoch = jdbc.queryForObject(
         """
-        INSERT INTO device (device_id, wallet_id, public_key, bound_at, unbound_at)
-        VALUES (?, ?, ?, ?, NULL)
+        INSERT INTO device (device_id, wallet_id, public_key, bound_at, unbound_at, binding_epoch)
+        VALUES (?, ?, ?, ?, NULL, nextval('device_binding_epoch_seq'))
         ON CONFLICT (device_id) DO UPDATE
           SET wallet_id = excluded.wallet_id, public_key = excluded.public_key,
-              bound_at = excluded.bound_at, unbound_at = NULL
+              bound_at = excluded.bound_at, unbound_at = NULL, binding_epoch = excluded.binding_epoch
+        RETURNING binding_epoch
         """,
-        deviceId, walletId, publicKey, Timestamp.from(at));
+        Long.class, deviceId, walletId, publicKey, Timestamp.from(at));
+    return epoch == null ? 0 : epoch;
   }
 
   private static AuthDevice row(ResultSet rs) throws SQLException {
     Timestamp unbound = rs.getTimestamp(5);
     return new AuthDevice(
         rs.getString(1), rs.getString(2), rs.getString(3), rs.getTimestamp(4).toInstant(),
-        unbound == null ? null : unbound.toInstant());
+        unbound == null ? null : unbound.toInstant(), rs.getLong(6));
   }
 }

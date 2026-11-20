@@ -11,8 +11,9 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Consumes {@code mw.notify.push-token.v1} (ticket 110): stores the app's device token for its wallet's
  * bound device ({@link PushDeviceService}). A record that cannot be read (an unknown platform) goes to the
- * DLQ at once; one without wallet, device, token or time throws, so the retry error handler parks it on a
- * retry topic and finally the DLQ. The token is never logged in clear.
+ * DLQ at once; one without wallet, device, token, time or binding epoch (ticket 110b: a registration that
+ * cannot name its binding is never stored) throws, so the retry error handler parks it on a retry topic and
+ * finally the DLQ. The token is never logged in clear.
  */
 @Component("pushTokenListener")
 public class PushTokenListener {
@@ -35,8 +36,8 @@ public class PushTokenListener {
   public void handle(ConsumerRecord<String, String> record, Acknowledgment ack) {
     PushTokenEvent e = json.readValue(record.value(), PushTokenEvent.class);
     if (blank(e.walletId()) || blank(e.deviceId()) || blank(e.token()) || e.platform() == null
-        || e.registeredAt() == null) {
-      throw new IllegalArgumentException("push token without wallet, device, token, platform or time");
+        || e.registeredAt() == null || e.bindingEpoch() == null || e.bindingEpoch() < 1) {
+      throw new IllegalArgumentException("push token without wallet, device, token, platform, time or binding epoch");
     }
     devices.register(e);
     ack.acknowledge();

@@ -5,5 +5,6 @@
   "token": "fcm-test-token-abc123",
   "platform": "ANDROID",
   "registeredAt": "2026-11-20T08:00:00Z",
-  "correlationId": "corr-push-1"
+  "correlationId": "corr-push-1",
+  "bindingEpoch": 42
 }

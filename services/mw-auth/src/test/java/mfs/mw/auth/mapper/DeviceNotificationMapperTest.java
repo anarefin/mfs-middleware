@@ -31,18 +31,20 @@ class DeviceNotificationMapperTest {
 
   @Test
   void theBoundNoticeIsATxnSmsInBanglaByDefaultNamingTheNewDevice() {
-    NotificationRequest sms = mapper.bound("01711000001", "dev-0001", null, "corr-1");
+    NotificationRequest sms = mapper.bound("01711000001", "dev-0001", 42L, null, "corr-1");
     assertThat(ContractSchemas.schema(SCHEMA).validate(JSON.valueToTree(sms))).isEmpty();
     assertThat(sms.templateCode()).isEqualTo("DEVICE_BOUND");
     assertThat(sms.priority()).isEqualTo("TXN");
     assertThat(sms.locale()).isEqualTo("bn");
-    // mw-notify revokes the push tokens of the wallet's other devices (ticket 110); the SMS shows nothing of it
-    assertThat(sms.params()).containsExactly(java.util.Map.entry("deviceId", "dev-0001"));
+    // mw-notify revokes the push tokens of the wallet's other devices (ticket 110) and orders bindings and
+    // token registrations by the binding epoch (ticket 110b); the SMS shows nothing of either
+    assertThat(sms.params()).containsOnly(
+        java.util.Map.entry("deviceId", "dev-0001"), java.util.Map.entry("bindingEpoch", "42"));
   }
 
   @Test
   void everyMessageIsANewOne() {
-    assertThat(mapper.bound("01711000001", "dev-1", "en", "c").messageId())
-        .isNotEqualTo(mapper.bound("01711000001", "dev-1", "en", "c").messageId());
+    assertThat(mapper.bound("01711000001", "dev-1", 7L, "en", "c").messageId())
+        .isNotEqualTo(mapper.bound("01711000001", "dev-1", 7L, "en", "c").messageId());
   }
 }

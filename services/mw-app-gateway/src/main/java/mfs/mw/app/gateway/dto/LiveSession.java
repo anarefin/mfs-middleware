@@ -8,7 +8,8 @@ import mfs.mw.app.gateway.util.SensitiveType;
 /**
  * mw-auth's {@code GET /internal/v1/sessions/{walletId}/{deviceId}} answer (contract {@code
  * auth-internal.v1.openapi.yaml}): the live session, extended, with the fingerprint (hex SHA-256 of
- * the SubjectPublicKeyInfo DER) and binding time of the device's current key (ticket 69). Unknown
+ * the SubjectPublicKeyInfo DER) and binding time of the device's current key (ticket 69), and the binding's
+ * epoch (ticket 110b; null only from an mw-auth before it), copied into push token registrations. Unknown
  * fields are ignored (mw-auth owns the contract).
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -17,4 +18,5 @@ public record LiveSession(
     String deviceId,
     long idleTimeoutSeconds,
     String deviceKeyFingerprint,
-    Instant boundAt) {}
+    Instant boundAt,
+    Long bindingEpoch) {}

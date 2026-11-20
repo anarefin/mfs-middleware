@@ -15,9 +15,10 @@ import org.springframework.transaction.annotation.Transactional;
  * The push device token registry (ticket 110, {@code notify.push_device}). A wallet has one bound device
  * (mw-auth), so a registration from it replaces the wallet's other devices; a registration older than the
  * stored one is ignored. A device re-bind (mw-auth's {@code DEVICE_BOUND} notice, which names the new
- * device) revokes the tokens of the wallet's other devices and of that device under any other wallet, so no
- * push goes to an old holder afterwards; the binding is kept ({@code notify.push_device_binding}) so a
- * registration stamped before it that arrives later is refused.
+ * device and its binding epoch) revokes the tokens of the wallet's other devices and of that device under any
+ * other wallet, so no push goes to an old holder afterwards; the binding is kept ({@code
+ * notify.push_device_binding}) so a registration of an older binding that arrives later is refused. Bindings
+ * and registrations are ordered by mw-auth's binding epoch only (ticket 110b), never by a clock.
  * Tokens are logged masked to their last 6 characters.
  */
 @Service
@@ -27,6 +28,9 @@ public class PushDeviceService {
   public static final String DEVICE_BOUND_TEMPLATE = "DEVICE_BOUND";
 
   public static final String DEVICE_PARAM = "deviceId";
+
+  /** The notice's param with mw-auth's binding epoch (ticket 110b). */
+  public static final String EPOCH_PARAM = "bindingEpoch";
 
   private static final Logger log = LoggerFactory.getLogger(PushDeviceService.class);
 
@@ -39,22 +43,27 @@ public class PushDeviceService {
   }
 
   /**
-   * Stores the token unless a re-bind revoked it (a binding at or after {@code registeredAt} of another device
-   * to the wallet, or of the device to another wallet: the registration arrived late, on another topic than
-   * the notice) or a newer registration of the same device is stored.
+   * Stores the token unless its binding is superseded (ticket 110b: a newer binding epoch of the wallet or of
+   * the device is known, from a DEVICE_BOUND notice or a newer registration; the registration arrived late, on
+   * another topic than the notice) or a newer registration of the same binding is stored. Only mw-auth's
+   * binding epoch is compared, never the gateway's {@code registeredAt} with a binding, so clock skew between
+   * services cannot let it in.
    */
   @Transactional
   public void register(PushTokenEvent e) {
-    if (devices.revokedBy(e.walletId(), e.deviceId(), e.registeredAt())) {
+    long epoch = e.bindingEpoch();
+    if (devices.supersedes(e.walletId(), e.deviceId(), epoch)) {
       log.atInfo()
           .addKeyValue("event", "notify.push.token.revoked_late")
           .addKeyValue("correlationId", e.correlationId())
           .addKeyValue("token", MaskingPolicy.mask(SensitiveType.PUSH_TOKEN, e.token()))
-          .log("push token registration older than the re-bind that revoked it; ignored");
+          .addKeyValue("bindingEpoch", epoch)
+          .log("push token registration of a binding a newer one superseded; ignored");
       return;
     }
-    boolean stored = devices.upsert(e.walletId(), e.deviceId(), e.token(), e.platform().name(), e.registeredAt());
-    int replaced = stored ? devices.removeOthers(e.walletId(), e.deviceId(), e.token()) : 0;
+    boolean stored =
+        devices.upsert(e.walletId(), e.deviceId(), e.token(), e.platform().name(), epoch, e.registeredAt());
+    int replaced = stored ? devices.removeOthers(e.walletId(), e.deviceId(), e.token(), epoch) : 0;
     log.atInfo()
         .addKeyValue("event", stored ? "notify.push.token.registered" : "notify.push.token.stale")
         .addKeyValue("correlationId", e.correlationId())
@@ -65,16 +74,19 @@ public class PushDeviceService {
   }
 
   /**
-   * A device re-bind, as of now (the notice carries no time; the moment it is accepted is at or after the
-   * binding): the wallet's other devices' tokens and the device's tokens under any other wallet are revoked,
-   * and the binding is kept so a registration stamped before it that arrives later is refused. Rows removed.
+   * A device re-bind of mw-auth's binding {@code epoch}: the wallet's other devices' tokens and the device's
+   * tokens under any other wallet from older bindings are revoked, and the binding is kept so a registration
+   * of an older binding that arrives later is refused (a late notice of an older binding revokes nothing of a
+   * newer one). Without an epoch ({@code null}, a notice of an mw-auth before ticket 110b) every such token is
+   * revoked and nothing is kept. Rows removed.
    */
   @Transactional
-  public int deviceBound(String walletId, String deviceId) {
-    int revoked = devices.rebind(walletId, deviceId, clock.instant());
+  public int deviceBound(String walletId, String deviceId, Long epoch) {
+    int revoked = devices.rebind(walletId, deviceId, epoch, clock.instant());
     log.atInfo()
         .addKeyValue("event", "notify.push.token.revoked")
         .addKeyValue("revoked", revoked)
+        .addKeyValue("bindingEpoch", epoch)
         .log("device bound: push tokens of the wallet's other devices revoked");
     return revoked;
   }

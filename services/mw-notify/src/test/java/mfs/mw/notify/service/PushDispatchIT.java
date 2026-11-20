@@ -160,8 +160,10 @@ class PushDispatchIT {
     jdbc.update("delete from push_device_binding");
   }
 
-  private void register(String wallet, String device, String token, Instant at) {
-    devices.register(new PushTokenEvent(1, wallet, device, token, PushTokenEvent.Platform.ANDROID, at, "corr-reg"));
+  /** A registration from the device's binding {@code epoch} (mw-auth's), stamped {@code at} by the gateway's clock. */
+  private void register(String wallet, String device, long epoch, String token, Instant at) {
+    devices.register(
+        new PushTokenEvent(1, wallet, device, token, PushTokenEvent.Platform.ANDROID, at, epoch, "corr-reg"));
   }
 
   private static String txnId() {
@@ -189,7 +191,7 @@ class PushDispatchIT {
 
   @Test
   void aCompletedTxnPushesTheRenderedTextToTheRegisteredTokenAndTheSmsGoesToo() {
-    register(WALLET, "dev-1", "tok-device-aaa111", T0.minusSeconds(60));
+    register(WALLET, "dev-1", 10, "tok-device-aaa111", T0.minusSeconds(60));
     String txn = txnId();
 
     txnStatuses.onStatus(p2p(txn, "COMPLETED", "en"));
@@ -211,7 +213,7 @@ class PushDispatchIT {
 
   @Test
   void aFailedTxnPushIsInBanglaWhenTheTxnIsBangla() {
-    register(WALLET, "dev-1", "tok-device-bbb222", T0.minusSeconds(60));
+    register(WALLET, "dev-1", 10, "tok-device-bbb222", T0.minusSeconds(60));
     String txn = txnId();
 
     txnStatuses.onStatus(p2p(txn, "FAILED", "bn"));
@@ -240,7 +242,7 @@ class PushDispatchIT {
 
   @Test
   void aPushServer5xxIsRetriedThenFailedAndTheSmsForTheSameTxnIsStillSent() {
-    register(WALLET, "dev-1", "tok-device-ccc333", T0.minusSeconds(60));
+    register(WALLET, "dev-1", 10, "tok-device-ccc333", T0.minusSeconds(60));
     ANSWER.set(503);
     String txn = txnId();
     String push = txn + ":push:push-txn-completed";
@@ -268,14 +270,14 @@ class PushDispatchIT {
 
   @Test
   void aRebindRemovesTheOldTokenAndNoPushGoesToItAfterwards() {
-    register(WALLET, "dev-old", "tok-device-old444", T0.minusSeconds(60));
+    register(WALLET, "dev-old", 10, "tok-device-old444", T0.minusSeconds(60));
     String queuedBefore = txnId();
     txnStatuses.onStatus(p2p(queuedBefore, "COMPLETED", "en"));
 
     // mw-auth's "a new device was bound" notice names the new device
     notifications.accept(new NotificationRequest(1, "device-bound:" + UUID.randomUUID(), null, "corr-bind",
         new NotificationRequest.Recipient(WALLET, null, null, null), "DEVICE_BOUND", "en",
-        Map.of("deviceId", "dev-new"), List.of(Channel.SMS), Priority.TXN, null, null));
+        Map.of("deviceId", "dev-new", "bindingEpoch", "20"), List.of(Channel.SMS), Priority.TXN, null, null));
     String after = txnId();
     txnStatuses.onStatus(p2p(after, "COMPLETED", "en"));
     pushDispatcher.dispatchDue();
@@ -286,25 +288,30 @@ class PushDispatchIT {
     assertThat(jdbc.queryForObject("select count(*) from message where txn_id = ? and channel = 'PUSH'", Integer.class, after))
         .isZero();
 
-    register(WALLET, "dev-new", "tok-device-new555", T0);
+    register(WALLET, "dev-new", 20, "tok-device-new555", T0);
     String next = txnId();
     txnStatuses.onStatus(p2p(next, "COMPLETED", "en"));
     pushDispatcher.dispatchDue();
     assertThat(STORED).singleElement().satisfies(s -> assertThat(s.body().path("token").asString()).isEqualTo("tok-device-new555"));
   }
 
-  private void deviceBound(String wallet, String device) {
+  /** mw-auth's DEVICE_BOUND notice of the binding {@code epoch} of {@code device} to {@code wallet}. */
+  private void deviceBound(String wallet, String device, long epoch) {
+    deviceBound(wallet, Map.of("deviceId", device, "bindingEpoch", Long.toString(epoch)));
+  }
+
+  private void deviceBound(String wallet, Map<String, String> params) {
     notifications.accept(new NotificationRequest(1, "device-bound:" + UUID.randomUUID(), null, "corr-bind",
         new NotificationRequest.Recipient(wallet, null, null, null), "DEVICE_BOUND", "en",
-        Map.of("deviceId", device), List.of(Channel.SMS), Priority.TXN, null, null));
+        params, List.of(Channel.SMS), Priority.TXN, null, null));
   }
 
   @Test
   void aDeviceThatMovesToAnotherWalletLeavesNoRowUnderTheOldWalletAndGetsNoneOfItsPushes() {
     String walletB = "01711000077";
-    register(WALLET, "dev-moving", "tok-device-mov111", T0.minusSeconds(60));
+    register(WALLET, "dev-moving", 10, "tok-device-mov111", T0.minusSeconds(60));
 
-    deviceBound(walletB, "dev-moving");
+    deviceBound(walletB, "dev-moving", 20);
     String txn = txnId();
     txnStatuses.onStatus(p2p(txn, "COMPLETED", "en"));
     pushDispatcher.dispatchDue();
@@ -316,27 +323,62 @@ class PushDispatchIT {
   }
 
   @Test
-  void aRegistrationStampedBeforeARevocationIsIgnoredWhenItArrivesLater() {
-    register(WALLET, "dev-old", "tok-device-old222", T0.minusSeconds(60));
-    deviceBound(WALLET, "dev-new"); // revokes dev-old at T0
+  void aRegistrationFromAnOlderBindingIsIgnoredWhenItArrivesLateWhateverTheGatewaysClockSays() {
+    register(WALLET, "dev-old", 10, "tok-device-old222", T0.minusSeconds(60));
+    deviceBound(WALLET, "dev-new", 20); // revokes dev-old
 
-    // the old device's registration of T0 - 10 s comes in after the revocation (another topic)
-    register(WALLET, "dev-old", "tok-device-late33", T0.minusSeconds(10));
-    // and the moved device's old registration under another wallet is refused too
-    deviceBound("01711000078", "dev-moved");
-    register(WALLET, "dev-moved", "tok-device-late44", T0.minusSeconds(5));
+    // the old device's registration (binding 10) comes in after the revocation, stamped by a gateway whose
+    // clock runs an hour ahead of mw-notify's: still refused, the binding epoch decides, not the clocks
+    register(WALLET, "dev-old", 10, "tok-device-late33", T0.plusSeconds(3600));
+    // a device bound to this wallet long ago (binding 5) moved to another wallet (binding 30): its old
+    // registration under this wallet is refused too, however late it is stamped
+    deviceBound("01711000078", "dev-moved", 30);
+    register(WALLET, "dev-moved", 5, "tok-device-late44", T0.plusSeconds(7200));
 
     assertThat(devices.tokenOf(WALLET)).isEmpty();
-    // the new device registers after its binding: kept
-    register(WALLET, "dev-new", "tok-device-new666", T0.plusSeconds(1));
+    // the new device registers from its binding, stamped by a gateway an hour behind: kept
+    register(WALLET, "dev-new", 20, "tok-device-new666", T0.minusSeconds(3600));
     assertThat(devices.tokenOf(WALLET)).contains("tok-device-new666");
   }
 
   @Test
+  void aRegistrationFromAnOlderBindingIsIgnoredEvenBeforeTheNewBindingsNoticeArrives() {
+    // the new device registered (binding 20) before mw-auth's notice reached mw-notify
+    register(WALLET, "dev-new", 20, "tok-device-new777", T0);
+    register(WALLET, "dev-old", 10, "tok-device-late55", T0.plusSeconds(3600));
+
+    assertThat(devices.tokenOf(WALLET)).contains("tok-device-new777");
+    // the notice then comes: the new device's token stays
+    deviceBound(WALLET, "dev-new", 20);
+    assertThat(devices.tokenOf(WALLET)).contains("tok-device-new777");
+  }
+
+  @Test
+  void aLateNoticeOfAnOlderBindingRevokesNothingOfANewerOne() {
+    deviceBound(WALLET, "dev-new", 20);
+    register(WALLET, "dev-new", 20, "tok-device-new888", T0);
+
+    deviceBound(WALLET, "dev-old", 10); // the older binding's notice, delayed
+
+    assertThat(devices.tokenOf(WALLET)).contains("tok-device-new888");
+    register(WALLET, "dev-old", 10, "tok-device-late66", T0.plusSeconds(60));
+    assertThat(devices.tokenOf(WALLET)).contains("tok-device-new888");
+  }
+
+  @Test
+  void aNoticeWithoutABindingEpochStillRevokesTheWalletsOtherDevices() {
+    register(WALLET, "dev-old", 10, "tok-device-old999", T0.minusSeconds(60));
+
+    deviceBound(WALLET, Map.of("deviceId", "dev-new"));
+
+    assertThat(devices.tokenOf(WALLET)).isEmpty();
+  }
+
+  @Test
   void aNewDeviceRegistrationReplacesTheWalletsOldDeviceAndAnOlderOneIsIgnored() {
-    register(WALLET, "dev-1", "tok-device-ddd666", T0.minusSeconds(60));
-    register(WALLET, "dev-2", "tok-device-eee777", T0);
-    register(WALLET, "dev-2", "tok-device-stale8", T0.minusSeconds(30));
+    register(WALLET, "dev-1", 10, "tok-device-ddd666", T0.minusSeconds(60));
+    register(WALLET, "dev-2", 20, "tok-device-eee777", T0);
+    register(WALLET, "dev-2", 20, "tok-device-stale8", T0.minusSeconds(30));
 
     assertThat(devices.tokenOf(WALLET)).contains("tok-device-eee777");
     assertThat(jdbc.queryForObject("select count(*) from push_device where wallet_id = ?", Integer.class, WALLET)).isEqualTo(1);
@@ -344,7 +386,7 @@ class PushDispatchIT {
 
   @Test
   void aTokenThePushServerNoLongerKnowsIsDroppedAndTheMessageFailed() {
-    register(WALLET, "dev-1", "tok-device-fff999", T0.minusSeconds(60));
+    register(WALLET, "dev-1", 10, "tok-device-fff999", T0.minusSeconds(60));
     ANSWER.set(404);
     String txn = txnId();
 
