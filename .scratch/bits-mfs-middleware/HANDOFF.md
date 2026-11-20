@@ -94,3 +94,15 @@ Merged on upay-main: 117a (fa5ac85c), 127a, 113a, 116a (897a406b), 115a (3ff0465
 Splits: 113, 115, 116, 117, 127 (`issues/NN-split-decisions.md`). New: 139 (dry-run OAuth2 isolation, security follow-up, all adapter copies).
 User decision: 127c adds `GET /core/v1/reports/emoney-total` to the core wallet contract (open item for Upay's real core).
 In flight at 15:45: 113c, 116b, 117b, 117d, 127b (worktrees under .claude/worktrees/agent-*).
+
+## STOPPED 2026-11-20 ~16:55 (usage limit)
+Merged on upay-main since 15:45: 113b, 113c (113 done), 116b, 116c (116 done), 127b, 127c (127 done), 117b, 117c, 117d, 118a, 139,
+plus fix 93d0ad33 (BILLER in every ConfigType copy). The post-merge rebuild of orchestrator + app-gateway after 117c was stopped (not run).
+User decisions: 127c e-money total endpoint (done); USSD W2B stays app-only ("use the app" message), recorded for 117e/gate.
+Stopped mid-work (worktrees under .claude/worktrees/agent-*; branches kept, uncommitted work may exist):
+- 114 bill aggregators: branch ticket/114-bill-aggregators (was building).
+- 115b merchant pay flow: branch ticket/115b-merchant-pay-flow (was merging upay-main; renumber orchestrator migration past V18).
+- 119a remit adapter: branch ticket/119a-remit-adapter. 120a ATM adapter: branch ticket/120a-atm-adapter-inbound.
+Next: finish/merge those four, then M9 gate (lean: e2e first, then Newman folders 06 09 19 47-50 61 + new), then 117e, 118b, 119b, 120b, 121+.
+Gate checks to remember: test-console app-users.test.ts fails 1; USSD bill month = current Dhaka month (assumption);
+e-money total counts all wallet types but SYSTEM (kept unless user objects).
