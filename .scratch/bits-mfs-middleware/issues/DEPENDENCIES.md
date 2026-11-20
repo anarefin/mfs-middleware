@@ -68,7 +68,7 @@
 93-core-mock-rest-api                       92                done     31m      43 files +2354 −36     cbfb273a
 94-core-mock-model                          93                done     120m     115 files +2556 −614   7fb7429f
 95-orchestrator-core-rest-client            93                split (95-split-decisions.md, 2026-11-20)
-95a-orchestrator-core-rest                  93                open
+95a-orchestrator-core-rest                  93                done     60m      70 files +2856 −1135   b43b392f,53c83472
 95b-auth-admin-core-rest-retire-topics      95a               open
 95c-hold-expired-wallet-state               95a,94            open
 97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
