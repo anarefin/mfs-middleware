@@ -178,6 +178,58 @@ public class BatchService {
   }
 
   /**
+   * A maker asks to retry the FAILED rows of a settled batch (ticket 129c): COMPLETED or
+   * COMPLETED_WITH_EXCEPTIONS with at least one FAILED row, else {@code 409 MW-VAL-038}; a request
+   * already pending {@code 409 MW-VAL-039}. Nothing is sent until a checker approves it.
+   */
+  @Transactional
+  public BatchView requestRetry(PortalUser maker, String batchId) {
+    require(maker, props.roles().maker());
+    Batch batch = load(maker, batchId);
+    if (!batches.requestRetry(batch.batchId(), maker.orgId(), maker.subject(), maker.username(), clock.instant())) {
+      throw load(maker, batchId).retryRequestedSub() != null
+          ? retryRequest("A retry of this batch is already awaiting approval")
+          : new MwException(ErrorCodes.VAL_NOTHING_TO_RETRY, "Only a settled batch with failed rows can be retried")
+              .withStatus(HttpStatus.CONFLICT);
+    }
+    Batch requested = load(maker, batchId);
+    audit.record(requested, "retry_requested", maker.username(), batch.status(), batch.status(), null);
+    logControl("bulk.batch.retry_requested", requested, maker);
+    return viewWithProgress(requested);
+  }
+
+  /**
+   * A checker approves a pending retry request (ticket 129c), maker-checker as for the batch: never
+   * the maker who asked for it ({@code 403 MW-AUTH-030}); none pending {@code 409 MW-VAL-039}. One
+   * conditional UPDATE starts the next retry round, so a repeated approval sends nothing twice; the
+   * FAILED rows are sent again once their failed attempt is proven to have posted nothing
+   * ({@link BulkRetryService}).
+   */
+  @Transactional
+  public BatchView approveRetry(PortalUser checker, String batchId) {
+    require(checker, props.roles().checker());
+    Batch batch = load(checker, batchId);
+    if (batch.retryRequestedSub() == null) {
+      throw retryRequest("No retry of this batch is awaiting approval");
+    }
+    if (batch.retryRequestedSub().equals(checker.subject())) {
+      throw new MwException(ErrorCodes.AUTH_MAKER_IS_CHECKER, "The maker of a retry cannot approve it")
+          .withStatus(HttpStatus.FORBIDDEN);
+    }
+    if (!batches.approveRetry(batch.batchId(), checker.orgId(), checker.subject(), clock.instant())) {
+      throw retryRequest("No retry of this batch is awaiting approval");
+    }
+    Batch approved = load(checker, batchId);
+    audit.record(approved, "retry_approved", checker.username(), batch.status(), BatchStatus.EXECUTING, null);
+    logControl("bulk.batch.retry_approved", approved, checker);
+    return viewWithProgress(approved);
+  }
+
+  private static MwException retryRequest(String message) {
+    return new MwException(ErrorCodes.VAL_RETRY_REQUEST, message).withStatus(HttpStatus.CONFLICT);
+  }
+
+  /**
    * The result file of an approved batch (CSV, one line per row in file order): line, masked
    * MSISDN (18.3), amount in taka, reference, row status, child txnId, error code and the batch's
    * status (COMPLETED_WITH_EXCEPTIONS when a row is MANUAL_REVIEW or UNRESOLVED). Final once the

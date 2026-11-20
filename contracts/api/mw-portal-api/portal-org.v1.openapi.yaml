@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits org portal API (mw-portal-api)
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Org portal API v1 (spec 8.2, 9.4), served by mw-portal-api behind APISIX route
     `/portal/org/v1/*`. Bearer JWT from Keycloak realm `portals`; the org is the token's `orgId`
@@ -246,6 +246,56 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/retry-failed:
+    post:
+      operationId: requestBulkBatchRetry
+      summary: Ask to retry the FAILED rows of a settled batch (maker)
+      description: >-
+        Ticket 129c. A COMPLETED or COMPLETED_WITH_EXCEPTIONS batch with at least one FAILED row
+        (REJECTED, REVERSED, MANUAL_REVIEW and UNRESOLVED rows are never retried) gets a retry
+        request that a checker approves (`.../retry-failed/approve`); nothing is sent before.
+        The answer carries `retryRequestedBy`. Needs role `org-maker`. Not settled or no FAILED
+        row: 409 MW-VAL-038; a request already pending: 409 MW-VAL-039. No body.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      responses:
+        "200":
+          description: Retry requested
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/retry-failed/approve:
+    post:
+      operationId: approveBulkBatchRetry
+      summary: Approve the pending retry of a batch's FAILED rows (checker)
+      description: >-
+        Ticket 129c, maker-checker as for the batch: never by the maker who asked for it, even
+        with both roles (403 MW-AUTH-030). The batch is EXECUTING again with `retryRound` one
+        higher; once approved, a repeated approval finds nothing pending (409 MW-VAL-039) and
+        sends nothing. A row is never paid twice: each FAILED row (status RETRY_CHECK meanwhile)
+        is sent again as a new attempt with its own child transaction only after its failed
+        attempt is proven to have moved no money (still FAILED, never of unknown outcome, no
+        core posting); otherwise it stays FAILED. Needs role `org-checker`. No body.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      responses:
+        "200":
+          description: Retry approved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
   /portal/org/v1/bulk/batches/{batchId}/result:
     get:
       operationId: getBulkBatchResult
@@ -257,7 +307,8 @@ paths:
         is the row's state: PENDING (not sent yet), SUBMITTED (running), COMPLETED (paid), FAILED,
         REJECTED, REVERSED (not paid; `errorCode` says why), MANUAL_REVIEW (outcome being checked
         by operations) or UNRESOLVED (no outcome known long after it was sent; operations
-        reconcile it), INVALID (broke a row rule at upload, never sent: `msisdn` empty, `amount` and
+        reconcile it), RETRY_CHECK (FAILED, its approved retry waiting for the proof that the
+        failed attempt moved no money; `txnId` the failed attempt's), INVALID (broke a row rule at upload, never sent: `msisdn` empty, `amount` and
         `reference` only when they passed their rule, `errorCode` its row error codes joined by
         `|`). `batchStatus` is the batch's status on every line: COMPLETED_WITH_EXCEPTIONS
         when any row is MANUAL_REVIEW or UNRESOLVED. Final once the batch is COMPLETED or
@@ -469,7 +520,8 @@ components:
         when not submitted within 72 h of the upload; PENDING_APPROVAL -> APPROVED or REJECTED
         (maker-checker), or EXPIRED when no checker decided within 72 h of the upload; APPROVED -> EXECUTING (first row sent) <-> PAUSED -> COMPLETED
         (every row settled) or COMPLETED_WITH_EXCEPTIONS (every row settled or given up, at least
-        one MANUAL_REVIEW or UNRESOLVED). More states may be added within v1; clients must accept
+        one MANUAL_REVIEW or UNRESOLVED); a settled batch -> EXECUTING again when the retry of its
+        FAILED rows is approved. More states may be added within v1; clients must accept
         unknown values.
       enum: [PREVIEW, PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, EXECUTING, PAUSED, COMPLETED, COMPLETED_WITH_EXCEPTIONS]
     BatchProgress:
@@ -477,7 +529,7 @@ components:
       description: Row counts of an approved batch.
       required: [pending, inFlight, completed, failed, manualReview, unresolved, paidAmount]
       properties:
-        pending: { type: integer, minimum: 0, description: Not sent yet }
+        pending: { type: integer, minimum: 0, description: Not sent yet (a retried row too) }
         inFlight: { type: integer, minimum: 0, description: Sent, outcome not known yet }
         completed: { type: integer, minimum: 0, description: Paid }
         failed: { type: integer, minimum: 0, description: Not paid (FAILED, REJECTED, REVERSED) }
@@ -521,6 +573,8 @@ components:
           description: The parent BULK_DISBURSE transaction of an approved batch; every child carries it
         progress: { $ref: "#/components/schemas/BatchProgress" }
         completedAt: { type: string, format: date-time, description: When the last row settled }
+        retryRound: { type: integer, minimum: 1, description: "Approved retries of the FAILED rows (absent: none)" }
+        retryRequestedBy: { type: string, description: Username of the maker whose retry request awaits a checker }
     RowErrorCode:
       type: string
       description: Why a row of an upload is invalid. More codes may be added within v1.

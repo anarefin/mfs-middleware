@@ -10,7 +10,8 @@ import java.util.Optional;
  * REVERSED are final; COMPLETED only moves on to REVERSED. UNRESOLVED is set by the reconcile job
  * when a SUBMITTED child has no settled state long after it was sent; a later record still settles
  * it. INVALID (ticket 129b) is a row that broke a row rule at upload: kept for the preview, never
- * sent.
+ * sent. RETRY_CHECK (ticket 129c) is a FAILED row whose retry was approved, waiting for the proof
+ * that its failed attempt posted nothing: then PENDING again (next attempt), else FAILED again.
  *
  * <p>Which orchestrator states settle a row is said here once ({@link #settledBy}); no other code
  * compares status strings.
@@ -24,7 +25,8 @@ public enum ItemStatus {
   REVERSED(true, false),
   MANUAL_REVIEW(true, true),
   UNRESOLVED(false, true),
-  INVALID(false, false);
+  INVALID(false, false),
+  RETRY_CHECK(false, false);
 
   /** The orchestrator's state of the same name settles the row in this state. */
   private final boolean settledByTxn;

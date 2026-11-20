@@ -105,6 +105,18 @@ public class BulkBatchController {
     return service.resume(users.resolve(jwt), batchId);
   }
 
+  /** A maker asks to retry the FAILED rows of a settled batch (ticket 129c); 409 MW-VAL-038 / 039. */
+  @PostMapping("/{batchId}/retry-failed")
+  public BatchView requestRetry(@AuthenticationPrincipal Jwt jwt, @PathVariable String batchId) {
+    return service.requestRetry(users.resolve(jwt), batchId);
+  }
+
+  /** A checker other than its maker approves the pending retry (ticket 129c); 409 MW-VAL-039. */
+  @PostMapping("/{batchId}/retry-failed/approve")
+  public BatchView approveRetry(@AuthenticationPrincipal Jwt jwt, @PathVariable String batchId) {
+    return service.approveRetry(users.resolve(jwt), batchId);
+  }
+
   /** The result file (CSV) of an approved batch; 409 MW-VAL-035 before approval. */
   @GetMapping("/{batchId}/result")
   public ResponseEntity<String> result(@AuthenticationPrincipal Jwt jwt, @PathVariable String batchId) {

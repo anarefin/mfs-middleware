@@ -244,6 +244,12 @@ mw:
         give-up-after: 24h
         period: 1m
         batch-size: 200
+      retry:
+        # Rows of an approved retry (ticket 129c) wait in RETRY_CHECK until the orchestrator's
+        # query API proves their failed attempt posted nothing (scheduler/BulkRetryJob under ShedLock).
+        enabled: ${MW_BULK_RETRY_ENABLED:true}
+        period: 2s
+        batch-size: 200
     consumers:
       # messaging/TxnStatusListener: the children's mw.txn.status.v1 records (tests switch it off)
       enabled: true

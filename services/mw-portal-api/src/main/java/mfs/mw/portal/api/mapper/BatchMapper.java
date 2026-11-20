@@ -39,7 +39,9 @@ public final class BatchMapper {
         b.completedAt(),
         b.validCount(),
         b.invalidCount(),
-        null);
+        null,
+        b.retryRound() == 0 ? null : b.retryRound(),
+        b.retryRequestedBy());
   }
 
   /** The upload's answer: the view plus the given invalid rows' codes. */

@@ -128,6 +128,25 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   orchestrator `give-up-after` (24 h) after it was sent becomes `UNRESOLVED` (WARN `bulk.row.unresolved`;
   a later status record still settles it, the batch keeps its final status). An unavailable
   orchestrator ends the run with nothing changed. Nothing is re-sent.
+- Retry of FAILED rows (ticket 129c, FRS CH-POR-04; `service/BatchService.requestRetry|approveRetry`,
+  `service/BulkRetryService`, `scheduler/BulkRetryJob` ShedLock `bulk-retry`, every `bulk.retry.period` 2 s,
+  `MW_BULK_RETRY_ENABLED`; schema V8). **A row never pays twice.** The orchestrator answers a re-sent key
+  that ended FAILED with that FAILED (its idempotency record), so a retried row goes out as a new
+  attempt: `batch_item.attempt` n > 0, txnId from `bulk:<batchId>:<line>:<n>`, key
+  `bulk-<batchId>-<line>-a<n>` (`util/BulkIds`; attempt 0 keeps the ticket 34 ids). Maker-checker as
+  the batch: `POST .../{batchId}/retry-failed` (org-maker) records a request on a COMPLETED /
+  COMPLETED_WITH_EXCEPTIONS batch with a FAILED row (else `409 MW-VAL-038`; one pending `409
+  MW-VAL-039`); `POST .../retry-failed/approve` (org-checker, never the requester `403 MW-AUTH-030`;
+  none pending `409 MW-VAL-039`) is one conditional UPDATE: `retry_round` + 1, batch EXECUTING, FAILED
+  rows -> `RETRY_CHECK`; a repeated click finds nothing. Only FAILED rows (never REJECTED, REVERSED,
+  MANUAL_REVIEW, UNRESOLVED, in flight). The job reads each RETRY_CHECK row's failed attempt from the
+  orchestrator's query API and sends it again (PENDING, attempt + 1 only from the attempt it read,
+  txn_id cleared so a late record of the old attempt matches nothing) only when it is still FAILED,
+  never was UNKNOWN, has no `coreRef` and every PostTransfer was refused (`BulkRetryService.postedNothing`,
+  from the timeline's CORE entries, never shown to the org); else back to FAILED (WARN
+  `bulk.row.retry_refused`). Unavailable orchestrator: the rows wait. A RETRY_CHECK row keeps the batch
+  open and is not settled by status records. Audited `bulk.batch.retry_requested|retry_approved`.
+  Views carry `retryRound` and `retryRequestedBy`. `RetryFailedRowsIT`.
 - Views of approved batches carry `parentTxnId`, `progress` (pending, inFlight, completed, failed, manualReview, unresolved, paidAmount), `completedAt`. `GET .../result`
   (`mapper/ResultFile`, maker or checker, `text/csv`, attachment): `line,msisdn,amount,reference,
   status,txnId,errorCode,batchStatus` (`batchStatus` = the batch's status on every line, e.g.
