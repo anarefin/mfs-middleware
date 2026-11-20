@@ -129,7 +129,7 @@
 117b-avl-api-linked-accounts                117a              done     29m      44 files +1640 −9      343b4088,3cfc49cf  (no mTLS on bank adapter side; local AES key, not mw-crypto)
 117c-w2b-flow-channels                      117b              done     39m      35 files +880 −46      ef2b5c5b,1953b95b  (orchestrator V18 bank routing; app.v1 1.15.0; USSD W2B menu waits for user security decision; status events carry full bank account id, pre-existing)
 117d-bank-gateway-simulator                 117a              done     19m      44 files +1416 −98     36bea5a1
-117e-bank-suite-regression                  117b,117c,117d    open   (USSD W2B stays app-only: user decision 2026-11-20)
+117e-bank-suite-regression                  117b,117c,117d    done     75m      19 files +837 −23      341eee66  (Newman folder 55, not run live; bank callback APISIX route + BANK_GATEWAY_HMAC_SECRET (re-copy .env); log-scan account rule; USSD "use the app" screen not built: seed menu change pending)
 118-mw-adapter-card                         95,97,102         split (118-split-decisions.md, 2026-11-20)
 118a-card-adapter                           95,97,102         done     27m      274 files +25935 −28   4f974e08,005a0983  (admin-api V18; postgres max_connections 100->120; 3DS webhook endpoint -> 118b)
 118b-card-flow-channels                     118a              split (2026-11-20, 1 h cap)
