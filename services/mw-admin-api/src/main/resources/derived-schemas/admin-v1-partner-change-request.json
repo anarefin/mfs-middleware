@@ -31,7 +31,8 @@
         "bank",
         "merchant",
         "card",
-        "remit"
+        "remit",
+        "atm"
       ]
     },
     "timeouts": {

@@ -96,7 +96,8 @@ D3 amendment 2026-11-13).
 | 8091 | `mw-adapter-bank` | `MW_PORT_ADAPTER_BANK` |
 | 8098 | `mw-adapter-merchant` | `MW_PORT_ADAPTER_MERCHANT` |
 | 8099 | `mw-adapter-card` | `MW_PORT_ADAPTER_CARD` |
-| 8100 | `mw-adapter-remit` | `MW_PORT_ADAPTER_REMIT` |
+| 8100 | `mw-adapter-atm` | `MW_PORT_ADAPTER_ATM` |
+| 8101 | `mw-adapter-remit` | `MW_PORT_ADAPTER_REMIT` |
 | 8092 | `mw-checkout` | `MW_PORT_CHECKOUT` |
 | 8093 | `mw-portal-api` | `MW_PORT_PORTAL_API` |
 | 8094 | `mw-crypto` (HTTPS with a mandatory client certificate, D24: `scripts/smoke.sh` shows a call; its actuator is on 8081 inside the network) | `MW_PORT_CRYPTO` |

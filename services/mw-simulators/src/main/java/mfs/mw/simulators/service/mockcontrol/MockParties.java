@@ -60,6 +60,8 @@ public final class MockParties {
               List.of("session", "authenticate", "capture", "status", "refund"), List.of("txnRef", "session")),
           new MockParty("ucb-imt", "UCB IMT inbound remittance: pushes a signed credit to the middleware on demand",
               List.of("trigger", "confirm", "status"), List.of("msisdn", "partnerRef")),
+          new MockParty("ucbatm", "UCB ATM switch: dispense status of a cardless cash-out",
+              List.of("status"), List.of("txnRef")),
           new MockParty("smsc", "SMSC, the SMPP 3.4 server of mw-notify (the DLR is its callback)",
               List.of("bind", "submit"), List.of("systemId", "msisdn"), SMSC_BEHAVIOURS),
           new MockParty("ussdgw", "USSD gateway: SMPP server mw-ussd binds to; dial plays a session (SMPP or HTTP)",

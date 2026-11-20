@@ -25,7 +25,7 @@ EDGE_SECRETS="ussd-gp:USSD_GP_GATEWAY_SECRET ussd-robi:USSD_ROBI_GATEWAY_SECRET 
 SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank mw-adapter-merchant:adapter-merchant
-  mw-adapter-card:adapter-card mw-adapter-remit:adapter-remit
+  mw-adapter-card:adapter-card mw-adapter-remit:adapter-remit mw-adapter-atm:adapter-atm
   mw-portal-api:portal-api mw-checkout:checkout mw-data-export:data-export mw-recon:recon"
 
 # Ledger stand-in. No PIN key since ticket 72 (D22): it verifies mw-auth's assertions with the
@@ -65,6 +65,8 @@ provision_mw_simulators() {
   sync_env sim.callback-secrets.cybersource CYBERSOURCE_HMAC_SECRET
   # the remittance partner signs its credits to mw-adapter-remit (UcbImtMock, ticket 119)
   sync_env sim.callback-secrets.ucb-imt UCB_IMT_HMAC_SECRET
+  # the UCB ATM switch's HMAC (UcbAtmMock dispense status, ticket 120a)
+  sync_env sim.callback-secrets.ucbatm UCBATM_HMAC_SECRET
   # the push server mock checks the key mw-notify sends (ticket 110)
   sync_env sim.push.api-key PUSH_API_KEY
   sync_env sim.ussd-gateway.credentials.gp USSD_GP_GATEWAY_SECRET
@@ -253,6 +255,18 @@ provision_mw_adapter_remit() {
   sync_env hmac-secret UCB_IMT_HMAC_SECRET
   KV="secret/$SVC"
   db_role adapter_remit_rw remit_ref
+}
+
+# The UCB ATM switch (ticket 120a): WS-Security UsernameToken password of the inbound SOAP API
+# (secret/mw-adapter-atm, field mw.atm.inbound.ws-password) and the HMAC of the dispense-status
+# call (secret/mw-adapter-atm/ucbatm, field hmac-secret), the same value as mw-simulators' UcbAtmMock.
+provision_mw_adapter_atm() {
+  gen_once spring.datasource.password 40
+  sync_env mw.atm.inbound.ws-password UCBATM_WS_PASSWORD
+  KV="secret/$SVC/ucbatm"
+  sync_env hmac-secret UCBATM_HMAC_SECRET
+  KV="secret/$SVC"
+  db_role adapter_atm_rw atm_ref
 }
 
 # Realm services client secret: mw-orchestrator's internal query API (M3 gate).

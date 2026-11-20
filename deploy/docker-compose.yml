@@ -34,7 +34,7 @@
 # ops = Keycloak, Vault, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
-# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8100), the
+# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8101), the
 # two consoles (3000, 3001) and the platform (postgres 5432, redis 6379, kafka 9094, keycloak 8180,
 # vault 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
 # (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
@@ -201,6 +201,7 @@ volumes:
   adapter-merchant-approle:
   adapter-card-approle:
   adapter-remit-approle:
+  adapter-atm-approle:
   orchestrator-approle:
   audit-dw-approle:
   data-export-approle:
@@ -314,8 +315,9 @@ services:
     # One shared dev instance serves Keycloak and every service's pool. max_connections sizing
     # (sum of the worst case, one replica each; keep it below max_connections minus the 3
     # superuser_reserved_connections when a pool or a replica is added): the dev stack caps each
-    # service's Hikari pool (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE below: 2-4, 59 in all, 64 with
-    # audit-dw's extra pools, plus Keycloak's 20; ticket 118 raised it from 100 for mw-adapter-card; ticket 119 adds mw-adapter-remit's 2), so 120 leaves room for psql sessions and the provision one-shot.
+    # service's Hikari pool (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE below: 2-4, 61 in all, 66 with
+    # audit-dw's extra pools, plus Keycloak's 20; ticket 118 raised it from 100 for mw-adapter-card;
+    # ticket 119 adds mw-adapter-remit's 2 and ticket 120a adds mw-adapter-atm's 2), so 120 leaves room for psql sessions and the provision one-shot.
     # Production sizes max_connections per instance (pool x replicas, summed).
     command:
       - postgres
@@ -724,6 +726,8 @@ services:
       MERCHANT_SOAP_WS_PASSWORD: ${MERCHANT_SOAP_WS_PASSWORD:?cp dev.env.defaults .env}
       CYBERSOURCE_HMAC_SECRET: ${CYBERSOURCE_HMAC_SECRET:?cp dev.env.defaults .env}
       UCB_IMT_HMAC_SECRET: ${UCB_IMT_HMAC_SECRET:?cp dev.env.defaults .env}
+      UCBATM_HMAC_SECRET: ${UCBATM_HMAC_SECRET:?cp dev.env.defaults .env}
+      UCBATM_WS_PASSWORD: ${UCBATM_WS_PASSWORD:?cp dev.env.defaults .env}
       PUSH_API_KEY: ${PUSH_API_KEY:?cp dev.env.defaults .env}
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
@@ -770,6 +774,7 @@ services:
       - adapter-merchant-approle:/out/adapter-merchant
       - adapter-card-approle:/out/adapter-card
       - adapter-remit-approle:/out/adapter-remit
+      - adapter-atm-approle:/out/adapter-atm
       - portal-api-approle:/out/portal-api
       - checkout-approle:/out/checkout
     deploy:
@@ -1346,11 +1351,12 @@ services:
   # Inbound remittance adapter (ticket 119, FRS UC-16 / EXT-15 / FL-10): UCB IMT pushes a credit
   # (POST /remit/v1/credits, signed hmac-sha256 with a nonce) and asks its status; the adapter
   # deduplicates on the partner reference and hands the credit to mw-orchestrator (mw.partner.inbound.v1).
+  # Host port 8101: 8100 is mw-adapter-atm, already on upay-main.
   mw-adapter-remit:
     <<: *app
     profiles: *core
     ports:
-      - "127.0.0.1:${MW_PORT_ADAPTER_REMIT:-8100}:8080"
+      - "127.0.0.1:${MW_PORT_ADAPTER_REMIT:-8101}:8080"
     image: mfs-mw/mw-adapter-remit:local
     build: { context: ../services/mw-adapter-remit, args: *jvm-build-args }
     depends_on:
@@ -1364,7 +1370,30 @@ services:
       UCB_IMT_BASE_URL: ${UCB_IMT_BASE_URL:-http://mw-simulators:8080}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
-      # mw-recon: data lines per reconciliation file (a longer file moves to .error).
+      MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
+
+  # UCB ATM adapter (ticket 120a, FRS UC-17 / EXT-16): inbound SOAP for the switch, and the dispense
+  # status inquiry against mw-simulators (UcbAtmMock, /ucbatm/v1/dispenses).
+  mw-adapter-atm:
+    <<: *app
+    profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_ADAPTER_ATM:-8100}:8080"
+    image: mfs-mw/mw-adapter-atm:local
+    build: { context: ../services/mw-adapter-atm, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+    volumes:
+      - adapter-atm-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "2"
+      UCBATM_BASE_URL: ${UCBATM_BASE_URL:-http://mw-simulators:8080}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
       MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
     deploy:
       resources:
@@ -1607,6 +1636,7 @@ services:
       mw-adapter-merchant: { condition: service_healthy }
       mw-adapter-card: { condition: service_healthy }
       mw-adapter-remit: { condition: service_healthy }
+      mw-adapter-atm: { condition: service_healthy }
       mw-checkout: { condition: service_healthy }
       mw-portal-api: { condition: service_healthy }
     volumes:
