@@ -81,7 +81,7 @@ final class BillerRules {
         try {
           Pattern.compile(r);
           if (!safe(r)) {
-            out.add("fields[" + i + "].regex uses a backreference, lookaround or nested quantifier");
+            out.add("fields[" + i + "].regex is outside the allowed pattern grammar (anchors, literals, classes, bounded quantifiers)");
           }
         } catch (PatternSyntaxException e) {
           out.add("fields[" + i + "].regex is not a valid regular expression");
@@ -93,106 +93,113 @@ final class BillerRules {
     }
   }
 
+  /** Most quantifiers a field regex may hold, and the largest {@code {m,n}} bound. */
+  static final int MAX_QUANTIFIERS = 8;
+
+  static final int MAX_BOUND = 64;
+
   /**
-   * Whether a field regex stays in the safe subset (security review of ticket 113: the channels
-   * match customer input against it, so no catastrophic backtracking): literals, escapes,
-   * character classes, anchors, alternation, plain groups {@code (...)} / {@code (?:...)} and
-   * quantifiers on atoms. Refused: backreferences ({@code \1}, {@code \k<..>}), lookarounds and
-   * other {@code (?} constructs, a quantified group that contains a quantifier ({@code (a+)+},
-   * {@code (.*)*}), and stacked quantifiers ({@code a**}, {@code a{2}{3}}; a lazy {@code ?} is
-   * allowed). Called after the pattern compiled.
+   * Whether a field regex fits the strict whitelist grammar (security review of ticket 113: the
+   * channels match customer input against it, so nothing may backtrack catastrophically): an
+   * optional {@code ^}, a sequence of atoms, an optional {@code $}. An atom is a literal character
+   * (punctuation escaped with {@code \}), a character class {@code [...]} (literals, ranges and
+   * {@code \d \w \s} or escaped punctuation inside, no nesting), {@code \d}, {@code \w}, {@code \s}
+   * or {@code .}, with at most one quantifier: {@code ?}, {@code *}, {@code +}, {@code {n}} or
+   * {@code {m,n}} with n at most 64. No groups, alternation, backreferences, lookarounds or other
+   * escapes; at most 8 quantifiers in all. Called after the pattern compiled.
    */
   static boolean safe(String regex) {
-    java.util.ArrayDeque<boolean[]> groups = new java.util.ArrayDeque<>();
-    boolean lastQuantified = false; // the previous token was a quantifier
-    boolean lastWasGroupWithQuantifier = false; // the previous token closed a group holding one
     int i = 0;
     int n = regex.length();
+    int quantifiers = 0;
+    if (i < n && regex.charAt(i) == '^') {
+      i++;
+    }
     while (i < n) {
       char c = regex.charAt(i);
+      if (c == '$' && i == n - 1) {
+        return true;
+      }
+      // atom
       if (c == '\\') {
-        if (i + 1 < n) {
-          char e = regex.charAt(i + 1);
-          if (Character.isDigit(e) && e != '0' || e == 'k') {
-            return false;
-          }
-        }
-        i += 2;
-        lastQuantified = false;
-        lastWasGroupWithQuantifier = false;
-        continue;
-      }
-      if (c == '[') {
-        i = classEnd(regex, i);
-        lastQuantified = false;
-        lastWasGroupWithQuantifier = false;
-        continue;
-      }
-      if (c == '(') {
-        if (i + 1 < n && regex.charAt(i + 1) == '?') {
-          if (i + 2 >= n || regex.charAt(i + 2) != ':') {
-            return false;
-          }
-          i += 3;
-        } else {
-          i++;
-        }
-        groups.push(new boolean[] {false});
-        lastQuantified = false;
-        lastWasGroupWithQuantifier = false;
-        continue;
-      }
-      if (c == ')') {
-        boolean[] g = groups.isEmpty() ? new boolean[] {false} : groups.pop();
-        lastWasGroupWithQuantifier = g[0];
-        if (g[0] && !groups.isEmpty()) {
-          groups.peek()[0] = true;
-        }
-        lastQuantified = false;
-        i++;
-        continue;
-      }
-      if (c == '*' || c == '+' || c == '{' || c == '?') {
-        int end = c == '{' ? regex.indexOf('}', i) + 1 : i + 1;
-        if (lastQuantified) {
-          if (c != '?') {
-            return false;
-          }
-          lastQuantified = false; // lazy marker, not a new quantifier
-          i = end;
-          continue;
-        }
-        if (lastWasGroupWithQuantifier) {
+        if (i + 1 >= n || !escapeAllowed(regex.charAt(i + 1))) {
           return false;
         }
-        if (!groups.isEmpty()) {
-          groups.peek()[0] = true;
+        i += 2;
+      } else if (c == '[') {
+        i = classEnd(regex, i);
+        if (i < 0) {
+          return false;
         }
-        lastQuantified = true;
-        lastWasGroupWithQuantifier = false;
-        i = end;
-        continue;
+      } else if ("()|?*+{}^$]".indexOf(c) >= 0) {
+        return false;
+      } else {
+        i++;
       }
-      lastQuantified = false;
-      lastWasGroupWithQuantifier = false;
-      i++;
+      // optional quantifier
+      if (i < n) {
+        char q = regex.charAt(i);
+        if (q == '?' || q == '*' || q == '+') {
+          i++;
+          quantifiers++;
+        } else if (q == '{') {
+          int end = regex.indexOf('}', i);
+          if (end < 0 || !boundAllowed(regex.substring(i + 1, end))) {
+            return false;
+          }
+          i = end + 1;
+          quantifiers++;
+        }
+        if (quantifiers > MAX_QUANTIFIERS) {
+          return false;
+        }
+      }
     }
     return true;
   }
 
-  /** The index after the character class starting at {@code start}. */
+  /** {@code \d \w \s} or an escaped punctuation character. */
+  private static boolean escapeAllowed(char e) {
+    return e == 'd' || e == 'w' || e == 's' || (e < 128 && !Character.isLetterOrDigit(e) && !Character.isWhitespace(e));
+  }
+
+  /** {@code n} or {@code m,n} with m <= n <= 64. */
+  private static boolean boundAllowed(String body) {
+    if (!body.matches("[0-9]{1,2}(,[0-9]{1,2})?")) {
+      return false;
+    }
+    String[] parts = body.split(",");
+    int low = Integer.parseInt(parts[0]);
+    int high = Integer.parseInt(parts[parts.length - 1]);
+    return low <= high && high <= MAX_BOUND;
+  }
+
+  /** The index after the class starting at {@code start}, or -1 when it holds what the grammar refuses. */
   private static int classEnd(String regex, int start) {
     int i = start + 1;
     if (i < regex.length() && regex.charAt(i) == '^') {
       i++;
     }
-    if (i < regex.length() && regex.charAt(i) == ']') {
-      i++;
+    boolean empty = true;
+    while (i < regex.length()) {
+      char c = regex.charAt(i);
+      if (c == ']' && !empty) {
+        return i + 1;
+      }
+      if (c == '[' || c == '&') {
+        return -1;
+      }
+      if (c == '\\') {
+        if (i + 1 >= regex.length() || !escapeAllowed(regex.charAt(i + 1))) {
+          return -1;
+        }
+        i += 2;
+      } else {
+        i++;
+      }
+      empty = false;
     }
-    while (i < regex.length() && regex.charAt(i) != ']') {
-      i += regex.charAt(i) == '\\' ? 2 : 1;
-    }
-    return i + 1;
+    return -1;
   }
 
   private static void amount(Map<String, Object> v, List<String> out) {

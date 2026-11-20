@@ -440,9 +440,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   (key `biller/<code>`, value the full `BillerValue` of the contract) in the decision transaction; ENABLE /
   DISABLE apply to the entry as it is at approval. Rules (`400 MW-VAL-001`, one detail per problem):
   names, category UTILITY|OTHER, aggregator ids, fallback differs from primary, up to 10 fields whose
-  regex compiles **and stays in the safe subset** (`BillerRules.safe`, security review: no
-  backreference, lookaround or other `(?` construct but `(?:`, no quantified group holding a quantifier,
-  no stacked quantifier; the channels match customer input against it), amount rule FIXED|MINIMUM|OPEN
+  regex compiles **and fits a strict whitelist grammar** (`BillerRules.safe`, security review, ReDoS:
+  optional `^`, atoms, optional `$`; an atom is a literal (punctuation escaped), a class `[...]`, `\d`,
+  `\w`, `\s` or `.`, with at most one quantifier `?` `*` `+` `{n}` `{m,n}` (n <= 64); no groups,
+  alternation, backreferences, lookarounds or other escapes; at most 8 quantifiers; the channels
+  match customer input of at most 64 characters against it), amount rule FIXED|MINIMUM|OPEN
   (MINIMUM needs `minAmountMinor`, max >= min), a disabled biller needs bn and en maintenance text;
   nothing changed `409 MW-VAL-030`. Dev seed: `mw.billers.seeds` (`config/BillerSeedProperties`, only
   `application-dev.yml`) -> `scheduler/BillerSeedJob` reads `biller-seeds/dev/billers.csv` (57 billers:

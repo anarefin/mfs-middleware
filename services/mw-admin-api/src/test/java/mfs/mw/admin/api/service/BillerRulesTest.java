@@ -38,12 +38,17 @@ class BillerRulesTest {
 
   @Test
   void aCatastrophicRegexIsRefusedAndASafeOneAccepted() {
-    for (String bad : List.of("(a+)+$", "^(.*)*$", "^([0-9]+){2,}$", "^(a|aa)+\\1$", "^(?=a)[0-9]{8}$", "^a**$")) {
+    for (String bad :
+        List.of(
+            "(a+)+$", "(a|a)*", "(\\d|\\d\\d)+", "^(.*)*$", "^(?:SA|SB)-[0-9]+$", "^a|b$", "^(a|aa)+\\1$",
+            "^(?=a)[0-9]{8}$", "^a**$", "^\\d{1,65}$", "^\\d{3,}$", "^\\b\\d$", "^[a[b]]$",
+            "^\\d?\\d?\\d?\\d?\\d?\\d?\\d?\\d?\\d?$")) {
       Map<String, Object> v = biller();
       v.put("fields", List.of(Map.of("name", "accountNo", "labelEn", "A", "labelBn", "B", "regex", bad, "required", true)));
       assertThat(BillerRules.problems(v)).as(bad).anyMatch(p -> p.contains("regex"));
     }
-    for (String good : List.of("^[0-9]{8,12}$", "^(01|02)[0-9]{9}$", "^[A-Za-z0-9-]{4,20}$", "^(?:SA|SB)-[0-9]+$")) {
+    for (String good :
+        List.of("^\\d{10,16}$", "^[A-Z]{2}\\d{6}$", "^[0-9]{8,12}$", "^0[0-9]{9,10}$", "^[A-Za-z0-9/-]{5,20}$", "\\w+\\.\\d*")) {
       Map<String, Object> v = biller();
       v.put("fields", List.of(Map.of("name", "accountNo", "labelEn", "A", "labelBn", "B", "regex", good, "required", true)));
       assertThat(BillerRules.problems(v)).as(good).isEmpty();
