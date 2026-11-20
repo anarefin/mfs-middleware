@@ -14,7 +14,7 @@ import { adminApi, operatorToken } from "@/lib/server/admin";
 import { BASE_PATH } from "@/lib/server/env";
 import type { ContentVersion } from "@/lib/types";
 import { parseMenu, parseMenuId, type Menu } from "@/lib/ussd-menu";
-import { proposeMenu } from "../actions";
+import { previewMenuOnServer, proposeMenu } from "../actions";
 import { ApiError } from "../api-error";
 import { openRequest, PendingNotice } from "../pending-notice";
 import { MenuEditor } from "./menu-editor";
@@ -91,6 +91,7 @@ export default async function UssdPage({ searchParams }: Props) {
         initial={menu}
         baseLabel={baseVersion ? `v${baseVersion.version} (${baseVersion.status})` : null}
         action={maker ? proposeMenu.bind(null, menuId) : null}
+        check={["ops-maker", "ops-checker"].some((r) => session?.roles?.includes(r)) ? previewMenuOnServer.bind(null, menuId) : null}
       />
       {!canMake(session?.roles ?? []) ? <p className="m-0 text-sm text-muted-foreground">Only an ops-maker proposes menu versions; the preview works for everyone.</p> : null}
     </>

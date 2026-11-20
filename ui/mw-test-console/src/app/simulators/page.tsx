@@ -4,7 +4,7 @@ import { HowToTest } from "@/components/how-to-test";
 import { PageHeader } from "@/components/page-header";
 import { Hint, Panel } from "@/components/section";
 import { PRESETS } from "@/lib/presets";
-import { CoreForms, PartnerForms } from "./forms";
+import { CoreForms, PartnerForms, RemitForm } from "./forms";
 import { PresetButton } from "./preset-button";
 
 function GroupTitle({ icon: Icon, children }: { icon: typeof Zap; children: React.ReactNode }) {
@@ -53,6 +53,8 @@ export default function Simulators() {
         <PartnerForms />
         <GroupTitle icon={Cpu}>Core and USSD gateway</GroupTitle>
         <CoreForms />
+        <GroupTitle icon={Network}>Partner-initiated: inbound remittance</GroupTitle>
+        <RemitForm />
       </FillScope>
     </>
   );

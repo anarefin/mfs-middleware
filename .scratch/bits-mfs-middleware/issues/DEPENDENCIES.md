@@ -138,19 +138,20 @@
 119-mw-adapter-remit                        95,97,102         split (119-split-decisions.md, 2026-11-20)
 119a-remit-adapter                          95,97,102         done     -        286 files +26376 −36   bfa47ddf  (admin-api V19 remit; host port 8101. RemitInFlow, Newman 53, lookup -> 119b)
 119b-remit-flow                             119a              done     45m      34 files +647 −57      2323f101  (REMIT_IN flow once per inbound id; adapter outbox; APISIX partner-remit-v1; HMAC fingerprint; core-mock REMIT_IN validate without assertion)
-119c-remit-lookup-suite                     119b              open   (POST /remit/v1/beneficiary-lookup masked; test console Send remittance; REMIT_IN limit row in core-mock limits.csv (mock: 200,000 Tk per txn); Newman 53-remittance-in)
+119c-remit-lookup-suite                     119b              done     60m      53 files +1446 −24     987406f0..37a9818b (merge 43ed7190; REMIT_IN without assertion only SETTLEMENT* -> customer; core account-clients: mw-adapter-remit GET accounts only; KC_MW_ADAPTER_REMIT_SECRET (re-copy .env); Newman 53 not run live)
 120-mw-adapter-atm                          95,97,102         split (120-split-decisions.md, 2026-11-20)
 120a-atm-adapter-inbound                    95,97,102         done     -        283 files +26354 −31   372dceb2  (admin-api V20 atm; host port 8100. Inbound SOAP recorded locally; publish, token, cash flows, Newman 54 -> 120b)
 120b-atm-token-flows                        120a              split (120-split-decisions.md, 1 h cap)
 120b1-atm-inbound-hardening                 120a              done     55m      22 files +755 −122     490f8531  (cash ops fail closed behind mw.atm.inbound.cash-enabled; state CAS + HMAC fingerprint, atm V9; APISIX partner-ucbatm-ws; PasswordDigest + nonce/Created)
-120b2-atm-token-issue                       120b1             open   (POST /app/v1/atm/tokens, PIN step-up, HMAC via mw-crypto, lockout)
+120b2-atm-token-issue                       120b1             done     ~60m     71 files +2475 −158    dd71de9b,b896926e,ca777d53,f9de8c2d (merge 6bf20664; app.v1 1.18.0; mw-auth per-path caller rules, step-up compare-and-delete MW-AUTH-049; adapter DECLINED on bad token)
+120b2b-atm-auth-wiring                      120b2             open   (Keycloak services client mw-adapter-atm + secret, Vault provision, mTLS client cert, shell tests; before 120b3; after 124b to avoid Keycloak/provision conflicts)
 120b3-atm-cash-flows                        120b2             open   (atm branch of mw.partner.inbound.v1, ATM_CASH_OUT/IN flows, cash-enabled on, mock ATM page signs digest, AtmCashOutIT, Newman 54)
 # --- M10 gate: UC-13..17
 121-mw-adapter-interop                      92,97,102         split (121-split-decisions.md, 2026-11-20)
 121a-interop-adapter-module                 92,97,102         done     90m      270 files +25086 −28   80896661  (admin-api V21 interop; host port 8102; NPSB participant mock; no npsb seed yet)
 121b-npsb-iso20022-wire                     121a              split (1 h cap)
 121b1-iso20022-mapping-xmldsig              121a              done     60m      31 files +8375 −16     662834c6  (Prowide SRU2025-10.4.1; mw-crypto XMLDSIG purpose for interop)
-121b2-npsb-seed-inbound-mock                121b1             open   (EndToEndId = reference without BITS prefix; ISO step in adapter service layer; mTLS to mw-crypto)
+121b2-npsb-seed-inbound-mock                121b1             done     ~25m+    55 files +7060 −44     bee9a5e5..1d67e5bd,a6a599ec (merge 2ee17a9a; interop V8 npsb_inbound permanent dedup; CreDtTm 24 h/+5 min; mock signs with provisioned switch key; inbound kind stays NPSB_CREDIT with txnType NPSB_IN -> 121c keys on txnType; edge mTLS -> 100c)
 121c-npsb-flows-api                         121b              open   (orchestrator flows, app preview/confirm, Newman 57-npsb)
 122-banglaqr                                121               open
 # --- M11 gate: UC-18, UC-19

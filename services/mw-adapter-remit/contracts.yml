@@ -16,4 +16,6 @@ consumes:
   events:
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#remit
     - events/mw-admin-api/mw.config.changed.v1.schema.json
-  apis: []
+  apis:
+    # ticket 119c: the beneficiary lookup reads one account (read only, client/CoreAccountClient)
+    - api/mw-core-mock/core-wallet.v1.openapi.yaml

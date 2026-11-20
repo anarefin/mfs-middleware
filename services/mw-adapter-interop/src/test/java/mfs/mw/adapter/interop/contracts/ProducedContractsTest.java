@@ -56,6 +56,7 @@ class ProducedContractsTest {
   static final Map<String, Function<Outbox, List<Outbox.Record>>> FIXTURES =
       Map.of(
           "events/mw-orchestrator/mw.partner.reply.v1.schema.json#interop", ProducedContractsTest::partnerReplies,
+          "events/mw-orchestrator/mw.partner.inbound.v1.schema.json#interop", ProducedContractsTest::npsbCredits,
           "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::auditEvents,
           "events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json", ProducedContractsTest::routeStatuses,
           "events/mw-adapter-billpay/mw.partner.recon.v1.schema.json", ProducedContractsTest::reconLines);
@@ -84,6 +85,20 @@ class ProducedContractsTest {
     publisher.publish(mfs.mw.adapter.interop.partner.route.PartnerRouteStatus.rejected(
         "newco", 3, List.of("dry-run PAY gave no usable answer: HTTP_5XX")));
     return outbox.records;
+  }
+
+  /** An accepted NPSB credit (ticket 121b), mapped by {@link mfs.mw.adapter.interop.mapper.NpsbInboundMapper} and written as {@code NpsbInboundService} writes it. */
+  static List<Outbox.Record> npsbCredits(Outbox outbox) {
+    var transfer = new mfs.mw.adapter.interop.dto.iso.NpsbTransfer(
+        "MSG-1", java.time.OffsetDateTime.parse("2026-11-03T08:15:00Z"), "NPSB0123456789ABCDEF0123456789AB", "TX-1",
+        new mfs.mw.adapter.interop.dto.Money(250_000, "BDT"), java.time.LocalDate.of(2026, 11, 3),
+        new mfs.mw.adapter.interop.dto.iso.NpsbParty("Karim Ahmed", "1234567890123", "FAKEBDD1"),
+        new mfs.mw.adapter.interop.dto.iso.NpsbParty("Rahim Uddin", "01711000001", "BITSBDDH"));
+    var event = new mfs.mw.adapter.interop.mapper.NpsbInboundMapper()
+        .toInbound(transfer, "01711000001", TXN_ID, "corr-0002", CLOCK.instant());
+    return outbox.inTransaction(() -> outbox.writer.append(
+        mfs.mw.adapter.interop.service.NpsbInboundService.TOPIC, TXN_ID,
+        new EventMetadata(event.correlationId(), TXN_ID, event.inboundId(), 1), event));
   }
 
   /** One reply per outcome the mapper produces, written as {@code TopupService} writes it. */

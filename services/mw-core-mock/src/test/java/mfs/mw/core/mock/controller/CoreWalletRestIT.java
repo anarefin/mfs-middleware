@@ -624,6 +624,23 @@ class CoreWalletRestIT {
     assertThat(total(PAYER)).isEqualTo(before);
   }
 
+  // --- beneficiary lookup (ticket 119c: mw-adapter-remit reads an account and nothing else) ---
+
+  @Test
+  void aMwAdapterRemitTokenReadsAnAccountAndNothingElse() {
+    long before = total(PAYER);
+    Signed s = signed(CoreCommandsTestSupport.txnId(), "P2P", PAYER, "WALLET", PAYEE, 1000);
+    assertThat(mvc.post().uri("/core/v1/transfers").header("Authorization", InternalTokens.bearer("mw-adapter-remit"))
+        .header("X-Txn-Assertion", s.assertion()).contentType(MediaType.APPLICATION_JSON).content(s.body()).exchange())
+        .hasStatus(403);
+    assertThat(postAs("mw-adapter-remit", "/core/v1/credits", "{}")).hasStatus(403);
+    assertThat(postAs("mw-adapter-remit", "/core/v1/accounts/" + PAYER + "/unlock", "{}")).hasStatus(403);
+    assertThat(getAs("mw-adapter-remit", "/core/v1/balance/" + PAYER)).hasStatus(403);
+    assertThat(getAs("mw-adapter-remit", "/core/v1/reports/emoney-total")).hasStatus(403);
+    assertThat(total(PAYER)).isEqualTo(before);
+    assertThat(getAs("mw-adapter-remit", "/core/v1/accounts/" + PAYER)).hasStatus(200);
+  }
+
   // --- account unlock and KYC factors (ticket 95b: mw-admin-api and mw-auth over REST) ---
 
   private MvcTestResult postAs(String client, String uri, String body) {

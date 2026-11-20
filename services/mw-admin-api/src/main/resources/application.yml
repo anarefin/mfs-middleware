@@ -238,6 +238,14 @@ mw:
     # after it scheduler/ApprovingReconcileJob resolves the request from mw-crypto's state of the change
     approving-lease: 5m
     approving-reconcile-cron: "0 * * * * *"
+  # USSD menu preview (ticket 133b): per MNO the short code dialled, the root menu it opens and the
+  # screen limits. Copies of mw-ussd's ussd.short_code rows (V6) and mw.ussd.mno.* limits: keep aligned.
+  content:
+    ussd:
+      gp: { short-code: "*268#", root-menu-id: main, max-length-gsm: 182, max-length-ucs2: 70, overflow: PAGE }
+      robi: { short-code: "*269#", root-menu-id: main, max-length-gsm: 182, max-length-ucs2: 70, overflow: PAGE }
+      bl: { short-code: "*270#", root-menu-id: main, max-length-gsm: 182, max-length-ucs2: 70, overflow: PAGE }
+      teletalk: { short-code: "*271#", root-menu-id: main, max-length-gsm: 182, max-length-ucs2: 70, overflow: TRUNCATE }
   # The channel client registry's APISIX projection (ticket 100a, service/ApisixConsumerSync): after
   # an approval commits, a client with a consumer (BASIC) is written to the APISIX Admin API (only
   # the ops subnet may call it: the stack puts this service on the ops network), and the

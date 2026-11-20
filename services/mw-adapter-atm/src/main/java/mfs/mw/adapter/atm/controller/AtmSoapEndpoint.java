@@ -14,7 +14,7 @@ import org.w3c.dom.NodeList;
  * The UCB ATM switch's inbound SOAP API (ticket 120a, FRS UC-17, EXT-16, PLT-050): mapping only.
  * The payload is schema-validated ({@code atm-soap.v1.xsd}) and the WS-Security UsernameToken
  * checked before this runs; each operation calls {@link AtmInboundService}. The token element of
- * VerifyTokenAndDebit is read by nobody here and never logged (FL-11; its check is ticket 120b's).
+ * VerifyTokenAndDebit is handed to the service for mw-auth's check, never logged or echoed (FL-11).
  */
 @Endpoint
 public class AtmSoapEndpoint {
@@ -29,7 +29,7 @@ public class AtmSoapEndpoint {
   @ResponsePayload
   public Element verifyTokenAndDebit(@RequestPayload Element body) {
     return ack("VerifyTokenAndDebitResponse", service.verifyAndDebit(
-        text(body, "atmTxnRef"), text(body, "atmId"), text(body, "msisdn"),
+        text(body, "atmTxnRef"), text(body, "atmId"), text(body, "msisdn"), text(body, "token"),
         Long.parseLong(text(body, "amountMinor"))));
   }
 
@@ -64,7 +64,7 @@ public class AtmSoapEndpoint {
     Element root = doc.createElementNS(AtmSoap.NAMESPACE, name);
     doc.appendChild(root);
     append(root, "atmTxnRef", ack.atmTxnRef());
-    append(root, "status", "ACCEPTED");
+    append(root, "status", ack.status());
     append(root, "txnId", ack.txnId());
     return root;
   }

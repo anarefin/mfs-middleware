@@ -311,6 +311,8 @@ mw:
       W2B: CUSTOMER
       # add money from a card (ticket 118b): POST /app/v1/add-money/card/sessions, not /app/v1/transactions
       ADD_MONEY_CARD: CUSTOMER
+      # the ATM cash-out token (ticket 120b2): POST /app/v1/atm/tokens, not /app/v1/transactions
+      ATM_CASH_OUT: CUSTOMER
       # float: the caller pays from their own wallet (distributor or DSO to an agent, agent back)
       B2B_TRANSFER: [DISTRIBUTOR, DSO, AGENT]
       # partner app disbursement only; the core still requires an organisation debit for a posted child

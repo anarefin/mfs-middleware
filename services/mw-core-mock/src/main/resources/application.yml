@@ -183,6 +183,9 @@ mw:
     # Clients that may read only GET /core/v1/balance/{walletId} of an ORGANISATION wallet (ticket 129c:
     # mw-portal-api's bulk balance check), never another /core/** operation; not part of allowed-clients.
     balance-clients: mw-portal-api
+    # Clients that may read only GET /core/v1/accounts/{msisdn} (ticket 119c: mw-adapter-remit's beneficiary
+    # lookup), never another /core/** operation; not part of allowed-clients on purpose.
+    account-clients: mw-adapter-remit
   coremock:
     # Test-only wallet seed API (ticket 57, WalletSeedController; mw-seeder): off unless the stack sets it.
     seed-api:
@@ -215,6 +218,9 @@ mw:
       # Org bulk payout child (ticket 34): no assertion (maker-checker in the org portal), so only an org
       # wallet may pay and only a customer may receive.
       BULK_DISBURSE: { debit: ORGANISATION, credit: CUSTOMER }
+      # Inbound remittance (ticket 119b): no assertion, so only a SYSTEM wallet pays and only a customer
+      # receives; TransferRules further requires a SETTLEMENT* system wallet whatever this map says.
+      REMIT_IN: { debit: SYSTEM, credit: CUSTOMER }
     # mw-auth's transaction assertions (spec 18.7, D22, ticket 71; config/AssertionProperties): a
     # transfer or hold is authorised by its `assertion` (the core holds no PIN since ticket 72; no
     # lockout). The key set is a config call, not on the money path: fetched at start and every

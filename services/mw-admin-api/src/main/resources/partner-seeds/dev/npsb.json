@@ -1,0 +1,64 @@
+{
+  "partnerId": "npsb",
+  "family": "interop",
+  "config": {
+    "enabled": true,
+    "connectTimeoutMs": 3000,
+    "timeoutMs": 20000,
+    "readTimeoutMs": 22000,
+    "inquiryRetries": 1,
+    "auth": {
+      "scheme": "none"
+    },
+    "errorMap": {
+      "AC01": {
+        "suffix": "INVALID_ACCOUNT",
+        "retryable": false
+      },
+      "AC04": {
+        "suffix": "ACCOUNT_CLOSED",
+        "retryable": false
+      },
+      "AC06": {
+        "suffix": "ACCOUNT_BLOCKED",
+        "retryable": false
+      },
+      "AG01": {
+        "suffix": "TRANSACTION_FORBIDDEN",
+        "retryable": false
+      },
+      "AM02": {
+        "suffix": "AMOUNT_LIMIT",
+        "retryable": false
+      },
+      "AM04": {
+        "suffix": "INSUFFICIENT_FUNDS",
+        "retryable": false
+      },
+      "DUPL": {
+        "suffix": "DUPLICATE",
+        "retryable": false
+      },
+      "RC01": {
+        "suffix": "INVALID_PARTICIPANT",
+        "retryable": false
+      },
+      "RJCR": {
+        "suffix": "RETURN_REFUSED",
+        "retryable": false
+      },
+      "HTTP_400": {
+        "suffix": "MESSAGE_REFUSED",
+        "retryable": false
+      }
+    },
+    "route": "- route:\n    from:\n      uri: direct:partner-npsb\n      steps:\n        - choice:\n            when:\n              - simple: \"${header.mwOperation} == 'PAY'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=ISO.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/npsb/v1/transfers&auth=none\"\n                  - to: \"kamelet:mw-classify?mapping=ISO.response&definiteStatuses=400\"\n              - simple: \"${header.mwOperation} == 'STATUS_QUERY'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=ISO.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/npsb/v1/status&auth=none\"\n                  - to: \"kamelet:mw-classify?mapping=ISO.response&definiteStatuses=400,404\"\n              - simple: \"${header.mwOperation} == 'REVERSE'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=ISO.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/npsb/v1/returns&auth=none\"\n                  - to: \"kamelet:mw-classify?mapping=ISO.response&definiteStatuses=400\"\n        - to: \"kamelet:mw-audit\"\n",
+    "mappings": {
+      "ISO.request": "{\"messageType\": messageType, \"document\": document}\n",
+      "ISO.response": "status = 200\n  ? ($type(body.document) = \"string\" and body.document != \"\" and $type(body.msgId) = \"string\" and body.msgId != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.msgId, \"attributes\": {\"document\": body.document}}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 404\n  ? {\"outcome\": \"NOT_FOUND\", \"code\": \"NOT_FOUND\", \"message\": \"no transfer for this EndToEndId\"}\n: status = 400\n  ? {\"outcome\": \"FAILED\", \"code\": \"HTTP_400\", \"message\": \"message refused by the switch\"}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n"
+    },
+    "allowedHosts": [
+      "mw-simulators"
+    ]
+  }
+}

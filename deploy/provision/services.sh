@@ -13,7 +13,7 @@ SECRETS_AHEAD=""
 # 66): the two mTLS servers (mw-crypto; mw-auth's internal API, ticket 67) and every caller of them.
 # Each gets a pki_int role named after it (CN and SAN = its compose DNS name, 72 h) and its AppRole
 # policy may issue from that role only. A role may exist before its service is in SERVICES.
-PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api mw-data-export"
+PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api mw-data-export mw-adapter-interop"
 
 # EDGE_SECRETS: the credentials APISIX reads from the Vault KV v1 mount apisix/ (ticket 100a, lib.sh
 # apisix_edge), <clientId>:<VAR>: apisix/<clientId> field password = deploy/.env's VAR, synced on every
@@ -98,6 +98,8 @@ provision_mw_simulators() {
   sync_env sim.files.trustbank.core.client-secret KC_MW_SIMULATORS_SECRET
   # the simulated partner's private_key_jwt key at Keycloak realm partners (ticket 73)
   partner_sim_client_key
+  # the NPSB switch mock's XML-DSig key pair (ticket 121b; mw-adapter-interop trusts its certificate)
+  npsb_switch_key
   db_role simulators_rw simulators
 }
 
@@ -282,6 +284,8 @@ provision_mw_adapter_remit() {
   gen_once spring.datasource.password 40
   # HMAC key of the remittance fingerprint (M9 review: never a plain hash of the MSISDN); created once
   gen_once mw.remit.fingerprint-key 48
+  # realm services client secret of the beneficiary lookup's core account read (ticket 119c)
+  sync_env mw.remit.core.client-secret KC_MW_ADAPTER_REMIT_SECRET
   KV="secret/$SVC/ucb-imt"
   sync_env hmac-secret UCB_IMT_HMAC_SECRET
   KV="secret/$SVC"
@@ -300,10 +304,15 @@ provision_mw_adapter_atm() {
   db_role adapter_atm_rw atm_ref
 }
 
-# The NPSB interop adapter (ticket 121a): its database role and schema only. Its messages are signed
-# and verified through mw-crypto (XML-DSig, ticket 121b), so it holds no key material of its own.
+# The NPSB interop adapter (ticket 121a): its database role and schema. Its messages are signed and
+# verified through mw-crypto (XML-DSig, ticket 121b), so it holds no key material of its own: the realm
+# services client secret for mw-crypto (crypto-client-secret); its own client certificate comes from
+# PKI_SERVICES. The switch's certificate npsb-certificate-pem is the NPSB switch mock's (mw-simulators,
+# npsb_switch_key), so the stack verifies the mock's signed answers and inbound pacs.008 pushes.
 provision_mw_adapter_interop() {
   gen_once spring.datasource.password 40
+  sync_env crypto-client-secret KC_MW_ADAPTER_INTEROP_SECRET
+  npsb_switch_certificate
   db_role adapter_interop_rw interop_ref
 }
 

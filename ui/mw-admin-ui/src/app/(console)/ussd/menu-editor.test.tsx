@@ -109,4 +109,23 @@ describe("USSD tree editor", () => {
     await act(async () => el<HTMLFormElement>("form[aria-label='Reply to the screen']").requestSubmit());
     expect(el("[data-testid=ussd-page]").textContent).toBe("page 2/2");
   });
+
+  it("asks mw-admin-api for its verdict on the edited tree and shows the problems (ticket 133b)", async () => {
+    const asked: [string, string, string][] = [];
+    const check = async (mno: string, lang: string, json: string) => {
+      asked.push([mno, lang, json]);
+      return { ok: false as const, problems: ["sub: option 1 points to missing node done"] };
+    };
+    await act(async () => root.render(<MenuEditor initial={MENU} baseLabel="v1 (PUBLISHED)" action={null} check={check} />));
+    await act(async () => type(el<HTMLSelectElement>("select[aria-label='MNO']"), "robi"));
+    await click(button("Check on server"));
+    expect(asked[0]?.slice(0, 2)).toEqual(["robi", "bn"]);
+    expect(JSON.parse(asked[0]![2]).start).toBe("main");
+    expect(el("[data-testid=server-verdict]").getAttribute("data-ok")).toBe("false");
+    expect(el("[data-testid=server-verdict]").textContent).toContain("sub: option 1 points to missing node done");
+  });
+
+  it("shows no server check to a role that may not ask", () => {
+    expect([...container.querySelectorAll("button")].some((b) => b.textContent?.includes("Check on server"))).toBe(false);
+  });
 });

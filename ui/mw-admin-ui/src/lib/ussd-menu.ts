@@ -5,6 +5,7 @@
 // outcome is chosen by the operator, a DYNAMIC list and an INPUT lookup show sample items.
 
 import { parseWalletId } from "./approvals";
+import type { ApiResult, MenuPreview } from "./types";
 
 export type Text = { bn?: string; en?: string };
 export type NodeType = "MENU" | "INPUT" | "CONFIRM" | "ACTION" | "DYNAMIC" | "END";
@@ -270,6 +271,19 @@ export function parseActivations(mnos: readonly string[], goLive: Record<string,
     out.push({ mno, goLiveAt: d.toISOString() });
   }
   return out;
+}
+
+// --- server preview (ticket 133b) ---------------------------------------------------------------
+
+export type ServerVerdict =
+  | { ok: true; shortCode: string; rootMenuId: string; screens: string[] }
+  | { ok: false; problems: string[] };
+
+/** mw-admin-api's preview answer as a verdict: MenuValidator's problems (MW-VAL-040) one per line. */
+export function serverVerdict(r: ApiResult<MenuPreview>): ServerVerdict {
+  if (r.ok) return { ok: true, shortCode: r.data.shortCode, rootMenuId: r.data.rootMenuId, screens: r.data.screens.map((s) => s.screen) };
+  const issues = r.error.code === "MW-VAL-040" ? (r.error.details ?? []).flatMap((d) => (d.issue ? [d.issue] : [])) : [];
+  return { ok: false, problems: issues.length > 0 ? issues : [`${r.error.code}: ${r.error.message}`] };
 }
 
 // --- preview -----------------------------------------------------------------------------------

@@ -28,6 +28,8 @@ export const portalsPassword = (): string => required("KC_PORTALS_TEST_PASSWORD"
 export const portalsTotpSecret = (): string => required("KC_PORTALS_TEST_TOTP_SECRET");
 /** hmac-auth secret of a dev checkout merchant of the catalogue (lib/seed-catalogue.ts CHECKOUT_MERCHANTS). */
 export const checkoutSecret = (m: { secretEnv: string }): string => required(m.secretEnv);
+/** HMAC secret of the remittance partner ucb-imt (its signed requests to mw-adapter-remit, ticket 119c). */
+export const ucbImtSecret = (): string => required("UCB_IMT_HMAC_SECRET");
 /** mw-seeder's manifest on the read-only seed-manifest volume. */
 export const seedManifestPath = (): string => process.env.SEED_MANIFEST || "/run/mw/seed/manifest.json";
 /** Keycloak's bootstrap admin (realm master, client admin-cli): the user tools of the seed data page. */
