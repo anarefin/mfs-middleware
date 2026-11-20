@@ -36,4 +36,9 @@ public class CustomerPrefRepository implements CustomerPrefs {
         MaskingPolicy.msisdnHash(msisdn),
         language);
   }
+
+  /** Drops a remembered language so the next dial starts in Bangla. The number is not stored. */
+  public void forget(String msisdn) {
+    jdbc.update("DELETE FROM customer_pref WHERE msisdn_hash = ?", MaskingPolicy.msisdnHash(msisdn));
+  }
 }

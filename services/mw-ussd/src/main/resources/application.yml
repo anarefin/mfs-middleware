@@ -266,6 +266,10 @@ mw:
     # Dev seed: stored in ussd.menu and activated for MNOs without a menu or still on an older
     # version of the seed (service/MenuSeeder).
     seed-menu: menus/main-v4.json
+    # Dev/test only: POST /test/v1/language/reset forgets a remembered language (the suite starts each
+    # walk from Bangla). Off unless MW_USSD_TEST_API_ENABLED=true.
+    test-api:
+      enabled: ${MW_USSD_TEST_API_ENABLED:false}
     # mw-adapter-billpay internal API (DYNAMIC billers, bill lookup; read-only), over the app zone
     # network. Short read timeout: the MNO holds the USSD step open while the bill is fetched.
     billpay:

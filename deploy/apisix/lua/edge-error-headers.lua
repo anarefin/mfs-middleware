@@ -1,8 +1,9 @@
 -- Edge error envelope, part 1 of 2 (spec 5.3), global rule edge, header_filter phase.
 -- A 4xx/5xx the edge produced itself (plugin rejection, no route, upstream unreachable or
 -- timed out) gets the envelope { code, message, correlationId, retryable, details[] } instead
--- of APISIX's HTML or {"error_msg"} body. An upstream's own JSON answer is left untouched: the
--- services already answer with the envelope. The body is written by edge-error-body.lua.
+-- of APISIX's HTML or {"error_msg"} body. An upstream's own JSON or XML answer is left
+-- untouched: the services answer with the envelope, and the app SOAP facade answers with a
+-- SOAP fault (text/xml). The body is written by edge-error-body.lua.
 local CODES = {
   [400] = { "MW-VAL-001", "Request is not valid", false },
   [401] = { "MW-AUTH-001", "Missing, expired or invalid bearer token", false },
@@ -29,9 +30,13 @@ return function(conf, ctx)
   end
   local upstream = ngx.var.upstream_status
   local ctype = ngx.header["Content-Type"]
-  if upstream and upstream ~= "" and type(ctype) == "string"
-      and string.find(string.lower(ctype), "json", 1, true) then
-    return
+  if upstream and upstream ~= "" and type(ctype) == "string" then
+    local lower = string.lower(ctype)
+    if string.find(lower, "json", 1, true)
+        or string.find(lower, "xml", 1, true)
+        or string.find(lower, "soap", 1, true) then
+      return
+    end
   end
   local e = CODES[status]
       or (status >= 500 and { "MW-SYS-001", "Internal error", true })

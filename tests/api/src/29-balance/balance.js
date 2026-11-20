@@ -99,12 +99,13 @@ export default [
   {
     name: '[balance] the signed-in wallet\'s profile shows its name, status, KYC level and Bangla',
     run: async (MW, S) => {
+      const account = await MW.coreBalance('01711000001');
       const r = await MW.http('GET', '/app/v1/profile', { headers: await MW.app.headers('customer01') });
       S.record(r);
       S.status(200);
-      S.eq('Rahim Uddin, CUSTOMER, ACTIVE, FULL, bn',
+      S.eq('the profile is the core account, in Bangla',
         [r.body.name, r.body.type, r.body.status, r.body.kycLevel, r.body.language],
-        ['Rahim Uddin', 'CUSTOMER', 'ACTIVE', 'FULL', 'bn']);
+        [account.holderName, 'CUSTOMER', 'ACTIVE', 'FULL', 'bn']);
       S.check('the profile does not echo the MSISDN', !JSON.stringify(r.body).includes('01711000001'), String(r));
     },
   },

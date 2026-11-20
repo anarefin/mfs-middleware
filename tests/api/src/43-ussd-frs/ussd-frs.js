@@ -1,6 +1,10 @@
 // Ticket 109c. Walks the seeded menu (main v4). Amounts are taka. Payment has no tariff row.
 // Add money uses the same bank account and callback as folder 08.
-const PAGE = 'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n0. পরবর্তী\n00. পেছনে';
+export const helpers = [
+  function ussdPage() {
+    return 'Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n0. পরবর্তী\n00. পেছনে';
+  },
+];
 
 export default [
   {
@@ -9,7 +13,7 @@ export default [
       await S.note(['01711000001', '01911000001', 'FEE_INCOME']);
       await S.dial('robi', '01711000001', '*269#', '6, 01911000001, 25, 1, ' + MW.pin);
       S.ussdScreens([
-        PAGE,
+        ussdPage(),
         'মার্চেন্টের Bits নম্বর দিন',
         'টাকার পরিমাণ দিন',
         '01911000001 মার্চেন্টে 25.00 টাকা, ফি 0.00?\n1 নিশ্চিত করুন\n2 বাতিল',
@@ -38,8 +42,9 @@ export default [
       await S.dial('robi', '01711000001', '*269#', '8, 2');
       const last = S.session.screens[S.session.screens.length - 1];
       const message = last.message || '';
-      S.check('the mini statement ends', S.session.ended === true && last.flag === 'END'
-        && (message.startsWith('সাম্প্রতিক') || message.startsWith('কোনো লেনদেন')), S.session.screens);
+      // A long history pages (CON, "0. পরবর্তী"); a short one ends. Either screen is the statement.
+      S.check('the mini statement is shown', (message.startsWith('সাম্প্রতিক') || message.startsWith('কোনো লেনদেন'))
+        && (S.session.ended === true || message.indexOf('0. পরবর্তী') >= 0), S.session.screens);
       await S.noChange();
     },
   },

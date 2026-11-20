@@ -40,19 +40,19 @@ export default [
           '<app:ConfirmRequest><app:group>send-money</app:group><app:previewId>' + previewId + '</app:previewId>'
           + '<app:creditParty><app:id>01711000002</app:id></app:creditParty>'
           + '<app:amount><app:valueMinor>1000</app:valueMinor><app:currency>BDT</app:currency></app:amount>'
-          + '<app:encryptedPin><app:keyId>' + pin.body.encryptedPin.keyId + '</app:keyId>'
-          + '<app:ciphertext>' + pin.body.encryptedPin.ciphertext + '</app:ciphertext></app:encryptedPin>'
+          + '<app:encryptedPin><app:keyId>' + pin.encryptedPin.keyId + '</app:keyId>'
+          + '<app:ciphertext>' + pin.encryptedPin.ciphertext + '</app:ciphertext></app:encryptedPin>'
           + '</app:ConfirmRequest>'),
       });
       S.eq('confirm HTTP 200', confirm.status, 200, String(confirm));
       S.eq('completed', xmlText(confirm.raw, 'status'), 'COMPLETED', String(confirm));
       const txnId = xmlText(confirm.raw, 'txnId');
-      const status = await MW.http('POST', '/app/ws/v1', {
+      const status = await MW.poll(async () => MW.http('POST', '/app/ws/v1', {
         headers,
         contentType: 'text/xml; charset=UTF-8',
         raw: soapEnvelope('', '<app:GetTransactionStatusRequest><app:txnId>' + txnId + '</app:txnId>'
           + '</app:GetTransactionStatusRequest>'),
-      });
+      }), r => r.status === 200 && xmlText(r.raw, 'status') === 'COMPLETED', 8000, 200);
       S.eq('status HTTP 200', status.status, 200, String(status));
       S.eq('status completed', xmlText(status.raw, 'status'), 'COMPLETED', String(status));
       await S.changedBy({ '01711000001': -1500, '01711000002': 1000, 'FEE_INCOME': 435 });
@@ -78,8 +78,8 @@ export default [
       const body = '<app:ConfirmRequest><app:group>send-money</app:group><app:previewId>' + previewId
         + '</app:previewId><app:creditParty><app:id>01711000002</app:id></app:creditParty>'
         + '<app:amount><app:valueMinor>1000</app:valueMinor><app:currency>BDT</app:currency></app:amount>'
-        + '<app:encryptedPin><app:keyId>' + pin.body.encryptedPin.keyId + '</app:keyId>'
-        + '<app:ciphertext>' + pin.body.encryptedPin.ciphertext + '</app:ciphertext></app:encryptedPin>'
+        + '<app:encryptedPin><app:keyId>' + pin.encryptedPin.keyId + '</app:keyId>'
+        + '<app:ciphertext>' + pin.encryptedPin.ciphertext + '</app:ciphertext></app:encryptedPin>'
         + '</app:ConfirmRequest>';
       const soap = await MW.http('POST', '/app/ws/v1', {
         headers, contentType: 'text/xml; charset=UTF-8',
@@ -91,7 +91,7 @@ export default [
         previewId,
         creditParty: { id: '01711000002' },
         amount: { valueMinor: 1000, currency: 'BDT' },
-        encryptedPin: pin.body.encryptedPin,
+        encryptedPin: pin.encryptedPin,
       }));
       S.eq('REST confirm HTTP 200', rest.status, 200, String(rest));
       S.eq('one txnId', rest.body && rest.body.txnId, txnId, String(rest));

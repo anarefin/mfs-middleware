@@ -1023,9 +1023,12 @@
       }
     };
 
-    // USSD
+    // USSD. Language is remembered per MSISDN (ticket 109) and the dial-in default is Bangla.
+    // Every walk here starts from Bangla: an English walk presses 9 itself. Forget the remembered
+    // language first (dev test API, not the USSD quota) so the next walk is not left in English.
     S.dial = async (mno, msisdn, code, inputs) => {
       const steps = inputs ? inputs.split(',').map(s => s.trim()) : [];
+      await must('POST', '/test/ussd/v1/language/reset', { apikey: true, json: { msisdn } }, [204]);
       S.session = await sim.ussd(mno, msisdn, code, steps);
       S.check('every USSD step answered 200', (S.session.screens || []).every(s => s.status === 200), S.session.screens);
       return S.session;

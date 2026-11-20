@@ -1152,6 +1152,8 @@ services:
       # mTLS client certificate (pki_int/issue/mw-ussd) for mw-auth's internal API: the transaction
       # assertion of every PIN (ticket 72, D22, D24)
       MW_TLS_ENABLED: "true"
+      # Dev/test only: POST /test/v1/language/reset, reached through the test-only APISIX route.
+      MW_USSD_TEST_API_ENABLED: "true"
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
