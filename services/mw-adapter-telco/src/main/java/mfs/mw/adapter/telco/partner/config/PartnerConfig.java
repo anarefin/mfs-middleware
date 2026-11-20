@@ -3,6 +3,7 @@ package mfs.mw.adapter.telco.partner.config;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -49,11 +50,16 @@ import mfs.mw.adapter.telco.util.SensitiveType;
  * @param ambiguousCodes partner codes that do not say whether the request was applied (UNKNOWN)
  * @param sensitiveFields JSON field name to masking rule for the audit of raw bodies (free-text
  *     scrubbing applies on top)
- * @param maintenance true: the partner is in a maintenance window (ticket 97; health {@code
- *     MAINTENANCE}, so routing (98) sends nothing there; calls are not refused by the engine). A flag
- *     for now; ticket 131 adds the console's window
+ * @param maintenance true: every call is refused unsent ({@code NOT_SENT MAINTENANCE}) and health is
+ *     {@code MAINTENANCE} (ticket 97). Routing that reads the health still waits for ticket 98
  * @param healthCheck true: the route has a {@code HEALTH_CHECK} branch, probed on a schedule
  *     (ticket 97, {@code PartnerHealthMonitor}); a failing probe makes the partner {@code DOWN}
+ * @param endpoint the selected profile ({@code MOCK} or {@code REAL}, ticket 131b). A route's
+ *     {@code {{endpoint}}} is filled from {@code endpoints} before the loader's checks
+ * @param endpoints base URL of each profile ({@code MOCK}, {@code REAL})
+ * @param maintenanceWindow from {@code start} (absent: already open) until {@code end} (absent:
+ *     until cleared), with the bn/en message a refusal carries (ticket 131b). While it is open the
+ *     partner is in maintenance even when {@code maintenance} is false
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record PartnerConfig(
@@ -74,7 +80,10 @@ public record PartnerConfig(
     Set<String> ambiguousCodes,
     Map<String, SensitiveType> sensitiveFields,
     Boolean maintenance,
-    Boolean healthCheck) {
+    Boolean healthCheck,
+    String endpoint,
+    Map<String, String> endpoints,
+    MaintenanceWindow maintenanceWindow) {
 
   private static final Pattern SUFFIX = Pattern.compile("^[A-Z0-9_]+$");
 
@@ -112,20 +121,61 @@ public record PartnerConfig(
     sensitiveFields = sensitiveFields == null ? Map.of() : Map.copyOf(sensitiveFields);
     maintenance = Boolean.TRUE.equals(maintenance);
     healthCheck = Boolean.TRUE.equals(healthCheck);
+    endpoint = endpoint == null || endpoint.isBlank() ? null : endpoint;
+    endpoints = endpoints == null ? Map.of() : Map.copyOf(endpoints);
   }
 
-  /** A record without the ticket 97 health fields (not in maintenance, no health check). */
+  /** The route placeholder filled with the selected endpoint's base URL (ticket 131b). */
+  public static final String ENDPOINT_PLACEHOLDER = "{{endpoint}}";
+
+  /** The endpoint profiles (ticket 131b). */
+  public static final Set<String> ENDPOINT_PROFILES = Set.of("MOCK", "REAL");
+
+  /** A record without the ticket 97 health fields and the ticket 131b window and endpoint profile. */
   public PartnerConfig(
       Boolean enabled, String route, Map<String, String> mappings, List<String> allowedHosts, String family,
       Integer inquiryRetries, Resilience resilience, DryRun dryRun, Long connectTimeoutMs, Long timeoutMs,
       Long readTimeoutMs, Map<String, String> headers, Auth auth, Map<String, ErrorMapping> errorMap,
       Set<String> ambiguousCodes, Map<String, SensitiveType> sensitiveFields) {
     this(enabled, route, mappings, allowedHosts, family, inquiryRetries, resilience, dryRun, connectTimeoutMs, timeoutMs,
-        readTimeoutMs, headers, auth, errorMap, ambiguousCodes, sensitiveFields, null, null);
+        readTimeoutMs, headers, auth, errorMap, ambiguousCodes, sensitiveFields, null, null, null, null, null);
   }
 
   public Duration timeout() {
     return Duration.ofMillis(timeoutMs);
+  }
+
+  /**
+   * True when {@code at} falls in the maintenance window, or the maintenance flag is set (ticket
+   * 97, ticket 131b). The window is half-open: from {@code start} inclusive (absent: already open)
+   * until {@code end} exclusive (absent: until the window is cleared).
+   */
+  public boolean inMaintenance(Instant at) {
+    if (maintenance) {
+      return true;
+    }
+    if (maintenanceWindow == null) {
+      return false;
+    }
+    if (maintenanceWindow.start() != null && at.isBefore(maintenanceWindow.start())) {
+      return false;
+    }
+    return maintenanceWindow.end() == null || at.isBefore(maintenanceWindow.end());
+  }
+
+  /**
+   * The selected profile's base URL with trailing slashes removed; null when no profile is
+   * selected or that profile has no URL (ticket 131b).
+   */
+  public String endpointBase() {
+    if (endpoint == null) {
+      return null;
+    }
+    String url = endpoints.get(endpoint);
+    if (url == null || url.isBlank()) {
+      return null;
+    }
+    return url.replaceAll("/+$", "");
   }
 
   /** Error-code map entry for a partner code; {@code UNMAPPED}, not retryable, when unlisted. */
@@ -137,7 +187,8 @@ public record PartnerConfig(
   public PartnerConfig withRoute(String newRoute, Map<String, String> newMappings, List<String> newAllowedHosts) {
     return new PartnerConfig(
         enabled, newRoute, newMappings, newAllowedHosts, family, inquiryRetries, resilience, dryRun, connectTimeoutMs,
-        timeoutMs, readTimeoutMs, headers, auth, errorMap, ambiguousCodes, sensitiveFields, maintenance, healthCheck);
+        timeoutMs, readTimeoutMs, headers, auth, errorMap, ambiguousCodes, sensitiveFields, maintenance, healthCheck,
+        endpoint, endpoints, maintenanceWindow);
   }
 
   /**
@@ -189,6 +240,38 @@ public record PartnerConfig(
           SECURITY
               + "auth.credentialsRef must be a secret name of this partner (lower-case letters, digits, hyphen)");
     }
+    if (maintenanceWindow != null) {
+      if (maintenanceWindow.start() != null
+          && maintenanceWindow.end() != null
+          && !maintenanceWindow.end().isAfter(maintenanceWindow.start())) {
+        problems.add("maintenanceWindow.end must be after start");
+      }
+      for (String message : new String[] {maintenanceWindow.messageEn(), maintenanceWindow.messageBn()}) {
+        if (message != null && (message.isBlank() || message.length() > 500)) {
+          problems.add("maintenanceWindow messages are 1 to 500 characters");
+          break;
+        }
+      }
+    }
+    if (endpoint != null && !ENDPOINT_PROFILES.contains(endpoint)) {
+      problems.add("endpoint must be MOCK or REAL");
+    } else if (endpoint != null && (endpoints.get(endpoint) == null || endpoints.get(endpoint).isBlank())) {
+      problems.add("endpoints: the selected profile has no URL");
+    } else if (endpoint == null && route != null && route.contains(ENDPOINT_PLACEHOLDER)) {
+      problems.add("the route calls {{endpoint}} but no endpoint profile is selected");
+    }
+    endpoints.forEach(
+        (profile, url) -> {
+          if (!ENDPOINT_PROFILES.contains(profile)) {
+            problems.add("endpoints profiles are MOCK and REAL");
+          } else if (!plainBaseUrl(url)) {
+            // the value is not echoed: it may be an attempt to leave the approved host
+            problems.add(
+                SECURITY
+                    + "an endpoint URL must be an absolute http(s) URL without user info, query, fragment,"
+                    + " encoding or .. segments");
+          }
+        });
     return problems;
   }
 
@@ -295,4 +378,13 @@ public record PartnerConfig(
       sample = sample == null ? Map.of() : java.util.Collections.unmodifiableMap(new LinkedHashMap<>(sample));
     }
   }
+
+  /**
+   * A maintenance window (ticket 131b, FRS PLT-043): from {@code start} (absent: already open)
+   * until {@code end} (absent: until cleared). {@code messageEn} and {@code messageBn} are the
+   * refusal text; absent text uses {@link mfs.mw.adapter.telco.partner.PartnerResponse.Notice}'s
+   * default.
+   */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record MaintenanceWindow(Instant start, Instant end, String messageEn, String messageBn) {}
 }

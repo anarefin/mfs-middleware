@@ -320,7 +320,10 @@ tests, and the Kamelet folders are identical apart from the package), 85-87 add 
   and a positive amount; never refused for `deadlineAt`, the saga resends it, ticket 96). Health:
   `PartnerRouteHealth.State` UP / DEGRADED (breaker half-open or failure rate >=
   `mw.partners.health.degraded-failure-rate`, 25) / DOWN (route stopped, breaker open, probe failing) /
-  MAINTENANCE (record `maintenance: true`) / DISABLED / DELETED; record `healthCheck: true` = a
+  MAINTENANCE (record `maintenance: true`, or inside `maintenanceWindow`; the call is refused unsent
+  as `MW-SYS-PARTNER_MAINTENANCE` with the window's bn/en message, ticket 131b; a route
+  `url={{endpoint}}` is filled from `endpoints` by the selected `endpoint`, `MOCK` or `REAL`, before
+  the loader checks it) / DISABLED / DELETED; record `healthCheck: true` = a
   `HEALTH_CHECK` branch probed by `partner/route/PartnerHealthMonitor` from `scheduler/PartnerHealthJob`
   (ShedLock `partner-health`, `mw.partners.health.interval` 30 s, `mw.partners.health.enabled`, off in
   tests), which publishes every change once through `PartnerRouteStatusPublisher` (LIVE + `health`, seed

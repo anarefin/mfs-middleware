@@ -189,7 +189,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-040 | ticket 98 | routing rules in the mw-orchestrator routing module |
 | PLT-041 | ticket 98 | rules in the database, maker-checker, 30 s cache refresh |
 | PLT-042 | ticket 98 | prefix to MNO with MNP override |
-| PLT-043 | ticket 98 | partner disable built (admin console); maintenance message in 98, biller disable 113 |
+| PLT-043 | ticket 98 | partner disable built (admin console); the adapter refuses a call inside the window or with the flag as `MW-SYS-PARTNER_MAINTENANCE` with the bn/en message (131b); routing that treats the partner as MAINTENANCE is 98; biller disable 113 |
 | PLT-050 | ticket 108 | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); no SOAP service is served yet, the app SOAP facade of 108 publishes the first WSDL |
 | PLT-051 | done | versioning policy in `contracts/README.md` ("Versioning", ticket 101): breaking change = new `/v2` file and path, `/v1` kept for one release |
 | PLT-052 | done | Swagger UI and `/v3/api-docs` only in profiles `dev`/`test` (off in production, `ApiDocsProductionTest`); test-only APISIX page `/docs/` lists them and the WSDLs (none until ticket 108) (ticket 101) |
@@ -344,7 +344,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); credential upload and error map API built (131a); maintenance window and mock/real switch in 131b, console tabs in 131c |
+| ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); credential upload and error map API built (131a); the partner engine honours the maintenance window and the mock/real endpoint profile (131b); console tabs in 131c |
 | ADM-02 | ticket 131 | API built (131a): write-only credential upload through maker-checker (`partner_credential`, staged in Vault, approved into a field of `secret/mw-adapter-<family>/<partner>`, mw-admin-api's policy write-only there), metadata `GET /admin/v1/credentials`, dashboard feed `/admin/v1/credentials/expiring`, ops email at 30/7/1 days (`CredentialVaultIT`, `CredentialExpiryJobIT`, API folder 45); console tab and card in 131c |
 | ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
 | ADM-04 | tickets 98, 132 | routing rules |

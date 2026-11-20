@@ -69,11 +69,36 @@ public sealed interface PartnerResponse {
     }
   }
 
-  /** Never left: connect refused, open circuit, full bulkhead, or partner disabled. */
-  record NotSent(NotSentReason reason) implements PartnerResponse {
+  /**
+   * Never left: connect refused, open circuit, full bulkhead, partner disabled, or maintenance
+   * (ticket 131b). {@code notice} is the bn/en text of a maintenance refusal; null otherwise.
+   */
+  record NotSent(NotSentReason reason, Notice notice) implements PartnerResponse {
+
+    public NotSent(NotSentReason reason) {
+      this(reason, null);
+    }
+
     @Override
     public String status() {
       return "NOT_SENT";
+    }
+  }
+
+  /**
+   * The bn/en text a maintenance refusal carries (ticket 131b, FRS PLT-043). Blank text becomes
+   * the default a caller can show.
+   */
+  record Notice(String en, String bn) {
+
+    public static final String DEFAULT_EN = "This service is under maintenance";
+
+    public static final String DEFAULT_BN = "এই সেবা রক্ষণাবেক্ষণে আছে";
+
+    /** {@code en} and {@code bn}, or the default text where one is missing. */
+    public static Notice orDefault(String en, String bn) {
+      return new Notice(
+          en == null || en.isBlank() ? DEFAULT_EN : en, bn == null || bn.isBlank() ? DEFAULT_BN : bn);
     }
   }
 
@@ -91,6 +116,8 @@ public sealed interface PartnerResponse {
     BULKHEAD_FULL,
     /** Partner disabled (nothing to send to). */
     DISABLED,
+    /** Maintenance flag or an open maintenance window (ticket 97, ticket 131b): nothing was sent. */
+    MAINTENANCE,
     /** The config cannot serve this call: operation not configured, mapping or credentials failed. */
     MISCONFIGURED,
     /** The partnerId is neither a configured partner nor a {@code partner-aliases} entry (D28). */

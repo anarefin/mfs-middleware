@@ -66,6 +66,8 @@ public class BillFetchService {
           throw new MwException(PartnerReplyMapper.UNKNOWN_PARTNER_CODE, "No partner serves this biller")
               .withStatus(HttpStatus.BAD_GATEWAY)
               .withRetryable(false);
+      case PartnerResponse.NotSent n when n.reason() == PartnerResponse.NotSentReason.MAINTENANCE ->
+          throw maintenance(n);
       case PartnerResponse.NotSent n ->
           throw new MwException("MW-SYS-PARTNER_" + notSent(n.reason()), "Biller not reachable, try again")
               .withStatus(HttpStatus.SERVICE_UNAVAILABLE)
@@ -100,12 +102,23 @@ public class BillFetchService {
         .withRetryable(true);
   }
 
+  private static MwException maintenance(PartnerResponse.NotSent sent) {
+    PartnerResponse.Notice notice =
+        PartnerResponse.Notice.orDefault(
+            sent.notice() == null ? null : sent.notice().en(), sent.notice() == null ? null : sent.notice().bn());
+    return new MwException("MW-SYS-PARTNER_MAINTENANCE", notice.en())
+        .withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+        .withRetryable(true)
+        .withMessageBn(notice.bn());
+  }
+
   private static String notSent(PartnerResponse.NotSentReason reason) {
     return switch (reason) {
       case CIRCUIT_OPEN -> "CIRCUIT_OPEN";
       case BULKHEAD_FULL -> "BUSY";
       case CONNECT_FAILED -> "UNAVAILABLE";
       case DISABLED -> "DISABLED";
+      case MAINTENANCE -> "MAINTENANCE";
       case MISCONFIGURED, UNKNOWN_PARTNER -> "MISCONFIGURED";
     };
   }

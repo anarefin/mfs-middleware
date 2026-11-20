@@ -36,7 +36,10 @@ First implemented in mw-adapter-billpay (ticket 82); its `CLAUDE.md` holds the d
 - **Health** per partner (`PartnerRouteHealth`, `/actuator/health` `partners`): `UP`; `DEGRADED`
   (breaker half-open, or its failure rate at or over `mw.partners.health.degraded-failure-rate`,
   25 %); `DOWN` (route not running, breaker open, or a failing probe); `MAINTENANCE` (record flag
-  `maintenance: true`; the console window comes with ticket 131); `DISABLED`; `DELETED`. A record with
+  `maintenance: true`, or inside `maintenanceWindow`; a call is then refused unsent as
+  `MW-SYS-PARTNER_MAINTENANCE` with the window's bn/en message, ticket 131b); `DISABLED`; `DELETED`.
+  A route's `url={{endpoint}}` is filled from `endpoints` by the selected `endpoint` (`MOCK` or
+  `REAL`) before the loader checks it. A record with
   `healthCheck: true` has a `HEALTH_CHECK` branch, probed by the ShedLock job
   `scheduler/PartnerHealthJob` every `mw.partners.health.interval` (30 s). Every change goes out once
   on `mw.partner.route.status.v1` with `health` (a seed reports version 0), for routing (98) and the

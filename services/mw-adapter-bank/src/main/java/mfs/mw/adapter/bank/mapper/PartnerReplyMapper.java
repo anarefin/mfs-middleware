@@ -1,6 +1,7 @@
 package mfs.mw.adapter.bank.mapper;
 
 import java.time.Clock;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import mfs.mw.adapter.bank.dto.PartnerReply;
@@ -46,7 +47,7 @@ public class PartnerReplyMapper {
           reply(request, partnerRef, "NOT_FOUND", null, n.code(), null, n.message(), null);
       case PartnerResponse.Pending p ->
           reply(request, partnerRef, "PENDING", p.partnerRef(), p.code(), null, null, null);
-      case PartnerResponse.NotSent n -> notSent(request, partnerRef, n.reason());
+      case PartnerResponse.NotSent n -> notSent(request, partnerRef, n);
       case PartnerResponse.Unknown u -> unknown(request, partnerRef, u.reason());
     };
   }
@@ -56,8 +57,8 @@ public class PartnerReplyMapper {
    * no answer at all, so UNKNOWN (the orchestrator asks again at the next slot): a FAILED inquiry
    * answer would release a hold the partner may have used.
    */
-  private PartnerReply notSent(
-      PartnerRequest request, String partnerRef, PartnerResponse.NotSentReason reason) {
+  private PartnerReply notSent(PartnerRequest request, String partnerRef, PartnerResponse.NotSent sent) {
+    PartnerResponse.NotSentReason reason = sent.reason();
     if (isStatusQuery(request)) {
       return reply(
           request, partnerRef, "UNKNOWN", null, null, "MW-TMO-PARTNER_" + reason.name(),
@@ -70,8 +71,20 @@ public class PartnerReplyMapper {
           case CONNECT_FAILED -> "MW-SYS-PARTNER_UNAVAILABLE";
           case DISABLED -> "MW-SYS-PARTNER_DISABLED";
           case MISCONFIGURED -> "MW-SYS-PARTNER_MISCONFIGURED";
+          case MAINTENANCE -> "MW-SYS-PARTNER_MAINTENANCE";
           case UNKNOWN_PARTNER -> UNKNOWN_PARTNER_CODE;
         };
+    if (reason == PartnerResponse.NotSentReason.MAINTENANCE) {
+      PartnerResponse.Notice notice =
+          PartnerResponse.Notice.orDefault(
+              sent.notice() == null ? null : sent.notice().en(), sent.notice() == null ? null : sent.notice().bn());
+      Map<String, String> attributes = new LinkedHashMap<>();
+      attributes.put("messageBn", notice.bn());
+      if (partnerRef != null) {
+        attributes.put("partnerTxnRef", partnerRef);
+      }
+      return reply(request, partnerRef, "FAILED", null, null, code, notice.en(), true, attributes);
+    }
     return reply(
         request, partnerRef, "FAILED", null, null, code, "Bank debit not sent to the partner",
         reason != PartnerResponse.NotSentReason.UNKNOWN_PARTNER);
@@ -113,6 +126,21 @@ public class PartnerReplyMapper {
       String errorCode,
       String message,
       Boolean retryable) {
+    return reply(
+        request, partnerRef, outcome, theirRef, partnerCode, errorCode, message, retryable,
+        partnerRef == null ? null : Map.of("partnerTxnRef", partnerRef));
+  }
+
+  private PartnerReply reply(
+      PartnerRequest request,
+      String partnerRef,
+      String outcome,
+      String theirRef,
+      String partnerCode,
+      String errorCode,
+      String message,
+      Boolean retryable,
+      Map<String, String> attributes) {
     PartnerRequest.Payload p = request.payload();
     return new PartnerReply(
         1,
@@ -130,7 +158,7 @@ public class PartnerReplyMapper {
             errorCode,
             message,
             retryable,
-            partnerRef == null ? null : Map.of("partnerTxnRef", partnerRef)));
+            attributes));
   }
 
   private static String partnerId(PartnerRequest request) {
