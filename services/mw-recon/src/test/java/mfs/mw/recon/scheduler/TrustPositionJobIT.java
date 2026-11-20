@@ -83,7 +83,8 @@ class TrustPositionJobIT {
     assertThat(SEEN).isEmpty();
 
     recon.ingestStatement("MT940_127c.fin", FIN.getBytes(StandardCharsets.UTF_8), true);
-    assertThat(positions.latestClosingDate()).isEqualTo(DAY);
+    assertThat(positions.latestClosingDate()).isNotNull();
+    assertThat(positions.closingKnown(DAY)).isTrue();
 
     coreTotal = 100_000;
     TrustPosition even = job.runFor(DAY);
@@ -98,6 +99,36 @@ class TrustPositionJobIT {
         gap.exceptionId())).isEqualTo("AMOUNT_MISMATCH/TRUST_POSITION");
     assertThat(jdbc.queryForObject("select difference_minor from trust_position where business_date = ?", Long.class,
         DAY)).isEqualTo(-250L);
+  }
+
+  @Test
+  void aQuietDaysStatementIsKeyedByIts62fDateAndAForwardValueDateDoesNotMoveIt() {
+    LocalDate quiet = LocalDate.of(2026, 9, 20);
+    recon.ingestStatement("MT940_quiet.fin", """
+        {1:F01BITSBDDHXXXX0000000000}{2:I940TRUSTBDDXXXXN}{4:
+        :20:RPTQUIET
+        :25:0011223344556
+        :28C:285/1
+        :60F:C260920BDT700,00
+        :62F:C260920BDT700,00
+        -}""".getBytes(StandardCharsets.UTF_8), true);
+    assertThat(positions.closingKnown(quiet)).as("no :61: lines: still the 62F date, not today").isTrue();
+    assertThat(positions.compute(quiet, 70_000).differenceMinor()).isZero();
+
+    LocalDate day = LocalDate.of(2026, 9, 21);
+    recon.ingestStatement("MT940_forward.fin", """
+        {1:F01BITSBDDHXXXX0000000000}{2:I940TRUSTBDDXXXXN}{4:
+        :20:RPTFWD
+        :25:0011223344556
+        :28C:286/1
+        :60F:C260921BDT700,00
+        :61:2609230923D100,00NTRF0000800000127003//TB3
+        FEE
+        :86:0196a1b2-0000-7000-8000-000000127c03
+        :62F:C260921BDT600,00
+        -}""".getBytes(StandardCharsets.UTF_8), true);
+    assertThat(positions.closingKnown(day)).isTrue();
+    assertThat(positions.closingKnown(LocalDate.of(2026, 9, 23))).isFalse();
   }
 
   private static HttpServer start() {

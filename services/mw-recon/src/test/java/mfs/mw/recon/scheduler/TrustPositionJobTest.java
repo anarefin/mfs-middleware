@@ -42,6 +42,21 @@ class TrustPositionJobTest {
   }
 
   @Test
+  void daysWithoutAPositionSinceTheLastOneAreReportedAsMissed() {
+    when(positions.lastPositionDate()).thenReturn(DAY.minusDays(3));
+    when(positions.positionKnown(DAY.minusDays(1))).thenReturn(true);
+
+    assertThat(job.missedDays(DAY)).containsExactly(DAY.minusDays(2));
+  }
+
+  @Test
+  void noPositionYetMissesNothing() {
+    when(positions.lastPositionDate()).thenReturn(null);
+
+    assertThat(job.missedDays(DAY)).isEmpty();
+  }
+
+  @Test
   void noStatementForTheDayYetAsksTheCoreNothing() {
     when(positions.closingKnown(DAY)).thenReturn(false);
 

@@ -358,24 +358,38 @@ public class ReconStore {
         """, id, reconClass, detail, owner, partnerId, fileAmountMinor, upayAmountMinor, Timestamp.from(at));
   }
 
-  public void setClosingBalance(UUID fileId, long closingMinor) {
-    jdbc.update("update source_file set closing_balance_minor = ? where id = ?", closingMinor, fileId);
+  /** The MT940 closing balance (62F) and its statement date (REC-07). */
+  public void setClosingBalance(UUID fileId, long closingMinor, LocalDate closingDate) {
+    jdbc.update("update source_file set closing_balance_minor = ?, closing_date = ? where id = ?", closingMinor,
+        closingDate, fileId);
   }
 
-  /** The closing balance of the latest statement of that source for the business date, or null. */
+  /** The closing balance of the latest statement of that source whose 62F date is {@code day}, or null. */
   public Long trustClosing(LocalDate day, String source) {
     return jdbc.query("""
         select closing_balance_minor from source_file
-        where source = ? and business_date = ? and closing_balance_minor is not null
+        where source = ? and closing_date = ? and closing_balance_minor is not null
         order by received_at desc limit 1
         """, (rs, n) -> rs.getLong(1), source, day).stream().findFirst().orElse(null);
   }
 
-  /** The latest business date of {@code source} with a closing balance, or null (ticket 127c). */
+  /** The latest 62F date of {@code source} with a closing balance, or null (ticket 127c). */
   public LocalDate latestTrustClosingDate(String source) {
     return jdbc.queryForObject(
-        "select max(business_date) from source_file where source = ? and closing_balance_minor is not null",
+        "select max(closing_date) from source_file where source = ? and closing_balance_minor is not null",
         (rs, n) -> rs.getObject(1, LocalDate.class), source);
+  }
+
+  /** The latest day with a stored trust position, or null. */
+  public LocalDate lastTrustPositionDate() {
+    return jdbc.queryForObject("select max(business_date) from trust_position",
+        (rs, n) -> rs.getObject(1, LocalDate.class));
+  }
+
+  /** Whether a trust position is stored for {@code day}. */
+  public boolean trustPositionKnown(LocalDate day) {
+    Integer n = jdbc.queryForObject("select count(*) from trust_position where business_date = ?", Integer.class, day);
+    return n != null && n > 0;
   }
 
   public void saveTrustPosition(LocalDate day, long emoney, long trust, long difference, UUID exceptionId, Instant at) {

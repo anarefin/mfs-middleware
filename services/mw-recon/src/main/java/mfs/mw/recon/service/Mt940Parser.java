@@ -37,15 +37,33 @@ public class Mt940Parser {
     }
   }
 
+  /** The MT940 closing balance (field 62F): poisha (negative for a debit) and the statement date it is for. */
+  public record Closing(long minor, LocalDate date) {}
+
   /** The MT940 closing balance (field 62F) in poisha, negative when it is a debit; null when absent (REC-07). */
   public Long closingBalanceMinor(String fin) {
+    Closing closing = closing(fin);
+    return closing == null ? null : closing.minor();
+  }
+
+  /**
+   * The MT940 closing balance with the date of field 62F (REC-07): the position is keyed by that date, never by the
+   * value dates of the lines. Null when there is no 62F.
+   */
+  public Closing closing(String fin) {
     try {
       Field62F closing = MT940.parse(fin).getField62F();
       if (closing == null || closing.getAmountAsBigDecimal() == null) {
         return null;
       }
       long minor = minor(closing.getAmountAsBigDecimal());
-      return "D".equals(closing.getDCMark()) ? -minor : minor;
+      String date = closing.getDate();
+      if (date == null || date.isBlank()) {
+        throw new MwException(ErrorCodes.VAL_MALFORMED, "MT940 closing balance has no date");
+      }
+      return new Closing("D".equals(closing.getDCMark()) ? -minor : minor, LocalDate.parse(date.trim(), YYMMDD));
+    } catch (MwException e) {
+      throw e;
     } catch (RuntimeException e) {
       throw new MwException(ErrorCodes.VAL_MALFORMED, "MT940 closing balance could not be parsed", e);
     }

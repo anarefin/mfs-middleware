@@ -111,9 +111,9 @@ public class ReconService {
         : parser.parseMt942(new String(body, java.nio.charset.StandardCharsets.UTF_8));
     store.addStatementLines(file.id(), parsed);
     if (daily) {
-      Long closing = parser.closingBalanceMinor(new String(body, java.nio.charset.StandardCharsets.UTF_8));
+      Mt940Parser.Closing closing = parser.closing(new String(body, java.nio.charset.StandardCharsets.UTF_8));
       if (closing != null) {
-        store.setClosingBalance(file.id(), closing);
+        store.setClosingBalance(file.id(), closing.minor(), closing.date());
       }
     }
     return finish(file, source, false);

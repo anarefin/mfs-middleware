@@ -55,6 +55,18 @@ public class TrustPositionService {
     return store.latestTrustClosingDate(ReconService.MT940);
   }
 
+  /** The latest day with a stored position, or null. */
+  @Transactional(readOnly = true)
+  public LocalDate lastPositionDate() {
+    return store.lastTrustPositionDate();
+  }
+
+  /** Whether a position is stored for {@code day}. */
+  @Transactional(readOnly = true)
+  public boolean positionKnown(LocalDate day) {
+    return store.trustPositionKnown(day);
+  }
+
   /** Computes and stores the position; a second run for the same day replaces the row. */
   @Transactional
   public TrustPosition compute(LocalDate businessDate, long emoneyTotalMinor) {
