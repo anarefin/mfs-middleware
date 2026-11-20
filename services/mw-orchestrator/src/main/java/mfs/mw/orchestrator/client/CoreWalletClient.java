@@ -236,7 +236,8 @@ public class CoreWalletClient {
   private Answer credit(CoreCommand command) {
     CreditPayload p = (CreditPayload) command.payload();
     return send(HttpMethod.POST, "/core/v1/credits", vars(), command,
-        new CoreCallBodies.Credit(command.txnId(), p.txnType(), p.creditParty(), p.amount(), round(command.commandId())),
+        new CoreCallBodies.Credit(command.txnId(), p.txnType(), p.creditParty(), p.amount(), p.settlementWallet(),
+            round(command.commandId())),
         null, null);
   }
 

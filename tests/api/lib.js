@@ -493,6 +493,18 @@
       h['Idempotency-Key'] = idem;
       return http('POST', '/app/v1/balance', { headers: h, raw: json });
     },
+    // add money from a card (ticket 118b): POST /app/v1/add-money/card/sessions, signed like a submit
+    async cardSession(user, idem, valueMinor, pin) {
+      const d = await ready(user);
+      const path = '/app/v1/add-money/card/sessions';
+      const json = JSON.stringify({ amount: { valueMinor, currency: 'BDT' }, encryptedPin: await encryptPin(pin) });
+      const h = await signedHeaders(user, d, 'POST', path, json);
+      h['Idempotency-Key'] = idem;
+      return http('POST', path, { headers: h, raw: json });
+    },
+    async cardStatus(user, txnId) {
+      return http('GET', '/app/v1/add-money/card/sessions/' + txnId, { headers: await app.headers(user) });
+    },
     // the wallet history (ADR D25): GET /app/v1/transactions, query e.g. 'direction=IN&limit=5'
     async history(user, query) { return http('GET', '/app/v1/transactions' + (query ? '?' + query : ''), { headers: await app.headers(user) }); },
     /** Session-level preview (ticket 105): no PIN, nothing moves. */

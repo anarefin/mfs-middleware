@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.15.0
+  version: 1.16.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -871,6 +871,89 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /app/v1/add-money/card/sessions:
+    post:
+      operationId: startAddMoneyCard
+      summary: "Add money from a card, step 1: open the acquirer's hosted payment page (PIN required)"
+      description: >-
+        Ticket 118b (FRS UC-13, EXT-14, FL-07). Customer role only; the money goes to the token's own
+        wallet. Card data never reaches the middleware: the answer is the acquirer's hosted page URL
+        (https, an allowed host), where the customer types the card; the 3-D Secure result comes to the
+        middleware by the acquirer's webhook, then the card is authorised and captured and the wallet is
+        credited from the acquirer's settlement wallet. Signed and authorised like a transaction submit
+        (an ADD_MONEY_CARD from CARD_TOKEN `cybersource` to the wallet); mw-auth's refusals as for a
+        submit. 201 with `hostedPageUrl` once the session is open; 202 PROCESSING (no URL yet: poll the
+        GET) when the budget runs out; a refused session is the error envelope (422 MW-PTR-*, 422
+        MW-CORE-*). Follow the outcome with the GET.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, pattern: "^[\\x21-\\x7E]{1,64}$" }
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/Timestamp" }
+        - { $ref: "#/components/parameters/Nonce" }
+        - { $ref: "#/components/parameters/Signature" }
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,128}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CardSessionRequest" }
+      responses:
+        "201":
+          description: The hosted page session is open
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CardSession" }
+        "202":
+          description: Still opening (status PROCESSING, no URL); poll the GET
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CardSession" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "422":
+          description: Refused (MW-CORE-<reason>, MW-PTR-<partner>-<reason>), with txnId
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "423":
+          description: The PIN is locked at mw-auth
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /app/v1/add-money/card/sessions/{txnId}:
+    get:
+      operationId: getAddMoneyCard
+      summary: Status of one of the caller's add money from card transactions
+      description: >-
+        The latest status (PARTNER_PENDING while the customer is on the hosted page and the card is
+        captured, then COMMITTING, COMPLETED or FAILED; UNKNOWN while a capture's outcome is inquired).
+        404 MW-VAL-003 for another wallet's transaction or one that is not an ADD_MONEY_CARD.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - name: txnId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Latest known status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
 components:
   parameters:
     Group:
@@ -1348,6 +1431,30 @@ components:
             keyId: { type: string, minLength: 1, maxLength: 128 }
             ciphertext: { type: string, minLength: 1, maxLength: 4096 }
         locale: { type: string, enum: [bn, en] }
+    CardSessionRequest:
+      type: object
+      required: [amount, encryptedPin]
+      additionalProperties: false
+      description: The card is typed on the acquirer's page only; no card field is accepted here (FL-07).
+      properties:
+        amount: { $ref: "#/components/schemas/Amount" }
+        encryptedPin:
+          type: object
+          required: [keyId, ciphertext]
+          description: As in TransactionRequest; passed to mw-auth untouched, never published.
+          properties:
+            keyId: { type: string, minLength: 1, maxLength: 128 }
+            ciphertext: { type: string, minLength: 1, maxLength: 4096 }
+        locale: { type: string, enum: [bn, en] }
+    CardSession:
+      type: object
+      required: [txnId, status]
+      properties:
+        txnId: { type: string }
+        status: { type: string, description: PARTNER_PENDING once the session is open, PROCESSING on a 202 }
+        sessionId: { type: string, description: The acquirer's session (no card data) }
+        hostedPageUrl: { type: string, description: The acquirer's hosted payment page (https, an allowed host) }
+        amount: { $ref: "#/components/schemas/Money" }
     Balance:
       type: object
       required: [txnId, available, asOf]

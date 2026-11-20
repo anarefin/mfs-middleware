@@ -76,6 +76,10 @@ public final class SagaMachine {
             case PartnerFailed e -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
             case PartnerUnknown e -> go(from, Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);
             case DeadlineExpired e -> go(from, Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);
+            // ADD_MONEY_CARD (ticket 118b): session opened, then the 3-D Secure webhook. The capture
+            // (PAY) carries the webhook's transient token, so the card service sends it, not an effect
+            case CardSessionCreated e -> go(from, Status.PARTNER_PENDING, Effect.NONE);
+            case CardAuthenticated e -> go(from, Status.PARTNER_PENDING, Effect.NONE);
             // waiting on the partner when the hold runs out (ticket 95c): the partner has not succeeded
             case HoldExpired e when !e.partnerSucceeded() -> go(from, Status.RELEASING, Effect.SEND_RELEASE);
             default -> null;

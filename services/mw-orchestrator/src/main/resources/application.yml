@@ -221,6 +221,12 @@ mw:
     holding-timeout: 5s
     posting-timeout: 5s
     partner-timeout: 30s
+    # ADD_MONEY_CARD (ticket 118b, service/AddMoneyCardService): how long the hosted page session waits
+    # for the customer and the 3-D Secure webhook, and the only hosts a hosted page URL may name (https
+    # only; the dev simulator's page is https://localhost/cybersource/hp/<sessionId>).
+    card:
+      session-timeout: ${MW_CARD_SESSION_TIMEOUT:15m}
+      hosted-page-hosts: ${MW_CARD_HOSTED_PAGE_HOSTS:localhost}
     retry-timeout: 5s
     command-ttl: 60s
     idempotency-ttl: 72h

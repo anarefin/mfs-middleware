@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 import mfs.mw.app.gateway.dto.Amount;
 import mfs.mw.app.gateway.dto.AppUser;
+import mfs.mw.app.gateway.dto.CardSessionRequest;
 import mfs.mw.app.gateway.dto.EncryptedPin;
 import mfs.mw.app.gateway.dto.TxnAuthorisationRequest;
 import mfs.mw.app.gateway.dto.PartnerRef;
@@ -162,6 +163,36 @@ public class RequestMapper {
         forwardable(body.attributes(), bill),
         now,
         Boolean.TRUE.equals(body.confirmDuplicate()) ? Boolean.TRUE : null);
+  }
+
+  /** Add money from a card (ticket 118b). */
+  public static final String ADD_MONEY_CARD = "ADD_MONEY_CARD";
+  /** The card acquirer (mw-adapter-card's partner record) and its product. */
+  public static final PartnerRef CARD_ACQUIRER = new PartnerRef("cybersource", "CARD");
+
+  /**
+   * ADD_MONEY_CARD as the canonical request (ticket 118b): the card is a token at the acquirer (debit
+   * party {@code CARD_TOKEN cybersource}; no card data ever), the caller's own wallet (its PIN) receives.
+   */
+  public TxnRequest toCardRequest(
+      AppUser user, String idempotencyKey, CardSessionRequest body, String txnId, String correlationId, Instant now) {
+    return new TxnRequest(
+        1,
+        txnId,
+        idempotencyKey,
+        correlationId,
+        user.channel(),
+        ADD_MONEY_CARD,
+        new Party("MSISDN", user.msisdn(), null, null),
+        new Party("CARD_TOKEN", CARD_ACQUIRER.partnerId(), null, null),
+        Party.wallet(user.msisdn(), user.walletType()),
+        body.amount(),
+        CARD_ACQUIRER,
+        null,
+        body.locale(),
+        null,
+        null,
+        now);
   }
 
   /**

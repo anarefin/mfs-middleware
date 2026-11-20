@@ -72,6 +72,18 @@ public sealed interface SagaEvent {
   record PartnerUnknown() implements SagaEvent {}
 
   /**
+   * ADD_MONEY_CARD (ticket 118b): the acquirer opened the hosted page session; still PARTNER_PENDING,
+   * now waiting for the customer and the 3-D Secure webhook.
+   */
+  record CardSessionCreated() implements SagaEvent {}
+
+  /**
+   * ADD_MONEY_CARD (ticket 118b): the 3-D Secure webhook authenticated the session; still
+   * PARTNER_PENDING while AUTHORISE_CAPTURE (PAY) is out.
+   */
+  record CardAuthenticated() implements SagaEvent {}
+
+  /**
    * Status inquiry (spec 7.4) found the original call done. {@code held}: a commit step follows
    * (the partner leg succeeded: commit the hold, or for inbound money credit the wallet);
    * otherwise the core posted it (completed).

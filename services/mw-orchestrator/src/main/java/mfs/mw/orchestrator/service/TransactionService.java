@@ -35,6 +35,7 @@ import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import mfs.mw.orchestrator.service.saga.Step;
 import mfs.mw.orchestrator.service.saga.W2bFlow;
+import mfs.mw.orchestrator.service.saga.AddMoneyCardFlow;
 import mfs.mw.orchestrator.util.SearchKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -518,6 +519,15 @@ public class TransactionService {
     if (("ADD_MONEY_BANK".equals(req.txnType()) || W2bFlow.TXN_TYPE.equals(req.txnType()))
         && (req.partner() == null || req.partner().partnerId() == null || req.partner().partnerId().isBlank())) {
       return new ErrorInfo(ErrorCodes.VAL_PARTNER_REQUIRED, "A partner bank is required for this transaction type", null, false);
+    }
+    if (AddMoneyCardFlow.TXN_TYPE.equals(req.txnType())
+        && (req.partner() == null || req.partner().partnerId() == null || req.partner().partnerId().isBlank())) {
+      return new ErrorInfo(ErrorCodes.VAL_PARTNER_REQUIRED, "A card acquirer is required for this transaction type", null, false);
+    }
+    if (AddMoneyCardFlow.TXN_TYPE.equals(req.txnType())
+        && (!"CARD_TOKEN".equals(req.debitParty().type()) || !"WALLET".equals(req.creditParty().type()))) {
+      // ticket 118b: the card (a token at the acquirer, never card data) pays the customer's wallet
+      return new ErrorInfo(ErrorCodes.VAL_INVALID, "Add money from a card pays from a card token to a wallet", null, false);
     }
     if (W2bFlow.TXN_TYPE.equals(req.txnType())
         && (!"WALLET".equals(req.debitParty().type()) || !"BANK_ACCOUNT".equals(req.creditParty().type())

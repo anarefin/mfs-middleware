@@ -118,6 +118,12 @@ class ProducedContractsTest {
     FIXTURES.put(PARTNER_REQUEST + "#telco", () -> PARTNER.pay(topupHeld(), leg(new TopupFlow()), TestData.NOW, PARTNER_DEADLINE));
     FIXTURES.put(PARTNER_REQUEST + "#billpay", () -> PARTNER.pay(billPay(), leg(new BillPayFlow()), TestData.NOW, PARTNER_DEADLINE));
     FIXTURES.put(PARTNER_REQUEST + "#bank", () -> PARTNER.pay(addMoney(), leg(new AddMoneyBankFlow()), TestData.NOW, PARTNER_DEADLINE));
+    // ticket 118b: AUTHORISE_CAPTURE of an ADD_MONEY_CARD (the session open, token from the webhook)
+    FIXTURES.put(PARTNER_REQUEST + "#card", () -> PARTNER.cardCapture(
+        REQUESTS.toRecord(TestData.addMoneyCard(TestData.txnId(), "key-card", 50_000), null, TestData.NOW)
+            .withPartnerRef("sess-0001"),
+        mfs.mw.orchestrator.service.saga.AddMoneyCardFlow.CARD, TestData.NOW, PARTNER_DEADLINE, "sess-0001",
+        "tok-fake-0001"));
     // ticket 115b: the merchant system NOTIFY of a completed merchant payment
     FIXTURES.put(PARTNER_REQUEST + "#merchant", () -> PARTNER.merchantNotify(
         REQUESTS.toRecord(TestData.merchantPay(TestData.txnId(), "key-mp", 66_700, "01911000020"), null, TestData.NOW),

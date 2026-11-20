@@ -18,7 +18,8 @@ public final class CoreCallBodies {
 
   /** {@code CreditRequest}: inbound money; {@code round} an operator's forced credit (absent: the saga's). */
   @JsonInclude(JsonInclude.Include.NON_NULL)
-  public record Credit(String txnId, String txnType, Party creditParty, Amount amount, Integer round) {}
+  public record Credit(
+      String txnId, String txnType, Party creditParty, Amount amount, String settlementWallet, Integer round) {}
 
   /**
    * {@code ReversalRequest}: no amount reverses the whole original (fee included); an amount is a

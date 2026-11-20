@@ -88,6 +88,24 @@ class PartnerCallMapperTest {
             "PAY", p.txnType(), p.partner(), p.partnerTxnRef(), p.amount(), p.debitParty(),
             new PartnerRequest.Party("MERCHANT", "M-1", null, null), null, null))))
         .contains("credit party must be a customer wallet");
+    for (Map<String, String> attributes : java.util.List.<Map<String, String>>of(
+        Map.of(), Map.of("sessionId", "sess-1"), Map.of("transientToken", "tok-fake"),
+        Map.of("sessionId", " ", "transientToken", "tok-fake"))) {
+      assertThat(mapper.problem(withPayload(ok, new PartnerRequest.Payload(
+              "PAY", p.txnType(), p.partner(), p.partnerTxnRef(), p.amount(), p.debitParty(), p.creditParty(), null,
+              attributes))))
+          .as(attributes.toString())
+          .contains("sessionId and transientToken are required to capture");
+    }
+    assertThat(mapper.problem(withOperation(statusQueryWithCard(ok), "STATUS_QUERY")))
+        .contains("card data is not accepted");
+  }
+
+  private static PartnerRequest statusQueryWithCard(PartnerRequest r) {
+    PartnerRequest.Payload p = r.payload();
+    return withPayload(r, new PartnerRequest.Payload(
+        "STATUS_QUERY", p.txnType(), p.partner(), p.partnerTxnRef(), p.amount(), p.debitParty(), p.creditParty(), null,
+        Map.of("cardNumber", "fake")));
   }
 
   private static PartnerRequest withOperation(PartnerRequest r, String op) {

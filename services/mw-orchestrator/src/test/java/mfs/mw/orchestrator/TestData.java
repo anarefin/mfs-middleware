@@ -113,6 +113,31 @@ public final class TestData {
   }
 
   /**
+   * An ADD_MONEY_CARD (ticket 118b) of {@code amountMinor} into customer wallet 01711000001 through the
+   * {@code cybersource} acquirer; the debit party is the card token placeholder the app gateway sets.
+   */
+  public static TxnRequest addMoneyCard(String txnId, String idemKey, long amountMinor) {
+    return new TxnRequest(
+        1,
+        txnId,
+        idemKey,
+        "corr-" + txnId.substring(0, 8),
+        "CUSTOMER_APP",
+        "ADD_MONEY_CARD",
+        new Party("MSISDN", "01711000001", null, null),
+        new Party("CARD_TOKEN", "cybersource", null, null),
+        new Party("WALLET", "01711000001", null, "CUSTOMER"),
+        Amount.bdt(amountMinor),
+        new PartnerRef("cybersource", "CARD", null),
+        null,
+        ASSERTION,
+        "en",
+        null,
+        null,
+        NOW);
+  }
+
+  /**
    * A W2B (transfer to bank, ticket 117c) of {@code amountMinor} from customer wallet 01711000001 to
    * bank account {@code account} at {@code bankPartner} (e.g. {@code bank-dbbl}), with the wallet's PIN.
    */

@@ -51,15 +51,15 @@ public class PartnerCallMapper {
     if (p.partner() == null || p.partner().partnerId() == null || p.partner().partnerId().isBlank()) {
       return Optional.of("partner is required");
     }
+    if (p.attributes() != null
+        && p.attributes().keySet().stream().anyMatch(k -> CARD_DATA.matcher(k).find())) {
+      return Optional.of("card data is not accepted"); // every operation, STATUS_QUERY too (M9 review)
+    }
     if ("STATUS_QUERY".equals(p.operation())) {
       return Optional.empty(); // the partner is asked by our stable reference only
     }
     if (!TXN_TYPES.contains(p.txnType())) {
       return Optional.of("unsupported txnType");
-    }
-    if (p.attributes() != null
-        && p.attributes().keySet().stream().anyMatch(k -> CARD_DATA.matcher(k).find())) {
-      return Optional.of("card data is not accepted");
     }
     if (p.amount() == null || p.amount().valueMinor() == null || p.amount().valueMinor() <= 0) {
       return Optional.of("amount must be positive");
@@ -69,6 +69,11 @@ public class PartnerCallMapper {
         || p.creditParty().id() == null
         || p.creditParty().id().isBlank()) {
       return Optional.of("credit party must be a customer wallet");
+    }
+    if ("PAY".equals(p.operation())
+        && (blank(attribute(p, "sessionId")) || blank(attribute(p, "transientToken")))) {
+      // AUTHORISE_CAPTURE needs the session and the webhook's token (M9 review, ticket 118b)
+      return Optional.of("sessionId and transientToken are required to capture");
     }
     return Optional.empty();
   }
@@ -115,6 +120,14 @@ public class PartnerCallMapper {
     put(out, "name", party.name());
     put(out, "walletType", party.walletType());
     return out;
+  }
+
+  private static String attribute(PartnerRequest.Payload p, String key) {
+    return p.attributes() == null ? null : p.attributes().get(key);
+  }
+
+  private static boolean blank(String s) {
+    return s == null || s.isBlank();
   }
 
   private static void put(Map<String, Object> map, String key, Object value) {

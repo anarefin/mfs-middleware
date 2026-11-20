@@ -29,7 +29,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.card`. Follow
   - **CREATE_SESSION** = `INQUIRY`: the hosted page session for the amount (the wallet is not sent).
     SUCCESS `partnerRef` = session id, `attributes {sessionId, hostedPageUrl}`.
   - **AUTHORISE_CAPTURE** = `PAY`: `attributes {sessionId, transientToken}` (from the 3-D Secure webhook),
-    authorise + capture in one call. SUCCESS `partnerRef` = the payment id.
+    authorise + capture in one call; a PAY without both is refused unsent (FAILED `MW-VAL-INVALID_PARTNER_REQUEST`,
+    M9 review, ticket 118b). SUCCESS `partnerRef` = the payment id, `attributes {amount, currency,
+    clientReference}` as the acquirer echoes them (also on a STATUS_QUERY SUCCESS): mw-orchestrator credits only
+    a capture of its own amount and reference. The card-data name check runs for every operation, STATUS_QUERY too.
   - **STATUS_QUERY**: the true outcome of our reference (NOT_FOUND on the acquirer's 404).
   - **REFUND** = `REVERSE`: refund of the captured payment, idempotent on the engine's `reversalReference`
     (`reverse:<txnId>`).

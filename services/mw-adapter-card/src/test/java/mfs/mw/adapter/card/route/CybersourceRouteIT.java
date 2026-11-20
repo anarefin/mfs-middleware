@@ -117,13 +117,18 @@ class CybersourceRouteIT {
 
   @Test
   void anAuthoriseCaptureSendsOnlyTheSessionAndTheTokenAndSucceedsWhenCaptured() throws Exception {
-    stubPost("/cybersource/v1/payments", 201, "{\"status\":\"CAPTURED\",\"paymentId\":\"pay-1\",\"code\":\"100\"}");
+    stubPost("/cybersource/v1/payments", 201, "{\"status\":\"CAPTURED\",\"paymentId\":\"pay-1\",\"code\":\"100\","
+        + "\"amount\":\"500.00\",\"currency\":\"BDT\",\"clientReference\":\"BITS-ECHO\"}");
 
     PartnerReply reply = send("PAY", CardFixtures.newTxnId(), 50_000L,
         Map.of("sessionId", "sess-1", "transientToken", "tok-fake-0001"));
 
     assertThat(reply.payload().outcome()).isEqualTo("SUCCESS");
     assertThat(reply.payload().partnerRef()).isEqualTo("pay-1");
+    // what was captured goes back to the orchestrator, which credits only its own amount and reference
+    assertThat(reply.payload().attributes())
+        .containsEntry("amount", "500.00").containsEntry("currency", "BDT").containsEntry("clientReference", "BITS-ECHO")
+        .doesNotContainKey("transientToken");
     ACQUIRER.verify(1, postRequestedFor(urlEqualTo("/cybersource/v1/payments"))
         .withRequestBody(matchingJsonPath("$.sessionId", equalTo("sess-1")))
         .withRequestBody(matchingJsonPath("$.transientToken", equalTo("tok-fake-0001")))
