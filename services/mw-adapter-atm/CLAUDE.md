@@ -5,15 +5,24 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.atm`. Follow 
 
 ## Token (FRS FL-11)
 
-The one-time ATM token is a secret. This adapter never stores it and never logs it. Verify reads
-the element only so the schema can require it; the check (HMAC, expiry, single use, lockout) is
-ticket 120b2. An MSISDN on the SOAP body is not logged and is stored only inside the keyed
+The one-time ATM token is a secret. This adapter never stores it, never logs it and never echoes
+it. It is issued and checked by mw-auth (ticket 120b2; HMAC, expiry, single use, lockout there).
+A new `VerifyTokenAndDebit` has `client/AtmTokenClient` call mw-auth `POST
+/internal/v1/atm-tokens/verifications` (the only mw-auth path this client may reach) with the
+MSISDN, amount and token, before anything is recorded and outside a database transaction. A
+refused token or wallet (`MW-AUTH-010/011/012/041/042/043`) is answered `DECLINED` with an empty
+`txnId` and records nothing (a later `ConfirmDispense` is `MW-VAL-ATM_UNKNOWN_TXN`); mw-auth not
+answering, or answering anything else, is the server fault `MW-SYS-ATM_TOKEN_UNAVAILABLE` (503). A
+repeat of a recorded `atmTxnRef` is answered from the record and not checked again. Login:
+client credentials of realm `services` (`client/ServiceTokenClient`, `mw.atm.auth.*`, secret field
+`auth-client-secret` of `secret/mw-adapter-atm`), mTLS through `mw.atm.auth.ssl-bundle`. The stack
+wiring (Keycloak client, secret, certificate) comes with ticket 120b3, which turns cash on. An MSISDN on the SOAP body is not logged and is stored only inside the keyed
 request fingerprint (below), never in clear.
 
 ## Fail closed (ticket 120b1, M9 review)
 
-`VerifyTokenAndDebit` and `CashIn` move cash. Until the token check, the hold and the credit
-exist (tickets 120b2, 120b3), both answer the server fault `MW-SYS-ATM_CASH_DISABLED` (503) and
+`VerifyTokenAndDebit` and `CashIn` move cash. Until the hold and the credit exist (ticket
+120b3), both answer the server fault `MW-SYS-ATM_CASH_DISABLED` (503) and
 write nothing. `mw.atm.inbound.cash-enabled` (default `false`, `application.yml`) turns them on;
 only tests set it. `ConfirmDispense` and `ReversalAdvice` stay served (they move no cash here and
 find no VERIFY row while cash is off, so they answer `MW-VAL-ATM_UNKNOWN_TXN`).
@@ -42,7 +51,7 @@ find no VERIFY row while cash is off, so they answer `MW-VAL-ATM_UNKNOWN_TXN`).
   `CONFIRMED`, `ReversalAdvice` to `REVERSED`, once (compare-and-set update). The same advice again
   gets the first answer; the other advice is `MW-IDEM-ATM_STATE` (409); an advice from another
   `atmId` is `MW-IDEM-001` (PLT-025). The answer is `ACCEPTED`; the XSD also has `DECLINED` and
-  `PENDING` for 120b2/120b3 (anything but `ACCEPTED` means no cash).
+  `PENDING` (120b3); `DECLINED` is a refused token (above). Anything but `ACCEPTED` means no cash.
 - **Contract gap (tickets 120b2, 120b3).** The call is not published. `mw.partner.inbound.v1` (owner
   mw-orchestrator) only allows kinds `CALLBACK`, `REMITTANCE` and `NPSB_CREDIT` and has no debit
   party, so these four operations do not fit. `dto/PartnerInbound` is the shape 120b should

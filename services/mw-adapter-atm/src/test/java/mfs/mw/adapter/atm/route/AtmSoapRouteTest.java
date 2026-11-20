@@ -21,11 +21,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.stream.StreamResult;
+import mfs.mw.adapter.atm.client.AtmTokenClient;
 import mfs.mw.adapter.atm.config.AtmInboundProperties;
 import mfs.mw.adapter.atm.config.AtmSchemaInterceptor;
 import mfs.mw.adapter.atm.config.AtmWebServiceConfig;
 import mfs.mw.adapter.atm.controller.AtmSoap;
 import mfs.mw.adapter.atm.controller.AtmSoapEndpoint;
+import mfs.mw.adapter.atm.dto.AtmTokenVerdict;
 import mfs.mw.adapter.atm.exception.SoapFaultResolver;
 import mfs.mw.adapter.atm.repository.AtmInboundStore;
 import mfs.mw.adapter.atm.repository.InMemoryAtmInboundStore;
@@ -34,6 +36,8 @@ import mfs.mw.adapter.atm.security.WsSecurityInterceptor;
 import mfs.mw.adapter.atm.service.AtmInboundService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
+import org.mockito.Mockito;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -77,6 +81,16 @@ class AtmSoapRouteTest {
     @Bean
     AtmInboundProperties atmInboundProperties() {
       return new AtmInboundProperties("ucbatm", "ucbatm", PASSWORD, true);
+    }
+
+    /** mw-auth's token check: only {@link #TOKEN} is right. */
+    @Bean
+    AtmTokenClient atmTokenClient() {
+      AtmTokenClient tokens = Mockito.mock(AtmTokenClient.class);
+      Mockito.when(tokens.verify(ArgumentMatchers.anyString(), ArgumentMatchers.anyLong(), ArgumentMatchers.anyString()))
+          .thenAnswer(inv -> TOKEN.equals(inv.getArgument(2))
+              ? AtmTokenVerdict.accepted(MSISDN) : AtmTokenVerdict.declined("MW-AUTH-010"));
+      return tokens;
     }
 
     @Bean
@@ -144,6 +158,17 @@ class AtmSoapRouteTest {
     } finally {
       detach(events);
     }
+  }
+
+  @Test
+  void aWrongTokenIsDeclinedWithoutAFaultOrATxnAndIsNeverEchoed() {
+    String body = exchange(verify("ATM-D", MSISDN, "111111"));
+
+    assertThat(body).doesNotContain("Fault").doesNotContain("111111").doesNotContain(MSISDN);
+    assertThat(text(body, "status")).isEqualTo("DECLINED");
+    assertThat(text(body, "atmTxnRef")).isEqualTo("ATM-D");
+    assertThat(text(body, "txnId")).isEmpty();
+    assertThat(exchange(named("ConfirmDispenseRequest", "ATM-D"))).contains("MW-VAL-ATM_UNKNOWN_TXN");
   }
 
   @Test

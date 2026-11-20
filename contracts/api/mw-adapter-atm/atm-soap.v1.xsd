@@ -7,12 +7,15 @@
   refused (ticket 120b1, PLT-008). atmTxnRef is the switch's own reference of one ATM session: a repeated request
   with the same atmTxnRef is answered with the first result and never processed twice (PLT-025).
   The token is a secret: it is never echoed, stored in clear or logged.
-  Status (ticket 120b1): ACCEPTED = done (dispense / credited); DECLINED = refused, do not dispense;
+  Status (ticket 120b1): ACCEPTED = done (dispense / credited); DECLINED = refused, do not dispense
+  (ticket 120b2: the token, checked by mw-auth, is wrong, expired, spent or locked, or the wallet is
+  blocked; txnId is empty and nothing is recorded, so a new atmTxnRef may try again);
   PENDING = outcome not known yet, do not dispense, ask again with the same atmTxnRef. Anything that
   is not ACCEPTED, and every SOAP fault, means no cash leaves the ATM. A repeat of atmTxnRef with
   another atmId, MSISDN or amount is the fault MW-IDEM-001; ConfirmDispense after ReversalAdvice (or
-  the reverse) is MW-IDEM-ATM_STATE. Until the token flow is live, VerifyTokenAndDebit and CashIn
-  answer the server fault MW-SYS-ATM_CASH_DISABLED.
+  the reverse) is MW-IDEM-ATM_STATE. mw-auth not answering the token check is the server fault
+  MW-SYS-ATM_TOKEN_UNAVAILABLE. Until the hold and the credit are live (ticket 120b3),
+  VerifyTokenAndDebit and CashIn answer the server fault MW-SYS-ATM_CASH_DISABLED.
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            xmlns:tns="urn:bits:mw:atm:v1"
