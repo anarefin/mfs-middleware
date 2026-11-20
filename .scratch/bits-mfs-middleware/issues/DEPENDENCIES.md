@@ -118,7 +118,7 @@
 115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
 115a-merchant-adapter                       97,102            done     31m      270 files +25395 −31   a58834bd,679349b0 (admin-api migration renumbered V17 at merge)
 115b-merchant-pay-flow                      115a,113          open   (Newman folder 49 is taken by 113c: use the next free one)
-139-dry-run-oauth2-isolation                115a              open   (security follow-up: dry-run keeps live tokenUrl; all adapter copies)
+139-dry-run-oauth2-isolation                115a              done     12m      20 files +648 −28      901630b7  (open: token cache entries not evicted on route discard)
 116-checkout-refund-list                    95,96             split (116-split-decisions.md, 2026-11-20)
 116a-core-partial-reversal-list             95,96             done     32m      ~32 files +500 −35     d42c5172,2bc20979
 116b-orchestrator-refund-flow               116a              in progress
@@ -127,7 +127,7 @@
 117-bank-avl-w2b                            97,98,102         split (117-split-decisions.md, 2026-11-20)
 117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069
 117b-avl-api-linked-accounts                117a              done     29m      44 files +1640 −9      343b4088,3cfc49cf  (no mTLS on bank adapter side; local AES key, not mw-crypto)
-117c-w2b-flow-channels                      117b              open
+117c-w2b-flow-channels                      117b              in progress
 117d-bank-gateway-simulator                 117a              done     19m      44 files +1416 −98     36bea5a1
 117e-bank-suite-regression                  117b,117c,117d    open
 118-mw-adapter-card                         95,97,102         split (118-split-decisions.md, 2026-11-20)
@@ -145,8 +145,8 @@
 126-mw-recon-matching                       123,95            done     -        150 files, +10903 −38  62f06496
 127-mw-recon-reports                        126               split (127-split-decisions.md, 2026-11-20)
 127a-recon-reports-queue                    126               done     18m      24 files +1281 −11     9ac2723a,aaf3660d
-127b-recon-exception-actions                127a              in progress (started 15:45)
-127c-trust-job-suite                        127b              open
+127b-recon-exception-actions                127a              done     34m      62 files +2139 −41     29d8922b,da80afa9  (recon /internal needs mw-admin-api service JWT; open: post-approval recon call not retried; FORCE_COMMIT that fails stays ACTIONED; data-export DW schema needs txnId)
+127c-trust-job-suite                        127b              in progress
 128-mw-data-export                          123               done     -        189 files +12102 −46   9a1ccad6
 129-portal-bulk-sp                          95,116            open
 130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f

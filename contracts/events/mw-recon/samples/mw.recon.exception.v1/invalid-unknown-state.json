@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "eventId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4b11",
+  "exceptionId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4b12",
+  "state": "CLOSED",
+  "exceptionClass": "STATUS_MISMATCH",
+  "owner": "ops",
+  "partnerId": "billagg",
+  "amountMinor": 5000,
+  "statementRef": "B-1",
+  "detectedAt": "2026-11-20T02:00:00Z",
+  "changedAt": "2026-11-20T02:00:00Z",
+  "correlationId": "recon-0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4b12"
+}

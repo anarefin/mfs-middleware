@@ -57,8 +57,11 @@ public class AuditService {
 
   private static final Pattern RFC_UUID = Pattern.compile(UUID_TEXT);
 
-  /** A resource that names a system id: {@code <type>/<uuid>}, nothing more. */
-  private static final Pattern SYSTEM_RESOURCE = Pattern.compile("[a-z][a-z0-9-]*/" + UUID_TEXT);
+  /**
+   * A resource that names a system id: {@code <type>/<uuid>}, nothing more ({@code _} in the type since ticket 127b:
+   * mw-recon's {@code recon_exception/<id>}).
+   */
+  private static final Pattern SYSTEM_RESOURCE = Pattern.compile("[a-z][a-z0-9_-]*/" + UUID_TEXT);
 
   private final JdbcTemplate jdbc;
   private final TransactionTemplate tx;

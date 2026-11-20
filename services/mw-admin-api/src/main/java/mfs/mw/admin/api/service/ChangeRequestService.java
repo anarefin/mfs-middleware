@@ -261,17 +261,21 @@ public class ChangeRequestService {
     }
     Instant now = clock.instant();
     String correlationId = correlationId();
-    ResourceChangeHandler.Approval approval = handler(cr.resourceType()).prepare(cr, checker, now, correlationId);
-    tx.executeWithoutResult(
-        s -> {
-          Map<String, Object> payload = new LinkedHashMap<>(approval.payload());
-          payload.putAll(approval.apply().get());
-          if (!requests.decide(cr.id(), ChangeRequest.Status.APPROVED, checker.username(), checker.subject(), null, payload, now)) {
-            throw decided();
-          }
-          audit(ChangeRequestMapper.approved(cr, checker.username(), approval.sentAs(), correlationId, now), cr);
-        });
+    ResourceChangeHandler h = handler(cr.resourceType());
+    ResourceChangeHandler.Approval approval = h.prepare(cr, checker, now, correlationId);
+    Map<String, Object> stored =
+        tx.execute(
+            s -> {
+              Map<String, Object> payload = new LinkedHashMap<>(approval.payload());
+              payload.putAll(approval.apply().get());
+              if (!requests.decide(cr.id(), ChangeRequest.Status.APPROVED, checker.username(), checker.subject(), null, payload, now)) {
+                throw decided();
+              }
+              audit(ChangeRequestMapper.approved(cr, checker.username(), approval.sentAs(), correlationId, now), cr);
+              return payload;
+            });
     logDecision("admin.change_request.approved", cr, checker.username());
+    h.afterApproved(cr, stored, checker);
     return found(cr.id());
   }
 

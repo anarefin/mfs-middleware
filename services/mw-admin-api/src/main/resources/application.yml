@@ -122,6 +122,11 @@ resilience4j:
         base-config: default
         minimum-number-of-calls: 20
         record-exceptions: mfs.mw.admin.api.exception.QueryUnavailableException
+      # mw-recon's work queue (ticket 127b)
+      recon:
+        base-config: default
+        minimum-number-of-calls: 20
+        record-exceptions: mfs.mw.admin.api.exception.QueryUnavailableException
   bulkhead:
     configs:
       default:
@@ -147,6 +152,9 @@ resilience4j:
         base-config: default
         retry-exceptions: mfs.mw.admin.api.exception.QueryUnavailableException
       audit-dw:
+        base-config: default
+        retry-exceptions: mfs.mw.admin.api.exception.QueryUnavailableException
+      recon:
         base-config: default
         retry-exceptions: mfs.mw.admin.api.exception.QueryUnavailableException
 
@@ -284,6 +292,10 @@ mw:
     ttl: 72h
     retry-period: 1m
     bundle: mw-service
+  # mw-recon's exception work queue (ticket 127b: recon_exception change requests; config/ReconClientProperties,
+  # client/ReconExceptionClient), over the app network, not routed by APISIX
+  recon:
+    base-url: ${MW_RECON_BASE_URL:http://mw-recon:8080}
   # The core wallet API (ADR D31, ticket 95b; config/CoreClientProperties, client/CoreAccountClient): an
   # approved unlock lifts the core's own lock with POST /core/v1/accounts/{walletId}/unlock, with the realm
   # services token below (audience mw-core-mock). Idempotent by unlockTxnId: no definite answer is asked

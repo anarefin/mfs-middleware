@@ -109,6 +109,32 @@ class AuthRouteLoaderTest {
     assertThat(String.join("; ", refusal(httpCall))).contains(problem);
   }
 
+  /**
+   * Ticket 139: a dry-run candidate's OAuth2 token request goes to the dry-run target too (the
+   * token URL's path under the target, as {@code url}), never to the partner's live token endpoint
+   * with the live client secret; a live version keeps its own token URL.
+   */
+  @Test
+  void aCandidatesTokenUrlIsTheDryRunTargetNeverTheLiveTokenEndpoint() {
+    String httpCall = "url=http://localhost:8089&auth=oauth2-cc&secretField=client-secret&clientId=bits"
+        + "&tokenUrl=http://localhost:8090/oauth/token";
+    PartnerRouteLoader.Loaded candidate = loader.load("acme", 2, record(httpCall),
+        new PartnerRouteLoader.DryRunTarget("http://localhost:8091/sim/partners/acme", null));
+
+    assertThat(uris(candidate))
+        .contains("tokenUrl=http://localhost:8091/sim/partners/acme/oauth/token")
+        .doesNotContain("localhost:8090");
+    assertThat(uris(load(httpCall))).contains("tokenUrl=http://localhost:8090/oauth/token");
+  }
+
+  /** The step URIs of a loaded route, unmasked (its toString masks secret-looking options). */
+  static String uris(PartnerRouteLoader.Loaded loaded) {
+    return loaded.route().getOutputs().stream()
+        .filter(o -> o instanceof org.apache.camel.model.ToDefinition)
+        .map(o -> ((org.apache.camel.model.ToDefinition) o).getUri())
+        .collect(java.util.stream.Collectors.joining(" "));
+  }
+
   /** Contexts name -> partner, each with the {@code good} client key store, registered in {@link #CAMEL}. */
   static PartnerTlsContexts owning(Map<String, String> contexts) {
     PartnerCredentials credentials = mock(PartnerCredentials.class);

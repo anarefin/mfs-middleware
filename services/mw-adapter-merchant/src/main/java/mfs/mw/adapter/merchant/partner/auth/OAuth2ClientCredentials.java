@@ -31,7 +31,9 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>Camel's own {@code oauth2*} http options are not used: they take the client secret as an
  * endpoint option (in the endpoint URI) and do not drop a token the partner refused.
  *
- * <p>The token is cached per partner client (partner id, token URL, client id, scope, audience)
+ * <p>The token is cached per partner client (partner id, token URL, client id, scope, audience),
+ * per loaded version (the route id: a dry-run candidate never shares a live version's token, ticket
+ * 139) and per client secret (its SHA-256: a rotated secret never reuses the old secret's token)
  * until {@code expires_in} minus the skew ({@code mw.partners.oauth2.expiry-skew}, default 30 s;
  * no {@code expires_in}: 60 s); concurrent calls wait for one token request. A partner 401 drops
  * the token it was sent with ({@link #token}'s {@code rejected} generation, empty for none), so one fresh token is
@@ -56,6 +58,9 @@ public class OAuth2ClientCredentials {
     }
   }
 
+  /** The cache key: the client, the route id of the loaded version and the SHA-256 of the client secret. */
+  private record Key(Client client, String routeId, String secretHash) {}
+
   private record Cached(Token token, Instant expiresAt) {}
 
   private static final class Slot {
@@ -63,7 +68,7 @@ public class OAuth2ClientCredentials {
     volatile Cached cached;
   }
 
-  private final ConcurrentHashMap<Client, Slot> slots = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<Key, Slot> slots = new ConcurrentHashMap<>();
   private final AtomicLong generations = new AtomicLong();
   private final ProducerTemplate producer;
   private final JsonMapper json;
@@ -88,7 +93,7 @@ public class OAuth2ClientCredentials {
    * @throws IllegalStateException when no token could be obtained (nothing was sent to the partner)
    */
   public Token token(PartnerRuntime runtime, Client client, String clientSecret, java.util.OptionalLong rejected) {
-    Slot slot = slots.computeIfAbsent(client, c -> new Slot());
+    Slot slot = slots.computeIfAbsent(new Key(client, runtime.routeId(), sha256(clientSecret)), k -> new Slot());
     slot.lock.lock();
     try {
       Cached cached = slot.cached;
@@ -169,6 +174,15 @@ public class OAuth2ClientCredentials {
         .addKeyValue("expiresInS", lifetime.toSeconds())
         .log("OAuth2 token fetched");
     return new Cached(new Token(token, generations.incrementAndGet()), expiresAt);
+  }
+
+  private static String sha256(String value) {
+    try {
+      return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+          .digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8)));
+    } catch (java.security.NoSuchAlgorithmException e) {
+      throw new IllegalStateException("no SHA-256", e);
+    }
   }
 
   private static String encode(String value) {

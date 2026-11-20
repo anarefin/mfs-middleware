@@ -27,7 +27,7 @@ class TrustPositionTest {
 
   private final ReconStore store = mock(ReconStore.class);
   private final TrustPositionService service =
-      new TrustPositionService(store, "trustbank", Clock.fixed(NOW, ZoneOffset.UTC));
+      new TrustPositionService(store, "trustbank", Clock.fixed(NOW, ZoneOffset.UTC), mock(ExceptionEvents.class));
 
   @Test
   void equalBalancesGiveZeroDifferenceAndNoException() {

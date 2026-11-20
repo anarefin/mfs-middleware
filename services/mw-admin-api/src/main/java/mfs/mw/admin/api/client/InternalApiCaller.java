@@ -78,6 +78,46 @@ class InternalApiCaller {
     return res;
   }
 
+  /**
+   * A POST of a JSON body (ticket 127b: mw-recon's action record), same token, correlation id and timeouts as
+   * {@link #get}; the caller reads the status.
+   */
+  HttpResponse<byte[]> post(URI base, String path, String service, Object body, Map<String, String> headers) {
+    String root = base.toString().replaceAll("/+$", "");
+    byte[] bytes;
+    try {
+      bytes = json.writeValueAsBytes(body);
+    } catch (JacksonException e) {
+      throw new IllegalStateException("cannot write the request body", e);
+    }
+    HttpRequest.Builder b =
+        HttpRequest.newBuilder(URI.create(root + path))
+            .timeout(props.readTimeout())
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer " + tokens.token())
+            .POST(HttpRequest.BodyPublishers.ofByteArray(bytes));
+    headers.forEach(b::header);
+    String correlationId = MDC.get("correlationId");
+    if (correlationId != null) {
+      b.header("X-Correlation-Id", correlationId);
+    }
+    HttpResponse<byte[]> res;
+    try {
+      res = http.send(b.build(), HttpResponse.BodyHandlers.ofByteArray());
+    } catch (IOException e) {
+      throw new QueryUnavailableException(service + " not reachable", e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new QueryUnavailableException("interrupted", e);
+    }
+    if (res.statusCode() == 401) {
+      tokens.invalidate();
+      throw new QueryUnavailableException(service + " refused the service token", null);
+    }
+    return res;
+  }
+
   <T> T read(byte[] body, Class<T> type, String service) {
     try {
       return json.readValue(body, type);
