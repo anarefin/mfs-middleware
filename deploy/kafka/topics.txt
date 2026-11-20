@@ -28,6 +28,7 @@ mw.partner.request.telco.v1    24 3d retry=mw-adapter-telco
 mw.partner.request.billpay.v1  24 3d retry=mw-adapter-billpay
 mw.partner.request.bank.v1     24 3d retry=mw-adapter-bank
 mw.partner.request.merchant.v1 24 3d retry=mw-adapter-merchant
+mw.partner.request.card.v1     24 3d retry=mw-adapter-card
 mw.partner.reply.v1            48 3d retry=mw-orchestrator
 mw.partner.inbound.v1          24 7d retry=mw-orchestrator
 mw.notify.request.v1           24 3d retry=mw-notify

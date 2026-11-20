@@ -108,6 +108,11 @@ public class CallbackService {
     send(party, d, body, staleBody);
   }
 
+  /** Sends the card acquirer's 3-D Secure webhook (ticket 118) as the current scenario asks. */
+  public void afterCardAuthentication(String party, Decision d, String body) {
+    send(party, d, body, null);
+  }
+
   private void send(String partner, Decision d, String body, String staleBody) {
     String url = control.settings(partner).callbackUrl();
     if (d.callback() == CallbackMode.NONE || url == null || url.isBlank()) {

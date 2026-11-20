@@ -92,7 +92,7 @@ EOF
   return $rc
 }
 
-PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t MERCHANT_SOAP_WS_PASSWORD=merchant-ws-t PUSH_API_KEY=push-t
+PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t MERCHANT_SOAP_WS_PASSWORD=merchant-ws-t CYBERSOURCE_HMAC_SECRET=cybersource-t PUSH_API_KEY=push-t
   CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t
   KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_DATA_EXPORT_SECRET=data-export-t KC_MW_AUTH_SECRET=auth-t
   KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t KC_MW_SIMULATORS_SECRET=simulators-t SFTP_DEV_PASSWORD=sftp-t
@@ -114,7 +114,7 @@ test_dev_unseal_and_provision_work_against_a_real_vault() {
   [ "$(vx kv get -field=value secret/mw/smoke)" = ok ] || fail "no secret/mw/smoke"
   vx auth list | grep -q '^approle/' || fail "approle auth not enabled"
   run_real_provision || fail "provision failed"
-  assert_out_contains "provision: 18 services provisioned"
+  assert_out_contains "provision: 19 services provisioned"
   local entry s d
   for entry in $(. "$REPO_DIR/deploy/provision/services.sh"; printf '%s\n' $SERVICES); do
     s="${entry%%:*}"; d="${entry#*:}"
