@@ -127,7 +127,7 @@
 117-bank-avl-w2b                            97,98,102         split (117-split-decisions.md, 2026-11-20)
 117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069
 117b-avl-api-linked-accounts                117a              done     29m      44 files +1640 −9      343b4088,3cfc49cf  (no mTLS on bank adapter side; local AES key, not mw-crypto)
-117c-w2b-flow-channels                      117b              in progress
+117c-w2b-flow-channels                      117b              done     39m      35 files +880 −46      ef2b5c5b,1953b95b  (orchestrator V18 bank routing; app.v1 1.15.0; USSD W2B menu waits for user security decision; status events carry full bank account id, pre-existing)
 117d-bank-gateway-simulator                 117a              done     19m      44 files +1416 −98     36bea5a1
 117e-bank-suite-regression                  117b,117c,117d    open
 118-mw-adapter-card                         95,97,102         split (118-split-decisions.md, 2026-11-20)
