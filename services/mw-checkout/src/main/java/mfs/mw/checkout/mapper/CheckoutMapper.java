@@ -41,6 +41,7 @@ public class CheckoutMapper {
         Party.wallet(s.merchantWallet(), "MERCHANT"),
         new Amount(s.amountMinor(), s.currency()),
         null,
+        null,
         s.locale(),
         Map.of(
             "checkoutSessionId", s.sessionId().toString(),

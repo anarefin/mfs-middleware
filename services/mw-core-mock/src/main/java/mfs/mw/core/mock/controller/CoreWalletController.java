@@ -9,6 +9,7 @@ import java.time.Instant;
 import mfs.mw.core.mock.dto.AccountActionResult;
 import mfs.mw.core.mock.dto.AccountUnlockRequest;
 import mfs.mw.core.mock.dto.AccountView;
+import mfs.mw.core.mock.dto.EmoneyTotalView;
 import mfs.mw.core.mock.dto.FactorsRequest;
 import mfs.mw.core.mock.dto.BalanceView;
 import mfs.mw.core.mock.dto.ChargesRequest;
@@ -125,6 +126,12 @@ public class CoreWalletController {
   @PostMapping("/reversals")
   OperationResult reverse(@Valid @RequestBody ReversalRequest req) {
     return wallet.reverse(req);
+  }
+
+  /** REC-07 e-money total (ticket 127c): only mw-recon ({@code config/SecurityConfig}). */
+  @GetMapping("/reports/emoney-total")
+  EmoneyTotalView emoneyTotal() {
+    return wallet.emoneyTotal();
   }
 
   /** UnlockWallet over REST (ticket 95b): only mw-admin-api ({@code config/SecurityConfig}). */

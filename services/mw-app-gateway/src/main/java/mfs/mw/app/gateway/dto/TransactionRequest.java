@@ -28,7 +28,26 @@ public record TransactionRequest(
     @Size(max = 20) Map<@Size(max = 64) String, @Size(max = 256) String> attributes,
     @Valid Partner partner,
     @Valid BankAccount debitParty,
-    Boolean confirmDuplicate) {
+    Boolean confirmDuplicate,
+    @Pattern(regexp = LINKED_ACCOUNT_ID) String linkedAccountId) {
+
+  /** A linked bank account id (ticket 117c): a UUID of {@code GET /app/v1/bank-accounts}. */
+  public static final String LINKED_ACCOUNT_ID =
+      "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+
+  /** A request without a linked account (every request before ticket 117c). */
+  public TransactionRequest(
+      String txnType,
+      CounterParty creditParty,
+      Amount amount,
+      EncryptedPin encryptedPin,
+      String locale,
+      Map<String, String> attributes,
+      Partner partner,
+      BankAccount debitParty,
+      Boolean confirmDuplicate) {
+    this(txnType, creditParty, amount, encryptedPin, locale, attributes, partner, debitParty, confirmDuplicate, null);
+  }
 
   /** A request without the duplicate confirmation (ticket 99). */
   public TransactionRequest(

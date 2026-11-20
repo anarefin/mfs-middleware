@@ -234,9 +234,20 @@ mw:
       fingerprint: ${MW_RECON_TRUST_FINGERPRINT:}
       mt940-cron: "0 30 0 * * *"
       mt942-cron: "0 */15 * * * *"
+      # REC-07 trust position (ticket 127c, scheduler/TrustPositionJob): after the 00:30 MT940 pull, for yesterday.
+      position-cron: "0 45 0 * * *"
       zone: Asia/Dhaka
       settlement-wallet: SETTLEMENT
       partner-id: trustbank
+    # The core wallet API's e-money total (ticket 127c, client/CoreEmoneyClient): realm services client mw-recon
+    # (audience mw-core-mock); the secret is empty here, Vault overlays mw.recon.core.client-secret.
+    core:
+      base-url: ${MW_CORE_URL:http://mw-core-mock:8080}
+      token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
+      client-id: mw-recon
+      client-secret: ${MW_RECON_CORE_CLIENT_SECRET:}
+      connect-timeout: 2s
+      timeout: 10s
     match:
       tolerance-minor: 0
       date-window-days: 1

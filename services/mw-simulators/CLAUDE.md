@@ -319,7 +319,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   Cookie), body, answeredStatus (-1 = no answer)}`; no secret here (the e2e suite verifies the
   signature). Mock party `merchant` (operation `ipn`, keys ipnId, path): HTTP_5XX / BUSINESS_ERROR answer
   their `httpStatus`, CONNECTION_RESET and DOWN close the connection. `GET
-  /sim/merchant/ipn/received[?ipnId=]`; the old `POST /sim/merchant/ipn/scenario` and `DELETE
+  /sim/merchant/ipn/received[?ipnId=][&type=PAYMENT|REFUND]` (ticket 116: a refund IPN, body `type` REFUND, is recorded with type REFUND); the old `POST /sim/merchant/ipn/scenario` and `DELETE
   /sim/merchant/ipn/received` are aliases (above).
 - Merchant system SOAP mock (ticket 115b, FRS UC-11, EXT-11, MCK-01; `controller/MerchantSoapController`,
   `service/MerchantSoapMock`; a separate class from the IPN receiver above): `POST /merchant-soap/v1/soap` (SOAP

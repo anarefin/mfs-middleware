@@ -52,6 +52,13 @@ export function CheckoutTester() {
           <Button type="submit" name="op" value="merchant" variant="outline" disabled={pending || !d?.sessionId} data-testid="co-ipn">Shop server: session status and IPNs</Button>
           <Hint>IPN retries: Simulators → preset &quot;Merchant IPN endpoint fails the next 2&quot; before paying.</Hint>
         </Panel>
+        <Panel title="4. Refund (shop)" icon={Undo2}>
+          <Row>
+            <Field label="Refund amount (Tk, empty = whole payment)"><Input name="refundAmount" defaultValue="" data-testid="co-refund-amount" className="tabular-nums" /></Field>
+            <Button type="submit" name="op" value="refund" variant="outline" disabled={pending || !d?.sessionId} data-testid="co-refund">Refund</Button>
+          </Row>
+          <Hint>Each refund is its own transaction; refunds past the payment are refused (MW-CORE-REFUND_EXCEEDS). The signed refund IPN is checked.</Hint>
+        </Panel>
       </form>
       <div className="flex min-w-0 flex-col gap-5">
         {pending ? <Busy>working…</Busy> : null}

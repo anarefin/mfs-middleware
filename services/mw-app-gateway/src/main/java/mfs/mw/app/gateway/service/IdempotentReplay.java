@@ -99,6 +99,10 @@ public class IdempotentReplay {
     content.put("amount", body.amount());
     content.put("partner", body.partner());
     content.put("attributes", body.attributes());
+    if (body.linkedAccountId() != null) {
+      // ticket 117c: another linked account is other content (kept out when absent: stored hashes stay valid)
+      content.put("linkedAccountId", body.linkedAccountId());
+    }
     return sha256(canonical.writeValueAsString(content));
   }
 

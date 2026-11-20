@@ -296,7 +296,7 @@ reversal of a completed top-up (ticket 96c), and since ticket 76 the
 security folders: `24` mw-auth (OTP, device binding, first PIN, login, logout, key documents), `25`
 the PIN lifecycle (policy, change, self-service and care reset, lockout, ops unlock), `26` the
 transaction assertion (PIN before the saga, reuse, USSD, checkout), `27` the payShield PVV through
-mw-crypto's dev-only test API; `50` a merchant with its own merchant system over SOAP (merchant20
+mw-crypto's dev-only test API; `52` a merchant with its own merchant system over SOAP (merchant20
 `01911000020`: validate before the core, notify after COMPLETED, a failed notify retried; ticket 115b); `90` the 10,000-row bulk payout, the retry-to-DLQ path, the PIN
 lockout escalation and the assertion expiry (slow). Folders 24-26 use fresh wallets of their own
 (core-mock customers `01711000500..01711000999` without an app PIN), never the seeded users.

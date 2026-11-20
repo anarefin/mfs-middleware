@@ -14,14 +14,21 @@ import org.springframework.validation.annotation.Validated;
  * @param jwkSetUri the realm's signing keys, fetched lazily on the first token
  * @param issuer exact {@code iss}
  * @param audience this service's name, required in {@code aud}
- * @param allowedClients client ids ({@code azp}) allowed to call
+ * @param allowedClients client ids ({@code azp}) allowed to call the wallet operations
+ * @param reportClients client ids ({@code azp}) allowed to read only the reports ({@code GET
+ *     /core/v1/reports/emoney-total}, ticket 127c: mw-recon); nothing else of {@code /core/**}
  */
 @Validated
 @ConfigurationProperties("mw.internal-auth")
 public record InternalAuthProperties(
-    @NotBlank String jwkSetUri, @NotBlank String issuer, @NotBlank String audience, @NotEmpty Set<String> allowedClients) {
+    @NotBlank String jwkSetUri,
+    @NotBlank String issuer,
+    @NotBlank String audience,
+    @NotEmpty Set<String> allowedClients,
+    Set<String> reportClients) {
 
   public InternalAuthProperties {
     allowedClients = Set.copyOf(allowedClients == null ? Set.of() : allowedClients);
+    reportClients = Set.copyOf(reportClients == null ? Set.of() : reportClients);
   }
 }

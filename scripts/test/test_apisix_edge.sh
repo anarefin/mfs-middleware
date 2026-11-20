@@ -289,7 +289,7 @@ test_checkout_routes_use_hmac_auth_and_the_dev_merchant_is_test_only() {
     || fail "merchant_pharmacy: $(cat out/consumers/merchant_pharmacy.json)"
   jq -e '.plugins["hmac-auth"] == {"key_id": "merchant-fashion", "secret_key": "fakeFashionSecret"}' out/consumers/merchant_fashion.json >/dev/null \
     || fail "merchant_fashion: $(cat out/consumers/merchant_fashion.json)"
-  for r in checkout-v1-sessions checkout-v1-session-get checkout-v1-payments-get; do
+  for r in checkout-v1-sessions checkout-v1-session-get checkout-v1-payments-get checkout-v1-refunds checkout-v1-refunds-get; do
     jq -e '.plugins["hmac-auth"].allowed_algorithms == ["hmac-sha256"] and (.plugins["hmac-auth"].signed_headers | index("@request-target") and index("date"))' "out/routes/$r.json" >/dev/null \
       || fail "$r: hmac-auth must sign method, path and Date: $(jq -c '.plugins["hmac-auth"]' "out/routes/$r.json")"
     jq -e '.plugins["proxy-rewrite"].headers.set["X-Mw-Merchant-Id"] == "$consumer_name" and .plugins["limit-count"].key == "consumer_name"' "out/routes/$r.json" >/dev/null \
@@ -298,6 +298,9 @@ test_checkout_routes_use_hmac_auth_and_the_dev_merchant_is_test_only() {
   jq -e '.plugins["hmac-auth"].validate_request_body == true and (.plugins["hmac-auth"].signed_headers | index("digest"))
     and .plugins["client-control"].max_body_size > 0' \
     out/routes/checkout-v1-sessions.json >/dev/null || fail "create session: body digest not checked or no size cap"
+  jq -e '.plugins["hmac-auth"].validate_request_body == true and (.plugins["hmac-auth"].signed_headers | index("digest") and index("x-nonce"))
+    and .plugins["client-control"].max_body_size > 0 and (.methods == ["POST"])' \
+    out/routes/checkout-v1-refunds.json >/dev/null || fail "refund: body digest or nonce not checked or no size cap"
   jq -e '(.plugins | keys) == ["client-control", "limit-count"] and .plugins["limit-count"].key == "remote_addr"' out/routes/checkout-pay.json >/dev/null \
     || fail "checkout-pay: $(jq -c '.plugins | keys' out/routes/checkout-pay.json)"
   MW_E2E_ROUTES= MW_E2E_API_KEY= render || fail "dry run failed: $OUT"

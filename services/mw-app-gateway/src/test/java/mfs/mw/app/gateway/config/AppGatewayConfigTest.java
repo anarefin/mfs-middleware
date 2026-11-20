@@ -94,7 +94,8 @@ class AppGatewayConfigTest {
   void aTypeWithoutAnEntryIsDeniedForEveryRole() throws IOException {
     AppGatewayProperties props = shipped();
 
-    assertThat(props.mayInitiate("CUSTOMER", "W2B")).isFalse();
+    assertThat(props.mayInitiate("CUSTOMER", "W2B")).isTrue();
+    assertThat(props.mayInitiate("CUSTOMER", "NPSB_OUT")).isFalse();
     assertThat(props.mayInitiate("AGENT", "W2B")).isFalse();
     assertThat(props.mayInitiate("AGENT", "MERCHANT_PAY")).isFalse();
     assertThat(props.mayInitiate("AGENT", "BILL_PAY")).isFalse();

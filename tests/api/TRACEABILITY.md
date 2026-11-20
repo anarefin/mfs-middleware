@@ -164,9 +164,14 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 49 | [billpay] a FIXED biller refuses an amount other than the bill the app fetched before any hold | 1 | BILL_PAY app failure |
 | 49 | [billpay] a MINIMUM biller refuses an amount below its minimum before any hold | 1 | BILL_PAY app failure |
 | 49 | [billpay] an OPEN biller refuses an amount below its range before any hold | 1 | BILL_PAY app failure |
-| 50 | [merchant frs] T1 a payment to a merchant with its own system is validated there, completes and the merchant is notified | - | |
-| 50 | [merchant frs] T9 an inactive merchant is refused by the merchant system before any money moves | - | |
-| 50 | [merchant frs] T3 a merchant system 5XX on the notify is retried and the payment stays COMPLETED | - | |
+| 50 | [checkout frs] T1 two partial refunds return the money to the payer and each sends a signed refund IPN | - | |
+| 50 | [checkout frs] T2 a refund past the payment is refused with MW-CORE-REFUND_EXCEEDS and moves nothing | - | |
+| 50 | [checkout frs] T6 the same Idempotency-Key twice refunds once and another body is MW-IDEM-001 | 2 | |
+| 50 | [checkout frs] T9 a session that was never paid is not refunded and nothing moves | - | |
+| 50 | [checkout frs] T10 a refund keeps the ledger identity: what the merchant gives back the payer gets | - | |
+| 52 | [merchant frs] T1 a payment to a merchant with its own system is validated there, completes and the merchant is notified | - | |
+| 52 | [merchant frs] T9 an inactive merchant is refused by the merchant system before any money moves | - | |
+| 52 | [merchant frs] T3 a merchant system 5XX on the notify is retried and the payment stays COMPLETED | - | |
 | 01 | [p2p] a P2P completes and moves the money once | 1 | P2P app success |
 | 01 | [p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves | 1 | P2P app failure |
 | 01 | [p2p] a core rejection (over per-txn limit) moves no money | 1 | P2P app failure |
@@ -292,6 +297,8 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 47 | [notify] an opted-out customer still gets the P2P SMS | - |  |
 | 47 | [admin notify] an approved campaign change request is APPROVED | - |  |
 | 60 | [mock] an injected trust-bank line is missing in Upay | - | |
+| 61 | [mock] the trust position job compares the core e-money total with the trust bank's closing balance | - |  |
+| 61 | [mock] a trust position for a day without a statement is 404 MW-VAL-003 | - |  |
 | 62 | [mock] today's data warehouse export is accepted by the drop check | - |  |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |
@@ -324,7 +331,11 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 
 Ticket 104. P2P (UC-04) is filled in; T5 is the folder 90 request. UC-08 top-up (ticket 112c) is
 folder `46-topup-operators`; its T5 waits out the inquiry schedule, so that cell stays `n/a`.
-T11 and T12 stay `n/a` until tickets 125 and 127. T10 names the request that checks the ledger
+UC-12 merchant refund (ticket 116) is folder `50-checkout-refund`; a refund calls the core only, so the
+external-partner columns T3/T4/T5/T7/T8 are `n/a`. UC-11 merchant pay to a merchant with its own
+system (ticket 115b) is folder `52-merchant-soap`: T1, T3 and T9 are requests there (T3 retries the
+notify and the payment stays COMPLETED; T4 is the validate inquiry only, an unknown answer fails
+before money moves). T11 and T12 stay `n/a` until tickets 125 and 127. T10 names the request that checks the ledger
 identity; the mid-saga kill is `scripts/chaos.sh` with `CHAOS_TARGETS=mw-orchestrator`. A use
 case still waiting on its ticket stays `n/a`.
 
@@ -341,7 +352,7 @@ case still waiting on its ticket stays `n/a`.
 | UC-09 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-10 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-11 | [merchant frs] T1 a payment to a merchant with its own system is validated there, completes and the merchant is notified | n/a a merchant refusal fails the validate: see T9 | [merchant frs] T3 a merchant system 5XX on the notify is retried and the payment stays COMPLETED | n/a validate inquiry only: an unknown validate answer fails before money moves (MerchantPayNotifyIT) | n/a the payment outcome is the core's (UC-04 T5 path) | n/a same as UC-04 T6 (orchestrator idempotency, merchant leg adds no key) | n/a notify request ids are per attempt; a duplicate reply is dropped by the inbox (MerchantPayNotifyIT) | n/a no failover: one merchant system per merchant | [merchant frs] T9 an inactive merchant is refused by the merchant system before any money moves | n/a ledger identity as UC-04 T10 (core-only posting) | n/a ticket 125 | n/a ticket 127 |
-| UC-12 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-12 | [checkout frs] T1 two partial refunds return the money to the payer and each sends a signed refund IPN | [checkout frs] T2 a refund past the payment is refused with MW-CORE-REFUND_EXCEEDS and moves nothing | n/a no external partner (core only; ticket 116) | n/a no external partner (core only; ticket 116) | n/a no external partner (core only; ticket 116) | [checkout frs] T6 the same Idempotency-Key twice refunds once and another body is MW-IDEM-001 | n/a no external partner (core only; ticket 116) | n/a no external partner (core only; ticket 116) | [checkout frs] T9 a session that was never paid is not refunded and nothing moves | [checkout frs] T10 a refund keeps the ledger identity: what the merchant gives back the payer gets | n/a ticket 125 | n/a ticket 127 |
 | UC-13 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-14 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-15 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
