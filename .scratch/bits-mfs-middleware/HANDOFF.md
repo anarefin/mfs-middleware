@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (112c merged. Session stopped here. 113 and later are not started).
+Updated: 2026-11-20 ~19:30 (114, 115b, 119a, 120a merged on upay-main. No M9 gate. 117e and later are not started).
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -94,6 +94,14 @@ Merged on upay-main: 117a (fa5ac85c), 127a, 113a, 116a (897a406b), 115a (3ff0465
 Splits: 113, 115, 116, 117, 127 (`issues/NN-split-decisions.md`). New: 139 (dry-run OAuth2 isolation, security follow-up, all adapter copies).
 User decision: 127c adds `GET /core/v1/reports/emoney-total` to the core wallet contract (open item for Upay's real core).
 In flight at 15:45: 113c, 116b, 117b, 117d, 127b (worktrees under .claude/worktrees/agent-*).
+
+## STOPPED 2026-11-20 ~19:30 (window ended before 19:45; no M9 gate)
+upay-main `06d5d599` (not pushed, no PR). Merged this window, in order: 120a (`372dceb2`), 119a (`bfa47ddf`), 115b (`8e457021`), 114 (`06d5d599`).
+Module builds were green. Newman was not run (gate work): folder 51 bill aggregators, 52 merchant SOAP. 119b owns 53, 120b owns 54. 117e must not take 51.
+120a: inbound SOAP is stored in the adapter; `mw.partner.inbound.v1` cannot carry an ATM debit, so publishing waits for 120b. Remit listens on 8101 because ATM owns 8100.
+115b worktree `.claude/worktrees/agent-a450dce93dadacbb8` is still locked by another session. 120a and 119a worktrees were removed after merge.
+Next: M9 gate (lean: e2e first, then Newman 06 09 19 47-50 51 52 61), then 117e, 118b, 119b, 120b, 121+.
+No code review of the whole run: the spec is not finished.
 
 ## STOPPED 2026-11-20 ~16:55 (usage limit)
 Merged on upay-main since 15:45: 113b, 113c (113 done), 116b, 116c (116 done), 127b, 127c (127 done), 117b, 117c, 117d, 118a, 139,

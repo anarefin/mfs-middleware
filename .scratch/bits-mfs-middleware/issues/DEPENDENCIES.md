@@ -114,10 +114,10 @@
 113a-biller-catalogue-owner                 98                done     ~45m     43 files +2020 −40     0d0f506d..a79d4435
 113b-biller-channel-projections             113a              done     25m      49 files +860 −98      fd910ff4  (fetched amount attached as billOutstandingMinor via Redis 30 min; USSD bill month = current Asia/Dhaka month, assumption; Newman 06/19/49 changed, not run live)
 113c-biller-amount-rule                     113a              done     29m      15 files +470 −9       8414700f  (orchestrator V17 biller_rule, MW-VAL-032, Newman folder 49-biller-catalogue; FIXED needs the channel to attach billOutstandingMinor -> 113b)
-114-bill-aggregators                        113,97,102        in progress
+114-bill-aggregators                        113,97,102        done     -        47 files +3400 −15     06d5d599  (folder 51-bill-aggregators; Newman 51/06/07 not run live. T5/T11/T12 n/a. Orchestrator V19 bill_aggregator_routing)
 115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
 115a-merchant-adapter                       97,102            done     31m      270 files +25395 −31   a58834bd,679349b0 (admin-api migration renumbered V17 at merge)
-115b-merchant-pay-flow                      115a,113          in progress
+115b-merchant-pay-flow                      115a,113          done     -        40 files +1363 −37     8e457021  (folder 52-merchant-soap; Newman not run live. Validate before pay, notify retry then audit dead letter)
 139-dry-run-oauth2-isolation                115a              done     12m      20 files +648 −28      901630b7  (open: token cache entries not evicted on route discard)
 116-checkout-refund-list                    95,96             done (split 116a,116b,116c; 116-split-decisions.md)
 116a-core-partial-reversal-list             95,96             done     32m      ~32 files +500 −35     d42c5172,2bc20979
@@ -134,10 +134,10 @@
 118a-card-adapter                           95,97,102         done     27m      274 files +25935 −28   4f974e08,005a0983  (admin-api V18; postgres max_connections 100->120; 3DS webhook endpoint -> 118b)
 118b-card-flow-channels                     118a              open   (incl. adapter 3DS webhook controller: HMAC, nonce, partner-ref dedup PLT-014; admin-api cybersource seed copy)
 119-mw-adapter-remit                        95,97,102         split (119-split-decisions.md, 2026-11-20)
-119a-remit-adapter                          95,97,102         in progress
+119a-remit-adapter                          95,97,102         done     -        286 files +26376 −36   bfa47ddf  (admin-api V19 remit; host port 8101. RemitInFlow, Newman 53, lookup -> 119b)
 119b-remit-flow                             119a              open
 120-mw-adapter-atm                          95,97,102         split (120-split-decisions.md, 2026-11-20)
-120a-atm-adapter-inbound                    95,97,102         in progress
+120a-atm-adapter-inbound                    95,97,102         done     -        283 files +26354 −31   372dceb2  (admin-api V20 atm; host port 8100. Inbound SOAP recorded locally; publish, token, cash flows, Newman 54 -> 120b)
 120b-atm-token-flows                        120a              open
 # --- M10 gate: UC-13..17
 121-mw-adapter-interop                      92,97,102         open
