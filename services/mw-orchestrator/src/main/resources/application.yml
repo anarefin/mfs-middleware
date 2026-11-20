@@ -121,7 +121,20 @@ resilience4j:
         wait-duration-in-open-state: 30s
         permitted-number-of-calls-in-half-open-state: 5
         automatic-transition-from-open-to-half-open-enabled: true
+    instances:
+      # the core wallet API (ticket 95a): a call slower than its read timeout is already a failure
+      core:
+        base-config: default
+        slow-call-duration-threshold: 1s
+        minimum-number-of-calls: 20
+        wait-duration-in-open-state: 10s
   bulkhead:
+    instances:
+      # core calls in flight at once (ADR D31: the core is never flooded by one channel's burst); a
+      # refused call is an unknown outcome the step's deadline settles
+      core:
+        base-config: default
+        max-concurrent-calls: 100
     configs:
       default:
         max-concurrent-calls: 200
@@ -132,6 +145,10 @@ resilience4j:
         timeout-duration: 30s
         cancel-running-future: true
   retry:
+    instances:
+      # the core's reads (WAL-13, the balance) only; a money call is never retried by the client
+      core-read:
+        base-config: default
     configs:
       default:
         max-attempts: 3
@@ -231,6 +248,17 @@ mw:
     bulk-channels: ORG_PORTAL
     # Daily MANUAL_REVIEW ageing check (scheduler/ManualReviewAgeingJob, UTC, "-" switches it off).
     manual-review-ageing-cron: "0 0 6 * * *"
+    # The core wallet over REST (ADR D31, ticket 95a; client/CoreWalletClient): Keycloak realm services
+    # client credentials (client mw-orchestrator, audience mw-core-mock); the secret comes from Vault
+    # (secret/mw-orchestrator, mw.orchestrator.core.client-secret), never written here. The read
+    # timeout stays below the saga deadlines: an unanswered call is an unknown outcome, settled by the
+    # step's deadline (POSTING -> UNKNOWN -> WAL-13).
+    core:
+      base-url: ${MW_CORE_BASE_URL:http://mw-core-mock:8080}
+      token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
+      client-id: mw-orchestrator
+      connect-timeout: 1s
+      read-timeout: ${MW_CORE_READ_TIMEOUT:1500ms}
     consumers:
       enabled: true
     timer:

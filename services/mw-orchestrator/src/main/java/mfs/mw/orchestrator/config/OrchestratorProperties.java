@@ -2,6 +2,7 @@ package mfs.mw.orchestrator.config;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import java.net.URI;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.Set;
@@ -27,6 +28,7 @@ import org.springframework.validation.annotation.Validated;
  * @param bulkChannels the channels that may send a BULK_DISBURSE child (the org portal, ticket 34)
  * @param idempotencyLock the Redis double-tap lock in front of the idempotency claim (7.3 rule 4)
  * @param duplicateGuard the business-duplicate window (FRS PLT-013, ticket 99)
+ * @param core the core wallet REST API (ADR D31, ticket 95a; {@code client/CoreWalletClient})
  */
 @Validated
 @ConfigurationProperties("mw.orchestrator")
@@ -43,7 +45,37 @@ public record OrchestratorProperties(
     @NotNull @DefaultValue("SYSTEM") Set<String> reversalChannels,
     @NotNull @DefaultValue("ORG_PORTAL") Set<String> bulkChannels,
     @NotNull @DefaultValue IdempotencyLock idempotencyLock,
-    @NotNull @DefaultValue DuplicateGuard duplicateGuard) {
+    @NotNull @DefaultValue DuplicateGuard duplicateGuard,
+    @NotNull @DefaultValue Core core) {
+
+  /**
+   * The core wallet REST API {@code /core/v1} (ADR D31, ticket 95a; contract {@code
+   * api/mw-core-mock/core-wallet.v1.openapi.yaml}) with a Keycloak realm {@code services}
+   * client-credentials JWT (spec 18.2, audience {@code mw-core-mock}). The read timeout stays below
+   * the saga deadlines: a call that has not answered by then is an unknown outcome, settled by the
+   * step's deadline (POSTING to UNKNOWN and WAL-13, HOLDING to a WAL-13 query, COMMITTING resends).
+   *
+   * @param baseUrl the core ({@code http://mw-core-mock:8080})
+   * @param tokenUri the realm's token endpoint
+   * @param clientId this service's client in realm {@code services}
+   * @param clientSecret from Vault ({@code secret/mw-orchestrator}) only, never in a file
+   * @param connectTimeout TCP connect
+   * @param readTimeout per call; a slower answer is an unknown outcome
+   */
+  public record Core(
+      @NotNull @DefaultValue("http://mw-core-mock:8080") URI baseUrl,
+      @NotNull @DefaultValue("http://keycloak:8080/realms/services/protocol/openid-connect/token") URI tokenUri,
+      @NotNull @DefaultValue("mw-orchestrator") String clientId,
+      @DefaultValue("") String clientSecret,
+      @NotNull @DefaultValue("1s") Duration connectTimeout,
+      @NotNull @DefaultValue("1500ms") Duration readTimeout) {
+
+    @Override
+    public String toString() {
+      return "Core[baseUrl=" + baseUrl + ", tokenUri=" + tokenUri + ", clientId=" + clientId
+          + ", clientSecret=****, connectTimeout=" + connectTimeout + ", readTimeout=" + readTimeout + "]";
+    }
+  }
 
   /**
    * The business-duplicate window (FRS PLT-013): the same initiator, txnType, parties and amount

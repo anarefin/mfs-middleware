@@ -65,10 +65,12 @@ provision_mw_simulators() {
 }
 
 # Redis: idempotency lock (ticket 50). The search hash key (ticket 35) is never rotated here: a new
-# key would orphan every stored initiator_hash.
+# key would orphan every stored initiator_hash. Realm services client secret: the core wallet API
+# (/core/v1, audience mw-core-mock, ADR D31, ticket 95a).
 provision_mw_orchestrator() {
   gen_once spring.datasource.password 40
   sync_env spring.data.redis.password REDIS_PASSWORD
+  sync_env mw.orchestrator.core.client-secret KC_MW_ORCHESTRATOR_SECRET
   gen_once mw.orchestrator.search.hash-key 48
   db_role orchestrator_rw txn
 }

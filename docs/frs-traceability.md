@@ -174,16 +174,16 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-013 | done | mw-orchestrator `service/DuplicateGuard` (60 s, `MW_DUPLICATE_WINDOW`): app/USSD `MW-VAL-024` + `confirmDuplicate` (USSD asks the PIN again), API clients `MW-VAL-025` (`DuplicateGuardTest`, `DuplicateGuardIT`, ticket 99); API folder 36 |
 | PLT-014 | tickets 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) and signed nonces (ticket 99) built; card, IMT, NPSB in their adapters |
 | PLT-020 | done | saga steps with compensation (`saga_step`, spec 7.1) |
-| PLT-021 | done | step state persisted per step; resume after restart (`scripts/chaos.sh`) |
+| PLT-021 | done | step state persisted per step; resume after restart (`scripts/chaos.sh`); a core REST call starts only after its step commits and its answer re-enters the saga in its own transaction (ticket 95a, `CoreCallDispatcher`, `CoreReplyService`) |
 | PLT-022 | ticket 96 | core-side compensation built; the partner leg in reverse order in 96 |
-| PLT-023 | ticket 96 | `UNKNOWN` and the inquiry schedule built (spec 7.4); FRS default 30 s / 2 min / 10 min / 1 h in 96 |
+| PLT-023 | ticket 96 | `UNKNOWN` and the inquiry schedule built (spec 7.4); a core call without a definite answer (timeout, 5xx) goes UNKNOWN on its step deadline and WAL-13 settles it (ticket 95a, `CoreRestFlowIT`); FRS default 30 s / 2 min / 10 min / 1 h in 96 |
 | PLT-024 | ticket 96 | `MANUAL_REVIEW` after the cut-off built; alert event and metric in 96 |
 | PLT-025 | ticket 96 | partner REVERSE, idempotent and retried until acknowledged |
 | PLT-026 | ticket 105 | core fee returned at validation; preview with fee, VAT and commission in 105 |
-| PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector in ticket 95 |
+| PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector `client/CoreWalletClient` (connect/read timeouts, breaker `core`, reads retried only; ticket 95a) |
 | PLT-031 | done | no automatic redelivery of a PAY (D28); INQUIRY and STATUS retried |
 | PLT-032 | ticket 98 | fast failure `MW-SYS-PARTNER_CIRCUIT_OPEN` built; failover routing in 98 |
-| PLT-033 | done | bulkhead per partner (`MW-SYS-PARTNER_BUSY`), one adapter per family (D32) |
+| PLT-033 | done | bulkhead per partner (`MW-SYS-PARTNER_BUSY`), one adapter per family (D32); bulkhead `core` on the core calls, each on its own virtual thread (ticket 95a) |
 | PLT-034 | done | Kafka retry topics and DLQ (D2, D27); the AML and DW feeds use them (tickets 125, 128) |
 | PLT-035 | done | transactional outbox in every producing service (spec 6.4) |
 | PLT-040 | ticket 98 | routing rules in the mw-orchestrator routing module |
@@ -275,7 +275,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-15 | ticket 119 | UCB IMT mock |
 | EXT-16 | ticket 120 | UCB ATM mock |
 | EXT-17 | tickets 123, 128 | DW Kafka and SFTP drop |
-| EXT-18 | ticket 95 | core over REST (D31): the mock serves it, `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93); the orchestrator's client in 95 |
+| EXT-18 | ticket 95 | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93) and the orchestrator calls it (`client/CoreWalletClient`, ticket 95a); mw-auth and mw-admin-api still send Kafka commands until 95b |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
 | MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
 | MCK-03 | ticket 136 | magic values are the default trigger of the mock-control engine, an explicit scenario wins (ticket 102, `service/mockcontrol/ScenarioEngine`); trigger table per mock in `docs/concepts/simulators.html`; every new mock in 136 |
@@ -302,7 +302,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | WAL-10 | done | `POST /core/v1/credits` (tickets 93, 94): from the partner settlement wallet `settlementWallet` names (`SETTLEMENT_NPSB`, `SETTLEMENT_UCB_IMT`, ...), else `SETTLEMENT` |
 | WAL-11 | ticket 116 | `POST /core/v1/reversals` built (ticket 93, full, idempotent, once); partial reversal for refunds in 116 |
 | WAL-12 | ticket 107 | `GET /core/v1/statements` (tickets 93, 94): entries by wallet and range, paged, with the balance after each entry; the customer statement in 107 |
-| WAL-13 | ticket 95 | `GET /core/v1/transactions/{txnId}` built (ticket 93: status and entries); the orchestrator's inquiry uses it in 95 |
+| WAL-13 | done | `GET /core/v1/transactions/{txnId}` (ticket 93: status and entries); the orchestrator's HOLDING query, inquiry, reversal query and credit check use it (ticket 95a) |
 
 ## 8. Supporting services (FRS 8)
 

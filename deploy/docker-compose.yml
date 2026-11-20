@@ -403,6 +403,8 @@ services:
       KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       KC_MW_USSD_SECRET: ${KC_MW_USSD_SECRET:?cp dev.env.defaults .env}
       KC_MW_CHECKOUT_SECRET: ${KC_MW_CHECKOUT_SECRET:?cp dev.env.defaults .env}
+      # realm services: mw-orchestrator's client of the core wallet API (audience mw-core-mock, ticket 95a)
+      KC_MW_ORCHESTRATOR_SECRET: ${KC_MW_ORCHESTRATOR_SECRET:?cp dev.env.defaults .env}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
@@ -708,6 +710,7 @@ services:
       KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       KC_MW_USSD_SECRET: ${KC_MW_USSD_SECRET:?cp dev.env.defaults .env}
       KC_MW_CHECKOUT_SECRET: ${KC_MW_CHECKOUT_SECRET:?cp dev.env.defaults .env}
+      KC_MW_ORCHESTRATOR_SECRET: ${KC_MW_ORCHESTRATOR_SECRET:?cp dev.env.defaults .env}
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}

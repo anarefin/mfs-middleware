@@ -42,8 +42,9 @@ import org.springframework.stereotype.Service;
 
 /**
  * Applies one event to one transaction (spec 7.1): runs the pure {@link SagaMachine}, persists the
- * new state, step and deadline, publishes the status change and sends the next command, all
- * through the outbox in the caller's transaction. Callers hold the row lock on the transaction.
+ * new state, step and deadline, publishes the status change through the outbox in the caller's
+ * transaction, and starts the next step: a partner request through the outbox, a core call over REST
+ * once the transaction has committed ({@link CoreCallDispatcher}, ADR D31, ticket 95a). Callers hold the row lock on the transaction.
  * Deliberately not {@code @Transactional}: an {@link InvalidTransitionException} must not mark the
  * caller's transaction rollback-only, and the outbox refuses to run outside a transaction anyway.
  *
@@ -71,6 +72,7 @@ public class SagaEngine {
   private final InquiryProperties inquiry;
   private final PartnerCallRepository partnerCalls;
   private final CoreCallRepository coreCalls;
+  private final CoreCallDispatcher core;
   private final Clock clock;
 
   public SagaEngine(
@@ -86,6 +88,7 @@ public class SagaEngine {
       InquiryProperties inquiry,
       PartnerCallRepository partnerCalls,
       CoreCallRepository coreCalls,
+      CoreCallDispatcher core,
       Clock clock) {
     this.transactions = transactions;
     this.timers = timers;
@@ -99,6 +102,7 @@ public class SagaEngine {
     this.inquiry = inquiry;
     this.partnerCalls = partnerCalls;
     this.coreCalls = coreCalls;
+    this.core = core;
     this.clock = clock;
   }
 
@@ -332,15 +336,12 @@ public class SagaEngine {
   }
 
   /**
-   * Sends a core command through the outbox and records it on the saga timeline (B13) under the
-   * transaction's own txnId (a ReverseTransaction goes under the reversal's txnId).
+   * Records a core call on the saga timeline (B13) under the transaction's own txnId (a reversal goes
+   * to the core under the reversal's txnId) and has it made over REST once this transaction commits
+   * (ADR D31, ticket 95a): the step and its deadline are persisted before the core is asked (PLT-021).
    */
   private void send(TransactionRecord rec, CoreCommand command) {
-    outbox.append(
-        CoreTopics.commandTopic(command.commandType()),
-        command.txnId(),
-        new EventMetadata(command.correlationId(), command.txnId(), command.commandId(), 1),
-        command);
     coreCalls.sent(command.commandId(), rec.txnId(), command.commandType(), command.issuedAt());
+    core.dispatch(command);
   }
 }

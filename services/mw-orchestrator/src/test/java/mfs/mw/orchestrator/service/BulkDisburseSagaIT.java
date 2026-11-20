@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.util.List;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreEvent;
@@ -28,21 +29,21 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {"mw.orchestrator.consumers.enabled=false", "mw.orchestrator.timer.enabled=false"})
-@Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, SagaServiceIT.TestClock.class})
 class BulkDisburseSagaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
   private static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
 
   private final TransactionService transactions;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
   private final MutableClock clock;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
 
   @Autowired
   BulkDisburseSagaIT(
-      TransactionService transactions, CoreEventService coreEvents, Clock clock, JdbcTemplate jdbc, JsonMapper json) {
+      TransactionService transactions, CoreCalls coreEvents, Clock clock, JdbcTemplate jdbc, JsonMapper json) {
     this.transactions = transactions;
     this.coreEvents = coreEvents;
     this.clock = (MutableClock) clock;
@@ -71,7 +72,7 @@ class BulkDisburseSagaIT {
   }
 
   private List<JsonNode> commands(String txnId) {
-    return outbox("core.wallet.command.v1", txnId);
+    return coreEvents.commands(txnId);
   }
 
   private CoreEvent event(String type, String txnId, String step) {
@@ -103,9 +104,9 @@ class BulkDisburseSagaIT {
     assertThat(validate.path("payload").path("txnType").asString()).isEqualTo("BULK_DISBURSE");
     assertThat(validate.path("payload").path("debitParty").path("id").asString()).isEqualTo("01311000001");
 
-    coreEvents.handle(event("TransactionValidated", txn, "validate"));
+    coreEvents.answer(event("TransactionValidated", txn, "validate"));
     assertThat(commands(txn).get(1).path("commandType").asString()).isEqualTo("PostTransfer");
-    coreEvents.handle(event("TransferPosted", txn, "post"));
+    coreEvents.answer(event("TransferPosted", txn, "post"));
 
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "POSTING", "COMPLETED");
     List<JsonNode> all = outbox("mw.txn.status.v1", txn);

@@ -15,12 +15,12 @@ import java.util.List;
 import java.util.UUID;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.dto.CoreEvent;
 import mfs.mw.orchestrator.dto.PartnerReply;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.mapper.PartnerRequestMapper;
-import mfs.mw.orchestrator.service.CoreEventService;
 import mfs.mw.orchestrator.service.PartnerReplyService;
 import mfs.mw.orchestrator.service.SagaTimerService;
 import mfs.mw.orchestrator.service.TransactionService;
@@ -46,7 +46,7 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringBootTest(
     webEnvironment = WebEnvironment.RANDOM_PORT,
     properties = {"mw.orchestrator.consumers.enabled=false", "mw.orchestrator.timer.enabled=false"})
-@Import({TestInfrastructure.class, TransactionQueryApiIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, TransactionQueryApiIT.TestClock.class})
 class TransactionQueryApiIT {
 
   @TestConfiguration(proxyBeanMethods = false)
@@ -59,7 +59,7 @@ class TransactionQueryApiIT {
   }
 
   private final TransactionService transactions;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
   private final PartnerReplyService partnerReplies;
   private final SagaTimerService timers;
   private final MutableClock clock;
@@ -71,7 +71,7 @@ class TransactionQueryApiIT {
   @Autowired
   TransactionQueryApiIT(
       TransactionService transactions,
-      CoreEventService coreEvents,
+      CoreCalls coreEvents,
       PartnerReplyService partnerReplies,
       SagaTimerService timers,
       Clock clock,
@@ -180,9 +180,9 @@ class TransactionQueryApiIT {
     TxnRequest req = TestData.topup(TestData.txnId(), "key-" + TestData.txnId(), 2_000, "01711000002");
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
-    coreEvents.handle(
+    coreEvents.answer(
         coreEvent("TransactionValidated", txn, txn + ":validate", "{\"fee\":{\"valueMinor\":0,\"currency\":\"BDT\"}}"));
-    coreEvents.handle(coreEvent("FundsHeld", txn, txn + ":hold", "{\"holdId\":\"HOLD-CORE-7\"}"));
+    coreEvents.answer(coreEvent("FundsHeld", txn, txn + ":hold", "{\"holdId\":\"HOLD-CORE-7\"}"));
     clock.advance(Duration.ofSeconds(1));
     partnerReplies.handle(
         reply(txn, PartnerRequestMapper.requestId(txn, "PAY"), "PAY", "UNKNOWN",
@@ -192,7 +192,7 @@ class TransactionQueryApiIT {
     clock.advance(Duration.ofSeconds(1));
     partnerReplies.handle(
         reply(txn, lastInquiryRequestId(txn), "STATUS_QUERY", "SUCCESS", ",\"partnerRef\":\"OCS-TSQ-1\""));
-    coreEvents.handle(coreEvent("HoldCommitted", txn, txn + ":commit", "{}"));
+    coreEvents.answer(coreEvent("HoldCommitted", txn, txn + ":commit", "{}"));
     return txn;
   }
 
@@ -545,9 +545,9 @@ class TransactionQueryApiIT {
     TxnRequest req = TestData.topup(TestData.txnId(), "key-" + TestData.txnId(), 2_000, "01711000002");
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
-    coreEvents.handle(
+    coreEvents.answer(
         coreEvent("TransactionValidated", txn, txn + ":validate", "{\"fee\":{\"valueMinor\":0,\"currency\":\"BDT\"}}"));
-    coreEvents.handle(coreEvent("FundsHeld", txn, txn + ":hold", "{\"holdId\":\"HOLD-CORE-7\"}"));
+    coreEvents.answer(coreEvent("FundsHeld", txn, txn + ":hold", "{\"holdId\":\"HOLD-CORE-7\"}"));
     partnerReplies.handle(
         reply(txn, PartnerRequestMapper.requestId(txn, "PAY"), "PAY", "FAILED",
             ",\"errorCode\":\"MW-PTR-GP-NUMBER_BARRED\""));
@@ -560,7 +560,7 @@ class TransactionQueryApiIT {
     assertThat(release.path("sends").asInt()).isEqualTo(2);
     assertThat(release.has("result")).isFalse();
 
-    coreEvents.handle(
+    coreEvents.answer(
         json.readValue(
             "{\"schemaVersion\":1,\"eventType\":\"ReleaseFailed\",\"eventId\":\"evt-" + UUID.randomUUID()
                 + "\",\"commandId\":\"" + txn + ":release\",\"txnId\":\"" + txn

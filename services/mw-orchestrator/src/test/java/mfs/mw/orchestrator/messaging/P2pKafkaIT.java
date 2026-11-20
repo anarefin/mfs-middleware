@@ -10,22 +10,23 @@ import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The orchestrator end to end over real Kafka and PostgreSQL, against its own core stub: a P2P
- * request on {@code mw.txn.request.v1} reaches COMPLETED, a core rejection reaches REJECTED, and
- * a core that never answers PostTransfer ends UNKNOWN through the timer sweep.
+ * The orchestrator end to end over real Kafka and PostgreSQL, against its own REST stand-in for the
+ * core ({@link CoreRestStub}, ticket 95a): a P2P request on {@code mw.txn.request.v1} reaches
+ * COMPLETED, a core rejection reaches REJECTED, a repeated key makes no second transaction. A lost
+ * answer is {@code service/CoreRestFlowIT}'s.
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -42,10 +43,14 @@ import tools.jackson.databind.json.JsonMapper;
 class P2pKafkaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
-  private static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
   private static final String AUDIT_SCHEMA = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
 
-  private static CoreStub core;
+  private static final CoreRestStub core = CoreRestStub.start();
+
+  @DynamicPropertySource
+  static void coreApi(DynamicPropertyRegistry registry) {
+    core.register(registry);
+  }
 
   private final EventPublisher publisher;
   private final KafkaContainer kafka;
@@ -58,11 +63,6 @@ class P2pKafkaIT {
     this.kafka = kafka;
     this.jdbc = jdbc;
     this.json = json;
-  }
-
-  @BeforeAll
-  static void startCore(@Autowired KafkaContainer kafka) {
-    core = new CoreStub(kafka.getBootstrapServers());
   }
 
   @AfterAll
@@ -109,12 +109,10 @@ class P2pKafkaIT {
     JsonNode done = json.readTree(got.get(3).value());
     assertThat(done.path("fee").path("valueMinor").asLong()).isEqualTo(500);
     assertThat(done.path("coreRef").asString()).startsWith("STUB-");
-    List<JsonNode> mine = core.commands().stream().filter(c -> req.txnId().equals(c.path("txnId").asString())).toList();
-    assertThat(mine).extracting(c -> c.path("commandId").asString())
-        .containsExactly(req.txnId() + ":validate", req.txnId() + ":post");
-    for (JsonNode c : mine) {
-      assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(c)).isEmpty();
-    }
+    assertThat(core.requests(req.txnId())).extracting(CoreRestStub.Seen::path)
+        .containsExactly("/core/v1/transactions/validate", "/core/v1/transfers");
+    assertThat(core.requests(req.txnId())).allSatisfy(s ->
+        assertThat(s.headers()).containsEntry("x-txn-assertion", TestData.ASSERTION));
     assertThat(jdbc.queryForObject("select status from transaction where txn_id = ?::uuid", String.class, req.txnId()))
         .isEqualTo("COMPLETED");
 
@@ -133,7 +131,7 @@ class P2pKafkaIT {
 
   @Test
   void aCoreRejectionReachesRejected() {
-    TxnRequest req = request(CoreStub.REJECT_AMOUNT);
+    TxnRequest req = request(CoreRestStub.REJECT_AMOUNT);
 
     List<ConsumerRecord<String, String>> got = statuses(req.txnId(), 3);
 
@@ -141,17 +139,6 @@ class P2pKafkaIT {
     assertValid(got);
     assertThat(json.readTree(got.get(2).value()).path("error").path("code").asString())
         .isEqualTo("MW-CORE-INSUFFICIENT_BALANCE");
-  }
-
-  @Tag("slow-wait")
-  @Test
-  void aCoreThatNeverAnswersPostTransferEndsUnknownAfterTheDeadline() {
-    TxnRequest req = request(CoreStub.SILENT_AMOUNT);
-
-    List<ConsumerRecord<String, String>> got = statuses(req.txnId(), 4);
-
-    assertThat(names(got)).containsExactly("RECEIVED", "VALIDATING", "POSTING", "UNKNOWN");
-    assertValid(got);
   }
 
   @Test

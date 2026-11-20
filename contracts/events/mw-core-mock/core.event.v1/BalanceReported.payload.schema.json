@@ -17,6 +17,14 @@
     "available": {
       "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount"
     },
+    "held": {
+      "description": "Open holds at asOf (ticket 95a; the REST balance read answers a repeat from this event)",
+      "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount"
+    },
+    "total": {
+      "description": "available + held at asOf (ticket 95a)",
+      "$ref": "../../../common/defs.v1.schema.json#/$defs/Amount"
+    },
     "asOf": {
       "type": "string",
       "format": "date-time"

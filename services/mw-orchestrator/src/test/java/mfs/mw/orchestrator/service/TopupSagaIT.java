@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.List;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreEvent;
@@ -33,7 +34,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.orchestrator.consumers.enabled=false",
       "mw.orchestrator.timer.enabled=false"
     })
-@Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, SagaServiceIT.TestClock.class})
 class TopupSagaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
@@ -43,7 +44,7 @@ class TopupSagaIT {
   private static final String PARTNER_TOPIC = "mw.partner.request.telco.v1";
 
   private final TransactionService transactions;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
   private final PartnerReplyService partnerReplies;
   private final SagaTimerService timers;
   private final MutableClock clock;
@@ -54,7 +55,7 @@ class TopupSagaIT {
   @Autowired
   TopupSagaIT(
       TransactionService transactions,
-      CoreEventService coreEvents,
+      CoreCalls coreEvents,
       PartnerReplyService partnerReplies,
       SagaTimerService timers,
       Clock clock,
@@ -96,14 +97,7 @@ class TopupSagaIT {
 
   /** Core commands on both command topics, in outbox order (ticket 50: hold, commit, release on core.payment). */
   private List<JsonNode> coreCommands(String txnId) {
-    return jdbc.queryForList(
-            "select payload::text from outbox where topic in ('core.wallet.command.v1', 'core.payment.command.v1')"
-                + " and msg_key = ? order by id",
-            String.class,
-            txnId)
-        .stream()
-        .map(json::readTree)
-        .toList();
+    return coreEvents.commands(txnId);
   }
 
   private List<String> statuses(String txnId) {
@@ -176,8 +170,8 @@ class TopupSagaIT {
   /** Validate and hold succeed; the transaction waits for the partner. */
   private String startToPartnerPending(long amount) {
     String txn = start(amount, "01711000002");
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", null, "{\"fee\":{\"valueMinor\":200,\"currency\":\"BDT\"}}"));
-    coreEvents.handle(event("FundsHeld", txn, txn + ":hold", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", null, "{\"fee\":{\"valueMinor\":200,\"currency\":\"BDT\"}}"));
+    coreEvents.answer(event("FundsHeld", txn, txn + ":hold", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
     return txn;
   }
 
@@ -188,7 +182,7 @@ class TopupSagaIT {
     String txn = start(2_000, "01711000002");
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING");
 
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", null, "{\"fee\":{\"valueMinor\":200,\"currency\":\"BDT\"}}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", null, "{\"fee\":{\"valueMinor\":200,\"currency\":\"BDT\"}}"));
     assertThat(statuses(txn)).endsWith("HOLDING");
     JsonNode hold = lastCommand(txn);
     assertThat(hold.path("commandType").asString()).isEqualTo("HoldFunds");
@@ -197,7 +191,7 @@ class TopupSagaIT {
     assertThat(hold.path("payload").path("creditParty").path("type").asString()).isEqualTo("MSISDN");
     assertThat(hold.path("payload").path("assertion").asString()).isEqualTo(mfs.mw.orchestrator.TestData.ASSERTION);
 
-    coreEvents.handle(event("FundsHeld", txn, txn + ":hold", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
+    coreEvents.answer(event("FundsHeld", txn, txn + ":hold", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
     assertThat(statuses(txn)).endsWith("PARTNER_PENDING");
     List<JsonNode> requests = outbox(PARTNER_TOPIC, txn);
     assertThat(requests).hasSize(1);
@@ -220,16 +214,14 @@ class TopupSagaIT {
     assertThat(commit.path("commandId").asString()).isEqualTo(txn + ":commit");
     assertThat(commit.path("payload").path("holdId").asString()).isEqualTo("HOLD-CORE-7");
 
-    coreEvents.handle(event("HoldCommitted", txn, txn + ":commit", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
+    coreEvents.answer(event("HoldCommitted", txn, txn + ":commit", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
     assertThat(statuses(txn))
         .containsExactly("RECEIVED", "VALIDATING", "HOLDING", "PARTNER_PENDING", "COMMITTING", "COMPLETED");
     JsonNode done = lastStatus(txn);
     assertThat(done.path("partnerRef").asString()).isEqualTo("OCS-991");
     assertThat(done.path("fee").path("valueMinor").asLong()).isEqualTo(200);
-    assertThat(outbox("core.wallet.command.v1", txn)).extracting(c -> c.path("commandType").asString())
-        .containsExactly("ValidateTransaction");
-    assertThat(outbox("core.payment.command.v1", txn)).extracting(c -> c.path("commandType").asString())
-        .containsExactly("HoldFunds", "CommitHold");
+    assertThat(coreEvents.commands(txn)).extracting(c -> c.path("commandType").asString())
+        .containsExactly("ValidateTransaction", "HoldFunds", "CommitHold");
     assertThat(commandTypes(txn)).containsExactly("ValidateTransaction", "HoldFunds", "CommitHold");
     assertThat(jdbc.queryForObject("select count(*) from saga_timer", Long.class)).isZero();
     assertAllValid(txn);
@@ -246,14 +238,14 @@ class TopupSagaIT {
     assertThat(release.path("commandId").asString()).isEqualTo(txn + ":release");
     assertThat(release.path("payload").path("holdId").asString()).isEqualTo("HOLD-CORE-7");
 
-    coreEvents.handle(event("HoldReleased", txn, txn + ":release", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
+    coreEvents.answer(event("HoldReleased", txn, txn + ":release", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
     assertThat(statuses(txn))
         .containsExactly("RECEIVED", "VALIDATING", "HOLDING", "PARTNER_PENDING", "RELEASING", "FAILED");
     JsonNode failed = lastStatus(txn);
     assertThat(failed.path("error").path("code").asString()).isEqualTo("MW-PTR-GP-TOPUP_REJECTED");
     assertThat(failed.path("error").path("retryable").asBoolean()).isFalse();
-    assertThat(outbox("core.payment.command.v1", txn)).extracting(c -> c.path("commandType").asString())
-        .containsExactly("HoldFunds", "ReleaseHold");
+    assertThat(coreEvents.commands(txn)).extracting(c -> c.path("commandType").asString())
+        .containsExactly("ValidateTransaction", "HoldFunds", "ReleaseHold");
     assertThat(commandTypes(txn)).doesNotContain("CommitHold");
     assertAllValid(txn);
   }
@@ -268,8 +260,8 @@ class TopupSagaIT {
   @Test
   void aHoldRejectionEndsRejectedWithoutCallingThePartner() {
     String txn = start(2_000, "01711000002");
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
-    coreEvents.handle(event("HoldRejected", txn, txn + ":hold", "INSUFFICIENT_BALANCE", "{}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
+    coreEvents.answer(event("HoldRejected", txn, txn + ":hold", "INSUFFICIENT_BALANCE", "{}"));
 
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "HOLDING", "REJECTED");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-CORE-INSUFFICIENT_BALANCE");
@@ -282,7 +274,7 @@ class TopupSagaIT {
   @Test
   void aHoldingTimeoutQueriesTheCoreAndReleasesAHoldItFinds() {
     String txn = start(2_000, "01711000002");
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
     clock.advance(Duration.ofSeconds(6));
 
     assertThat(timers.sweep()).isEqualTo(1);
@@ -292,13 +284,13 @@ class TopupSagaIT {
     assertThat(query.path("commandId").asString()).startsWith(txn + ":query");
     assertThat(query.path("payload").isEmpty()).isTrue();
 
-    coreEvents.handle(
+    coreEvents.answer(
         event("TransactionStatus", txn, query.path("commandId").asString(), null, "{\"txnStatus\":\"HELD\",\"holdId\":\"HOLD-LATE\"}"));
     assertThat(statuses(txn)).endsWith("HOLDING", "RELEASING");
     assertThat(lastCommand(txn).path("commandType").asString()).isEqualTo("ReleaseHold");
     assertThat(lastCommand(txn).path("payload").path("holdId").asString()).isEqualTo("HOLD-LATE");
 
-    coreEvents.handle(event("HoldReleased", txn, txn + ":release", null, "{\"holdId\":\"HOLD-LATE\"}"));
+    coreEvents.answer(event("HoldReleased", txn, txn + ":release", null, "{\"holdId\":\"HOLD-LATE\"}"));
     assertThat(status(txn)).isEqualTo("FAILED");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-TMO-002");
     assertThat(outbox(PARTNER_TOPIC, txn)).isEmpty();
@@ -308,12 +300,12 @@ class TopupSagaIT {
   @Test
   void aHoldingTimeoutWithNoHoldAtTheCoreEndsRejected() {
     String txn = start(2_000, "01711000002");
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
     clock.advance(Duration.ofSeconds(6));
     timers.sweep();
     String queryId = lastCommand(txn).path("commandId").asString();
 
-    coreEvents.handle(event("TransactionStatus", txn, queryId, null, "{\"txnStatus\":\"NOT_FOUND\"}"));
+    coreEvents.answer(event("TransactionStatus", txn, queryId, null, "{\"txnStatus\":\"NOT_FOUND\"}"));
 
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "HOLDING", "REJECTED");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-TMO-002");
@@ -324,7 +316,7 @@ class TopupSagaIT {
   @Test
   void anUnansweredQueryIsAskedAgainWithAFreshCommandId() {
     String txn = start(2_000, "01711000002");
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
     clock.advance(Duration.ofSeconds(6));
     timers.sweep();
     clock.advance(Duration.ofSeconds(6));
@@ -342,13 +334,13 @@ class TopupSagaIT {
   @Test
   void aHoldPlacedAfterTheTransactionGaveUpIsReleased() {
     String txn = start(2_000, "01711000002");
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
     clock.advance(Duration.ofSeconds(6));
     timers.sweep();
-    coreEvents.handle(
+    coreEvents.answer(
         event("TransactionStatus", txn, lastCommand(txn).path("commandId").asString(), null, "{\"txnStatus\":\"NOT_FOUND\"}"));
 
-    coreEvents.handle(event("FundsHeld", txn, txn + ":hold", null, "{\"holdId\":\"HOLD-ORPHAN\"}"));
+    coreEvents.answer(event("FundsHeld", txn, txn + ":hold", null, "{\"holdId\":\"HOLD-ORPHAN\"}"));
 
     assertThat(status(txn)).isEqualTo("REJECTED");
     JsonNode release = lastCommand(txn);
@@ -372,7 +364,7 @@ class TopupSagaIT {
     assertThat(lastCommand(txn).path("commandId").asString()).isEqualTo(txn + ":commit");
     assertThat(statuses(txn)).endsWith("COMMITTING");
 
-    coreEvents.handle(event("HoldCommitted", txn, txn + ":commit", null, "{}"));
+    coreEvents.answer(event("HoldCommitted", txn, txn + ":commit", null, "{}"));
     assertThat(status(txn)).isEqualTo("COMPLETED");
   }
 
@@ -395,7 +387,7 @@ class TopupSagaIT {
     partnerReplies.handle(reply(txn, "SUCCESS", null, "OCS-1"));
     double before = counter("mw.txn.commit.failed");
 
-    coreEvents.handle(event("CommitFailed", txn, txn + ":commit", "HOLD_NOT_FOUND", "{}"));
+    coreEvents.answer(event("CommitFailed", txn, txn + ":commit", "HOLD_NOT_FOUND", "{}"));
 
     assertThat(status(txn)).isEqualTo("MANUAL_REVIEW");
     assertThat(counter("mw.txn.commit.failed")).isEqualTo(before + 1);
@@ -409,7 +401,7 @@ class TopupSagaIT {
     assertThat(timers.sweep()).isEqualTo(1);
 
     assertThat(commandTypes(txn)).endsWith("ReleaseHold", "ReleaseHold");
-    coreEvents.handle(event("HoldReleased", txn, txn + ":release", null, "{}"));
+    coreEvents.answer(event("HoldReleased", txn, txn + ":release", null, "{}"));
     assertThat(status(txn)).isEqualTo("FAILED");
   }
 

@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.util.List;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreEvent;
@@ -31,7 +32,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.orchestrator.consumers.enabled=false",
       "mw.orchestrator.timer.enabled=false"
     })
-@Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, SagaServiceIT.TestClock.class})
 class ReversalSagaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
@@ -40,7 +41,7 @@ class ReversalSagaIT {
   private static final String COMMAND_TOPIC = "core.wallet.command.v1";
 
   private final TransactionService transactions;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
   private final SagaTimerService timers;
   private final MutableClock clock;
   private final JdbcTemplate jdbc;
@@ -49,7 +50,7 @@ class ReversalSagaIT {
   @Autowired
   ReversalSagaIT(
       TransactionService transactions,
-      CoreEventService coreEvents,
+      CoreCalls coreEvents,
       SagaTimerService timers,
       Clock clock,
       JdbcTemplate jdbc,
@@ -65,6 +66,7 @@ class ReversalSagaIT {
   @BeforeEach
   void clean() {
     clock.set(TestData.NOW);
+    coreEvents.clear();
     for (String t : List.of("outbox", "inbox", "saga_timer", "saga_step", "idempotency", "transaction")) {
       jdbc.update("delete from " + t);
     }
@@ -91,10 +93,7 @@ class ReversalSagaIT {
 
   /** Every command on the wallet command topic, whatever its key. */
   private List<JsonNode> allCommands() {
-    return jdbc.queryForList("select payload::text from outbox where topic = ? order by id", String.class, COMMAND_TOPIC)
-        .stream()
-        .map(json::readTree)
-        .toList();
+    return coreEvents.commands();
   }
 
   private List<JsonNode> reverseCommands() {
@@ -144,8 +143,8 @@ class ReversalSagaIT {
     TxnRequest req = TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), amount);
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", null));
-    coreEvents.handle(event("TransferPosted", txn, txn + ":post", null));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", null));
+    coreEvents.answer(event("TransferPosted", txn, txn + ":post", null));
     assertThat(status(txn)).isEqualTo("COMPLETED");
     return txn;
   }
@@ -176,7 +175,7 @@ class ReversalSagaIT {
     assertThat(cmd.path("payload").path("amount").path("valueMinor").asLong()).isEqualTo(5_000);
     assertThat(cmd.path("payload").path("fee").path("valueMinor").asLong()).isEqualTo(500);
 
-    coreEvents.handle(event("TransactionReversed", reversal, reversal + ":reverse", null));
+    coreEvents.answer(event("TransactionReversed", reversal, reversal + ":reverse", null));
 
     assertThat(status(original)).isEqualTo("REVERSED");
     assertThat(statuses(original)).endsWith("COMPLETED", "REVERSING", "REVERSED");
@@ -190,7 +189,7 @@ class ReversalSagaIT {
     String original = completedP2p(5_000);
     String reversal = reverse(original, 5_000, "rev-" + original);
 
-    coreEvents.handle(event("ReversalRejected", reversal, reversal + ":reverse", "INSUFFICIENT_BALANCE"));
+    coreEvents.answer(event("ReversalRejected", reversal, reversal + ":reverse", "INSUFFICIENT_BALANCE"));
 
     assertThat(status(original)).isEqualTo("MANUAL_REVIEW");
     JsonNode last = lastStatus(original);
@@ -266,7 +265,7 @@ class ReversalSagaIT {
     advanceAndSweep(60);
     String queryId = reversalQueries(original).get(0).path("commandId").asString();
 
-    coreEvents.handle(txnStatus(original, queryId, "POSTED"));
+    coreEvents.answer(txnStatus(original, queryId, "POSTED"));
 
     assertThat(status(original)).isEqualTo("MANUAL_REVIEW");
     assertThat(lastStatus(original).path("error").path("code").asString()).isEqualTo("MW-TMO-020");
@@ -282,7 +281,7 @@ class ReversalSagaIT {
     advanceAndSweep(60);
     String queryId = reversalQueries(original).get(0).path("commandId").asString();
 
-    coreEvents.handle(txnStatus(original, queryId, "REVERSED"));
+    coreEvents.answer(txnStatus(original, queryId, "REVERSED"));
 
     assertThat(status(original)).isEqualTo("REVERSED");
     assertThat(auditedMoves(original)).endsWith("COMPLETED>REVERSING", "REVERSING>REVERSED");
@@ -294,7 +293,7 @@ class ReversalSagaIT {
     String reversal = reversalPastItsResends(original);
 
     // the resend sent just before reversing-timeout is applied by the core after it
-    coreEvents.handle(event("TransactionReversed", reversal, reversal + ":reverse", null));
+    coreEvents.answer(event("TransactionReversed", reversal, reversal + ":reverse", null));
 
     assertThat(status(original)).isEqualTo("REVERSED");
     assertThat(auditedMoves(original)).endsWith("COMPLETED>REVERSING", "REVERSING>REVERSED");
@@ -314,7 +313,7 @@ class ReversalSagaIT {
     assertThat(lastStatus(original).path("error").path("code").asString()).isEqualTo("MW-TMO-020");
     assertThat(reverseCommands()).hasSize(2);
 
-    coreEvents.handle(event("TransactionReversed", reversal, reversal + ":reverse-late", null));
+    coreEvents.answer(event("TransactionReversed", reversal, reversal + ":reverse-late", null));
     assertThat(status(original)).isEqualTo("REVERSED");
     assertThat(auditedMoves(original)).endsWith("REVERSING>MANUAL_REVIEW", "MANUAL_REVIEW>REVERSED");
     assertAllValid(original, reversal);
@@ -324,9 +323,9 @@ class ReversalSagaIT {
   void aTransactionReversedAfterAReversalManualReviewEndsReversed() {
     String original = completedP2p(5_000);
     String reversal = reverse(original, 5_000, "rev-" + original);
-    coreEvents.handle(event("ReversalRejected", reversal, reversal + ":reverse", "INSUFFICIENT_BALANCE"));
+    coreEvents.answer(event("ReversalRejected", reversal, reversal + ":reverse", "INSUFFICIENT_BALANCE"));
 
-    coreEvents.handle(event("TransactionReversed", reversal, reversal + ":reverse-late", null));
+    coreEvents.answer(event("TransactionReversed", reversal, reversal + ":reverse-late", null));
 
     assertThat(status(original)).isEqualTo("REVERSED");
   }
@@ -357,7 +356,7 @@ class ReversalSagaIT {
     TxnRequest p2p = TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000);
     transactions.accept(p2p, "gw-1");
     String original = p2p.txnId();
-    coreEvents.handle(event("TransactionRejected", original, original + ":validate", "INSUFFICIENT_BALANCE"));
+    coreEvents.answer(event("TransactionRejected", original, original + ":validate", "INSUFFICIENT_BALANCE"));
 
     String reversal = reverse(original, 5_000, "rev-" + original);
 
@@ -424,7 +423,7 @@ class ReversalSagaIT {
     assertThat(answer.path("attributes").path("reversalTxnId").asString()).isEqualTo(first);
     assertThat(auditedMoves(original)).containsOnlyOnce("COMPLETED>REVERSING");
 
-    coreEvents.handle(event("TransactionReversed", first, first + ":reverse", null));
+    coreEvents.answer(event("TransactionReversed", first, first + ":reverse", null));
     String third = reverse(original, 5_000, "rev-3-" + original);
     assertThat(status(original)).isEqualTo("REVERSED");
     assertThat(lastStatus(original).path("attributes").path("requestTxnId").asString()).isEqualTo(third);
