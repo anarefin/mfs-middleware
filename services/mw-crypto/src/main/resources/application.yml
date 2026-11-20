@@ -289,9 +289,9 @@ mw:
         ASSERTION_SIGN: mw-auth
         AUDIT_ANCHOR_SIGN: mw-audit-dw
         TOKENISE_MSISDN: mw-auth,mw-audit-dw,mw-data-export
-        TOKENISE_NID: mw-auth,mw-audit-dw,mw-data-export
+        TOKENISE_NID: mw-auth,mw-audit-dw,mw-data-export,mw-compliance
         TOKENISE_ACCOUNT: mw-audit-dw,mw-data-export
-        KEK_COLUMN: mw-auth
+        KEK_COLUMN: mw-auth,mw-compliance
         # /pinblock/translate and /pvv/** (ticket 64) check every key's purpose (TPK, ZPK, TPK_AES,
         # ZPK_AES, PVK): no caller yet; the ATM and interop adapters add theirs here. Dev only (ticket
         # 76): the test-only client of the test API below is bound to TPK and PVK through
@@ -323,7 +323,7 @@ mw:
     jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
     issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
     audience: mw-crypto
-    allowed-clients: mw-admin-api,mw-auth,mw-audit-dw,mw-data-export,mw-adapter-interop
+    allowed-clients: mw-admin-api,mw-auth,mw-audit-dw,mw-data-export,mw-adapter-interop,mw-compliance
     # Generate (only with bootstrap-keys, until the ceremony of ticket 75) and rotate keys.
     key-admin-clients: mw-admin-api
 

@@ -6,7 +6,7 @@
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
 PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t BANK_GATEWAY_HMAC_SECRET=bankgw-t MERCHANT_SOAP_WS_PASSWORD=merchant-ws-t CYBERSOURCE_HMAC_SECRET=cybersource-t UCB_IMT_HMAC_SECRET=ucb-imt-t UCBATM_HMAC_SECRET=ucbatm-t UCBATM_WS_PASSWORD=ucbatm-ws-t PUSH_API_KEY=push-t
-  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_DATA_EXPORT_SECRET=data-export-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t KC_MW_RECON_SECRET=recon-t KC_MW_ADAPTER_REMIT_SECRET=adapter-remit-t KC_MW_SIMULATORS_SECRET=simulators-t SFTP_DEV_PASSWORD=sftp-t
+  CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_DATA_EXPORT_SECRET=data-export-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t KC_MW_RECON_SECRET=recon-t KC_MW_ADAPTER_REMIT_SECRET=adapter-remit-t KC_MW_SIMULATORS_SECRET=simulators-t KC_MW_COMPLIANCE_SECRET=compliance-t SFTP_DEV_PASSWORD=sftp-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
   APISIX_VAULT_TOKEN=apisix-vault-t APISIX_ADMIN_KEY=apisix-admin-t
@@ -115,7 +115,7 @@ manifest_services() { (. "$PROVISION_DIR/services.sh"; printf '%s\n' $SERVICES);
 test_every_service_with_an_approle_volume_is_in_the_manifest() {
   local s
   for s in mw-core-mock mw-crypto mw-auth mw-simulators mw-orchestrator mw-audit-dw mw-app-gateway mw-notify mw-ussd \
-    mw-admin-api mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-adapter-merchant mw-adapter-card mw-adapter-remit mw-adapter-atm mw-adapter-interop mw-portal-api mw-checkout mw-data-export mw-recon; do
+    mw-admin-api mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-adapter-merchant mw-adapter-card mw-adapter-remit mw-adapter-atm mw-adapter-interop mw-portal-api mw-checkout mw-data-export mw-recon mw-compliance; do
     manifest_services | grep -q "^$s:" || fail "$s missing from deploy/provision/services.sh"
   done
   [ "$(manifest_services | head -1)" = mw-core-mock:core-mock ] \
@@ -257,7 +257,7 @@ test_provision_sets_up_the_pki_once_and_a_role_per_pki_service() {
   grep -q '^vault write -field=certificate pki/root/sign-intermediate csr=@' .vault-calls || fail "intermediate not signed by the root"
   grep -q '^vault write pki_int/intermediate/set-signed certificate=@' .vault-calls || fail "intermediate not set"
   local s
-  for s in mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api mw-data-export; do
+  for s in mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api mw-data-export mw-compliance; do
     grep -q "^vault write pki_int/roles/$s allowed_domains=$s allow_bare_domains=true allow_subdomains=false .*allow_localhost=false .*max_ttl=72h" .vault-calls \
       || fail "no PKI role $s"
   done

@@ -105,6 +105,7 @@ D3 amendment 2026-11-13).
 | 8095 | `mw-auth` public port (`/auth/v1/**` from ticket 69; its internal API 8443 needs a client certificate and is not published, its actuator is on 8081 inside the network) | `MW_PORT_AUTH` |
 | 8096 | `mw-data-export` (profile `core`; the internal API is not on the edge) | `MW_PORT_DATA_EXPORT` |
 | 8097 | `mw-recon` (profile `core`; the internal reprocess API is not on the edge) | `MW_PORT_RECON` |
+| 8103 | `mw-compliance` (profile `core`; customer eKYC, HTTPS with a mandatory client certificate, D24; not on the edge: the apps reach it through mw-app-gateway; its actuator is on 8081 inside the network) | `MW_PORT_COMPLIANCE` |
 | 3000 | `mw-admin-ui` (path `/console`) | `MW_PORT_ADMIN_UI` |
 | 3001 | `mw-test-console` (profile `tester`) | `MW_PORT_TEST_CONSOLE` |
 | 5432 | `postgres` | `MW_PORT_POSTGRES` |
@@ -519,6 +520,25 @@ on the host, mw-recon's internal API on port 8097 (it needs an mw-admin-api serv
 
 The real core must serve `GET /core/v1/reports/emoney-total` (open item for Upay, `docs/frs-traceability.md`
 REC-07); until it does the trust position cannot run against it.
+
+## A customer eKYC is stuck
+
+mw-compliance (profile `core`, port 8103 with a client certificate) holds each application in
+`compliance.kyc_application`; the API answers `status`, `reason` and `errorCode`, never the NID, names or images.
+
+1. **FAILED, `MW-TMO-EC_NID` or `MW-SYS-PARTNER_CIRCUIT_OPEN`**: the EC NID service timed out or its breaker
+   `ec-nid` is open. The application is retryable: the channel submits it again. In the dev stack the EC is the
+   mw-simulators mock (party `ec`): an NID ending `999` always times out, `000` is not found, `111` gives
+   another date of birth; `/mock-control/ec/switch` takes it down.
+2. **MATCHED with `errorCode` `MW-SYS-002`**: the match is done but the core did not take the KYC level
+   (`PUT /core/v1/accounts/{walletId}/kyc-level`). A resubmit goes straight to the core (no second EC call).
+   The core answers 403 when client `mw-compliance` of realm `services` lacks its `aud-mw-core-mock` mapper or
+   is not in the core's `mw.internal-auth.kyc-clients`; a 503 is the core or Keycloak not reachable, or a
+   missing `mw.compliance.crypto.client-secret` (from `KC_MW_COMPLIANCE_SECRET`).
+3. **MANUAL_REVIEW**: `NAME_MISMATCH` (the date of birth matched, the name did not) or `NID_IN_USE` (another
+   wallet holds this NID). No level was set and no event was published; an operator decides (ticket 134).
+4. **mw-crypto 403** in the log (`crypto.call.refused`): `mw.crypto.authz.purposes` must bind `TOKENISE_NID` and
+   `KEK_COLUMN` to mw-compliance, and its certificate comes from `PKI_SERVICES` in `deploy/provision/services.sh`.
 
 ## Data warehouse export
 

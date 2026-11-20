@@ -13,7 +13,7 @@ SECRETS_AHEAD=""
 # 66): the two mTLS servers (mw-crypto; mw-auth's internal API, ticket 67) and every caller of them.
 # Each gets a pki_int role named after it (CN and SAN = its compose DNS name, 72 h) and its AppRole
 # policy may issue from that role only. A role may exist before its service is in SERVICES.
-PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api mw-data-export"
+PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api mw-data-export mw-compliance"
 
 # EDGE_SECRETS: the credentials APISIX reads from the Vault KV v1 mount apisix/ (ticket 100a, lib.sh
 # apisix_edge), <clientId>:<VAR>: apisix/<clientId> field password = deploy/.env's VAR, synced on every
@@ -336,10 +336,13 @@ provision_mw_recon() {
   db_role recon_rw recon
 }
 
-# Customer eKYC (ticket 124a): its own schema compliance. Ticket 124b adds the mw-crypto client secret
-# (KC_MW_COMPLIANCE_SECRET), the EC credentials and its PKI_SERVICES entry.
+# Customer eKYC (tickets 124a, 124b): its own schema compliance; the realm services client secret for
+# mw-crypto and the core's KYC level; the EC NID service password (generated: the EC mock checks only that
+# credentials are sent; the real EC's is set in Vault by hand); its certificate comes from PKI_SERVICES.
 provision_mw_compliance() {
   gen_once spring.datasource.password 40
+  sync_env mw.compliance.crypto.client-secret KC_MW_COMPLIANCE_SECRET
+  gen_once mw.compliance.ec.password 32
   db_role compliance_rw compliance
 }
 
