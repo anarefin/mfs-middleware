@@ -113,11 +113,11 @@
 113-biller-catalogue                        98                split (113-split-decisions.md, 2026-11-20)
 113a-biller-catalogue-owner                 98                done     ~45m     43 files +2020 −40     0d0f506d..a79d4435
 113b-biller-channel-projections             113a              open
-113c-biller-amount-rule                     113a              in progress
+113c-biller-amount-rule                     113a              done     29m      15 files +470 −9       8414700f  (orchestrator V17 biller_rule, MW-VAL-032, Newman folder 49-biller-catalogue; FIXED needs the channel to attach billOutstandingMinor -> 113b)
 114-bill-aggregators                        113,97,102        open
 115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
 115a-merchant-adapter                       97,102            done     31m      270 files +25395 −31   a58834bd,679349b0 (admin-api migration renumbered V17 at merge)
-115b-merchant-pay-flow                      115a,113          open
+115b-merchant-pay-flow                      115a,113          open   (Newman folder 49 is taken by 113c: use the next free one)
 139-dry-run-oauth2-isolation                115a              open   (security follow-up: dry-run keeps live tokenUrl; all adapter copies)
 116-checkout-refund-list                    95,96             split (116-split-decisions.md, 2026-11-20)
 116a-core-partial-reversal-list             95,96             done     32m      ~32 files +500 −35     d42c5172,2bc20979
@@ -126,7 +126,7 @@
 # --- M9 gate: UC-08..12
 117-bank-avl-w2b                            97,98,102         split (117-split-decisions.md, 2026-11-20)
 117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069
-117b-avl-api-linked-accounts                117a              in progress
+117b-avl-api-linked-accounts                117a              done     29m      44 files +1640 −9      343b4088,3cfc49cf  (no mTLS on bank adapter side; local AES key, not mw-crypto)
 117c-w2b-flow-channels                      117b              open
 117d-bank-gateway-simulator                 117a              done     19m      44 files +1416 −98     36bea5a1
 117e-bank-suite-regression                  117b,117c,117d    open
