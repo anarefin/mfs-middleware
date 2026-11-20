@@ -3,6 +3,7 @@ package mfs.mw.simulators.service;
 import java.util.concurrent.Executor;
 import mfs.mw.simulators.client.CallbackClient;
 import mfs.mw.simulators.client.CallbackSigner;
+import mfs.mw.simulators.dto.BankProfile;
 import mfs.mw.simulators.dto.CallbackMode;
 import mfs.mw.simulators.exception.ErrorCodes;
 import mfs.mw.simulators.exception.MwException;
@@ -40,6 +41,7 @@ public class CallbackService {
   private final BankDebitMapper bankMapper;
   private final JsonMapper json;
   private final Executor executor;
+  private final BankGatewayLedger bankTransfers;
 
   @SuppressWarnings("java:S107")
   public CallbackService(
@@ -53,7 +55,8 @@ public class CallbackService {
       BankDebitLedger debits,
       BankDebitMapper bankMapper,
       JsonMapper json,
-      Executor callbackExecutor) {
+      Executor callbackExecutor,
+      BankGatewayLedger bankTransfers) {
     this.ledger = ledger;
     this.payments = payments;
     this.control = control;
@@ -65,6 +68,7 @@ public class CallbackService {
     this.bankMapper = bankMapper;
     this.json = json;
     this.executor = callbackExecutor;
+    this.bankTransfers = bankTransfers;
   }
 
   /**
@@ -96,6 +100,14 @@ public class CallbackService {
         json.writeValueAsString(billMapper.pending(record)));
   }
 
+  /**
+   * Sends what the current scenario of a bank gateway party ({@code bank-<code>}, ticket 117d) asks for after
+   * a transfer was applied; OUT_OF_ORDER follows the outcome with a stale PENDING.
+   */
+  public void afterBankTransfer(String party, Decision d, String body, String staleBody) {
+    send(party, d, body, staleBody);
+  }
+
   private void send(String partner, Decision d, String body, String staleBody) {
     String url = control.settings(partner).callbackUrl();
     if (d.callback() == CallbackMode.NONE || url == null || url.isBlank()) {
@@ -125,7 +137,9 @@ public class CallbackService {
               payments.find(reference).map(r -> json.writeValueAsString(billMapper.toResponse(r))).orElse(null);
           case BankC2wService.PARTNER ->
               debits.find(reference).map(r -> json.writeValueAsString(bankMapper.toResponse(r))).orElse(null);
-          default -> ledger.find(reference).map(r -> json.writeValueAsString(mapper.toResponse(r))).orElse(null);
+          default -> partner.startsWith(BankProfile.PARTY_PREFIX)
+              ? bankTransfers.findByParty(partner, reference).map(t -> json.writeValueAsString(t.body())).orElse(null)
+              : ledger.find(reference).map(r -> json.writeValueAsString(mapper.toResponse(r))).orElse(null);
         };
     if (body == null) {
       throw new MwException(ErrorCodes.VAL_NOT_FOUND, "No such reference " + reference)

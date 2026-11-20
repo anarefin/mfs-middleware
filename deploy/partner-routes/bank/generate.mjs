@@ -5,7 +5,9 @@
 //   services/mw-adapter-bank/src/main/resources/bank-profiles-dev.yml  (the adapter's dev seeds,
 //     imported by its application-dev.yml; base URL BANK_GATEWAY_BASE_URL, hosts MW_BANK_ALLOWED_HOSTS)
 //   services/mw-admin-api/src/main/resources/partner-seeds/dev/bank-<code>.json  (mw-admin-api's
-//     copies, simulator URL written out) and the seed list between the markers of its application-dev.yml.
+//     copies, simulator URL written out) and the seed list between the markers of its application-dev.yml;
+//   services/mw-simulators/src/main/resources/seed/v1/bank-profiles.csv  (the CSV the simulated bank
+//     gateway serves, ticket 117d; a module never reads a path outside its own folder, so it gets a copy).
 // Usage (from the repo root): node deploy/partner-routes/bank/generate.mjs [--check]
 // --check writes nothing and exits 1 when a generated file differs (a test runs it).
 // Wire format (mw-simulators' bank gateway, /bank/<code>/v1): REST POST accounts/verify {accountNumber}
@@ -14,7 +16,8 @@
 // transfers/{reference}; POST transfers/{reference}/reverse {reversalId, amount}; 422 {code, message}
 // refusals. SOAP 1.1 at /bank/<code>/v1/soap, namespace urn:bank:<code>:v1, the same fields as
 // ValidateAccount, Transfer, TransferStatus, ReverseTransfer (and *Response); refusals are soap:Client
-// faults with <detail><code/><message/></detail>. Callbacks (both protocols) are the REST transfer body,
+// faults with <detail><code/><message/></detail>. Health (ticket 117d, both protocols): GET health with the
+// profile's HTTP auth (none for ws-security) -> 200 {status: UP}; probed on a schedule (healthCheck). Callbacks (both protocols) are the REST transfer body,
 // hmac-sha256 signed with the field hmac-secret of secret/mw-adapter-bank/bank-<code>.
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -54,6 +57,15 @@ function soapAuth(auth) {
   return auth === 'basic' ? 'auth=basic&userField=basic-user&secretField=basic-password' : 'wsUsername=bits&wsPasswordSecret=ws-password';
 }
 
+/** The health probe's HTTP auth: the REST profile's own, Basic for a basic SOAP bank, none for ws-security. */
+function healthAuth(p) {
+  if (p.protocol === 'REST') return `&${restAuth(p.auth)}`;
+  return p.auth === 'basic' ? '&auth=basic&userField=basic-user&secretField=basic-password' : '';
+}
+
+const HEALTH = `status = 200 and body.status = "UP" ? {"outcome": "SUCCESS", "partnerRef": "health"}
+: {"outcome": "FAILED", "code": "HTTP_" & $string(status)}\n`;
+
 function branch(op, steps) {
   return `                - simple: "\${header.mwOperation} == '${op}'"\n                  steps:\n${steps
     .map((s) => `                    - to: "${s}"`)
@@ -83,6 +95,8 @@ function route(p, base) {
     branches = ops.map(([op, action, extra]) => branch(op, [`kamelet:mw-map?mapping=${op}.request`, call(action),
       `kamelet:mw-classify?mapping=${op}.response&definiteStatuses=200${extra}`]));
   }
+  branches.push(branch('HEALTH_CHECK', [`kamelet:mw-http-call?url=${base}&method=GET&path=/bank/${p.code}/v1/health${healthAuth(p)}`,
+    'kamelet:mw-classify?mapping=HEALTH_CHECK.response&definiteStatuses=503']));
   return `- route:\n    from:\n      uri: direct:partner-${id}\n      steps:\n        - choice:\n            when:\n${branches.join('')}        - to: "kamelet:mw-audit"\n`;
 }
 
@@ -192,7 +206,10 @@ export function record(p, base) {
     ambiguousCodes: AMBIGUOUS,
     errorMap: Object.fromEntries(Object.entries(ERRORS).map(([c, s]) => [c, { suffix: s, retryable: false }])),
     route: route(p, base),
-    mappings: { ...(p.protocol === 'REST' ? restMappings() : soapMappings()), 'CALLBACK.response': CALLBACK },
+    // active health probe against the bank (ticket 117d): the adapter's health shows the bank, not only the route
+    healthCheck: true,
+    mappings: { ...(p.protocol === 'REST' ? restMappings() : soapMappings()), 'CALLBACK.response': CALLBACK,
+      'HEALTH_CHECK.response': HEALTH },
   };
 }
 
@@ -210,6 +227,7 @@ function adapterYaml(list) {
       auth: { scheme: r.auth.scheme, 'credentials-ref': r.auth.credentialsRef },
       'sensitive-fields': r.sensitiveFields,
       'ambiguous-codes': r.ambiguousCodes,
+      'health-check': r.healthCheck,
       'error-map': Object.fromEntries(Object.entries(r.errorMap).map(([c, v]) => [`[${c}]`, v])),
       route: r.route,
       mappings: Object.fromEntries(Object.entries(r.mappings).map(([k, v]) => [`[${k}]`, v])),
@@ -222,9 +240,9 @@ function adapterYaml(list) {
 
 function adminSeed(p) {
   const r = record(p, SIM);
-  const { enabled, connectTimeoutMs, timeoutMs, readTimeoutMs, inquiryRetries, auth, sensitiveFields, ambiguousCodes, errorMap, route: rt, mappings } = r;
+  const { enabled, connectTimeoutMs, timeoutMs, readTimeoutMs, auth, sensitiveFields, ambiguousCodes, errorMap, healthCheck, route: rt, mappings } = r;
   return JSON.stringify({ partnerId: `bank-${p.code}`, family: 'bank', config: {
-    enabled, connectTimeoutMs, timeoutMs, readTimeoutMs, auth, sensitiveFields, ambiguousCodes, errorMap,
+    enabled, connectTimeoutMs, timeoutMs, readTimeoutMs, auth, sensitiveFields, ambiguousCodes, errorMap, healthCheck,
     route: rt, mappings, allowedHosts: ['mw-simulators'] } }, null, 2) + '\n';
 }
 
@@ -242,8 +260,13 @@ function adminList(current, list) {
   return current.slice(0, i + anchor.length) + block + current.slice(i + anchor.length);
 }
 
-const list = profiles(readFileSync(join(here, 'bank-profiles.csv'), 'utf8'));
+const csv = readFileSync(join(here, 'bank-profiles.csv'), 'utf8');
+const list = profiles(csv);
 const outputs = new Map();
+outputs.set(join(root, 'services/mw-simulators/src/main/resources/seed/v1/bank-profiles.csv'),
+  '# GENERATED by deploy/partner-routes/bank/generate.mjs from deploy/partner-routes/bank/bank-profiles.csv\n'
+  + '# (ticket 117d); do not edit. The banks of mw-simulators\' bank gateway (/bank/<code>/v1, mock party bank-<code>).\n'
+  + csv.trim() + '\n');
 outputs.set(join(root, 'services/mw-adapter-bank/src/main/resources/bank-profiles-dev.yml'), adapterYaml(list));
 for (const p of list) {
   outputs.set(join(root, `services/mw-admin-api/src/main/resources/partner-seeds/dev/bank-${p.code}.json`), adminSeed(p));

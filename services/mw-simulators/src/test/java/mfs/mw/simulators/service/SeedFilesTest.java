@@ -24,6 +24,22 @@ class SeedFilesTest {
   }
 
   @Test
+  void theBanksAndSeededAccountsOfVersionOne() {
+    var banks = SeedFiles.bankProfiles("v1");
+
+    assertThat(banks).hasSize(20);
+    assertThat(banks.getFirst()).isEqualTo(
+        new mfs.mw.simulators.dto.BankProfile("dbbl", "Dutch-Bangla Bank", mfs.mw.simulators.dto.BankProfile.Protocol.REST,
+            "hmac-sha256"));
+    assertThat(banks.stream().filter(b -> b.protocol() == mfs.mw.simulators.dto.BankProfile.Protocol.SOAP))
+        .hasSize(8);
+    assertThat(SeedFiles.bankAccounts("v1")).anySatisfy(a -> {
+      assertThat(a.bank()).isEqualTo("*");
+      assertThat(a.accountNumber()).isEqualTo("1234567890");
+    });
+  }
+
+  @Test
   void aMissingVersionFailsLoudly() {
     assertThatThrownBy(() -> SeedFiles.billers("v404")).hasMessageContaining("seed/v404/billers.csv");
   }

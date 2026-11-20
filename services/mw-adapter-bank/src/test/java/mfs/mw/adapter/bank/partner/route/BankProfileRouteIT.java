@@ -15,6 +15,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import mfs.mw.adapter.bank.partner.PartnerCall;
 import mfs.mw.adapter.bank.partner.PartnerResponse;
 import mfs.mw.adapter.bank.TestInfrastructure;
@@ -94,6 +95,28 @@ class BankProfileRouteIT {
         "southeast", "standard", "sonali", "janata", "agrani", "rupali", "ibbl", "ab", "premier", "nrbc")) {
       assertThat(store.instance("bank-" + code)).as(code).isPresent();
     }
+  }
+
+  @Test
+  void everyProfileIsProbedOnTheBanksHealthEndpoint() {
+    // ticket 117d: healthCheck true, GET /bank/<code>/v1/health with the profile's HTTP auth (none for ws-security)
+    BANK.stubFor(get(urlEqualTo("/bank/dbbl/v1/health"))
+        .withHeader("X-Signature", matching(".+"))
+        .willReturn(json(200, "{\"status\":\"UP\",\"bank\":\"dbbl\"}")));
+    BANK.stubFor(get(urlEqualTo("/bank/janata/v1/health"))
+        .willReturn(json(200, "{\"status\":\"UP\",\"bank\":\"janata\"}")));
+    BANK.stubFor(get(urlEqualTo("/bank/sonali/v1/health"))
+        .willReturn(json(503, "{\"status\":\"UNAVAILABLE\"}")));
+
+    for (String id : List.of("bank-dbbl", "bank-janata")) {
+      assertThat(store.instance(id).orElseThrow().config().healthCheck()).as(id).isTrue();
+      assertThat(gateway.call(health(id))).as(id).isInstanceOf(PartnerResponse.Success.class);
+    }
+    assertThat(gateway.call(health("bank-sonali"))).isNotInstanceOf(PartnerResponse.Success.class);
+  }
+
+  static PartnerCall health(String partnerId) {
+    return new PartnerCall(partnerId, "HEALTH_CHECK", "HEALTH_CHECK", null, UUID.randomUUID().toString(), null, Map.of());
   }
 
   @Test
