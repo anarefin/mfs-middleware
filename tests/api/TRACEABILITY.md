@@ -364,6 +364,8 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 63 | [b2b] a DSO preview of a float transfer is allowed and moves nothing | - |  |
 | 67 | [admin ussd] a draft menu preview pages a long Bangla screen at the UCS-2 limit with 00 Back and names the short code | - |  |
 | 67 | [admin ussd] a draft menu with a dangling node and a stored PIN is refused with the validator problems | - |  |
+| 67 | [admin notify] an approved notify rule change is live with its new channel set | - |  |
+| 67 | [admin notify] a notify rule with a lowercase event type or a channel twice is refused | - |  |
 | 46 | [topup frs] T1 a GP top-up on gp-ocs completes with the seed tariff fee, VAT and commission and the SMS is sent | 1 | TOPUP app success |
 | 46 | [topup frs] T1 a Robi top-up on robi-ocs completes and debits the payer once | 1 | TOPUP app success |
 | 46 | [topup frs] T2 a GP subscriber-barred refusal shows the English and Bangla text and moves nothing | 1 | TOPUP app failure |
