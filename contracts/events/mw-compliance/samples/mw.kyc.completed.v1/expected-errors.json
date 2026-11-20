@@ -1,0 +1,5 @@
+{
+  "invalid-unknown-level.json": [
+    "/kycLevel must be equal to one of the allowed values"
+  ]
+}

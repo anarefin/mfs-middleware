@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "eventId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4c01",
+  "applicationId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4c02",
+  "walletId": "01712345678",
+  "kycLevel": "FULL",
+  "channel": "DSO",
+  "agentId": "DSO-17",
+  "matchScorePct": 100,
+  "completedAt": "2026-11-20T10:00:00Z",
+  "correlationId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4c03"
+}

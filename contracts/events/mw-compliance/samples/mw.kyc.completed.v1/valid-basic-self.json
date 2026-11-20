@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "eventId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4c11",
+  "applicationId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4c12",
+  "walletId": "01812345678",
+  "kycLevel": "BASIC",
+  "channel": "APP",
+  "matchScorePct": 42,
+  "completedAt": "2026-11-20T10:05:00Z",
+  "correlationId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4c13"
+}

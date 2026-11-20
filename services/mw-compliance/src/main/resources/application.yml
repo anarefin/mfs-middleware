@@ -1,0 +1,294 @@
+# Static configuration baked into the image (spec 20.4). Per-environment overrides are
+# mounted read-only (SPRING_CONFIG_ADDITIONAL_LOCATION); secrets come from Vault
+# only (18.4) and are never written here.
+spring:
+  application:
+    name: mw-compliance
+  threads:
+    virtual:
+      enabled: true
+  config:
+    # Spring Cloud Vault reads secrets at start-up (AppRole) when VAULT_ENABLED=true.
+    # The configtree carries the AppRole role-id/secret-id files of a stack (one file per property).
+    import: "optional:configtree:${MW_APPROLE_DIR:/run/mw/approle/},optional:vault://"
+  cloud:
+    vault:
+      enabled: ${VAULT_ENABLED:false}
+      uri: ${VAULT_ADDR:http://vault:8200}
+      authentication: APPROLE
+      app-role:
+        role-id: ${VAULT_ROLE_ID:}
+        secret-id: ${VAULT_SECRET_ID:}
+      kv:
+        enabled: true
+        backend: secret
+        default-context: ${spring.application.name}
+  mvc:
+    problemdetails:
+      enabled: false
+  # This service's own schema (16.2), migrated by Flyway on start-up from
+  # db/migration/V<n>__*.sql (16.4). Credentials are dynamic from Vault's database engine
+  # (role <service>_rw) or DB_USERNAME/DB_PASSWORD; never written here.
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://postgres:5432/mw}
+    username: ${DB_USERNAME:compliance_rw}
+    password: ${DB_PASSWORD:}
+    hikari:
+      schema: compliance
+      # Explicit, small pool (Kafka-driven or light on the database). PostgreSQL
+      # max_connections sizing: deploy/docker-compose.yml (postgres).
+      maximum-pool-size: 5
+  flyway:
+    schemas: compliance
+  # Kafka through Spring Kafka (spec 6.1, 19.2, ADR D27); retry topics, templates and interceptors
+  # in config/KafkaConfig. Single KRaft node; topics come from deploy/kafka/ and are never
+  # auto-created by the service.
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:kafka:9092}
+    producer:
+      # Exactly one copy per send, every in-sync replica acknowledges, order kept per key (6.1).
+      acks: all
+      # Strings, and the raw bytes of a record that could not be deserialized when it is parked
+      # on the DLQ.
+      key-serializer: org.springframework.kafka.support.serializer.StringOrBytesSerializer
+      value-serializer: org.springframework.kafka.support.serializer.StringOrBytesSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        # Kafka down must fail a send fast instead of blocking for the client defaults (60 s, 2 min);
+        # the outbox relay and the retry topics retry it.
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+    consumer:
+      # One group per service: listeners use groupId = "${spring.kafka.consumer.group-id}", and
+      # the group is the middle part of the service's retry and DLQ topic names.
+      group-id: ${spring.application.name}
+      auto-offset-reset: earliest
+      # Offsets are committed per record, only after it is handled (the listener acknowledges)
+      # or parked on its next retry topic or the DLQ (the error handler); never on poll or close.
+      enable-auto-commit: false
+      # A record that is not UTF-8 text fails here, goes straight to the DLQ and never blocks
+      # its partition (messaging/Utf8Deserializer wrapped by ErrorHandlingDeserializer).
+      key-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.key.delegate.class: mfs.mw.compliance.messaging.Utf8Deserializer
+        spring.deserializer.value.delegate.class: mfs.mw.compliance.messaging.Utf8Deserializer
+    listener:
+      # Per-record commit, from the listener (Acknowledgment.acknowledge()) or the error handler.
+      ack-mode: manual_immediate
+      # Consumer threads per listener container; at most the topic's partition count.
+      concurrency: ${MW_KAFKA_LISTENER_CONCURRENCY:1}
+      # Micrometer observation: each record continues its traceparent (traceId/spanId in the MDC).
+      observation-enabled: true
+    admin:
+      # Topics belong to the platform (deploy/kafka/); the service never creates any.
+      auto-create: false
+      # The observed KafkaTemplate asks the admin client for the cluster id on its first send; with
+      # Kafka down that must fail as fast as the producer does, not after the client defaults (60 s).
+      operation-timeout: 5s
+      properties:
+        default.api.timeout.ms: 5000
+        request.timeout.ms: 5000
+
+# Resilience defaults for client/ calls (19.2). A partner overrides them under
+# resilience4j.<kind>.instances.<partner> (base-config: default). Retry is only for idempotent
+# calls (status inquiry, fetch-bill, GET): never annotate a payment call with @Retry.
+resilience4j:
+  circuitbreaker:
+    instances:
+      # EC NID service (ticket 124): opens after half of at least 10 calls in a minute fail or are slow.
+      ec-nid:
+        base-config: default
+        minimum-number-of-calls: 10
+        slow-call-duration-threshold: 4s
+        wait-duration-in-open-state: 30s
+      mw-crypto:
+        base-config: default
+        minimum-number-of-calls: 10
+        slow-call-duration-threshold: 2s
+    configs:
+      default:
+        sliding-window-type: TIME_BASED
+        sliding-window-size: 60
+        minimum-number-of-calls: 50
+        failure-rate-threshold: 50
+        slow-call-rate-threshold: 50
+        # 80% of the default partner timeout (30 s, 11.1); partners override both.
+        slow-call-duration-threshold: 24s
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 5
+        automatic-transition-from-open-to-half-open-enabled: true
+  bulkhead:
+    configs:
+      default:
+        max-concurrent-calls: 200
+        max-wait-duration: 0
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 30s
+        cancel-running-future: true
+  retry:
+    instances:
+      # Only the idempotent EC verify; client/EcNidClient narrows it to connection failures and 5xx.
+      ec-nid:
+        base-config: default
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        exponential-max-wait-duration: 1s
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+
+logging:
+  structured:
+    format:
+      # JSON lines with the spec 21.1 fields; masking runs in the formatter (18.3).
+      console: mfs.mw.compliance.logging.JsonLogFormatter
+
+server:
+  port: 8080
+  shutdown: graceful
+  # mTLS (spec 18.2, D24, ticket 66 pattern; ticket 124): with mw.tls.enabled the API port needs a client
+  # certificate of the Vault intermediate; the bundle is this service's own certificate (config/ServiceCertificateManager).
+  ssl:
+    enabled: ${mw.tls.enabled}
+    bundle: ${mw.tls.bundle}
+    client-auth: need
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  # With mTLS on (the stack, ticket 124b) the compose block sets MANAGEMENT_SERVER_PORT=8081 and
+  # MANAGEMENT_SERVER_SSL_ENABLED=false: probes on a plain port, as mw-crypto.
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: w3c
+
+mw:
+  compliance:
+    kyc:
+      # Match rules (ticket 124): exact DOB and normalised name similarity >= this is FULL, DOB only BASIC.
+      name-threshold: ${MW_COMPLIANCE_NAME_THRESHOLD:0.85}
+      max-document-bytes: 2097152
+      content-types: image/jpeg,image/png
+      required-documents: NID_FRONT,NID_BACK,SELFIE
+    # EC NID service (FRS EXT-07): the mw-simulators EC mock in the stack; the real EC is the same config.
+    # The password comes from Vault (mw.compliance.ec.password).
+    ec:
+      base-url: ${MW_COMPLIANCE_EC_BASE_URL:http://mw-simulators:8080}
+      username: ${MW_COMPLIANCE_EC_USERNAME:mw-compliance}
+      password: ""
+      connect-timeout: 2s
+      timeout: ${MW_COMPLIANCE_EC_TIMEOUT:5s}
+    # mw-crypto (mTLS): TOKENISE_NID and KEK_COLUMN. The client secret comes from Vault
+    # (mw.compliance.crypto.client-secret, provisioned from KC_MW_COMPLIANCE_SECRET).
+    crypto:
+      base-url: ${MW_CRYPTO_BASE_URL:https://mw-crypto:8080}
+      token-uri: ${MW_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
+      client-id: mw-compliance
+      client-secret: ""
+      connect-timeout: 2s
+      timeout: 2s
+  # Who may call /internal/** (a realm services client-credentials JWT, aud mw-compliance).
+  internal-auth:
+    jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
+    issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
+    audience: mw-compliance
+    allowed-clients: mw-app-gateway,mw-admin-api
+  # This service's certificate from Vault PKI (spec 18.2, 18.4, D24; config/TlsProperties,
+  # config/ServiceCertificateManager): off until the service calls an mTLS server (mw-crypto, the
+  # mw-auth internal API). On, it issues pki_int/issue/<service> at start (its provision role
+  # needs an entry in PKI_SERVICES of deploy/provision/services.sh), renews at two thirds of the life
+  # and never writes the key to disk; callers use ServiceCertificateManager.clientSslContext().
+  tls:
+    enabled: ${MW_TLS_ENABLED:false}
+    pki-mount: pki_int
+    role: ${spring.application.name}
+    common-name: ${spring.application.name}
+    alt-names: ${MW_TLS_ALT_NAMES:${spring.application.name}}
+    ttl: 72h
+    retry-period: 1m
+    bundle: mw-service
+  kafka:
+    # How long EventPublisher.publish waits for Kafka's acknowledgement (just above the producer's
+    # delivery.timeout.ms, so the producer decides first).
+    send-timeout: 12s
+    listener:
+      # How long a stopping listener container waits for its consumer thread.
+      shutdown-timeout: 10s
+    retry:
+      # Non-blocking retry topics <topic>.<group>.retry.1..3, then <topic>.<group>.dlq (19.2).
+      delays: 10s,1m,10m
+      # Consumed topics without retry topics (none by default).
+      exclude-topics: []
+  outbox:
+    relay:
+      # Transactional outbox relay (6.4, scheduler/OutboxRelayScheduler): claims up to batch-size
+      # unsent rows, sends them all without waiting, then stamps sent_at on the acknowledged ones
+      # in one statement. Polls again at once while batches come back full; waits one period once
+      # the outbox is drained.
+      enabled: true
+      period: 500ms
+      batch-size: 500
+  retention:
+    # Purge (service/RetentionService via scheduler/OutboxInboxPurgeJob): sent outbox rows and
+    # inbox rows older than these; unsent outbox rows never. ShedLock-guarded, one instance at a
+    # time, batch-size rows per statement, on a Spring cron ("-" switches it off).
+    outbox: 7d
+    inbox: 7d
+    batch-size: 1000
+    cron: "0 0 * * * *"
+  service:
+    name: ${spring.application.name}
+    version: ${MW_VERSION:0.1.0-SNAPSHOT}
+    env: ${MW_ENV:local}
+
+# Generated API document and Swagger UI (ticket 101, PLT-050..052): off by default, so a production
+# build exposes neither /v3/api-docs nor /swagger-ui; on in the dev and test profiles below (the dev
+# stack sets SPRING_PROFILES_ACTIVE=dev). contracts/ stays the source of truth (contracts/README.md);
+# contracts/ContractDriftTest proves the code still matches it.
+springdoc:
+  api-docs:
+    enabled: false
+    version: openapi_3_1
+  swagger-ui:
+    enabled: false
+  # Only what the handler methods declare; the global error advice is documented by the contract.
+  override-with-generic-response: false
+---
+spring:
+  config:
+    activate:
+      on-profile: "dev | test"
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+    # Relative, so the UI works on the service port and behind the dev-only APISIX /docs/<service>/
+    # prefix alike (deploy/apisix/routes-test/test-docs-*.json) without forwarded-prefix headers.
+    config-url: ../v3/api-docs/swagger-config
+    url: ../v3/api-docs

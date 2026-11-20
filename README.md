@@ -16,7 +16,8 @@ one Gradle build, the admin console, and one hand-written compose file.
 - The Upay FRS build (tickets 89–138, ADRs D29–D33): [docs/frs-traceability.md](docs/frs-traceability.md)
   maps every FRS requirement id and name to the repo name, its status and the ticket. Decided there and
   not built yet: the core over REST (D31), new services `-remit`, `-interop`,
-  `mw-compliance`, `mw-recon`, `mw-data-export` (D32) and one mock control API (D33). Until each ticket
+  `mw-recon`, `mw-data-export` (D32) and one mock control API (D33). `mw-compliance` (eKYC, ticket 124a)
+  is built as a module with its internal API; it joins the compose stack with ticket 124b. Until each ticket
   lands, this README describes the stack as it runs. HashiCorp Vault (D30, ticket 91) and Redis (D29, ticket 90) are built.
 - Running the MVP host: [docs/runbook.md](docs/runbook.md).
 - Milestone demos M0–M6: [docs/demo.md](docs/demo.md).
