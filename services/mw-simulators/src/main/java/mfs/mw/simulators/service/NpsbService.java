@@ -44,7 +44,7 @@ import org.springframework.stereotype.Service;
  * </ul>
  *
  * Data triggers (creditor account's last three digits; the defaults mock control overrides): see the
- * module CLAUDE.md. The mock does not sign (open item: the dev switch key pair).
+ * module CLAUDE.md. What the mock sends is signed with the dev switch key ({@link NpsbSigner}).
  */
 @Service
 public class NpsbService implements PartyState {
@@ -77,6 +77,7 @@ public class NpsbService implements PartyState {
 
   private final MockControl control;
   private final NpsbInboundClient client;
+  private final NpsbSigner signer;
   private final Clock clock;
   private final Duration settleDelay;
   private final Duration holdDelay;
@@ -87,12 +88,14 @@ public class NpsbService implements PartyState {
   public NpsbService(
       MockControl control,
       NpsbInboundClient client,
+      NpsbSigner signer,
       Clock clock,
       @Value("${sim.npsb.settle-delay:5s}") Duration settleDelay,
       @Value("${sim.timeout-delay:30s}") Duration holdDelay,
       @Value("${sim.npsb.inbound-url:http://mw-adapter-interop:8080/partner/v1/npsb/inbound}") String inboundUrl) {
     this.control = control;
     this.client = client;
+    this.signer = signer;
     this.clock = clock;
     this.settleDelay = settleDelay;
     this.holdDelay = holdDelay;
@@ -207,10 +210,10 @@ public class NpsbService implements PartyState {
     }
     OffsetDateTime at = OffsetDateTime.now(clock).withOffsetSameInstant(ZoneOffset.UTC).withNano(0)
         .minusMinutes(p.ageMinutes() == null ? 0 : p.ageMinutes());
-    String xml = NpsbIsoXml.pacs008("M" + e2e, at, e2e, "T" + e2e,
+    String xml = signer.sign(NpsbIsoXml.pacs008("M" + e2e, at, e2e, "T" + e2e,
         p.amountMinor() == null ? 100_000 : p.amountMinor(), "NPSB Sender", "1234567890123",
         p.debtorAgent() == null ? "FAKEBDD1" : p.debtorAgent(), "NPSB Beneficiary", p.creditorAccount(),
-        p.creditorAgent() == null ? "BITSBDDH" : p.creditorAgent());
+        p.creditorAgent() == null ? "BITSBDDH" : p.creditorAgent()));
     if (d.callback() == CallbackMode.LATE) {
       MockCalls.pause(d.callbackDelayMs());
     }
@@ -259,15 +262,15 @@ public class NpsbService implements PartyState {
 
   private SimReply status(Transfer t) {
     String msgId = "NPSBST" + refs.incrementAndGet();
-    String doc = NpsbIsoXml.pacs002(msgId, OffsetDateTime.now(clock), t.in().msgId(), t.in().endToEndId(),
-        t.in().txId(), t.status(), t.reason(), "ACSC".equals(t.status()) ? t.clearingRef() : null);
+    String doc = signer.sign(NpsbIsoXml.pacs002(msgId, OffsetDateTime.now(clock), t.in().msgId(), t.in().endToEndId(),
+        t.in().txId(), t.status(), t.reason(), "ACSC".equals(t.status()) ? t.clearingRef() : null));
     return new SimReply(200, body(msgId, doc));
   }
 
   private SimReply resolution(NpsbIsoXml.Reference ref, Transfer t, String conf) {
     String id = "NPSBRS" + refs.incrementAndGet();
-    String doc = NpsbIsoXml.camt029(id, OffsetDateTime.now(clock), ref.msgId(), conf, ref.endToEndId(),
-        ref.txId(), OWN_BIC, t == null ? OWN_BIC : t.in().debtorAgent());
+    String doc = signer.sign(NpsbIsoXml.camt029(id, OffsetDateTime.now(clock), ref.msgId(), conf, ref.endToEndId(),
+        ref.txId(), OWN_BIC, t == null ? OWN_BIC : t.in().debtorAgent()));
     return new SimReply(200, body(id, doc));
   }
 

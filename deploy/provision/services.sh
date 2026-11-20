@@ -98,6 +98,8 @@ provision_mw_simulators() {
   sync_env sim.files.trustbank.core.client-secret KC_MW_SIMULATORS_SECRET
   # the simulated partner's private_key_jwt key at Keycloak realm partners (ticket 73)
   partner_sim_client_key
+  # the NPSB switch mock's XML-DSig key pair (ticket 121b; mw-adapter-interop trusts its certificate)
+  npsb_switch_key
   db_role simulators_rw simulators
 }
 
@@ -303,11 +305,12 @@ provision_mw_adapter_atm() {
 # The NPSB interop adapter (ticket 121a): its database role and schema. Its messages are signed and
 # verified through mw-crypto (XML-DSig, ticket 121b), so it holds no key material of its own: the realm
 # services client secret for mw-crypto (crypto-client-secret); its own client certificate comes from
-# PKI_SERVICES. Open (ticket 121b): the switch certificate npsb-certificate-pem with the NpsbMock's dev
-# signing key pair; without it every switch answer is UNKNOWN and every inbound pacs.008 is 401.
+# PKI_SERVICES. The switch's certificate npsb-certificate-pem is the NPSB switch mock's (mw-simulators,
+# npsb_switch_key), so the stack verifies the mock's signed answers and inbound pacs.008 pushes.
 provision_mw_adapter_interop() {
   gen_once spring.datasource.password 40
   sync_env crypto-client-secret KC_MW_ADAPTER_INTEROP_SECRET
+  npsb_switch_certificate
   db_role adapter_interop_rw interop_ref
 }
 

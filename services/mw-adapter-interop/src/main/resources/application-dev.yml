@@ -20,7 +20,7 @@ mw:
       npsb:
         family: interop
         base-url: ${NPSB_BASE_URL:http://mw-simulators:8080}
-        allowed-hosts: mw-simulators,localhost
+        allowed-hosts: ${MW_NPSB_ALLOWED_HOSTS:mw-simulators}
         connect-timeout-ms: 3000
         # Under the orchestrator's 30 s partner deadline; a later answer is UNKNOWN and the pacs.028
         # inquiry resolves it.

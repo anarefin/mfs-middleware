@@ -14,9 +14,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.interop`. Fol
 - **121b (built, part 2):** the `npsb` seed partner with the ISO 20022 step in the service layer around the
   engine (`service/NpsbWireService`), the inbound `POST /partner/v1/npsb/inbound` (`service/NpsbInboundService`,
   APISIX route `partner-npsb-inbound`), the service certificate (mTLS to mw-crypto) and the stateful NPSB mock
-  in mw-simulators. See "NPSB seed and inbound" below. **Open:** the dev switch signing key pair (the mock does
-  not sign and `npsb-certificate-pem` is not provisioned, so in the stack every switch answer is UNKNOWN and
-  every pushed pacs.008 401) and edge mTLS for the switch (APISIX has no client-certificate check yet).
+  in mw-simulators. See "NPSB seed and inbound" below. The mock signs with the dev switch key
+  (provision `npsb_switch_key`), whose certificate provision copies here as `npsb-certificate-pem`. **Open:**
+  edge mTLS for the switch (APISIX has no client-certificate check yet).
 - **121c:** mw-orchestrator `NpsbOutFlow` / `NpsbInFlow`, routing rows, mw-app-gateway
   `/app/v1/npsb-transfers/preview|confirm`, Newman folder `57-npsb`.
 

@@ -87,6 +87,7 @@ class NpsbOutRouteIT {
   @DynamicPropertySource
   static void urls(DynamicPropertyRegistry registry) {
     registry.add("mw.partners.instances.npsb.base-url", () -> "http://localhost:" + SWITCH.port());
+    registry.add("mw.partners.instances.npsb.allowed-hosts", () -> "localhost");
     registry.add("mw.interop.crypto.base-url", () -> "http://localhost:" + CRYPTO.port());
     registry.add("mw.interop.crypto.token-uri", () -> "http://localhost:" + CRYPTO.port() + "/token");
   }

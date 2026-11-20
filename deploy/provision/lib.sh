@@ -185,6 +185,31 @@ credential_upload_policy() {
   done
 }
 
+# npsb_switch_key: the NPSB switch mock's XML-DSig key (ticket 121b, mw-simulators service/NpsbSigner): an
+# RSA-2048 key pair (PKCS#8) and a self-signed certificate, created once in secret/mw-simulators
+# (sim.npsb.signing-key, sim.npsb.certificate). mw-adapter-interop gets the certificate only
+# (npsb_switch_certificate).
+npsb_switch_key() {
+  if ! has_field sim.npsb.signing-key; then
+    openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 3650 -subj /CN=npsb-switch \
+      -keyout "$tmp/npsb.key" -out "$tmp/npsb.crt" 2>/dev/null
+    kv_set "sim.npsb.signing-key=@$tmp/npsb.key" "sim.npsb.certificate=@$tmp/npsb.crt"
+    rm -f "$tmp/npsb.key" "$tmp/npsb.crt"
+    log "$SVC: created the NPSB switch signing key pair"
+  fi
+}
+
+# npsb_switch_certificate: the switch mock's certificate into the current secret as npsb-certificate-pem
+# (mw-adapter-interop verifies the switch's XML-DSig under it), copied on every run; mw-simulators is
+# provisioned first.
+npsb_switch_certificate() {
+  field sim.npsb.certificate secret/mw-simulators >"$tmp/npsb.crt" \
+    || { rm -f "$tmp/npsb.crt"; die "$SVC: no NPSB switch certificate in secret/mw-simulators"; }
+  kv_set "npsb-certificate-pem=@$tmp/npsb.crt"
+  rm -f "$tmp/npsb.crt"
+  log "$SVC: npsb-certificate-pem synced from the NPSB switch mock"
+}
+
 # partner_sim_client_key: the private_key_jwt credential of the Keycloak client partner-sim (realm
 # partners, ticket 73, spec 18.2): an RSA-2048 key pair and a self-signed certificate, created once in
 # the current secret (the simulator signs its client assertion with the private key; no client secret

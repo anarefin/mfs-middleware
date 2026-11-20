@@ -61,7 +61,7 @@ class NpsbServiceTest {
     });
     middleware.start();
     engine = new ScenarioEngine(new PartySwitch(), new SimulatorProperties(Duration.ofMillis(10), 50), new SplittableRandom(1));
-    service = new NpsbService(engine, new NpsbInboundClient(), clock, Duration.ofSeconds(5), Duration.ofMillis(10),
+    service = new NpsbService(engine, new NpsbInboundClient(), new NpsbSigner(""), clock, Duration.ofSeconds(5), Duration.ofMillis(10),
         "http://127.0.0.1:" + middleware.getAddress().getPort() + "/partner/v1/npsb/inbound");
   }
 
@@ -146,7 +146,35 @@ class NpsbServiceTest {
     assertThat(pushed).hasSize(3);
   }
 
+  @Test
+  void withTheDevSwitchKeyEveryAnswerAndPushIsSigned() throws Exception {
+    java.security.KeyPair keys = NpsbSignerTest.rsa();
+    NpsbService signing = new NpsbService(engine, new NpsbInboundClient(), new NpsbSigner(NpsbSignerTest.pkcs8Pem(keys)),
+        clock, Duration.ofSeconds(5), Duration.ofMillis(10),
+        "http://127.0.0.1:" + middleware.getAddress().getPort() + "/partner/v1/npsb/inbound");
+
+    String pacs002 = document(signing.transfer(pacs008("E2E0009", "FAKEBDD1", "1234567890123")));
+    String camt029 = document(signing.returnTransfer(camt056("E2E0009")));
+    signing.inbound(new NpsbService.InboundPush("01711000001", 1_000L, "E2ESIG1", null, null, null));
+
+    for (String doc : List.of(pacs002, camt029, pushed.getLast())) {
+      assertThat(verifies(doc, keys.getPublic())).as(doc).isTrue();
+    }
+  }
+
   // ---- helpers ---------------------------------------------------------------------------------
+
+  private static boolean verifies(String xml, java.security.PublicKey key) throws Exception {
+    var f = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+    f.setNamespaceAware(true);
+    var doc = f.newDocumentBuilder().parse(new org.xml.sax.InputSource(new StringReader(xml)));
+    var sig = doc.getElementsByTagNameNS(javax.xml.crypto.dsig.XMLSignature.XMLNS, "Signature").item(0);
+    if (sig == null) {
+      return false;
+    }
+    var ctx = new javax.xml.crypto.dsig.dom.DOMValidateContext(key, sig);
+    return javax.xml.crypto.dsig.XMLSignatureFactory.getInstance("DOM").unmarshalXMLSignature(ctx).validate(ctx);
+  }
 
   private String pacs008(String e2e, String creditorAgent, String account) {
     return NpsbIsoXml.pacs008("M" + e2e, AT, e2e, "T" + e2e, 150_050, "Rahim Uddin", "01712345678", "BITSBDDH",

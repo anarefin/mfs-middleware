@@ -401,8 +401,8 @@ paths:
         Builds a pacs.008.001.08 (one transaction) and posts it as application/xml to `sim.npsb.inbound-url`
         (default `http://mw-adapter-interop:8080/partner/v1/npsb/inbound`). A DUPLICATE_CALLBACK scenario on
         operation `inbound` sends it twice, LATE_CALLBACK waits `delayMs` first, NO_CALLBACK sends nothing.
-        `ageMinutes` back-dates its CreDtTm (the adapter refuses one older than its freshness window). Not
-        signed (open item: the dev switch key pair). Answers the EndToEndId and each answer of the middleware.
+        `ageMinutes` back-dates its CreDtTm (the adapter refuses one older than its freshness window). Signed
+        (XML-DSig) with the dev switch key `sim.npsb.signing-key` when set. Answers the EndToEndId and each answer of the middleware.
       requestBody:
         required: true
         content:

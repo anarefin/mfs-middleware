@@ -237,6 +237,24 @@ test_provision_makes_the_partner_sim_key_once_and_registers_its_certificate_at_k
   return 0
 }
 
+# Ticket 121b: the NPSB switch mock signs its ISO 20022 messages with a dev switch key. Provision makes the
+# key pair once (secret/mw-simulators) and copies the certificate on every run to mw-adapter-interop,
+# which verifies the switch's XML-DSig under it (npsb-certificate-pem).
+test_provision_makes_the_npsb_switch_key_once_and_gives_interop_its_certificate() {
+  provision_fixture
+  assert_ok run_provision
+  [ "$(kv mw-simulators sim.npsb.signing-key)" = PARTNER-KEY-PEM ] || fail "NPSB switch key not in secret/mw-simulators"
+  [ "$(kv mw-simulators sim.npsb.certificate)" = PARTNER-CERT-PEM ] || fail "NPSB switch certificate not in secret/mw-simulators"
+  [ "$(kv mw-adapter-interop npsb-certificate-pem)" = PARTNER-CERT-PEM ] || fail "interop does not trust the switch certificate"
+  grep -q '^openssl req -x509 -newkey rsa:2048 .*-subj /CN=npsb-switch' .openssl-calls || fail "no NPSB key + certificate: $(cat .openssl-calls)"
+  [ -e .kv/secret/mw-adapter-interop/sim.npsb.signing-key ] && fail "the switch's private key reached mw-adapter-interop"
+  : >.openssl-calls; rm -f .kv/secret/mw-adapter-interop/npsb-certificate-pem
+  assert_ok run_provision
+  grep -q 'CN=npsb-switch' .openssl-calls && fail "NPSB switch key regenerated"
+  [ "$(kv mw-adapter-interop npsb-certificate-pem)" = PARTNER-CERT-PEM ] || fail "certificate not copied again"
+  return 0
+}
+
 test_provision_fails_when_keycloak_refuses_the_partner_sim_certificate() {
   provision_fixture
   assert_fails run_provision KC_BOOTSTRAP_ADMIN_PASSWORD=
