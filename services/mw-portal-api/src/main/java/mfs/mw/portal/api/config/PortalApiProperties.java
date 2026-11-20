@@ -27,6 +27,7 @@ public record PortalApiProperties(
    * @param dispatch how child txns are streamed to the orchestrator
    * @param expiry how long a batch may wait for its checker (M3 gate: 72 h)
    * @param reconcile how SUBMITTED rows that never settled are looked up (M3 gate)
+   * @param retry how the rows of an approved retry are checked before they are sent again (ticket 129c)
    */
   public record Bulk(
       @Positive int maxRows,
@@ -34,7 +35,8 @@ public record PortalApiProperties(
       Map<String, String> orgWallets,
       @Valid @NotNull Dispatch dispatch,
       @Valid @NotNull Expiry expiry,
-      @Valid @NotNull Reconcile reconcile) {
+      @Valid @NotNull Reconcile reconcile,
+      @Valid @NotNull Retry retry) {
 
     public Bulk {
       orgWallets = Map.copyOf(orgWallets == null ? Map.of() : orgWallets);
@@ -69,6 +71,13 @@ public record PortalApiProperties(
       @NotNull Duration giveUpAfter,
       @NotNull Duration period,
       @Positive int batchSize) {}
+
+  /**
+   * @param enabled runs the retry check job (tests switch it off and call the service)
+   * @param period how often the job looks
+   * @param batchSize most rows checked per run
+   */
+  public record Retry(boolean enabled, @NotNull Duration period, @Positive int batchSize) {}
 
   /**
    * @param jwkSetUri the realm's signing keys, fetched lazily on the first token

@@ -7,13 +7,16 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 import mfs.mw.portal.api.config.PortalApiProperties;
 import mfs.mw.portal.api.dto.AuditEvent;
 import mfs.mw.portal.api.dto.StatusMessage;
 import mfs.mw.portal.api.dto.TxnRequest;
+import mfs.mw.portal.api.entity.BatchStatus;
 import mfs.mw.portal.api.entity.ItemStatus;
+import mfs.mw.portal.api.exception.CoreUnavailableException;
 import mfs.mw.portal.api.entity.PendingChild;
 import mfs.mw.portal.api.mapper.BatchAuditMapper;
 import mfs.mw.portal.api.mapper.ChildRequestMapper;
@@ -49,6 +52,7 @@ public class BulkExecutionService {
   private static final Logger log = LoggerFactory.getLogger(BulkExecutionService.class);
 
   private final BatchRepository batches;
+  private final FundsCheck funds;
   private final OutboxWriter outbox;
   private final TransactionTemplate tx;
   private final Clock clock;
@@ -59,8 +63,10 @@ public class BulkExecutionService {
   private Instant last;
 
   public BulkExecutionService(
-      BatchRepository batches, OutboxWriter outbox, TransactionTemplate tx, PortalApiProperties props, Clock clock) {
+      BatchRepository batches, FundsCheck funds, OutboxWriter outbox, TransactionTemplate tx, PortalApiProperties props,
+      Clock clock) {
     this.batches = batches;
+    this.funds = funds;
     this.outbox = outbox;
     this.tx = tx;
     this.clock = clock;
@@ -69,8 +75,12 @@ public class BulkExecutionService {
     this.capacity = Math.max(1.0, Math.ceil(d.ratePerSecond() * seconds(d.period())));
   }
 
-  /** Sends what the rate allows since the last run; returns the number of children sent. */
+  /**
+   * Starts the APPROVED batches whose org wallet still holds what they pay (ticket 129c), then
+   * sends what the rate allows since the last run; returns the number of children sent.
+   */
   public synchronized int dispatch() {
+    startApproved();
     Instant now = clock.instant();
     if (last != null) {
       double elapsed = Math.max(0, seconds(Duration.between(last, now)));
@@ -85,6 +95,36 @@ public class BulkExecutionService {
     int n = sent == null ? 0 : sent;
     tokens -= n;
     return n;
+  }
+
+  /**
+   * The balance check at dispatch start (ticket 129c): each APPROVED batch is read against the core
+   * once; enough funds, it becomes EXECUTING (its rows are sent); short, BLOCKED_FUNDS with the
+   * shortfall, nothing sent. No balance from the core leaves it APPROVED for the next run.
+   */
+  private void startApproved() {
+    for (BatchRepository.Unstarted b : batches.unstarted()) {
+      OptionalLong shortfall;
+      try {
+        shortfall = funds.shortfall(b.orgWallet(), b.pendingMinor());
+      } catch (CoreUnavailableException e) {
+        log.atWarn()
+            .addKeyValue("event", "bulk.batch.balance_unavailable")
+            .addKeyValue("batchId", b.batchId())
+            .log("Bulk batch not started: the core gave no org wallet balance");
+        continue;
+      }
+      if (shortfall.isEmpty()) {
+        batches.start(b.batchId());
+      } else if (batches.blockFunds(
+          b.batchId(), BatchStatus.APPROVED, null, shortfall.getAsLong(), FundsCheck.INSUFFICIENT_BALANCE)) {
+        log.atWarn()
+            .addKeyValue("event", "bulk.batch.blocked_funds")
+            .addKeyValue("batchId", b.batchId())
+            .addKeyValue("errorCode", FundsCheck.INSUFFICIENT_BALANCE)
+            .log("Bulk batch blocked at dispatch start: the org wallet holds less than the batch");
+      }
+    }
   }
 
   /** Forgets the bucket (tests start every case from an empty one). */

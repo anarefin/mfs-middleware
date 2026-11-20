@@ -12,6 +12,9 @@ import java.util.UUID;
  * it from its idempotency record instead of paying again (spec 7.3). The txnIds keep the UUIDv7
  * shape the contract demands: the batch id's 48-bit timestamp, version 7, variant 10, and 74 bits
  * of SHA-256 over {@code bulk:<batchId>:<line>} in place of the random bits.
+ *
+ * <p>A retried row (ticket 129c) is attempt n > 0: SHA-256 over {@code bulk:<batchId>:<line>:<n>}
+ * and key {@code bulk-<batchId>-<line>-a<n>}. Attempt 0 keeps the ids above.
  */
 public final class BulkIds {
 
@@ -22,27 +25,36 @@ public final class BulkIds {
 
   /** The parent BULK_DISBURSE txnId of the batch. */
   public static UUID parentTxnId(UUID batchId) {
-    return derive(batchId, PARENT);
+    return derive(batchId, "bulk:" + batchId + ":" + PARENT);
   }
 
   /** The child txnId of row {@code line}. */
   public static UUID childTxnId(UUID batchId, int line) {
+    return childTxnId(batchId, line, 0);
+  }
+
+  /** The child txnId of attempt {@code attempt} of row {@code line}. */
+  public static UUID childTxnId(UUID batchId, int line, int attempt) {
     if (line <= PARENT) {
       throw new IllegalArgumentException("a data row has a positive line number");
     }
-    return derive(batchId, line);
+    return derive(batchId, "bulk:" + batchId + ":" + line + (attempt == 0 ? "" : ":" + attempt));
   }
 
   /** The child's idempotency key (at most 64 characters, contract IdempotencyKey). */
   public static String idempotencyKey(UUID batchId, int line) {
-    return "bulk-" + batchId + "-" + line;
+    return idempotencyKey(batchId, line, 0);
   }
 
-  private static UUID derive(UUID batchId, int line) {
+  /** The idempotency key of attempt {@code attempt} of row {@code line}. */
+  public static String idempotencyKey(UUID batchId, int line, int attempt) {
+    return "bulk-" + batchId + "-" + line + (attempt == 0 ? "" : "-a" + attempt);
+  }
+
+  private static UUID derive(UUID batchId, String seed) {
     byte[] h;
     try {
-      h = MessageDigest.getInstance("SHA-256")
-          .digest(("bulk:" + batchId + ":" + line).getBytes(StandardCharsets.UTF_8));
+      h = MessageDigest.getInstance("SHA-256").digest(seed.getBytes(StandardCharsets.UTF_8));
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException(e);
     }

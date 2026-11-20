@@ -13,7 +13,7 @@ import mfs.mw.portal.api.util.BulkIds;
  * One batch row -> its child {@code BULK_DISBURSE} request on {@code mw.txn.request.v1} (ticket 34):
  * channel ORG_PORTAL, initiator the org, payer the org's payout wallet, payee the row's customer
  * wallet. Everything the orchestrator hashes for idempotency (parties, amount, attributes) and the
- * txnId and key come from the batch and the row only, so a resend is the same request.
+ * txnId and key come from the batch, the row and its attempt only, so a resend is the same request.
  */
 public final class ChildRequestMapper {
 
@@ -30,8 +30,8 @@ public final class ChildRequestMapper {
     attributes.put("reference", c.reference());
     return new TxnRequest(
         1,
-        BulkIds.childTxnId(c.batchId(), c.lineNo()).toString(),
-        BulkIds.idempotencyKey(c.batchId(), c.lineNo()),
+        BulkIds.childTxnId(c.batchId(), c.lineNo(), c.attempt()).toString(),
+        BulkIds.idempotencyKey(c.batchId(), c.lineNo(), c.attempt()),
         correlationId(c),
         CHANNEL,
         TXN_TYPE,
