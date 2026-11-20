@@ -13,7 +13,7 @@ import org.springframework.validation.annotation.Validated;
  *
  * @param history the last N PINs (the current one included) a new PIN may not repeat
  * @param lock the lockout levels
- * @param reset PIN reset lifetimes and the KYC command
+ * @param reset PIN reset lifetimes
  * @param auditTopic where audit events go ({@code mw.audit.event.v1})
  */
 @Validated
@@ -45,9 +45,6 @@ public record PinProperties(
   /**
    * @param ttl a self-service reset (and a care reset after its OTP) lives this long
    * @param careTtl an approved care reset waits this long for the customer's OTP
-   * @param commandTopic VerifyCustomerFactors goes here
-   * @param commandTtl the command's {@code expiresAt} after its {@code issuedAt}
    */
-  public record Reset(
-      @NotNull Duration ttl, @NotNull Duration careTtl, @NotBlank String commandTopic, @NotNull Duration commandTtl) {}
+  public record Reset(@NotNull Duration ttl, @NotNull Duration careTtl) {}
 }

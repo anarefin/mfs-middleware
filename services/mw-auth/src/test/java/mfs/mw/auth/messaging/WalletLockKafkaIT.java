@@ -24,8 +24,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 /**
  * The topics mw-auth consumes for the PIN lifecycle over Kafka (ticket 70): {@code
  * auth.wallet-lock.v1} (LOCK, UNLOCK, REVOKE_SESSIONS; once per commandId; an unknown wallet skipped;
- * a malformed record parked on the retry topic) and the core's answer to a PIN reset's
- * VerifyCustomerFactors on {@code core.wallet.event.v1}.
+ * a malformed record parked on the retry topic). The core answers a PIN reset's factors check over REST
+ * since ticket 95b ({@code security/PinLifecycleIT}).
  */
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
@@ -184,29 +184,5 @@ class WalletLockKafkaIT {
         String.class, cr)).isEqualTo("APPROVED/CARE");
     assertThat(jdbc.queryForObject("select count(*) from outbox where topic = 'mw.notify.request.v1'"
         + " and payload->>'templateCode' = 'PIN_RESET_APPROVED'", Integer.class)).isEqualTo(1);
-  }
-
-  @Test
-  void theCoresAnswerOnTheWalletEventTopicMovesAPendingReset() {
-    UUID reset = UUID.randomUUID();
-    jdbc.update("insert into pin_reset (id, wallet_id, kind, status, requested_by, device_id, expires_at, command_id)"
-        + " values (?, ?, 'SELF', 'PENDING_KYC', 'wallet', ?, now() + interval '15 minutes', ?)",
-        reset, wallet, deviceId, "pin-reset:" + reset);
-    String txn = UUID.randomUUID().toString();
-    txn = txn.substring(0, 14) + "7" + txn.substring(15);
-    String eventId = UUID.randomUUID().toString();
-    Map<String, Object> e = new LinkedHashMap<>();
-    e.put("schemaVersion", 1);
-    e.put("eventType", "CustomerFactorsVerified");
-    e.put("eventId", eventId);
-    e.put("commandId", "pin-reset:" + reset);
-    e.put("txnId", txn);
-    e.put("coreRef", "CORE-1");
-    e.put("occurredAt", Instant.now().toString());
-    e.put("outcome", "SUCCESS");
-    e.put("payload", Map.of("walletId", wallet, "resetId", reset.toString()));
-    publisher.publish(CORE_EVENTS, txn, new EventMetadata(txn, txn, "pin-reset:" + reset, 1), e);
-    await(() -> processed("mw-auth.pin-reset", eventId));
-    assertThat(jdbc.queryForObject("select status from pin_reset where id = ?", String.class, reset)).isEqualTo("VERIFIED");
   }
 }

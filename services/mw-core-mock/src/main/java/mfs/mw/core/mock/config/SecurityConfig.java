@@ -8,8 +8,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authorization.AuthorizationManager;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -24,6 +26,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
@@ -63,7 +66,11 @@ public class SecurityConfig {
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
             a ->
-                a.requestMatchers("/core/**")
+                a.requestMatchers(HttpMethod.POST, "/core/v1/accounts/*/unlock")
+                    .access(caller(props, UNLOCK_CALLER))
+                    .requestMatchers(HttpMethod.POST, "/core/v1/customers/*/verify-factors")
+                    .access(caller(props, FACTORS_CALLER))
+                    .requestMatchers("/core/**")
                     .access(
                         (auth, ctx) ->
                             new AuthorizationDecision(
@@ -76,6 +83,20 @@ public class SecurityConfig {
             o -> o.jwt(j -> {}).authenticationEntryPoint(unauthenticated).accessDeniedHandler(denied))
         .exceptionHandling(x -> x.authenticationEntryPoint(unauthenticated).accessDeniedHandler(denied));
     return http.build();
+  }
+
+  /** The one client that may unlock an account: the ops console's maker-checker (ticket 95b). */
+  static final String UNLOCK_CALLER = "mw-admin-api";
+  /** The one client that may check a customer's KYC factors: the PIN reset (ticket 95b). */
+  static final String FACTORS_CALLER = "mw-auth";
+
+  /** An allowed client ({@code azp}) that is also the operation's one caller. */
+  private static AuthorizationManager<RequestAuthorizationContext> caller(InternalAuthProperties props, String client) {
+    return (auth, ctx) -> new AuthorizationDecision(
+        auth.get() != null
+            && auth.get().getPrincipal() instanceof Jwt jwt
+            && client.equals(jwt.getClaimAsString("azp"))
+            && props.allowedClients().contains(client));
   }
 
   /** Signature from the realm's JWKS (fetched on first use), expiry, exact issuer and audience. */

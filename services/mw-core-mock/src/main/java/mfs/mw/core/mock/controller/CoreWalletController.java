@@ -6,7 +6,10 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import java.time.Instant;
+import mfs.mw.core.mock.dto.AccountActionResult;
+import mfs.mw.core.mock.dto.AccountUnlockRequest;
 import mfs.mw.core.mock.dto.AccountView;
+import mfs.mw.core.mock.dto.FactorsRequest;
 import mfs.mw.core.mock.dto.BalanceView;
 import mfs.mw.core.mock.dto.ChargesRequest;
 import mfs.mw.core.mock.dto.ChargesView;
@@ -122,6 +125,20 @@ public class CoreWalletController {
   @PostMapping("/reversals")
   OperationResult reverse(@Valid @RequestBody ReversalRequest req) {
     return wallet.reverse(req);
+  }
+
+  /** UnlockWallet over REST (ticket 95b): only mw-admin-api ({@code config/SecurityConfig}). */
+  @PostMapping("/accounts/{walletId}/unlock")
+  AccountActionResult unlock(
+      @PathVariable @Size(min = 1, max = 64) String walletId, @Valid @RequestBody AccountUnlockRequest req) {
+    return wallet.unlock(walletId, req);
+  }
+
+  /** VerifyCustomerFactors over REST (ticket 95b): only mw-auth ({@code config/SecurityConfig}). */
+  @PostMapping("/customers/{walletId}/verify-factors")
+  AccountActionResult verifyFactors(
+      @PathVariable @Size(min = 1, max = 64) String walletId, @Valid @RequestBody FactorsRequest req) {
+    return wallet.verifyFactors(walletId, req);
   }
 
   @GetMapping("/statements")

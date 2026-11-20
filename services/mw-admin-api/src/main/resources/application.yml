@@ -226,8 +226,6 @@ mw:
     ttl: 72h
     expiry-cron: "0 */5 * * * *"
     expiry-batch: 500
-    # UnlockWallet sent on approval of a wallet unlock (ticket 52): expiresAt = issuedAt + this
-    unlock-command-ttl: 1h
     # Claim-first approvals (ticket 75, key changes): the claiming checker may retry within the lease;
     # after it scheduler/ApprovingReconcileJob resolves the request from mw-crypto's state of the change
     approving-lease: 5m
@@ -270,6 +268,16 @@ mw:
     ttl: 72h
     retry-period: 1m
     bundle: mw-service
+  # The core wallet API (ADR D31, ticket 95b; config/CoreClientProperties, client/CoreAccountClient): an
+  # approved unlock lifts the core's own lock with POST /core/v1/accounts/{walletId}/unlock, with the realm
+  # services token below (audience mw-core-mock). Idempotent by unlockTxnId: no definite answer is asked
+  # again `attempts` times, `backoff` apart, then logged.
+  core:
+    base-url: ${MW_CORE_URL:http://mw-core-mock:8080}
+    timeout: 2s
+    connect-timeout: 1s
+    attempts: 3
+    backoff: 300ms
   admin-api:
     jwt:
       # Keycloak realm `ops` (operators, password + TOTP; spec 15.1, 18.2). Keys fetched on the first token.

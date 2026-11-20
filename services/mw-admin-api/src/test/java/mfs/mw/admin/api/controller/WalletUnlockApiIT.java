@@ -1,6 +1,11 @@
 package mfs.mw.admin.api.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 import com.networknt.schema.Schema;
@@ -10,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import mfs.mw.admin.api.MutableClock;
 import mfs.mw.admin.api.TestInfrastructure;
+import mfs.mw.admin.api.client.CoreAccountClient;
 import mfs.mw.admin.api.contracts.ContractSchemas;
 import mfs.mw.admin.api.contracts.OpenApiSchemas;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +29,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -31,9 +38,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Ops unlock of a PIN-locked wallet (ticket 52): an ops-maker asks, a different ops-checker
- * approves; the approval sends exactly one {@code UnlockWallet} on {@code core.wallet.command.v1}
- * and (ticket 70) one UNLOCK on {@code auth.wallet-lock.v1} for mw-auth through the outbox, in the same transaction as the status change and its audit. Request and
- * decision are audited; the MSISDN never leaves masked-free in the view or the audit.
+ * approves; the approval writes (ticket 70) one UNLOCK on {@code auth.wallet-lock.v1} for mw-auth through
+ * the outbox, in the same transaction as the status change and its audit, and only then (ticket 95b, ADR
+ * D31) lifts the core's lock over REST, once, under the request's unlockTxnId. Request and decision are
+ * audited; the MSISDN never leaves masked-free in the view or the audit.
  */
 @SpringBootTest(properties = "mw.outbox.relay.enabled=false")
 @AutoConfigureMockMvc
@@ -43,7 +51,7 @@ class WalletUnlockApiIT {
   static final Instant NOW = Instant.parse("2026-11-06T10:00:00Z");
   static final String WALLET = "01711000123";
   static final String CONTRACT = "api/mw-admin-api/admin.v1.openapi.yaml";
-  static final String COMMAND_TOPIC = "core.wallet.command.v1";
+  static final String CORE_UNLOCK = "core-wallet.v1:unlock";
   static final String LOCK_TOPIC = "auth.wallet-lock.v1";
 
   @TestConfiguration(proxyBeanMethods = false)
@@ -54,6 +62,8 @@ class WalletUnlockApiIT {
       return new MutableClock(NOW);
     }
   }
+
+  @MockitoBean CoreAccountClient core;
 
   private final MockMvcTester mvc;
   private final JdbcTemplate jdbc;
@@ -132,8 +142,10 @@ class WalletUnlockApiIT {
 
   @Test
   void anApprovedUnlockSendsUnlockWalletExactlyOnceAndIsAudited() {
+    when(core.unlock(any(), any(), any(), any(), any()))
+        .thenReturn(new CoreAccountClient.UnlockAnswer(CoreAccountClient.Outcome.UNLOCKED, null));
     String id = asked();
-    assertThat(outbox(COMMAND_TOPIC)).isEmpty();
+    verifyNoInteractions(core);
     JsonNode created = audits("admin.change_request.created").getFirst();
     assertEvent("events/mw-audit-dw/mw.audit.event.v1.schema.json", created);
     assertThat(created.path("actor").path("id").asString()).isEqualTo("ops-maker01");
@@ -149,25 +161,14 @@ class WalletUnlockApiIT {
     assertThat(cr.path("resourceId").asString()).isEqualTo("0171****123");
     assertThat(cr.path("action").asString()).isEqualTo("UNLOCK");
 
-    List<JsonNode> commands = outbox(COMMAND_TOPIC);
-    assertThat(commands).hasSize(1);
-    JsonNode cmd = commands.getFirst();
-    assertEvent("events/mw-orchestrator/core.command.v1.schema.json", cmd);
-    assertThat(cmd.path("commandType").asString()).isEqualTo("UnlockWallet");
-    assertThat(cmd.path("commandId").asString()).isEqualTo(id + ":unlock");
-    assertThat(cmd.path("payload").path("subject").path("type").asString()).isEqualTo("WALLET");
-    assertThat(cmd.path("payload").path("subject").path("id").asString()).isEqualTo(WALLET);
-    assertThat(cmd.path("payload").path("changeRequestId").asString()).isEqualTo(id);
-    assertThat(cmd.path("payload").path("makerId").asString()).isEqualTo("ops-maker01");
-    assertThat(cmd.path("payload").path("checkerId").asString()).isEqualTo("ops-checker01");
-    assertThat(cr.path("payload").path("unlockTxnId").asString()).isEqualTo(cmd.path("txnId").asString());
-    assertThat(cmd.path("expiresAt").asString()).isEqualTo("2026-11-06T11:00:00Z");
+    String unlockTxnId = cr.path("payload").path("unlockTxnId").asString();
+    verify(core, times(1)).unlock(WALLET, unlockTxnId, id, "ops-maker01", "ops-checker01");
 
     JsonNode approved = audits("admin.change_request.approved").getFirst();
     assertEvent("events/mw-audit-dw/mw.audit.event.v1.schema.json", approved);
     assertThat(approved.path("actor").path("id").asString()).isEqualTo("ops-checker01");
-    assertThat(approved.path("txnId").asString()).isEqualTo(cmd.path("txnId").asString());
-    assertThat(approved.path("after").path("sentAs").asString()).isEqualTo(LOCK_TOPIC + "," + COMMAND_TOPIC);
+    assertThat(approved.path("txnId").asString()).isEqualTo(unlockTxnId);
+    assertThat(approved.path("after").path("sentAs").asString()).isEqualTo(LOCK_TOPIC + "," + CORE_UNLOCK);
 
     // ticket 70: mw-auth lifts its own PIN lock (and any ADMIN lock) on auth.wallet-lock.v1
     List<JsonNode> locks = outbox(LOCK_TOPIC);
@@ -189,7 +190,20 @@ class WalletUnlockApiIT {
     MvcTestResult again = approve(operator("ops-checker02", "ops-checker"), id);
     assertThat(again).hasStatus(409);
     assertThat(body(again).path("code").asString()).isEqualTo("MW-VAL-033");
-    assertThat(outbox(COMMAND_TOPIC)).hasSize(1);
+    verify(core, times(1)).unlock(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void aRefusalOrNoAnswerOfTheCoreStillLeavesTheUnlockApproved() {
+    when(core.unlock(any(), any(), any(), any(), any()))
+        .thenReturn(new CoreAccountClient.UnlockAnswer(CoreAccountClient.Outcome.UNKNOWN, null));
+    String id = asked();
+
+    MvcTestResult r = approve(CHECKER, id);
+
+    assertThat(r).hasStatus(200);
+    assertThat(body(r).path("status").asString()).isEqualTo("APPROVED");
+    assertThat(outbox(LOCK_TOPIC)).as("mw-auth's PIN lock is lifted whatever the core says").hasSize(1);
   }
 
   @Test
@@ -203,7 +217,7 @@ class WalletUnlockApiIT {
       assertThat(r).hasStatus(403);
       assertThat(body(r).path("code").asString()).isEqualTo("MW-AUTH-030");
     }
-    assertThat(outbox(COMMAND_TOPIC)).isEmpty();
+    verifyNoInteractions(core);
     assertThat(jdbc.queryForObject("select status from change_request where id = ?::uuid", String.class, id))
         .isEqualTo("PENDING");
   }
@@ -220,7 +234,7 @@ class WalletUnlockApiIT {
   void aRejectedUnlockSendsNothing() {
     String id = asked();
     assertThat(reject(CHECKER, id)).hasStatus(200);
-    assertThat(outbox(COMMAND_TOPIC)).isEmpty();
+    verifyNoInteractions(core);
     assertThat(outbox(LOCK_TOPIC)).isEmpty();
     assertThat(audits("admin.change_request.rejected")).hasSize(1);
   }

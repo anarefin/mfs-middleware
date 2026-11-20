@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
+import mfs.mw.admin.api.client.CoreAccountClient;
 import mfs.mw.admin.api.client.OrchestratorQueryClient;
 import mfs.mw.admin.api.config.ChangeRequestProperties;
 import mfs.mw.admin.api.dto.AdminTxn;
@@ -21,7 +22,6 @@ import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.dto.ReversalRequest;
 import mfs.mw.admin.api.dto.TxnAction;
-import mfs.mw.admin.api.dto.UnlockWalletCommand;
 import mfs.mw.admin.api.dto.WalletLockCommand;
 import mfs.mw.admin.api.dto.WalletChangeRequestBody.WalletActionType;
 import mfs.mw.admin.api.entity.ChangeRequest;
@@ -68,8 +68,8 @@ public class ChangeRequestService {
   static final String AUDIT_TOPIC = "mw.audit.event.v1";
   static final String ACTION_TOPIC = "mw.txn.action.v1";
   static final String REQUEST_TOPIC = "mw.txn.request.v1";
-  /** UnlockWallet goes straight to the core (ticket 52; wallet topic per the M2 gate split). */
-  static final String CORE_COMMAND_TOPIC = "core.wallet.command.v1";
+  /** How the audit names the core's unlock call (ticket 95b, ADR D31: REST, no Kafka command). */
+  static final String CORE_UNLOCK = "core-wallet.v1:unlock";
   /** mw-auth's wallet lock commands (ticket 70): the unlock lifts mw-auth's PIN and ADMIN locks. */
   static final String WALLET_LOCK_TOPIC = "auth.wallet-lock.v1";
   static final String PIN_RESET_DONE = "RESET";
@@ -82,6 +82,7 @@ public class ChangeRequestService {
   private final OrchestratorQueryClient orchestrator;
   private final OutboxWriter outbox;
   private final TransactionTemplate tx;
+  private final CoreAccountClient coreAccounts;
   private final ChangeRequestProperties props;
   private final Clock clock;
   private final Map<String, ResourceChangeHandler> handlers;
@@ -96,7 +97,9 @@ public class ChangeRequestService {
       ChangeRequestProperties props,
       Clock clock,
       List<ResourceChangeHandler> handlers,
-      mfs.mw.admin.api.config.AdminApiProperties api) {
+      mfs.mw.admin.api.config.AdminApiProperties api,
+      CoreAccountClient coreAccounts) {
+    this.coreAccounts = coreAccounts;
     this.attemptGrace = props.approvingLease().plus(api.readTimeout());
     this.requests = requests;
     this.orchestrator = orchestrator;
@@ -439,16 +442,20 @@ public class ChangeRequestService {
 
   /**
    * Approval of a wallet unlock, one transaction: row APPROVED + {@code auth.wallet-lock.v1} UNLOCK
-   * (mw-auth's PIN and ADMIN locks, ticket 70) + {@code UnlockWallet} to the core (its own LOCKED
-   * status, ticket 52; kept while the core still locks on wrong PINs) + audit ({@code sentAs} both).
+   * (mw-auth's PIN and ADMIN locks, ticket 70) + audit ({@code sentAs} both). Only after that commit
+   * (no remote call before the decision, security review of ticket 70) the core's own LOCKED status is
+   * lifted over REST ({@code POST /core/v1/accounts/{walletId}/unlock}, ticket 95b, ADR D31; it replaced
+   * the Kafka {@code UnlockWallet}), idempotent by the request's {@code unlockTxnId}: its answer is logged,
+   * not tracked (a refusal {@code WALLET_NOT_LOCKED} is the usual, harmless case; no answer leaves the
+   * core lock for a new request).
    */
   private ChangeRequestView approveWallet(Operator checker, ChangeRequest cr) {
     Instant now = clock.instant();
     String correlationId = correlationId();
-    UnlockWalletCommand cmd = ChangeRequestMapper.unlock(cr, checker.username(), correlationId, now, props.unlockCommandTtl());
     WalletLockCommand lock = ChangeRequestMapper.authUnlock(cr, checker.username(), correlationId, now);
+    String unlockTxnId = ChangeRequestMapper.unlockTxnId(cr);
     Map<String, Object> payload = new LinkedHashMap<>(cr.payload());
-    payload.put("commandId", cmd.commandId());
+    payload.put("commandId", ChangeRequestMapper.unlockCommandId(cr));
     payload.put("authCommandId", lock.commandId());
     tx.executeWithoutResult(
         s -> {
@@ -456,12 +463,19 @@ public class ChangeRequestService {
             throw decided();
           }
           outbox.append(WALLET_LOCK_TOPIC, lock.walletId(),
-              new EventMetadata(correlationId, cmd.txnId(), lock.commandId(), 1), lock);
-          outbox.append(CORE_COMMAND_TOPIC, cmd.txnId(), new EventMetadata(correlationId, cmd.txnId(), cmd.commandId(), 1), cmd);
-          audit(ChangeRequestMapper.approved(cr, checker.username(), WALLET_LOCK_TOPIC + "," + CORE_COMMAND_TOPIC,
+              new EventMetadata(correlationId, unlockTxnId, lock.commandId(), 1), lock);
+          audit(ChangeRequestMapper.approved(cr, checker.username(), WALLET_LOCK_TOPIC + "," + CORE_UNLOCK,
               correlationId, now), cr);
         });
     logDecision("admin.change_request.approved", cr, checker.username());
+    CoreAccountClient.UnlockAnswer core =
+        coreAccounts.unlock(cr.resourceId(), unlockTxnId, cr.id().toString(), cr.makerId(), checker.username());
+    log.atInfo()
+        .addKeyValue("event", "admin.wallet.core_unlock")
+        .addKeyValue("txnId", unlockTxnId)
+        .addKeyValue("outcome", core.outcome().name())
+        .addKeyValue("errorCode", core.reason())
+        .log("Core lock of an approved unlock: {}", core.outcome());
     return found(cr.id());
   }
 

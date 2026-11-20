@@ -122,6 +122,14 @@ resilience4j:
         wait-duration-in-open-state: 10s
         ignore-exceptions:
           - org.springframework.web.client.HttpClientErrorException
+      # client/CoreClient (ticket 95b): the core wallet API; counts calls, a 4xx answer is no failure
+      core:
+        base-config: default
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 20
+        minimum-number-of-calls: 10
+        slow-call-duration-threshold: 1500ms
+        wait-duration-in-open-state: 10s
     configs:
       default:
         sliding-window-type: TIME_BASED
@@ -277,9 +285,6 @@ mw:
         ttl: 15m
         # an approved care reset waits this long for the customer's OTP
         care-ttl: 72h
-        # VerifyCustomerFactors to the core (core.wallet.command.v1; the core drops it after expiresAt)
-        command-topic: core.wallet.command.v1
-        command-ttl: 15m
       audit-topic: mw.audit.event.v1
     # The transaction authorisation assertion (spec 18.7, D22, ticket 71; config/AssertionProperties):
     # POST /internal/v1/txn-authorisations, ES256 by the mw-crypto key ASSERTION_SIGN, single use by jti
@@ -307,6 +312,16 @@ mw:
       client-secret: ""
       timeout: 2s
       connect-timeout: 1s
+    # The core wallet API (ADR D31, ticket 95b; config/CoreClientProperties, client/CoreClient): the PIN
+    # reset's KYC factors check POST /core/v1/customers/{walletId}/verify-factors, with the realm services
+    # token above (client mw-auth, audience mw-core-mock besides mw-crypto). Idempotent by txnId: no definite
+    # answer is asked again `attempts` times, `backoff` apart, then the reset stays pending until it expires.
+    core:
+      base-url: ${MW_CORE_URL:http://mw-core-mock:8080}
+      timeout: 2s
+      connect-timeout: 1s
+      attempts: 3
+      backoff: 500ms
   internal-auth:
     jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
     issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
