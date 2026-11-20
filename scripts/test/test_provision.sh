@@ -137,7 +137,7 @@ test_provision_creates_every_secret_role_and_approle() {
     grep -q "^vault policy write $s -$" .vault-calls || fail "$s: no policy"
     grep -q "^vault write auth/approle/role/$s token_policies=$s " .vault-calls || fail "$s: no AppRole"
   done
-  assert_out_contains "provision: 20 services provisioned"
+  assert_out_contains "provision: 21 services provisioned"
 }
 
 test_provision_writes_the_service_specific_keys() {
