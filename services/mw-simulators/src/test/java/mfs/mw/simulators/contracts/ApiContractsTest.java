@@ -97,7 +97,8 @@ class ApiContractsTest {
   @Test
   void manifestListsTheUssdApiAndTheMockControlApi() {
     ContractManifest m = ContractManifest.load();
-    assertThat(m.producedEvents()).as("a produced event needs a ProducedContractsTest").isEmpty();
+    assertThat(m.producedEvents())
+        .containsExactly("events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json");
     assertThat(m.consumedEvents()).as("a consumed event needs a ConsumedContractsTest").isEmpty();
     assertThat(m.producedApis()).containsExactly(MockControlContractTest.API);
     assertThat(m.consumedApis()).containsExactly(USSD, "api/mw-core-mock/core-mock-control.v1.openapi.yaml",

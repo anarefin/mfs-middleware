@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Map;
 import java.util.Optional;
+import mfs.mw.simulators.dto.CallbackMode;
 import mfs.mw.simulators.dto.MockScenario;
 import mfs.mw.simulators.dto.MockSettings;
 import mfs.mw.simulators.dto.SimMode;
@@ -85,6 +86,16 @@ class OperatorOcsServiceTest {
   }
 
   @Test
+  void aStatusBusinessFailureIsHttp200SoTheInquiryCanFailWithoutWaiting() {
+    OperatorOcsService failing = new OperatorOcsService(statusRefusal("GP1001"));
+
+    SimReply reply = failing.status(OperatorOcsProfile.GP, "BITS-T4");
+
+    assertThat(reply.httpStatus()).isEqualTo(200);
+    assertThat(body(reply)).containsEntry("status", "FAILED").containsEntry("code", "GP1001");
+  }
+
+  @Test
   void statusOfAnUnknownRechargeIsNotFound() {
     SimReply reply = service.status(OperatorOcsProfile.GP, "BITS-NONE");
 
@@ -102,6 +113,30 @@ class OperatorOcsServiceTest {
   @SuppressWarnings("unchecked")
   private static Map<String, Object> body(SimReply reply) {
     return (Map<String, Object>) reply.body();
+  }
+
+  /** A status inquiry whose scenario is a business refusal; every other call uses its magic value. */
+  private static MockControl statusRefusal(String code) {
+    return new MockControl() {
+      @Override
+      public Decision decide(String party, String operation, Map<String, String> keys, SimMode magic) {
+        if ("status".equals(operation)) {
+          return new Decision(
+              Decision.Gate.OPEN, SimMode.BUSINESS_FAILURE, code, null, 0, 0, CallbackMode.NONE, 0, "scenario:status");
+        }
+        return Decision.magic(magic, 0);
+      }
+
+      @Override
+      public MockSettings settings(String party) {
+        return MockSettings.DEFAULT;
+      }
+
+      @Override
+      public Optional<MockScenario> fileFault(String party, String operation, Map<String, String> keys) {
+        return Optional.empty();
+      }
+    };
   }
 
   /** No scenarios and no pause: the call's own magic value is the outcome. */

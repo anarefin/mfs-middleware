@@ -94,13 +94,24 @@ class PartnerMessagesTest {
     assertThat(replaced.message()).isEqualTo(PartnerReplyMapper.FALLBACK_MESSAGE);
     assertThat(replaced.retryable()).isFalse();
     assertThat(mapper.error(reply("FAILED", null, null, null)).code()).isEqualTo("MW-PTR-UNKNOWN-UNMAPPED");
+    ErrorInfo gp = mapper.error(reply("FAILED", "MW-PTR-GP_OCS-SUBSCRIBER_BARRED", false, "gp-ocs", "Subscriber barred"));
+    assertThat(gp.message()).isEqualTo("Subscriber barred");
+    assertThat(gp.messageBn()).isEqualTo("গ্রাহক নম্বরটি নিষিদ্ধ");
+    ErrorInfo robi = mapper.error(reply("FAILED", "MW-PTR-ROBI_OCS-BARRED", false, "robi-ocs", "Barred"));
+    assertThat(robi.message()).isEqualTo("Barred");
+    assertThat(robi.messageBn()).isEqualTo("নম্বরটি নিষিদ্ধ");
+    assertThat(replaced.messageBn()).isNull();
     assertThat(mapper.toSagaEvent(reply("PENDING", null, null, "gp"))).isEmpty();
     assertThat(mapper.toSagaEvent(reply("UNKNOWN", null, null, "gp"))).containsInstanceOf(SagaEvent.PartnerUnknown.class);
   }
 
   private PartnerReply reply(String outcome, String code, Boolean retryable, String partnerId) {
+    return reply(outcome, code, retryable, partnerId, null);
+  }
+
+  private PartnerReply reply(String outcome, String code, Boolean retryable, String partnerId, String message) {
     return new PartnerReply(
         1, "telco", "r-1", TestData.txnId(), "c-1", partnerId, TestData.NOW,
-        new PartnerReply.Payload("PAY", outcome, null, null, code, null, retryable, null));
+        new PartnerReply.Payload("PAY", outcome, null, null, code, message, retryable, null));
   }
 }

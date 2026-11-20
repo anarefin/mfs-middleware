@@ -5178,6 +5178,264 @@
       ]
     },
     {
+      "name": "46 Topup operators",
+      "description": "Ticket 112c (FRS 10.2, UC-08): prepaid top-up on gp-ocs and robi-ocs. T3 and T4 drive POST /test/orchestrator/v1/inquiries once the OCS has answered unknown; they do not wait out the inquiry schedule. T5 does, so it is skipped. T8 sets the ocs-gp switch DOWN and waits until routing has noted gp-ocs DOWN, then the legacy ocs fallback takes the recharge. T11 and T12 stay n/a until tickets 125 and 127. T10's mid-saga kill is scripts/chaos.sh. Tariff v1: top-up fee 200 poisha VAT-included, VAT 26, commission 0, FEE_INCOME 174, on a 2000 poisha recharge.",
+      "item": [
+        {
+          "name": "[topup frs] T1 a GP top-up on gp-ocs completes with the seed tariff fee, VAT and commission and the SMS is sent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup frs] T1 a GP top-up on gp-ocs completes with the seed tariff fee, VAT and commission and the SMS is sent\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      const since = await journalSince(MW, 'ocs-gp');\\n      await S.note(books());\\n      await S.previewTopup('customer01', 'gp-ocs', 'PREPAID', '01711000002', 2000, MW.pin);\\n      const q = S.quote;\\n      S.eq('fee 200 poisha (tariff v1)', q.body && q.body.fee && q.body.fee.valueMinor, 200, String(q));\\n      S.eq('VAT 26 poisha (15% inside the fee)', q.body && q.body.vat && q.body.vat.valueMinor, 26, String(q));\\n      S.eq('commission 0', q.body && q.body.commission && q.body.commission.valueMinor, 0, String(q));\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved());\\n      await S.sms('01711000001', '0171****002 নম্বরে ৳20.00 রিচার্জ সফল হয়েছে। TrxID {txnId}');\\n      const j = await MW.mockJournal('ocs-gp', { path: 'recharge' });\\n      S.check('gp-ocs applied the recharge', j.some(r => (r.seq || 0) > since), j);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup frs] T1 a Robi top-up on robi-ocs completes and debits the payer once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup frs] T1 a Robi top-up on robi-ocs completes and debits the payer once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      const since = await journalSince(MW, 'ocs-robi');\\n      await S.note(books());\\n      await S.previewTopup('customer01', 'robi-ocs', 'PREPAID', '01811000002', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved());\\n      const j = await MW.mockJournal('ocs-robi', { path: 'topup' });\\n      S.check('robi-ocs applied the recharge', j.some(r => (r.seq || 0) > since), j);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup frs] T2 a GP subscriber-barred refusal shows the English and Bangla text and moves nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup frs] T2 a GP subscriber-barred refusal shows the English and Bangla text and moves nothing\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      S.after(() => MW.mockReset('ocs-gp'));\\n      await MW.mockScenario('ocs-gp', 'topup', 'BUSINESS_ERROR', { code: 'GP1001', nextN: 1 });\\n      await S.note(books());\\n      await S.previewTopup('customer01', 'gp-ocs', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(502);\\n      S.code('MW-PTR-GP_OCS-SUBSCRIBER_BARRED');\\n      S.eq('english text', S.last().body && S.last().body.message, 'Subscriber barred', String(S.last()));\\n      S.eq('bangla text', S.last().body && S.last().body.messageBn, 'গ্রাহক নম্বরটি নিষিদ্ধ', String(S.last()));\\n      await S.noChange();\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup frs] T2 a Robi barred refusal shows the English and Bangla text and moves nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup frs] T2 a Robi barred refusal shows the English and Bangla text and moves nothing\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      S.after(() => MW.mockReset('ocs-robi'));\\n      await MW.mockScenario('ocs-robi', 'topup', 'BUSINESS_ERROR', { code: 'RB77', nextN: 1 });\\n      await S.note(books());\\n      await S.previewTopup('customer01', 'robi-ocs', 'PREPAID', '01811000002', 2000, MW.pin);\\n      S.status(502);\\n      S.code('MW-PTR-ROBI_OCS-BARRED');\\n      S.eq('english text', S.last().body && S.last().body.message, 'Barred', String(S.last()));\\n      S.eq('bangla text', S.last().body && S.last().body.messageBn, 'নম্বরটি নিষিদ্ধ', String(S.last()));\\n      await S.noChange();\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup tsq frs] T3 a GP top-up that the OCS answers unknown is completed by a driven status inquiry and debited once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup tsq frs] T3 a GP top-up that the OCS answers unknown is completed by a driven status inquiry and debited once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      S.after(() => MW.mockReset('ocs-gp'));\\n      await S.note(books());\\n      await MW.mockScenario('ocs-gp', 'topup', 'HTTP_5XX', { nextN: 1 });\\n      await S.previewTopup('customer01', 'gp-ocs', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await driveInquiry(MW, S);\\n      const done = await MW.waitForState(S.txnId(), ['COMPLETED'], 20000);\\n      S.eq('the driven inquiry completed it', done.body && done.body.status, 'COMPLETED', String(done));\\n      await S.changedBy(moved());\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup tsq frs] T4 a GP top-up the status inquiry says failed is released and moves nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup tsq frs] T4 a GP top-up the status inquiry says failed is released and moves nothing\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      S.after(() => MW.mockReset('ocs-gp'));\\n      await S.note(books());\\n      await MW.mockScenario('ocs-gp', 'topup', 'HTTP_5XX', { nextN: 1 });\\n      await MW.mockScenario('ocs-gp', 'status', 'BUSINESS_ERROR', { code: 'GP1001', nextN: 1 });\\n      await S.previewTopup('customer01', 'gp-ocs', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(202);\\n      S.txnStatus('PROCESSING');\\n      await driveInquiry(MW, S);\\n      const done = await MW.waitForState(S.txnId(), ['FAILED'], 20000);\\n      S.eq('the driven inquiry failed it', done.body && done.body.status, 'FAILED', String(done));\\n      await S.noChange();\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup frs] T6 the same Idempotency-Key twice tops up once and returns the same txnId",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup frs] T6 the same Idempotency-Key twice tops up once and returns the same txnId\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      await S.note(books());\\n      await S.previewTopup('customer01', 'gp-ocs', 'PREPAID', '01711000002', 2000, MW.pin);\\n      await S.repeat();\\n      S.status(200);\\n      S.sameTxnId();\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved());\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup frs] T7 a duplicate core commit of a top-up posts the money once",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup frs] T7 a duplicate core commit of a top-up posts the money once\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      S.after(() => MW.mockReset('core'));\\n      await S.note(books());\\n      await MW.mockScenario('core', 'commit', 'DUPLICATE_CALLBACK', { nextN: 1 });\\n      await S.previewTopup('customer01', 'gp-ocs', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved());\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup frs] T8 a GP top-up uses the ocs fallback when gp-ocs is DOWN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup frs] T8 a GP top-up uses the ocs fallback when gp-ocs is DOWN\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      S.after(() => MW.mockReset('ocs-gp'));\\n      await S.note(books());\\n      const gpAt = await journalSince(MW, 'ocs-gp');\\n      const ocsAt = await journalSince(MW, 'ocs');\\n      await MW.mockSwitch('ocs-gp', 'DOWN');\\n      await untilHealth(MW, S, 'gp-ocs', 'DOWN');\\n      await S.previewTopup('customer01', 'gp-ocs', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved());\\n      const gp = (await MW.mockJournal('ocs-gp', { path: 'recharge' })).filter(r => (r.seq || 0) > gpAt);\\n      const ocs = (await MW.mockJournal('ocs', { path: 'topup' })).filter(r => (r.seq || 0) > ocsAt);\\n      S.eq('gp-ocs was not called', gp.length, 0, gp);\\n      S.eq('the legacy ocs fallback recharged once', ocs.length, 1, ocs);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup frs] T9 a limit is refused before any recharge and an insufficient balance moves nothing",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup frs] T9 a limit is refused before any recharge and an insufficient balance moves nothing\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      await S.note(books());\\n      const since = await journalSince(MW, 'ocs-gp');\\n      const over = S.record(await MW.app.preview('customer01', 'top-up', {\\n        creditParty: { type: 'MSISDN', id: '01711000002' },\\n        partner: { partnerId: 'gp-ocs', productCode: 'PREPAID' },\\n        amount: { valueMinor: 600000, currency: 'BDT' },\\n      }));\\n      S.status(422, over);\\n      S.code('MW-CORE-LIMIT_EXCEEDED_PER_TXN', over);\\n      S.eq('english limit text', over.body && over.body.message, 'The amount is above the limit for one transaction', String(over));\\n      S.eq('bangla limit text', over.body && over.body.messageBn, 'লেনদেনের পরিমাণ একক লেনদেনের সীমা ছাড়িয়ে গেছে', String(over));\\n      const recharges = (await MW.mockJournal('ocs-gp', { path: 'recharge' })).filter(r => (r.seq || 0) > since);\\n      S.eq('the limit stopped it before a recharge', recharges.length, 0, recharges);\\n      await S.noChange();\\n\\n      const payer = '01711000001';\\n      const was = await MW.coreBalance(payer);\\n      S.after(async () => {\\n        await MW.http('PUT', '/test/core-mock/v1/wallets/' + payer, { apikey: true, json: {\\n          type: 'CUSTOMER', openingBalanceMinor: was.balanceMinor, balanceMinor: was.availableMinor,\\n        } });\\n      });\\n      const set = await MW.http('PUT', '/test/core-mock/v1/wallets/' + payer, { apikey: true, json: {\\n        type: 'CUSTOMER', openingBalanceMinor: was.balanceMinor, balanceMinor: 100,\\n      } });\\n      S.status(200, set);\\n      await S.note(books());\\n      await S.previewTopup('customer01', 'gp-ocs', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(422);\\n      S.code('MW-CORE-INSUFFICIENT_BALANCE');\\n      S.eq('english balance text', S.last().body && S.last().body.message, 'Insufficient balance', String(S.last()));\\n      S.eq('bangla balance text', S.last().body && S.last().body.messageBn, 'অপর্যাপ্ত ব্যালেন্স', String(S.last()));\\n      await S.noChange();\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup frs] T10 a top-up keeps the ledger identity; mid-saga restart is scripts/chaos.sh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup frs] T10 a top-up keeps the ledger identity; mid-saga restart is scripts/chaos.sh\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      await S.note(books());\\n      await S.previewTopup('customer01', 'gp-ocs', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.changedBy(moved());\\n      const d = await S.deltas();\\n      S.eq('debits equal credits', -d['01711000001'], d.SETTLEMENT + d.FEE_INCOME + d.VAT_PAYABLE + d.COMMISSION_PAYABLE);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[topup reversal frs] a second reverse of a completed gp-ocs recharge returns the first outcome",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[topup reversal frs] a second reverse of a completed gp-ocs recharge returns the first outcome\", eval(MW.forRun(\"function books() {\\n    return ['01711000001', 'SETTLEMENT', 'FEE_INCOME', 'VAT_PAYABLE', 'COMMISSION_PAYABLE'];\\n  }\\nfunction moved() {\\n    return { '01711000001': -2200, 'SETTLEMENT': 2000, 'FEE_INCOME': 174, 'VAT_PAYABLE': 26, 'COMMISSION_PAYABLE': 0 };\\n  }\\nasync function prepare(MW) {\\n    await MW.mockReset('ocs-gp');\\n    await MW.mockReset('ocs-robi');\\n    await MW.mockReset('ocs');\\n  }\\nasync function journalSince(MW, party) {\\n    const rows = await MW.mockJournal(party);\\n    return rows.reduce((m, r) => Math.max(m, r.seq || 0), 0);\\n  }\\nasync function driveInquiry(MW, S) {\\n    const r = await MW.http('POST', '/test/orchestrator/v1/inquiries', {\\n      apikey: true, json: { txnId: S.txnId() },\\n    });\\n    S.status(202, r);\\n  }\\nasync function untilHealth(MW, S, partnerId, want) {\\n    const start = Date.now();\\n    let last;\\n    while (Date.now() - start < 8000) {\\n      last = await MW.http('GET', '/test/orchestrator/v1/partner-health/' + partnerId, { apikey: true });\\n      if (last.body && last.body.health === want) return last;\\n      await new Promise(r => setTimeout(r, 200));\\n    }\\n    S.eq('routing noted ' + partnerId + ' ' + want, last && last.body && last.body.health, want, last);\\n    return last;\\n  }\\n;(async (MW, S) => {\\n      await prepare(MW);\\n      await S.note(books());\\n      await S.previewTopup('customer01', 'gp-ocs', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      const at = await journalSince(MW, 'ocs-gp');\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('REVERSED', 30);\\n      await MW.testApi.reverse(S.txnId());\\n      await S.appShows('REVERSED', 30);\\n      const reverses = (await MW.mockJournal('ocs-gp', { path: 'reverse' })).filter(r => (r.seq || 0) > at);\\n      S.eq('the operator was reversed once', reverses.length, 1, reverses);\\n      await S.noChange();\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "47 Promotional campaigns and opt-out",
       "description": "Ticket 111 (FRS NOT-07, NOT-09): a customer who opted out of promotions still gets the P2P SMS, and an approved campaign change request is APPROVED. The suite does not wait for the promotional SMS.",
       "item": [

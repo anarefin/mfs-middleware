@@ -505,7 +505,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   to its current end on the HTTP thread, nothing committed; `DlqClientIT`). No auth in the service (`anyRequest().permitAll()` outside
   `/internal/**`); APISIX exposes it only with `MW_E2E_ROUTES=1` as `/test/orchestrator/v1/*`
   (`deploy/apisix/routes-test/test-orchestrator.json`, key-auth `mw_e2e`, private networks).
-  `TestApiControllerTest` (on/off), `TestApiServiceTest`.
+  `POST /test/v1/inquiries` drives one status inquiry of a stored transaction (ticket 112c; 404
+  `MW-VAL-003` when it is unknown) and `GET /test/v1/partner-health/{partnerId}` returns the health
+  routing has noted. `TestApiControllerTest` (on/off), `TestApiServiceTest`.
 - Dev provisioning (`provision_mw_orchestrator` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): creates
   role and schema, `secret/mw-orchestrator` (DB password, never overwritten; search hash key, created once) and the AppRole
   `mw-orchestrator`; role-id/secret-id land in a volume the service reads as a configtree.

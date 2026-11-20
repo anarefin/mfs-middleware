@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits orchestrator test API v1 (mw-orchestrator, test-only)
-  version: 1.2.0
+  version: 1.3.0
   description: |
     Test-only API of mw-orchestrator (ticket 58), never part of the product. The host API suite
     (`tests/api`, Newman) plays operations' REVERSAL producer with it, checks that a request
@@ -14,6 +14,52 @@ info:
 servers:
   - url: http://mw-orchestrator:8080
 paths:
+  /test/v1/inquiries:
+    post:
+      operationId: driveStatusInquiry
+      summary: Drive one status inquiry of a stored transaction now
+      description: >-
+        Ticket 112c. Applies the same INQUIRE an operator approves, so the suite resolves an
+        UNKNOWN top-up without waiting out the inquiry schedule. 404 MW-VAL-003 when the
+        transaction is unknown. An inquiry the saga cannot apply (the transaction is not
+        UNKNOWN or MANUAL_REVIEW) is still accepted and changes nothing.
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [txnId]
+              additionalProperties: false
+              properties:
+                txnId: { type: string, format: uuid }
+      responses:
+        "202":
+          description: Inquiry driven
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InquiryAccepted" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+  /test/v1/partner-health/{partnerId}:
+    get:
+      operationId: getPartnerHealth
+      summary: The health routing has noted for a partner
+      description: >-
+        Ticket 112c. health is absent until a mw.partner.route.status.v1 report has been noted.
+        The suite waits for DOWN here before a top-up that must use the fallback, instead of
+        sleeping.
+      parameters:
+        - { name: partnerId, in: path, required: true, schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,63}$" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Noted health, or none yet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PartnerHealth" }
   /test/v1/reversals:
     post:
       operationId: publishTestReversal
@@ -138,6 +184,21 @@ components:
       additionalProperties: false
       properties:
         windowSeconds: { type: integer, minimum: 0, maximum: 3600 }
+    InquiryAccepted:
+      type: object
+      required: [txnId]
+      additionalProperties: false
+      properties:
+        txnId: { type: string, format: uuid }
+    PartnerHealth:
+      type: object
+      required: [partnerId]
+      additionalProperties: false
+      properties:
+        partnerId: { type: string }
+        health:
+          type: string
+          enum: [UP, DEGRADED, DOWN, MAINTENANCE, DISABLED, DELETED]
     ReversalAccepted:
       type: object
       required: [txnId, idempotencyKey]

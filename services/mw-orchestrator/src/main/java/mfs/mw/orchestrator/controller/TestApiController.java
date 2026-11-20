@@ -4,6 +4,9 @@ import jakarta.validation.Valid;
 import java.util.UUID;
 import mfs.mw.orchestrator.dto.DlqRecord;
 import mfs.mw.orchestrator.dto.DuplicateGuardWindow;
+import mfs.mw.orchestrator.dto.InquiryAccepted;
+import mfs.mw.orchestrator.dto.InquiryRequest;
+import mfs.mw.orchestrator.dto.PartnerHealthView;
 import mfs.mw.orchestrator.service.DuplicateGuard;
 import mfs.mw.orchestrator.dto.PoisonAccepted;
 import mfs.mw.orchestrator.dto.TestReversalAccepted;
@@ -45,6 +48,19 @@ public class TestApiController {
   DuplicateGuardWindow duplicateGuard(@Valid @RequestBody DuplicateGuardWindow body) {
     duplicates.changeWindow(java.time.Duration.ofSeconds(body.windowSeconds()));
     return new DuplicateGuardWindow((int) duplicates.window().toSeconds());
+  }
+
+  /** Ticket 112c: one status inquiry now, so the suite does not wait out the inquiry schedule. */
+  @PostMapping("/inquiries")
+  @ApiResponse(responseCode = "202", description = "Status inquiry driven")
+  ResponseEntity<InquiryAccepted> inquire(@Valid @RequestBody InquiryRequest body) {
+    return ResponseEntity.status(HttpStatus.ACCEPTED).body(service.inquire(body.txnId()));
+  }
+
+  /** The health routing has noted. Absent until a route-status report arrives. */
+  @GetMapping("/partner-health/{partnerId}")
+  PartnerHealthView partnerHealth(@PathVariable String partnerId) {
+    return service.partnerHealth(partnerId);
   }
 
   @PostMapping("/reversals")

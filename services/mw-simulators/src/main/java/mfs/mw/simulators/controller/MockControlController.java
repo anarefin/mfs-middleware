@@ -12,6 +12,7 @@ import mfs.mw.simulators.dto.ReplayResult;
 import mfs.mw.simulators.exception.ErrorCodes;
 import mfs.mw.simulators.exception.MwException;
 import mfs.mw.simulators.service.CallbackService;
+import mfs.mw.simulators.service.OcsRouteHealthPublisher;
 import mfs.mw.simulators.service.mockcontrol.Journal;
 import mfs.mw.simulators.service.mockcontrol.MockControl;
 import mfs.mw.simulators.service.mockcontrol.MockParties;
@@ -43,14 +44,21 @@ public class MockControlController {
   private final Journal journal;
   private final PartyReset reset;
   private final CallbackService callbacks;
+  private final OcsRouteHealthPublisher health;
 
   public MockControlController(
-      ScenarioEngine engine, PartySwitch switches, Journal journal, PartyReset reset, CallbackService callbacks) {
+      ScenarioEngine engine,
+      PartySwitch switches,
+      Journal journal,
+      PartyReset reset,
+      CallbackService callbacks,
+      OcsRouteHealthPublisher health) {
     this.engine = engine;
     this.switches = switches;
     this.journal = journal;
     this.reset = reset;
     this.callbacks = callbacks;
+    this.health = health;
   }
 
   @GetMapping("/mock-control/parties")
@@ -86,7 +94,9 @@ public class MockControlController {
   @PutMapping("/mock-control/{party}/switch")
   MockSwitch setSwitch(@PathVariable String party, @Valid @RequestBody MockSwitch body) {
     switches.set(party, body);
-    return switches.get(party);
+    MockSwitch stored = switches.get(party);
+    health.publish(party, stored.state());
+    return stored;
   }
 
   @GetMapping("/mock-control/{party}/switch")

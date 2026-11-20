@@ -106,7 +106,9 @@ public class OperatorOcsService implements PartyState {
         },
         () -> unavailable(profile),
         () -> new SimReply(500, profile.failure("5000", "internal error")),
-        code -> refused(profile, code == null ? profile.barredCode() : code, profile.barredMessage()));
+        // HTTP 200 so the adapter's STATUS mapping (definite on 200) reads FAILED at once.
+        // A 4xx status is not definite and the saga would wait out the inquiry schedule.
+        code -> new SimReply(200, profile.failure(code == null ? profile.barredCode() : code, "Recharge failed")));
   }
 
   /**

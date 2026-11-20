@@ -99,6 +99,14 @@ public class RoutingCatalog {
     return ready.attempts().stream().filter(a -> !sent.contains(a.wirePartnerId())).findFirst();
   }
 
+  /** The last health report for {@code partnerId}, or null when none has arrived (treated as usable). */
+  public String health(String partnerId) {
+    if (partnerId == null || partnerId.isBlank()) {
+      return null;
+    }
+    return current.get().healthByPartner().get(partnerId);
+  }
+
   public void noteHealth(String partnerId, String health) {
     if (partnerId == null || partnerId.isBlank()) {
       return;

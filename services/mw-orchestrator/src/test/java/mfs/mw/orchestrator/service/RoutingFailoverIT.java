@@ -79,6 +79,7 @@ class RoutingFailoverIT {
   @AfterEach
   void restore() {
     jdbc.update("update routing_rule set fallbacks = '{}', version = 1 where id = 'topup-gp'");
+    catalog.noteHealth("gp-ocs", null);
     catalog.noteHealth("ocs", null);
     catalog.noteHealth("ocs-standby", null);
     catalog.reload();
@@ -106,7 +107,7 @@ class RoutingFailoverIT {
   void aDownPrimaryIsSkippedAndTheFallbackGetsThePay() {
     jdbc.update("update routing_rule set fallbacks = '{ocs-standby}' where id = 'topup-gp'");
     catalog.reload();
-    catalog.noteHealth("ocs", "DOWN");
+    catalog.noteHealth("gp-ocs", "DOWN");
     String txn = startToPartnerPending(2_200);
 
     assertThat(partnerIds(txn)).containsExactly("ocs-standby");
@@ -116,7 +117,7 @@ class RoutingFailoverIT {
 
   @Test
   void noFallbackFailsFastWithTheCircuitOpen() {
-    catalog.noteHealth("ocs", "DOWN");
+    catalog.noteHealth("gp-ocs", "DOWN");
     TxnRequest req = TestData.topup(TestData.txnId(), "key-down-" + UUID.randomUUID(), 2_300, "01711000002");
     transactions.accept(req, null);
 
@@ -147,7 +148,7 @@ class RoutingFailoverIT {
             t.assertion(), null, null, null, t.requestedAt());
     transactions.accept(routed, null);
     assertThat(statuses(t.txnId())).containsExactly("RECEIVED", "VALIDATING");
-    assertThat(lastStatus(t.txnId()).path("partner").path("partnerId").asString()).isEqualTo("ocs");
+    assertThat(lastStatus(t.txnId()).path("partner").path("partnerId").asString()).isEqualTo("gp-ocs");
   }
 
   private String startToPartnerPending(long amount) {
