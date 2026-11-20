@@ -94,8 +94,8 @@ generated document and the UI exist only in Spring profiles `dev` and `test`
 (`springdoc.api-docs.enabled` / `springdoc.swagger-ui.enabled` are false otherwise, so a production
 build exposes neither; `ApiDocsProductionTest`). The dev stack runs every service in profile `dev`
 and, with the test-only routes (`MW_E2E_ROUTES=1`), APISIX lists them all at `https://localhost/docs/`
-(`deploy/apisix/routes-test/test-docs*.json`); SOAP services list their `?wsdl` there (none yet: the
-app SOAP facade of ticket 108 is the first).
+(`deploy/apisix/routes-test/test-docs*.json`); the app SOAP facade lists its WSDL there
+(`deploy/apisix/docs/index.html`, `contracts/api/mw-app-gateway/app-soap.v1.xsd`).
 
 Versioning policy (PLT-051):
 

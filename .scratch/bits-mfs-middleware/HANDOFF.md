@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (95c merged; 106 waits until 108 is merged; 108 still in flight on ticket/108-app-soap). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (108 merged; 106 is unblocked; 126 is in flight on ticket/126-recon-matching). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -28,6 +28,7 @@ Updated: 2026-11-20 (95c merged; 106 waits until 108 is merged; 108 still in fli
 105 (app preview/confirm, Newman folder 46; live suite and tester-e2e not run),
 107a (saved billers, favourites and the customer inbox; saved billers and favourites are not encrypted, user decision),
 107b (profile, limits and statement; app-gateway is a core client for profile, limits, and statement; the live suite was not re-run after this merge),
+108 (app SOAP facade on mw-app-gateway, Newman folder 48; the same services as REST),
 109b (USSD screen timeout, back stack, short codes, language), 109a (four MNO SMPP binds, same 3GPP TLV tags),
 109c (USSD menus; fee from core charges/calculate; change-PIN stays on the maintenance text),
 110 (push notifications), 110b (binding epoch from mw-auth; notify migration V17),
@@ -39,13 +40,13 @@ Updated: 2026-11-20 (95c merged; 106 waits until 108 is merged; 108 still in fli
 Review fix on the earlier salvage: 2308d22e (19 files +342 −57). 88 is superseded by 126/127.
 
 ## In flight when this file was written
-108 on `ticket/108-app-soap` (not merged). The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
+126 on `ticket/126-recon-matching` (not merged). The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
 
 ## Next (frontier, in priority order)
 1. **M7 gate (2026-11-20).** Passed: clean build, smoke 60/60, edge 65/65, folder 41 (54), log-scan, ui-e2e 25/25, tester-e2e 40/40. The whole API suite failed 2 of 1386 (folder 13 audit change-request id scrubbed; folder 44 AML journal first WRITE was another file) and was not re-run. The gate fixes are commit 784285bb. The live suite was not re-run after 107 or 109.
-2. **95c** is merged. **106** is the next orchestrator ticket, but it also needs the app gateway, so it waits until **108** is merged. **108** stays open on `ticket/108-app-soap`.
-3. Then 112, 113, 115, 117, 130b, 135, still module-disjoint, max five at once. **M8 gate** after 106 and 108 (107 and 109 are in).
-4. 118, 119, 120, 121, and 126 are unblocked. 100c stays until M13. 132 can use the routing API from 98.
+2. **108** is merged. **106** is unblocked (it needs the app gateway and the orchestrator). **126** is in flight on `ticket/126-recon-matching`.
+3. Then 112, 113, 115, 117, 130b, 135, still module-disjoint, max five at once. **M8 gate** after 106 (107, 108 and 109 are in).
+4. 118, 119, 120, and 121 are unblocked. 100c stays until M13. 132 can use the routing API from 98.
 
 ## Milestone gate procedure (after the last ticket of a milestone)
 1. Code review of the milestone range; one fix pass.
@@ -72,7 +73,7 @@ RetryTopicIT (admin-api/notify/telco), AuthClientIT (app-gateway/ussd), CryptoCl
 - 130: CHANNEL_IN / CORE_CALL / NOTIFICATION audit hops -> 130b; admin timeline UI -> 135.
 - 100a: `$secret://vault` lookup only IT-tested; live edge tests + folder 41 -> 100c.
 - 97 / 131b / 98: maintenance, the endpoint profile, and routing-as-MAINTENANCE are on upay-main.
-- 101: WSDL only after 108 (adapters serve no SOAP).
+- 101: the app SOAP WSDL is published with 108; adapters serve no SOAP.
 - 105 / 98: top-up operator resolution is in the routing module. Folders 35, 41, 46, 47 and 62 ran in the M7 suite (the two failures were folders 13 and 44). ui-e2e and tester-e2e passed.
 
 - 123: AML file carries clear MSISDNs (watch-list rules); ticket 125 asks for masked/tokenised parties -> ask the user (security) when 125 starts. DW file layout is 123's draft; 128 must match it.

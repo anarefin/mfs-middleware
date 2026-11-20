@@ -92,7 +92,7 @@
 107-app-nonfinancial                        94,105            split (107-split-decisions.md, 2026-11-20)
 107a-app-preferences                        94,105            done     -        65 files +2028 −21     96650ec1  (saved billers and favourites are not encrypted, user decision)
 107b-app-core-reads                         107a              done     -        32 files +1201 −15     ab25b616  (app-gateway is a core client for profile, limits, and statement. The live suite was not re-run after this merge)
-108-app-soap-facade                         105               open
+108-app-soap-facade                         105               done     -        46 files +2417 −61     2f199263
 109-ussd-frs                                94,105            split (109-split-decisions.md, 2026-11-20)
 109b-ussd-session                           94,105            done     -        52 files +1246 −92     34f92e26
 109a-ussd-tlv                               109b              done     -        30 files +1237 −374    d23caa3c  (same 3GPP TLV tags for all four MNOs)

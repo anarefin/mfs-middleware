@@ -7,6 +7,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplicat
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -61,7 +62,9 @@ public class SecurityConfig {
         .requestCache(r -> r.disable())
         .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .authorizeHttpRequests(
-            a -> a.requestMatchers("/app/**").authenticated().anyRequest().permitAll())
+            a -> a.requestMatchers(HttpMethod.GET, "/app/ws/v1/*.wsdl").permitAll()
+                .requestMatchers("/app/**").authenticated()
+                .anyRequest().permitAll())
         .oauth2ResourceServer(
             o ->
                 o.jwt(j -> {})

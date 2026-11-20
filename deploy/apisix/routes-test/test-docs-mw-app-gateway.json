@@ -4,7 +4,8 @@
   "uris": [
     "/docs/mw-app-gateway/v3/api-docs",
     "/docs/mw-app-gateway/v3/api-docs/*",
-    "/docs/mw-app-gateway/swagger-ui/*"
+    "/docs/mw-app-gateway/swagger-ui/*",
+    "/docs/mw-app-gateway/app/ws/v1/app.wsdl"
   ],
   "methods": [
     "GET"

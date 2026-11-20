@@ -156,6 +156,10 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 46 | [p2p] a preview alone moves no money | - | |
 | 46 | [p2p] a confirm whose amount differs from the preview is refused | - | |
 | 46 | [p2p] an amount over the per-transaction limit is refused at preview and moves nothing | 1 | P2P app failure |
+| 48 | [p2p] a SOAP preview and confirm complete a P2P and debit the previewed fee once | 1 | P2P app success |
+| 48 | [p2p] a SOAP confirm and a REST confirm with the same idempotency key move the money once | 2 | P2P app idempotent |
+| 48 | [p2p] a SOAP request that is not the schema is MW-VAL-001 and does not echo the MSISDN | - | |
+| 48 | [docs] the app SOAP WSDL is listed on the dev docs page | - | |
 | 01 | [p2p] a P2P completes and moves the money once | 1 | P2P app success |
 | 01 | [p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves | 1 | P2P app failure |
 | 01 | [p2p] a core rejection (over per-txn limit) moves no money | 1 | P2P app failure |

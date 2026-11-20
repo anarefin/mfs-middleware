@@ -119,6 +119,12 @@ Route `app-v1` (`/app/v1/*`), in plugin order:
    see "Rate-limiter degradation alert" below). A perf run with one test user needs more users
    or a higher count.
 
+Route `app-ws-v1` (`/app/ws/v1` and `/app/ws/v1/*`, ticket 108) -> `mw-app-gateway:8080`: the same
+`client-control`, `openid-connect`, consumer key and Redis `limit-count` as `app-v1`, with its own
+group `app-ws-v1` (a shared group is refused by `scripts/test/test_apisix_edge.sh`). POST is the SOAP
+endpoint; GET serves `app.wsdl`. The dev docs page links it at `/docs/mw-app-gateway/app/ws/v1/app.wsdl`
+through `routes-test/test-docs-mw-app-gateway.json` (no bearer on that test-only route).
+
 Route `auth-v1` (`/auth/v1/*`, POST and PUT, tickets 68-70; PUT added in ticket 76) -> `mw-auth:8080`
 (mw-auth's public port; its mTLS internal port 8443 is never routed, nor `/internal/*` on any port), path
 and body unchanged: the OTP (`POST /auth/v1/otp`), device binding (`POST /auth/v1/devices`), login (`POST
@@ -402,7 +408,8 @@ mw-crypto's dev-only payShield test API `/test/v1/payshield/*` on its plain port
 internal API: a PIN key's LMK blob for the simulator's PIN block helper, PVV generate and verify as the
 test-only client `mw-e2e-crypto`, ticket 76; mw-crypto serves it only with `MW_CRYPTO_TEST_API_ENABLED=true`)
 and `test-docs` (`GET /docs/`: a fixed page, `docs/index.html` inlined by the `@lua:` include into the
-`mocking` plugin, listing every service's Swagger UI and OpenAPI document and the WSDLs, none until ticket 108)
+`mocking` plugin, listing every service's Swagger UI and OpenAPI document and the app SOAP WSDL
+(`deploy/apisix/docs/index.html`, ticket 108))
 with one `test-docs-<service>` route per service (`GET /docs/<service>/v3/api-docs[/*]` and
 `/docs/<service>/swagger-ui/*` -> the service's `/v3/api-docs`, `/swagger-ui/*`, nothing else of it; served
 only in Spring profile `dev`, which the dev stack sets; no key-auth, private networks only: ticket 101)

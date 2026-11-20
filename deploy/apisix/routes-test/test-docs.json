@@ -1,6 +1,6 @@
 {
   "name": "test-docs",
-  "desc": "TEST ONLY (MW_E2E_ROUTES=1): /docs/ lists every service's Swagger UI and OpenAPI document (test-docs-<service> routes) and the WSDLs (none yet; ticket 108); a fixed page (docs/index.html), from private networks only (ticket 101, PLT-052)",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): /docs/ lists every service's Swagger UI and OpenAPI document (test-docs-<service> routes) and the app SOAP WSDL (ticket 108); a fixed page (docs/index.html), from private networks only (ticket 101, PLT-052)",
   "uris": [
     "/docs",
     "/docs/"

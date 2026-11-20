@@ -47,6 +47,8 @@ files:
   # partner reconciliation file lines (ticket 86); produced by billpay (owner), telco and bank
   events/mw-adapter-billpay/mw.partner.recon.v1.schema.json: mw-adapter-billpay
   api/mw-app-gateway/app.v1.openapi.yaml: mw-app-gateway
+  # SOAP facade (ticket 108): the XSD is the contract; the WSDL is generated from it
+  api/mw-app-gateway/app-soap.v1.xsd: mw-app-gateway
   api/mw-adapter-billpay/billpay.v1.openapi.yaml: mw-adapter-billpay
   api/mw-ussd/ussd-http.v1.openapi.yaml: mw-ussd
   api/mw-portal-api/portal-org.v1.openapi.yaml: mw-portal-api

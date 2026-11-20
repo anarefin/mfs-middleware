@@ -2,8 +2,27 @@ package mfs.mw.app.gateway.contracts;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.StringWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.stream.StreamResult;
+import mfs.mw.app.gateway.controller.AppSoap;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.assertj.MockMvcTester;
+import org.springframework.test.web.servlet.assertj.MvcTestResult;
+import org.springframework.ws.wsdl.wsdl11.DefaultWsdl11Definition;
+import org.springframework.xml.xsd.SimpleXsdSchema;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -11,6 +30,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
+import org.springframework.ws.wsdl.wsdl11.DefaultWsdl11Definition;
+import org.springframework.xml.xsd.SimpleXsdSchema;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -62,5 +83,34 @@ class ContractDriftTest {
         .hasStatusOk()
         .bodyText()
         .contains("\"configUrl\" : \"../v3/api-docs/swagger-config\"");
+  }
+
+  /** Ticket 108, PLT-050: the generated WSDL's operations are the request/response pairs of the XSD. */
+  @Test
+  void theWsdlOperationsMatchTheXsd() throws Exception {
+    Path contract = Path.of(System.getProperty("mwContractsDir"), "api/mw-app-gateway/app-soap.v1.xsd");
+    byte[] xsd = Files.readAllBytes(contract);
+    assertThat(new ClassPathResource("xsd/app-soap.v1.xsd").getContentAsByteArray())
+        .as("the jar copy of the SOAP schema")
+        .isEqualTo(xsd);
+    SimpleXsdSchema schema = new SimpleXsdSchema(new FileSystemResource(contract));
+    schema.afterPropertiesSet();
+    DefaultWsdl11Definition wsdl = new DefaultWsdl11Definition();
+    wsdl.setPortTypeName("AppPort");
+    wsdl.setLocationUri("/app/ws/v1");
+    wsdl.setTargetNamespace(AppSoap.NAMESPACE);
+    wsdl.setSchema(schema);
+    wsdl.setRequestSuffix("Request");
+    wsdl.setResponseSuffix("Response");
+    wsdl.afterPropertiesSet();
+    StringWriter out = new StringWriter();
+    TransformerFactory.newInstance().newTransformer().transform(wsdl.getSource(), new StreamResult(out));
+    String doc = out.toString();
+    assertThat(doc).contains("location=\"/app/ws/v1\"");
+    for (String operation : List.of("Preview", "Confirm", "GetBalance", "GetTransactionStatus")) {
+      assertThat(doc).contains("name=\"" + operation + "\"");
+      assertThat(doc).contains(operation + "Request");
+      assertThat(doc).contains(operation + "Response");
+    }
   }
 }
