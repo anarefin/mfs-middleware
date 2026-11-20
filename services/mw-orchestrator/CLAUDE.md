@@ -300,7 +300,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   MERCHANT_PAY made on the same channel whose `metadata.merchantId` equals the refund's initiator
   `{type: MERCHANT, id: <merchantId>}`; amount 1..the original's. Refused with a REJECTED status under
   the request's txnId (no row, key not consumed): unknown original `MW-VAL-020`, not the owning merchant
-  or not paid on this channel `MW-AUTH-022`, original not COMPLETED `MW-VAL-021`, amount `MW-VAL-022`.
+  or not paid on this channel `MW-AUTH-022`, parties not the original's reversed (debit the merchant paid,
+  credit the payer) `MW-VAL-001`, original not COMPLETED `MW-VAL-021`, amount `MW-VAL-022`. The record stores
+  the ORIGINAL's parties reversed, never the request's own.
   Path: RECEIVED -`RefundStarted`-> REVERSING (ReverseTransaction under the refund's own txnId,
   `<refundTxnId>:reverse`, `POST /core/v1/reversals` with `amount`, partial or whole; the core keeps the
   refunded total) -`RefundConfirmed`-> COMPLETED; a core refusal (`MW-CORE-REFUND_EXCEEDS` once the total

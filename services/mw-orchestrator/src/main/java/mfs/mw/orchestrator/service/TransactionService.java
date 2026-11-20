@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -313,7 +314,8 @@ public class TransactionService {
    * serialise here as at the core. Refused (REJECTED under the request's txnId, nothing recorded, key
    * not consumed): unknown original {@code MW-VAL-020}; a payment not made on this channel or not owned
    * by the refund's merchant (initiator {@code MERCHANT} = the original's {@code metadata.merchantId})
-   * {@code MW-AUTH-022}; original not COMPLETED {@code MW-VAL-021}; amount not in 1..original
+   * {@code MW-AUTH-022}; parties not the original's reversed {@code MW-VAL-001}; original not
+   * COMPLETED {@code MW-VAL-021}; amount not in 1..original
    * {@code MW-VAL-022}. The refunded total across refunds is the core's rule ({@code
    * MW-CORE-REFUND_EXCEEDS} ends the refund REJECTED).
    */
@@ -331,6 +333,12 @@ public class TransactionService {
     }
     if (original.status() != Status.COMPLETED) {
       refuse(req, replyTo, now, ErrorCodes.VAL_NOT_REVERSIBLE, "Only a completed payment can be refunded");
+      return;
+    }
+    if (!samePartyAs(req.debitParty(), original.request().creditParty())
+        || !samePartyAs(req.creditParty(), original.request().debitParty())) {
+      // money goes back only from the merchant paid to the wallet that paid
+      refuse(req, replyTo, now, ErrorCodes.VAL_INVALID, "A refund goes from the merchant paid back to the payer only");
       return;
     }
     Amount paid = original.request().amount();
@@ -379,7 +387,18 @@ public class TransactionService {
         && owner.equals(initiator.id());
   }
 
-  /** The stored refund request: as sent, plus {@code originalTxnId} and {@code refundOf} in its attributes. */
+  /** Same party type and id (a wallet in any MSISDN form). */
+  private static boolean samePartyAs(Party a, Party b) {
+    if (a == null || b == null || a.type() == null || !a.type().equals(b.type())) {
+      return false;
+    }
+    return "WALLET".equals(a.type()) ? SearchKeys.sameWallet(a, b) : Objects.equals(a.id(), b.id());
+  }
+
+  /**
+   * The stored refund request: the original's parties reversed (the merchant paid -> the payer), never
+   * the request's own, plus {@code originalTxnId} and {@code refundOf} in its attributes.
+   */
   private static TxnRequest refundRecordRequest(TxnRequest req, TransactionRecord original) {
     Map<String, String> attributes = new HashMap<>();
     if (req.attributes() != null) {
@@ -389,7 +408,7 @@ public class TransactionService {
     attributes.put("refundOf", original.request().txnType());
     return new TxnRequest(
         req.schemaVersion(), req.txnId(), req.idempotencyKey(), req.correlationId(), req.channel(), req.txnType(),
-        req.initiator(), req.debitParty(), req.creditParty(), req.amount(), req.partner(), req.originalTxnId(),
+        req.initiator(), original.request().creditParty(), original.request().debitParty(), req.amount(), req.partner(), req.originalTxnId(),
         req.assertion(), req.locale(), req.metadata(), Map.copyOf(attributes), req.requestedAt(),
         req.confirmDuplicate());
   }

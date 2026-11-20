@@ -250,6 +250,38 @@ class RefundSagaIT {
   }
 
   @Test
+  void aRefundToAnotherWalletThanThePayersIsRefused() {
+    String original = completedCheckout(10_000);
+    TxnRequest base = refundRequest(original, MERCHANT, 4_000, "refund-x");
+    TxnRequest req = new TxnRequest(
+        1, base.txnId(), base.idempotencyKey(), base.correlationId(), base.channel(), base.txnType(),
+        base.initiator(), base.debitParty(), new Party("WALLET", "01711000099", null, "CUSTOMER"),
+        base.amount(), null, original, "en", base.metadata(), null, TestData.NOW);
+    transactions.accept(req, "checkout-1");
+
+    assertThat(status(req.txnId())).isNull();
+    assertThat(reverseCommands()).isEmpty();
+    JsonNode refused = lastStatus(req.txnId());
+    assertThat(refused.path("status").asString()).isEqualTo("REJECTED");
+    assertThat(refused.path("error").path("code").asString()).isEqualTo("MW-VAL-001");
+    assertThat(jdbc.queryForObject("select count(*) from idempotency", Integer.class)).isEqualTo(1); // the payment's only
+  }
+
+  @Test
+  void anAcceptedRefundStoresTheOriginalsPartiesReversed() {
+    String original = completedCheckout(10_000);
+    String refund = refund(original, 4_000, "refund-1");
+
+    JsonNode stored = json.readTree(jdbc.queryForObject(
+        "select request::text from transaction where txn_id = ?::uuid", String.class, refund));
+    assertThat(stored.path("debitParty").path("type").asString()).isEqualTo("WALLET");
+    assertThat(stored.path("debitParty").path("id").asString()).isEqualTo(MERCHANT_WALLET);
+    assertThat(stored.path("debitParty").path("walletType").asString()).isEqualTo("MERCHANT");
+    assertThat(stored.path("creditParty").path("id").asString()).isEqualTo("01711000001");
+    assertThat(stored.path("creditParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+  }
+
+  @Test
   void aWebCheckoutRefundOfAPaymentMadeElsewhereIsRefused() {
     String original = completedCheckout(10_000, "CUSTOMER_APP");
     TxnRequest req = refundRequest(original, MERCHANT, 4_000, "refund-x");
