@@ -21,7 +21,11 @@ public record PartnerInbound(
     Instant receivedAt,
     Payload payload) {
 
-  /** {@code kind} CALLBACK (outcome of an earlier request), REMITTANCE or NPSB_CREDIT. */
+  /**
+   * {@code kind} CALLBACK (outcome of an earlier request), REMITTANCE or NPSB_CREDIT; new inbound money
+   * carries {@code amount} and {@code creditParty} (ticket 119b). The sender's name in {@code
+   * attributes} is for the AML screen only and never stored.
+   */
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Payload(
       String kind,
@@ -29,5 +33,7 @@ public record PartnerInbound(
       String partnerCode,
       String errorCode,
       String txnType,
+      Amount amount,
+      Party creditParty,
       Map<String, String> attributes) {}
 }

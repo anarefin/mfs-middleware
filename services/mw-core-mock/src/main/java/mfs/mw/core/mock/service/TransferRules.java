@@ -108,7 +108,8 @@ class TransferRules {
     if (!credit.active()) {
       return Optional.of(Reason.CREDIT_ACCOUNT_BLOCKED);
     }
-    Optional<Reason> refused = assertions.check(p, credit, txnId);
+    // REMIT_IN (ticket 119b): the partner's money, nobody to authorise it; the wallet checks stay
+    Optional<Reason> refused = p.authorisationRequired() ? assertions.check(p, credit, txnId) : Optional.empty();
     if (refused.isPresent()) {
       return refused;
     }

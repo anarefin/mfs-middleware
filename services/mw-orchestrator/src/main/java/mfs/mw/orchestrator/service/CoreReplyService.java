@@ -117,6 +117,10 @@ public class CoreReplyService {
     boolean needsHold = flows.find(rec.request().txnType()).map(f -> f.needsHold()).orElse(false);
     boolean inbound = flows.find(rec.request().txnType()).map(f -> f.creditsWallet()).orElse(false);
     Optional<SagaEvent> saga = mapper.toSagaEvent(reply, needsHold, inbound);
+    if (saga.isPresent() && saga.get() instanceof SagaEvent.Validated && inbound
+        && flows.find(rec.request().txnType()).flatMap(f -> f.partnerCall()).isEmpty()) {
+      saga = Optional.of(new SagaEvent.CreditValidated()); // REMIT_IN (ticket 119b): no partner to ask
+    }
     if (saga.isPresent() && saga.get() instanceof SagaEvent.CommitRefused && compensate(rec, reply)) {
       saga = Optional.of(new SagaEvent.CommitRefused(true));
     }

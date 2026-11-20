@@ -21,6 +21,7 @@ import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
 import mfs.mw.orchestrator.service.saga.Outcome;
+import mfs.mw.orchestrator.service.saga.RemitInFlow;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
@@ -48,14 +49,16 @@ import org.springframework.transaction.annotation.Transactional;
  * (outcome DENIED, event {@code security.partner_callback_mismatch}).
  *
  * <p>Effectively once: the inbox drops a redelivered {@code inboundId} (the adapter derives it from
- * partner, reference and outcome, so a duplicate callback has the same one). REMITTANCE and
- * NPSB_CREDIT (new inbound money, ticket 23) are not handled yet: logged and dropped.
+ * partner, reference and outcome, so a duplicate callback has the same one). A REMITTANCE of family
+ * remit starts the REMIT_IN transaction ({@link RemitInService}, ticket 119b); NPSB_CREDIT is not
+ * handled yet: logged and dropped.
  */
 @Service
 public class PartnerInboundService {
 
   static final String CONSUMER = "orchestrator.partner-inbound";
   static final String CALLBACK = "CALLBACK";
+  static final String REMITTANCE = "REMITTANCE";
   static final java.util.Set<Outcome> OUTCOMES = java.util.EnumSet.of(Outcome.SUCCESS, Outcome.FAILED, Outcome.PENDING);
 
   private static final Logger log = LoggerFactory.getLogger(PartnerInboundService.class);
@@ -70,6 +73,7 @@ public class PartnerInboundService {
   private final FlowRegistry flows;
   private final PartnerCallRepository partnerCalls;
   private final AddMoneyCardService cards;
+  private final RemitInService remittances;
   private final Clock clock;
 
   public PartnerInboundService(
@@ -83,7 +87,9 @@ public class PartnerInboundService {
       FlowRegistry flows,
       PartnerCallRepository partnerCalls,
       AddMoneyCardService cards,
+      RemitInService remittances,
       Clock clock) {
+    this.remittances = remittances;
     this.cards = cards;
     this.inbox = inbox;
     this.transactions = transactions;
@@ -100,6 +106,11 @@ public class PartnerInboundService {
   @Transactional
   public void handle(PartnerInbound inbound) {
     String kind = inbound.payload() == null ? null : inbound.payload().kind();
+    if (REMITTANCE.equals(kind) && RemitInFlow.REMIT.family().equals(inbound.family())) {
+      // ticket 119b: an accepted inbound remittance starts REMIT_IN once per inboundId (stable per partner reference)
+      inbox.processOnce(CONSUMER, inbound.inboundId(), () -> remittances.accept(inbound));
+      return;
+    }
     if (!CALLBACK.equals(kind)) {
       drop(inbound, "partner.inbound.unsupported", "inbound partner message of a kind not handled yet; dropped");
       return;

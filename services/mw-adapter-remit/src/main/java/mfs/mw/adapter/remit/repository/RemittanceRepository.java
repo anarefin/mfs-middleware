@@ -28,6 +28,17 @@ public class RemittanceRepository {
         == 1;
   }
 
+  /**
+   * The orchestrator's outcome of a remittance (ticket 119b: CREDITED, REJECTED or MANUAL_REVIEW); an
+   * unknown status is ignored. True when a row changed.
+   */
+  public boolean updateStatus(String txnId, String status) {
+    if (!java.util.Set.of("CREDITED", "REJECTED", "MANUAL_REVIEW").contains(status)) {
+      return false;
+    }
+    return jdbc.update("update remittance set status = ? where txn_id = ? and status <> ?", status, txnId, status) == 1;
+  }
+
   public Optional<Stored> find(String partnerId, String partnerRef) {
     return jdbc
         .query(
