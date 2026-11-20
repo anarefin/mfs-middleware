@@ -8,6 +8,7 @@ import { redirect } from "next/navigation";
 import type { CredentialUploadBody, ErrorMapBody, KeyChangeBody, PartnerChangeBody } from "@/lib/admin-api";
 import { CEREMONY_PURPOSE, parseCheckValue, parseComponent, parseKeyId, parsePurpose } from "@/lib/keys";
 import { parseReason, parseTimeouts, parseWalletId } from "@/lib/approvals";
+import { parseRuleForm } from "@/lib/notify-rules";
 import { parseCredentialUpload, parseEndpoint, parseErrorMap, parseMaintenance } from "@/lib/partner-tabs";
 import { parseRouteForm } from "@/lib/partner-route";
 import { adminApi, operatorToken } from "@/lib/server/admin";
@@ -275,6 +276,20 @@ export async function proposeTemplate(key: TemplateKey, _prev: ActionState, form
     body: texts.body!, ...(texts.subject ? { subject: texts.subject } : {}), ...(texts.htmlBody ? { htmlBody: texts.htmlBody } : {}),
     ...(texts.senderId ? { senderId: texts.senderId } : {}), ...(validFrom ? { validFrom } : {}), reason,
   });
+  if (!r.ok) return refused(r);
+  redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
+}
+
+/** Maker: a new version of a notification rule (ticket 133c); mw-notify applies it once approved. */
+export async function proposeNotifyRule(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const parsed = parseRuleForm({
+    ruleId: text(form, "ruleId"), eventType: text(form, "eventType"), outcome: text(form, "outcome"),
+    customerType: text(form, "customerType"), recipient: text(form, "recipient"),
+    channels: form.getAll("channels").filter((c): c is string => typeof c === "string"),
+    templateCode: text(form, "templateCode"), enabled: text(form, "enabled"), reason: text(form, "reason"),
+  });
+  if (!parsed.ok) return invalid(parsed.field, parsed.issue);
+  const r = await adminApi().proposeNotifyRule(await token(), parsed.value.ruleId, parsed.value.body);
   if (!r.ok) return refused(r);
   redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
 }
