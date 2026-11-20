@@ -57,11 +57,20 @@ public class BillPayClient {
 
   @CircuitBreaker(name = "billpay")
   public Bill fetch(String billerCode, String billNumber) {
+    return fetch(billerCode, billNumber, null);
+  }
+
+  /** The bill; {@code billMonth} (YYYYMM, ticket 113b) only for a biller that needs one. */
+  public Bill fetch(String billerCode, String billNumber, String billMonth) {
     String path =
         "/billpay/v1/billers/"
             + URLEncoder.encode(billerCode, StandardCharsets.UTF_8).replace("+", "%20")
             + "/bills/fetch";
-    byte[] body = json.writeValueAsBytes(Map.of("billNumber", billNumber));
+    byte[] body =
+        json.writeValueAsBytes(
+            billMonth == null
+                ? Map.of("billNumber", billNumber)
+                : Map.of("billNumber", billNumber, "billMonth", billMonth));
     HttpRequest req =
         request(path)
             .header("Content-Type", "application/json")

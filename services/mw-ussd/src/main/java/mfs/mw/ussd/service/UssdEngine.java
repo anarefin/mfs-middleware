@@ -538,7 +538,9 @@ public class UssdEngine {
 
   private String render(MenuNode node, UssdSession s, Map<String, String> vars) {
     String lang = s.language();
-    StringBuilder t = new StringBuilder(interpolate(node.text() == null ? "" : node.text().in(lang), s.inputs(), vars));
+    String prompt = billPrompt(node, s);
+    StringBuilder t = new StringBuilder(
+        prompt != null ? prompt : interpolate(node.text() == null ? "" : node.text().in(lang), s.inputs(), vars));
     if (node.type() == NodeType.MENU || node.type() == NodeType.CONFIRM) {
       for (MenuOption o : node.options()) {
         t.append('\n').append(o.key()).append(' ').append(o.label() == null ? "" : o.label().in(lang));
@@ -550,6 +552,25 @@ public class UssdEngine {
       }
     }
     return t.toString();
+  }
+
+  /**
+   * The bill-number INPUT (lookup {@code bill}) asks with the chosen biller's field label from the
+   * catalogue (ticket 113b, FRS FL-05); null (the node's text) when the catalogue has none.
+   */
+  private String billPrompt(MenuNode node, UssdSession s) {
+    if (node.type() != NodeType.INPUT || !Lookups.BILL.equals(node.lookup()) || node.mapping() == null) {
+      return null;
+    }
+    String source = node.mapping().get(Lookups.BILLER_CODE);
+    if (source == null || source.startsWith(LITERAL)) {
+      return null;
+    }
+    try {
+      return lists.billPrompt(s.inputs().get(source), s.language());
+    } catch (RuntimeException e) {
+      return null;
+    }
   }
 
   private static String interpolate(String template, Map<String, String> inputs, Map<String, String> vars) {

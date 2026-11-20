@@ -1,0 +1,42 @@
+# mw-auth-none (ADR D28, ticket 82): no credentials (simulators, partners secured by network only).
+# Called by mw-http-call (auth=none, the default).
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-auth-none
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW auth none
+    description: Adds no credentials. Input and output unchanged.
+    type: object
+    properties:
+      secretField:
+        title: Unused
+        description: Not used by this scheme (mw-http-call passes it to every auth Kamelet).
+        type: string
+        format: password
+        default: ""
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      header:
+        title: Unused
+        description: Not used by this scheme.
+        type: string
+        default: ""
+      keyId:
+        title: Unused
+        description: Not used by this scheme.
+        type: string
+        default: ""
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - removeHeader:
+            name: Authorization

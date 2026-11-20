@@ -269,6 +269,28 @@ class CoreWalletClientTest {
     }
   }
 
+  /** Ticket 116b: a full reversal sends no amount; a merchant refund sends its amount, within the contract. */
+  @Test
+  void aRefundSendsItsAmountAndAFullReversalNone() {
+    String api = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
+    routes.put("POST /core/v1/reversals", ex -> Response.ok("{}"));
+    String original = "0190a7c4-0000-7000-8000-000000000002";
+
+    client.call(new CoreCommand(1, "ReverseTransaction", TXN + ":reverse", TXN, "c", Instant.now(), null,
+        new mfs.mw.orchestrator.dto.ReversePayload(original, Amount.bdt(5_000), Amount.bdt(500), null)));
+    client.call(new CoreCommand(1, "ReverseTransaction", TXN + ":reverse", TXN, "c", Instant.now(), null,
+        new mfs.mw.orchestrator.dto.ReversePayload(original, Amount.bdt(2_000), null, "merchant refund", Amount.bdt(2_000))));
+
+    assertThat(seen).hasSize(2);
+    assertThat(seen.get(0).body().has("amount")).as("whole original").isFalse();
+    assertThat(seen.get(1).body().path("amount").path("valueMinor").asLong()).isEqualTo(2_000);
+    assertThat(seen.get(1).body().path("originalTxnId").asString()).isEqualTo(original);
+    for (Seen s : seen) {
+      assertThat(mfs.mw.orchestrator.contracts.OpenApiSchemas.component(api, "ReversalRequest").validate(s.body()))
+          .as(s.body().toString()).isEmpty();
+    }
+  }
+
   /** Ticket 105: the quote reads (WAL-01, 04, 05), their bodies against the core contract, the id one segment. */
   @Test
   void theQuoteReadsCallTheirEndpointsWithContractBodies() {

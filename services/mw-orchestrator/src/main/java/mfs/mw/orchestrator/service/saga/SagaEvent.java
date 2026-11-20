@@ -157,6 +157,18 @@ public sealed interface SagaEvent {
 
   record ReversalAcknowledged() implements SagaEvent {}
 
+  /**
+   * A merchant refund (ticket 116b), its own transaction record: accepted, so it goes to the core
+   * ({@code POST /reversals} with its amount) under its own txnId.
+   */
+  record RefundStarted() implements SagaEvent {}
+
+  /** The core reversed the refund's amount (or a query reports the refund REVERSED): the refund is COMPLETED. */
+  record RefundConfirmed() implements SagaEvent {}
+
+  /** The core refused the refund (over the remainder, ALREADY_REVERSED, ...): REJECTED, nothing moved. */
+  record RefundRefused() implements SagaEvent {}
+
   record ReversalFailed() implements SagaEvent {}
 
   /**

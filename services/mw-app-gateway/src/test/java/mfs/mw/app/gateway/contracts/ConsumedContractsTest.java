@@ -31,7 +31,29 @@ class ConsumedContractsTest {
 
   /** Per manifest entry: read one sample into the listener's DTO and check what the service uses. */
   static final Map<String, Consumer<String>> READERS =
-      Map.of("events/mw-orchestrator/mw.txn.status.v1.schema.json", ConsumedContractsTest::readStatus);
+      Map.of(
+          "events/mw-orchestrator/mw.txn.status.v1.schema.json", ConsumedContractsTest::readStatus,
+          "events/mw-admin-api/mw.config.changed.v1.schema.json", ConsumedContractsTest::readConfigChange);
+
+  /**
+   * Through the real listener into the real projection (ticket 113b): every sample is read without
+   * an exception; a BILLER upsert lands in the catalogue with its fields.
+   */
+  static void readConfigChange(String json) {
+    mfs.mw.app.gateway.service.BillerCatalog catalog = new mfs.mw.app.gateway.service.BillerCatalog();
+    mfs.mw.app.gateway.dto.ConfigChangedEvent e = JSON.readValue(json, mfs.mw.app.gateway.dto.ConfigChangedEvent.class);
+    assertThat(e.configKey()).isNotBlank();
+    new mfs.mw.app.gateway.messaging.BillerCatalogKafkaListener(catalog, JSON).onRecord(
+        new org.apache.kafka.clients.consumer.ConsumerRecord<>("mw.config.changed.v1", 0, 0L, e.configKey(), json));
+    if (e.configType() == mfs.mw.app.gateway.dto.ConfigChangedEvent.ConfigType.BILLER
+        && e.change() == mfs.mw.app.gateway.dto.ConfigChangedEvent.Change.UPSERT) {
+      String code = e.configKey().substring(e.configKey().indexOf('/') + 1);
+      assertThat(catalog.find(code)).hasValueSatisfying(b -> {
+        assertThat(b.partnerId()).isNotBlank();
+        assertThat(b.fields()).isNotEmpty();
+      });
+    }
+  }
 
   static void readStatus(String json) {
     StatusMessage status = JSON.readValue(json, StatusMessage.class);

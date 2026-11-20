@@ -287,7 +287,10 @@ mw:
         - { value: teletalk, label: { bn: টেলিটক, en: Teletalk } }
     # Labels of the DYNAMIC source biller-categories (service/DynamicLists), by the category code of
     # mw-adapter-billpay's catalogue; the order on the handset is fixed in DynamicLists.CATEGORY_ORDER.
+    # Ticket 113b: mw-admin-api's catalogue has the categories UTILITY and OTHER.
     biller-categories:
+      UTILITY: { bn: ইউটিলিটি, en: Utility }
+      OTHER: { bn: অন্যান্য, en: Other }
       ELECTRICITY: { bn: বিদ্যুৎ, en: Electricity }
       WATER: { bn: পানি, en: Water }
       GAS: { bn: গ্যাস, en: Gas }

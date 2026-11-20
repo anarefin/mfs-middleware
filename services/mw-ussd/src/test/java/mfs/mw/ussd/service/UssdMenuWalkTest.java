@@ -61,10 +61,11 @@ class UssdMenuWalkTest {
 
     final List<String> fetched = new ArrayList<>();
     RuntimeException failure;
+    List<Biller> catalogue = TEN;
 
     @Override
     public List<Biller> billers() {
-      return TEN;
+      return catalogue;
     }
 
     @Override
@@ -305,6 +306,42 @@ class UssdMenuWalkTest {
         .containsEntry("partnerId", "billagg")
         .containsEntry("billerCode", "DESCO");
     assertThat(req.menuPath()).isEqualTo("main:4>bp.category:1>bp.biller:2>bp.number>bp.confirm:1>bp.pin");
+  }
+
+  /** DESCO as mw-admin-api's catalogue publishes it (ticket 113b): a field label, maybe disabled. */
+  static List<Biller> catalogueWithDesco(boolean enabled) {
+    List<Biller> out = new ArrayList<>(FakeBills.TEN);
+    out.replaceAll(b -> !b.code().equals("DESCO") ? b : new Biller("DESCO", "Dhaka Electric Supply Company",
+        "ELECTRICITY", "billagg", "ডেসকো",
+        List.of(new Biller.Field("accountNo", "Account number", "হিসাব নম্বর", "^[0-9]{8,12}$", true)),
+        enabled, enabled ? null : "DESCO is under maintenance", enabled ? null : "ডেসকো রক্ষণাবেক্ষণে আছে", true));
+    return out;
+  }
+
+  @Test
+  void theBillNumberIsAskedWithTheCataloguesFieldLabelAndTheFetchedBillIsKept() {
+    bills.catalogue = catalogueWithDesco(true);
+    dial("c1");
+    send("c1", "4");
+    send("c1", "1");
+    assertThat(send("c1", "2").text()).isEqualTo("হিসাব নম্বর দিন");
+    assertThat(send("c1", "12345678").text())
+        .isEqualTo("DESCO বিল 12345678: 667.00 টাকা, ফি 3.00?\n1 নিশ্চিত করুন\n2 বাতিল");
+    send("c1", "1");
+    send("c1", "48261");
+    FlowRequest req = flow.requests.getFirst();
+    assertThat(req.session().inputs()).containsEntry("billOutstandingMinor", "66700");
+  }
+
+  @Test
+  void aDisabledBillerAnswersItsMaintenanceTextWithoutAFetch() {
+    bills.catalogue = catalogueWithDesco(false);
+    dial("c2");
+    send("c2", "4");
+    send("c2", "1");
+    send("c2", "2");
+    assertThat(send("c2", "12345678").text()).isEqualTo("ডেসকো রক্ষণাবেক্ষণে আছে\nহিসাব নম্বর দিন");
+    assertThat(bills.fetched).isEmpty();
   }
 
   @Test

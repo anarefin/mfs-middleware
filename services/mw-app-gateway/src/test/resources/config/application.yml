@@ -1,5 +1,9 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
 mw:
+  biller-catalog:
+    consumer:
+      # Off in tests like the status consumers; BillerProjectionIT switches it on.
+      enabled: false
   app-gateway:
     # Off by default in tests: status consumers left running in a cached context would take
     # records another test is checking. Tests that need them switch them on.

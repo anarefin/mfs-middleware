@@ -32,6 +32,8 @@ public final class SagaMachine {
             // BALANCE (ADR D26): VALIDATING waits for the BalanceInquiry answer (no new status)
             case BalanceInquiryStarted e -> go(from, Status.VALIDATING, Effect.SEND_BALANCE_INQUIRY);
             case RequestRejected e -> go(from, Status.REJECTED, Effect.NONE);
+            // a merchant refund (ticket 116b) is its own record: straight to the core reversal
+            case RefundStarted e -> go(from, Status.REVERSING, Effect.SEND_REVERSE);
             default -> null;
           };
       case VALIDATING ->
@@ -117,6 +119,9 @@ public final class SagaMachine {
           switch (event) {
             case ReversalAcknowledged e -> go(from, Status.REVERSED, Effect.NONE);
             case ReversalFailed e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
+            // the refund record itself (ticket 116b): done, or refused with nothing moved
+            case RefundConfirmed e -> go(from, Status.COMPLETED, Effect.NONE);
+            case RefundRefused e -> go(from, Status.REJECTED, Effect.NONE);
             case DeadlineExpired e -> go(from, Status.REVERSING, Effect.SEND_REVERSE);
             case ReversalResendsStopped e -> go(from, Status.REVERSING, Effect.NONE);
             case ReversalUnconfirmed e -> go(from, Status.REVERSING, Effect.SEND_REVERSAL_QUERY);
@@ -156,6 +161,8 @@ public final class SagaMachine {
             // (TransactionReversed answers a ReverseTransaction only): the core's truth wins
             case ReversalAcknowledged e -> go(from, Status.REVERSED, Effect.NONE);
             case ReversalQueryResult e when e.reversed() -> go(from, Status.REVERSED, Effect.NONE);
+            // a refund handed over unconfirmed that the core did book (ticket 116b)
+            case RefundConfirmed e -> go(from, Status.COMPLETED, Effect.NONE);
             default -> null;
           };
       case FAILED, REJECTED, REVERSED -> null;

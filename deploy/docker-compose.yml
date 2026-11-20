@@ -34,7 +34,7 @@
 # ops = Keycloak, Vault, APISIX Admin API callers. ops has a fixed subnet (MW_OPS_SUBNET)
 # because the APISIX Admin API only accepts callers from it. etcd sits alone on the internal
 # `etcd` network with APISIX (and its init step). Host ports (dev stack, BitsPay pattern; ADR D3
-# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8098), the
+# amendment): APISIX on 443 -> 9443 (MW_HTTPS_PORT) is the edge; every mw-* service (8081-8099), the
 # two consoles (3000, 3001) and the platform (postgres 5432, redis 6379, kafka 9094, keycloak 8180,
 # vault 8200, greenmail 8025 / 3025, softhsm 5657 / 5658) also publish a port on 127.0.0.1 only
 # (MW_PORT_<NAME> moves one). The direct ports skip the edge policies (JWT, HMAC, quotas) and are for poking at one
@@ -78,7 +78,7 @@
 #   KAFKA_MEM (576M)            kafka                469  (KAFKA_HEAP (256m) fixed heap; 1 partition per topic, MW_KAFKA_PARTITIONS)
 #   KEYCLOAK_MEM (608M)         keycloak             483  (heap 128..384m)
 #   APISIX_MEM (384M)           apisix               290, 368*
-#   POSTGRES_MEM (320M)         postgres             140, 274*  (shared_buffers 64MB, max_connections 100; pools total 42)
+#   POSTGRES_MEM (320M)         postgres             140, 274*  (shared_buffers 64MB, max_connections 120; pools total 57 + audit-dw 5 + keycloak 20)
 #   GREENMAIL_MEM (160M)        greenmail            125  (heap 96m)
 #   VAULT_MEM (128M)            vault                 95
 #   SOFTHSM_MEM (48M)           softhsm               new (ticket 61): socat + one p11-kit remote per client
@@ -199,6 +199,7 @@ volumes:
   adapter-billpay-approle:
   adapter-bank-approle:
   adapter-merchant-approle:
+  adapter-card-approle:
   orchestrator-approle:
   audit-dw-approle:
   data-export-approle:
@@ -312,15 +313,15 @@ services:
     # One shared dev instance serves Keycloak and every service's pool. max_connections sizing
     # (sum of the worst case, one replica each; keep it below max_connections minus the 3
     # superuser_reserved_connections when a pool or a replica is added): the dev stack caps each
-    # service's Hikari pool (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE below: 2-4, 42 in all with
-    # audit-dw's extra pools and Keycloak's 20), so 100 leaves room for psql sessions and the provision one-shot.
+    # service's Hikari pool (SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE below: 2-4, 57 in all, 62 with
+    # audit-dw's extra pools, plus Keycloak's 20; ticket 118 raised it from 100 for mw-adapter-card), so 120 leaves room for psql sessions and the provision one-shot.
     # Production sizes max_connections per instance (pool x replicas, summed).
     command:
       - postgres
       - -c
       - synchronous_commit=on
       - -c
-      - max_connections=100
+      - max_connections=120
       - -c
       - shared_buffers=64MB
       - -c
@@ -720,6 +721,7 @@ services:
       BILLAGG_WS_PASSWORD: ${BILLAGG_WS_PASSWORD:?cp dev.env.defaults .env}
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
       MERCHANT_SOAP_WS_PASSWORD: ${MERCHANT_SOAP_WS_PASSWORD:?cp dev.env.defaults .env}
+      CYBERSOURCE_HMAC_SECRET: ${CYBERSOURCE_HMAC_SECRET:?cp dev.env.defaults .env}
       PUSH_API_KEY: ${PUSH_API_KEY:?cp dev.env.defaults .env}
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
@@ -764,6 +766,7 @@ services:
       - adapter-billpay-approle:/out/adapter-billpay
       - adapter-bank-approle:/out/adapter-bank
       - adapter-merchant-approle:/out/adapter-merchant
+      - adapter-card-approle:/out/adapter-card
       - portal-api-approle:/out/portal-api
       - checkout-approle:/out/checkout
     deploy:
@@ -1309,6 +1312,32 @@ services:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
 
+  # Card acquiring adapter (ticket 118, FRS UC-13 / EXT-14 / FL-07): CyberSource-style hosted page session,
+  # authorise + capture, status and refund; tokens only, card data never reaches the middleware.
+  mw-adapter-card:
+    <<: *app
+    profiles: *core
+    ports:
+      - "127.0.0.1:${MW_PORT_ADAPTER_CARD:-8099}:8080"
+    image: mfs-mw/mw-adapter-card:local
+    build: { context: ../services/mw-adapter-card, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+    volumes:
+      - adapter-card-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "2"
+      # Card acquirer endpoint; the MVP stack targets mw-simulators (CyberSourceMock, /cybersource/v1/*).
+      CYBERSOURCE_BASE_URL: ${CYBERSOURCE_BASE_URL:-http://mw-simulators:8080}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
+      MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
+      # mw-recon: data lines per reconciliation file (a longer file moves to .error).
+      MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
+
   # Organisation portal API and bulk disbursement (spec 8.2, 9.4).
   mw-portal-api:
     <<: *app
@@ -1544,6 +1573,7 @@ services:
       mw-adapter-billpay: { condition: service_healthy }
       mw-adapter-bank: { condition: service_healthy }
       mw-adapter-merchant: { condition: service_healthy }
+      mw-adapter-card: { condition: service_healthy }
       mw-checkout: { condition: service_healthy }
       mw-portal-api: { condition: service_healthy }
     volumes:

@@ -469,7 +469,11 @@
     send(p) { return http('POST', '/app/v1/transactions', { headers: p.headers, raw: p.body }); },
     async status(user, txnId) { return http('GET', '/app/v1/transactions/' + txnId, { headers: await app.headers(user) }); },
     async billers(user) { return http('GET', '/app/v1/billers', { headers: await app.headers(user) }); },
-    async fetchBill(user, biller, bill) { return http('POST', '/app/v1/billers/' + biller + '/fetch-bill', { headers: await app.headers(user), json: { billNumber: bill } }); },
+    // billMonth (YYYYMM, ticket 113b) for a catalogue biller that needs one (DESCO, KGDCL, ...)
+    async fetchBill(user, biller, bill, billMonth) {
+      const json = billMonth ? { billNumber: bill, billMonth } : { billNumber: bill };
+      return http('POST', '/app/v1/billers/' + biller + '/fetch-bill', { headers: await app.headers(user), json });
+    },
     async collections(user) { return http('GET', '/app/v1/merchant/collections', { headers: await app.headers(user) }); },
     // the push device token (ticket 110): PUT /app/v1/notifications/push-token, session level
     async pushToken(user, token, platform) {
