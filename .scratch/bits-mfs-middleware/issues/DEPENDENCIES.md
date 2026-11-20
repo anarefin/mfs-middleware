@@ -145,8 +145,8 @@
 126-mw-recon-matching                       123,95            done     -        150 files, +10903 −38  62f06496
 127-mw-recon-reports                        126               split (127-split-decisions.md, 2026-11-20)
 127a-recon-reports-queue                    126               done     18m      24 files +1281 −11     9ac2723a,aaf3660d
-127b-recon-exception-actions                127a              in progress (started 15:45)
-127c-trust-job-suite                        127b              open
+127b-recon-exception-actions                127a              done     34m      62 files +2139 −41     29d8922b,da80afa9  (recon /internal needs mw-admin-api service JWT; open: post-approval recon call not retried; FORCE_COMMIT that fails stays ACTIONED; data-export DW schema needs txnId)
+127c-trust-job-suite                        127b              in progress
 128-mw-data-export                          123               done     -        189 files +12102 −46   9a1ccad6
 129-portal-bulk-sp                          95,116            open
 130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f
