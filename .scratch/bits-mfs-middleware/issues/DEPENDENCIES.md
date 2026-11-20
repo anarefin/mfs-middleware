@@ -72,8 +72,11 @@
 95b-auth-admin-core-rest-retire-topics      95a               open
 95c-hold-expired-wallet-state               95a,94            open
 97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
-96-orchestrator-saga-frs                    95,97             open
-98-routing-module                           96,97             open
+96-orchestrator-saga-frs                    95,97             split (96-split-decisions.md, 2026-11-20)
+96a-inquiry-schedule-ops-alert              95a,97            open
+96b-partner-reverse-refused-commit          96a               open
+96c-partner-leg-reversal-folder30           96b               open
+98-routing-module                           96a,97             open
 99-idempotency-duplicates-replay            89                done     110m     95 files +2601 −110    e3d9c7c6,45ffe6a3
 100-edge-client-registry                    90,91,99          split (100-split-decisions.md, 2026-11-20)
 100a-client-registry-apisix-sync            90,91,99          done     30m      61 files +2570 −36     cd3d58ea
@@ -82,7 +85,7 @@
 101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
 102-mock-control-engine                     89                done (102a b8f2d843; 102b 33m 49 files +1774 −467 aacc96ef)
 103-mock-control-core-and-reset             102,94            done     120m     90 files +3425 −249    8c4ed022
-104-frs-e2e-harness                         96,98,103         open
+104-frs-e2e-harness                         96a,98,103         open
 # --- M7 gate: P2P T1-T12 via the app API; clean build; fresh-stack API suite
 105-app-preview-confirm                     95                open
 106-app-types-b2b                           94,105            open
