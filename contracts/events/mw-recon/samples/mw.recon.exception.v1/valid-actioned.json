@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "eventId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4a5b",
+  "exceptionId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4a6c",
+  "state": "ACTIONED",
+  "exceptionClass": "STATUS_MISMATCH",
+  "detail": "LEDGER_MISSING",
+  "owner": "ops",
+  "partnerId": "trust-bank",
+  "txnId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4a7d",
+  "amountMinor": 150000,
+  "statementRef": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4a7d",
+  "action": "FORCE_COMMIT",
+  "changeRequestId": "0193a1b2-3c4d-7e5f-8a9b-0c1d2e3f4a8e",
+  "actor": "seed-ops-checker",
+  "detectedAt": "2026-11-19T20:15:00Z",
+  "changedAt": "2026-11-20T09:30:00Z",
+  "correlationId": "corr-recon-1"
+}

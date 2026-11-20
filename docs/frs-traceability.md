@@ -154,7 +154,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |
 | `UC-21` AML | ticket 125 |
-| `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports and the exception queue remain ticket 127 |
+| `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports, the exception queue and its maker-checker actions done (tickets 127, 127b); the trust position job and the API suite folder remain 127c |
 
 ## 3. Common platform (FRS 3)
 
@@ -321,7 +321,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | REC-02 | done | adapters publish `mw.partner.recon.v1` (D28); `mw-recon` consumes it (ticket 126) |
 | REC-03 | done | matching with a poisha tolerance and a date window (`MatchingServiceTest`, ticket 126) |
 | REC-04 | done | classes MATCHED, MISSING_IN_PARTNER, MISSING_IN_UPAY, AMOUNT_MISMATCH, STATUS_MISMATCH (`ReconMatchingIT`, ticket 126) |
-| REC-05 | tickets 127, 134 | exception work queue read and explain API built (ticket 127: `GET /internal/v1/recon/exceptions`, suggested action, `POST .../explanations`, `ReconReportsIT`); the `RECON_EXCEPTION` maker-checker action in mw-admin-api and `mw.recon.exception.v1` remain ticket 127 (follow-up); console 134 |
+| REC-05 | tickets 127, 134 | exception work queue read and explain API built (ticket 127: `GET /internal/v1/recon/exceptions`, suggested action, `POST .../explanations`, `ReconReportsIT`); the `recon_exception` maker-checker action in mw-admin-api (FORCE_COMMIT / REVERSE through the ticket 37 paths, recon-maker / recon-checker) and ACTIONED / RESOLVED in mw-recon built (ticket 127b, `ExceptionActionIT` in both); console 134 |
 | REC-06 | tickets 127, 134 | reports built (ticket 127): `GET /internal/v1/recon/reports` CSV, XLSX, PDF, daily report stored in `recon.report` (`ReportServiceTest`); console download 134 |
 | REC-07 | ticket 127 | trust position computed and stored with an `AMOUNT_MISMATCH`/`TRUST_POSITION` exception on a gap (`TrustPositionService`, `TrustPositionTest`, ticket 127); the scheduled job waits for a core e-money total endpoint (ticket 127 follow-up) |
 | REC-08 | done | file register, filename plus sha256, processed once (`FileRegisterIT`, ticket 126) |
@@ -335,7 +335,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | AUD-03 | done | search by txnId, actor, action, resource, outcome, time, and (ticket 130) partner, channel, status, amount range, MSISDN (TOKENISE_MSISDN token) via `audit.txn_index`; 3 s over 30 days proven by `AuditSearchPerfIT` (`slow-wait`) |
 | AUD-04 | ticket 135 | `GET /internal/v1/audit/transactions/{txnId}/timeline`: hops in order with latency, gaps and masked payloads (`TimelineIT`); mw-admin-api transaction detail does not call it yet (UI ticket 135) |
 | AUD-05 | done | `GET /internal/v1/audit/search/export.csv` with a row cap; every export writes an `audit.search.exported` operator-action record into the chain (`ExportAuditedIT`) |
-| DAT-01 | deviation | JSON Schema in Git, no schema registry (M9, D10, D31): the FRS allows JSON Schema; the registry is not run. `dw.*` topics are in `contracts/events/mw-data-export/` (ticket 128). The `recon.exception` schema is ticket 127 |
+| DAT-01 | deviation | JSON Schema in Git, no schema registry (M9, D10, D31): the FRS allows JSON Schema; the registry is not run. `dw.*` topics are in `contracts/events/mw-data-export/` (ticket 128). `recon.exception` is `contracts/events/mw-recon/mw.recon.exception.v1.schema.json` (ticket 127b; consumers mw-audit-dw, mw-data-export) |
 | DAT-02 | done | daily DW batch: Kafka stream and the SFTP drop (`DwStreamIT`, `DwDailyExportIT`) |
 | DAT-03 | done | PII policy deny-by-default, tokenise through mw-crypto (`PiiPolicyTest`) |
 | DAT-04 | done | retention per data type on the saga and the audit projection; archival of the batch facts (`ArchivalIT`) |

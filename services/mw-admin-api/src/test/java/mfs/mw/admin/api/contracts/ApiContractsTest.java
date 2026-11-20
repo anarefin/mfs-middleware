@@ -101,6 +101,24 @@ class ApiContractsTest {
     assertThat(served.validate(noTrail)).isNotEmpty();
   }
 
+  /** Ticket 127b: mw-recon's exception (recon.v1 ReconException) reads into the client type. */
+  @Test
+  void aContractShapedReconExceptionReadsIntoTheClientType() {
+    String exc = "{\"id\":\"0196a1b2-0000-7000-8000-00000127b001\",\"reconClass\":\"STATUS_MISMATCH\","
+        + "\"detail\":\"LEDGER_MISSING\",\"owner\":\"ops\",\"partnerId\":\"billagg\",\"txnId\":\"" + TXN_ID + "\","
+        + "\"partnerRef\":null,\"reference\":null,\"fileAmountMinor\":null,\"upayAmountMinor\":5000,"
+        + "\"ledgerAmountMinor\":null,\"state\":\"ACTIONED\",\"createdAt\":\"2026-11-19T20:00:00Z\",\"ageHours\":14,"
+        + "\"suggestedAction\":\"FORCE_COMPLETE\",\"explanation\":null,\"explainedBy\":null,\"explainedAt\":null,"
+        + "\"action\":\"FORCE_COMMIT\",\"changeRequestId\":\"0196a1b2-0000-7000-8000-00000127b002\","
+        + "\"actionedBy\":\"recon-checker01\"}";
+    assertThat(OpenApiSchemas.component("api/mw-recon/recon.v1.openapi.yaml", "ReconException")
+        .validate(JSON.readTree(exc))).isEmpty();
+    mfs.mw.admin.api.dto.ReconExceptionView v = JSON.readValue(exc, mfs.mw.admin.api.dto.ReconExceptionView.class);
+    assertThat(v.txnId()).isEqualTo(TXN_ID);
+    assertThat(v.actionable()).isFalse();
+    assertThat(v.changeRequestId()).isEqualTo("0196a1b2-0000-7000-8000-00000127b002");
+  }
+
   /** Ticket 75: mw-crypto's key page and ceremony read into the client types; the keys are served as admin.v1. */
   @Test
   void contractShapedKeyAndCeremonyAnswersReadIntoTheClientTypes() {
