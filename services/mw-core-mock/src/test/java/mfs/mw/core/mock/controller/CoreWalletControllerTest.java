@@ -103,7 +103,7 @@ class CoreWalletControllerTest {
 
   @Test
   void aClientThatMayNotCallIs403() {
-    assertThat(mvc.get().uri("/core/v1/balance/01711000001").header("Authorization", InternalTokens.bearer("mw-portal-api")))
+    assertThat(mvc.get().uri("/core/v1/balance/01711000001").header("Authorization", InternalTokens.bearer("mw-notify")))
         .hasStatus(403).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
     verifyNoInteractions(service);
   }

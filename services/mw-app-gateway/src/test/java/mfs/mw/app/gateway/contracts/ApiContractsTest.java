@@ -355,6 +355,19 @@ class ApiContractsTest {
   }
 
   @Test
+  void theAtmTokenIssueMatchesMwAuthsContractAndTheAppAnswerMatchesTheAppContract() {
+    assertValid(OpenApiSchemas.component(AUTH_API, "AtmTokenRequest"), new mfs.mw.app.gateway.dto.AtmTokenIssue(
+        "01711000001", "CUSTOMER_APP", "device-0001", 200_000L, "BDT", "key-1", "aaa.bbb.ccc"));
+    String issued = "{\"token\":\"123456\",\"expiresAt\":\"2026-11-20T12:10:00Z\"}";
+    assertThat(OpenApiSchemas.component(AUTH_API, "AtmTokenIssued").validate(JSON.readTree(issued))).isEmpty();
+    var view = JSON.readValue(issued, mfs.mw.app.gateway.dto.AtmTokenView.class).withAmount(new Amount(200_000L, "BDT"));
+    assertValid(OpenApiSchemas.component(APP_API, "AtmToken"), view);
+    assertThat(OpenApiSchemas.component(APP_API, "AtmTokenRequest").validate(JSON.readTree(
+        "{\"amount\":{\"valueMinor\":200000,\"currency\":\"BDT\"},"
+            + "\"encryptedPin\":{\"keyId\":\"PIN_TRANSPORT.v1\",\"ciphertext\":\"b3BhcXVl\"}}"))).isEmpty();
+  }
+
+  @Test
   void aContractShapedLiveSessionDeserialises() {
     String answer = "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300,\"deviceKeyFingerprint\":\"abababababababababababababababababababababababababababababababab\",\"boundAt\":\"2026-11-14T06:00:00Z\",\"bindingEpoch\":42}";
     assertThat(OpenApiSchemas.component(AUTH_API, "LiveSession").validate(JSON.readTree(answer))).isEmpty();

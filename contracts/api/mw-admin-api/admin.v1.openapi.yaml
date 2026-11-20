@@ -1022,6 +1022,58 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /admin/v1/ussd/menus/preview:
+    post:
+      operationId: previewUssdMenu
+      summary: Check a draft USSD menu tree and walk it screen by screen (no session, nothing stored)
+      description: >-
+        Roles `ops-maker`, `ops-checker` (ticket 133b, FRS ADM-06, CH-USSD-06). The tree (mw-ussd's
+        menu JSON, as for a proposal) is checked by the same rules as a proposal first: a problem is
+        400 MW-VAL-040 with one `details` entry per problem (field `menu`); an MNO not in the
+        console's list is 400 MW-VAL-040 (field `mno`). A valid tree is then walked as mw-ussd shows
+        it on that MNO: the screen of the dial, then one screen per answer of `inputs` (answers after
+        the session ended are ignored), paged at the MNO's limits (GSM-7 182 / UCS-2 70 characters by
+        default; PAGE adds the `more` line, default `0. Next`, and `00. Back`; TRUNCATE cuts). `0`
+        shows the next page, `00` the previous page, else the previous node. No flow, lookup or core
+        call runs: an ACTION resolves to `outcome` (default COMPLETED, TxnID `PREVIEW-TXN`), a DYNAMIC
+        list shows two samples, a `pin` or `regex` input accepts any answer. A PIN answer is echoed
+        as `****`. `shortCode` and `rootMenuId` are what the MNO dials and the menu it opens
+        (`mw.content.ussd.<mno>`, kept aligned with mw-ussd's short-code table).
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [menu, mno]
+              additionalProperties: false
+              properties:
+                menu:
+                  type: object
+                  required: [start, messages, nodes]
+                  properties:
+                    start: { type: string, minLength: 1 }
+                    messages: { type: object }
+                    nodes: { type: object, minProperties: 1 }
+                menuId: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,31}$", description: The menu the tree is a draft of (default main) }
+                mno: { type: string, minLength: 1, maxLength: 16 }
+                language: { type: string, enum: [bn, en], description: The session language (default bn) }
+                inputs:
+                  type: array
+                  maxItems: 50
+                  items: { type: string, maxLength: 64 }
+                outcome: { type: string, enum: [COMPLETED, FAILED, PROCESSING] }
+      responses:
+        "200":
+          description: The screens of the walk
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UssdMenuPreview" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
   /admin/v1/notify-campaigns:
     post:
       operationId: proposeNotifyCampaign
@@ -1450,6 +1502,27 @@ components:
         createdAt: { type: string, format: date-time }
         decidedAt: { type: string, format: date-time }
         value: { type: object }
+    UssdMenuPreview:
+      type: object
+      description: A draft menu walked as mw-ussd shows it on one MNO (ticket 133b).
+      required: [menuId, mno, shortCode, rootMenuId, language, screens]
+      properties:
+        menuId: { type: string }
+        mno: { type: string }
+        shortCode: { type: string, description: The code the MNO dials }
+        rootMenuId: { type: string, description: The menu that code opens }
+        language: { type: string, enum: [bn, en] }
+        screens:
+          type: array
+          items:
+            type: object
+            required: [screen, page, pages, ended]
+            properties:
+              input: { type: [string, "null"], description: The answer that led here (null for the dial; a PIN as ****) }
+              screen: { type: string }
+              page: { type: integer, minimum: 0 }
+              pages: { type: integer, minimum: 1 }
+              ended: { type: boolean }
     ContentVersionPage:
       type: object
       required: [items, limit, offset]

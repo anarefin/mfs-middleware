@@ -109,7 +109,8 @@ class OperationAuthzTest {
   @BeforeEach
   void keys() {
     for (String purpose : List.of("PIN_TRANSPORT", "PIN_HMAC", "JWT_SIGN", "ASSERTION_SIGN", "AUDIT_ANCHOR_SIGN",
-        "TOKENISE_MSISDN", "TOKENISE_NID", "TOKENISE_ACCOUNT", "KEK_COLUMN", "KEK_FILE", "HMAC_WEBHOOK")) {
+        "TOKENISE_MSISDN", "TOKENISE_NID", "TOKENISE_ACCOUNT", "KEK_COLUMN", "KEK_FILE", "HMAC_WEBHOOK",
+        "HMAC_ATMTOKEN")) {
       KeyPurpose p = KeyPurpose.parse(purpose);
       String keyId = p.defaultKeyId();
       rows.add(new CryptoKey(keyId, 1, purpose, p.algorithm().name(), "pkcs11", keyId + ".v1", KeyState.ACTIVE,
@@ -214,5 +215,19 @@ class OperationAuthzTest {
         .hasStatusOk();
     forbidden(post(COMPLIANCE, "/internal/v1/envelope/encrypt", "{\"purpose\":\"KEK_FILE\",\"plaintext\":\"AAAA\"}"));
     forbidden(post(COMPLIANCE, "/internal/v1/jws/sign", "{\"purpose\":\"JWT_SIGN\",\"payload\":{}}"));
+  }
+
+  @Test
+  void theAtmTokenHmacIsForMwAuthOnly() throws Exception {
+    String sign = "{\"keyId\":\"hmac-atmtoken\",\"data\":\"AAAA\"}";
+    MvcTestResult mac = post(AUTH, "/internal/v1/hmac/sign", sign);
+    assertThat(mac).hasStatusOk();
+    String verify = "{\"keyId\":\"hmac-atmtoken.v1\",\"data\":\"AAAA\",\"mac\":\""
+        + JSON.readTree(mac.getResponse().getContentAsString()).get("mac").asString() + "\"}";
+    MvcTestResult ok = post(AUTH, "/internal/v1/hmac/verify", verify);
+    assertThat(ok).hasStatusOk();
+    assertThat(JSON.readTree(ok.getResponse().getContentAsString()).get("valid").asBoolean()).isTrue();
+    forbidden(post(ADMIN, "/internal/v1/hmac/sign", sign));
+    forbidden(post(AUDIT, "/internal/v1/hmac/verify", verify));
   }
 }

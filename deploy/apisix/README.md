@@ -185,6 +185,11 @@ Route `partner-cybersource-callback` (`/partner/cybersource/callback/*`, POST on
 `mw-adapter-card:8080`: the same four rules (own `limit-count` group); the card acquirer's 3-D Secure
 webhook after the hosted page (session id and transient token only, never card data), verified by
 mw-adapter-card (hmac-sha256 + nonce).
+Route `partner-npsb-inbound` (`/partner/v1/npsb/inbound`, POST only, ticket 121b) ->
+`mw-adapter-interop:8080`: the same rules (body cap 64 KiB, own `limit-count` group); the NPSB switch's
+signed ISO 20022 pacs.008. No HMAC: the message carries an XML-DSig signature that mw-adapter-interop
+verifies through mw-crypto under the switch's certificate (401 `MW-PTR-NPSB-SIGNATURE`). The edge has
+no client-certificate check yet, so mTLS from the switch comes with the edge mTLS work (open item).
 Route `partner-remit-v1` (`GET|POST /remit/v1/*`, ticket 119b, M9 review) -> `mw-adapter-remit:8080`: the
 same four rules (own `limit-count` group); UCB IMT's inbound remittance API (`POST /remit/v1/credits`, `GET
 /remit/v1/credits/{partnerRef}`), verified by mw-adapter-remit (hmac-sha256 over method, path, `X-Timestamp`,

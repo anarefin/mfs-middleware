@@ -30,7 +30,8 @@ public record AggregatorProfile(
     HMAC_KEY_ID,
     OAUTH2_CC,
     WS_SECURITY,
-    BASIC
+    BASIC,
+    API_KEY
   }
 
   public String field(String name) {
@@ -58,7 +59,10 @@ public record AggregatorProfile(
     return Map.of("unpaid", unpaid, "paid", paid, "pending", pending, "failed", failed, "reversed", reversed);
   }
 
-  /** The four aggregators of ticket 114. */
+  /**
+   * The four aggregators of ticket 114, and {@code samplebiller} (ticket 136): the biller of the sample
+   * connector {@code deploy/partner-routes/examples/sample-rest-biller.yaml}, plain camelCase with an API key.
+   */
   public static final List<AggregatorProfile> ALL = List.of(
       new AggregatorProfile("sslcommerz", Protocol.REST, Auth.HMAC_KEY_ID, null, null,
           Map.ofEntries(Map.entry("billerCode", "biller_code"), Map.entry("billNumber", "bill_no"),
@@ -84,5 +88,9 @@ public record AggregatorProfile(
               Map.entry("reference", "ref"), Map.entry("paymentRef", "rcpt"), Map.entry("reversalId", "rev_ref"),
               Map.entry("reversalRef", "rev_rcpt"), Map.entry("code", "err"), Map.entry("message", "msg")),
           words("OPEN", "DONE", "WAIT", "FAIL", "VOID"),
-          codes("X0", "1", "2", "3", "4", "5", "6")));
+          codes("X0", "1", "2", "3", "4", "5", "6")),
+      new AggregatorProfile("samplebiller", Protocol.REST, Auth.API_KEY, null, null,
+          Map.of("period", "billPeriod", "reference", "transactionId", "paymentRef", "receipt"),
+          words("DUE", "PAID", "PENDING", "FAILED", "REVERSED"),
+          codes("SB0", "1", "2", "3", "4", "5", "6")));
 }

@@ -75,6 +75,8 @@ public class CoreWalletService {
   static final String REST_OP = ":rest:";
   /** Callers that read any wallet's balance without the customer's assertion (ops, ticket 95a). */
   static final java.util.Set<String> OPS_READERS = java.util.Set.of("mw-admin-api", "mw-auth");
+  /** Callers that read an organisation's wallet without an assertion (ticket 129c: the bulk balance check). */
+  static final java.util.Set<String> ORG_READERS = java.util.Set.of("mw-portal-api");
 
   private final CoreCommandService core;
   private final StatusOperations status;
@@ -156,14 +158,16 @@ public class CoreWalletService {
    * WAL-03 with the customer's authorisation (ticket 95a, ADR D26): with an assertion, the BALANCE
    * check's BalanceInquiry under {@code <txnId>:rest:balance} (assertion and jti checked, wallet ACTIVE,
    * idempotent, faults applied), {@code available} as that inquiry reported it. Without one, a plain
-   * read, allowed for ops callers ({@link #OPS_READERS}) and system wallets only: the orchestrator reads a
+   * read, allowed for ops callers ({@link #OPS_READERS}), system wallets and, for {@link #ORG_READERS},
+   * organisation wallets only: the orchestrator reads a
    * customer's balance for the customer, so it is 401 {@code MW-AUTH-046} there.
    */
   @Transactional(noRollbackFor = MwException.class)
   public BalanceView balance(String walletId, BalanceRead read) {
     if (read.assertion() == null || read.assertion().isBlank()) {
       Wallet w = wallet(walletId);
-      if (!OPS_READERS.contains(read.caller()) && !"SYSTEM".equals(w.type())) {
+      boolean orgRead = ORG_READERS.contains(read.caller()) && ("ORGANISATION".equals(w.type()) || "ORG".equals(w.type()));
+      if (!OPS_READERS.contains(read.caller()) && !"SYSTEM".equals(w.type()) && !orgRead) {
         throw new MwException(ErrorCodes.AUTH_ASSERTION, "Transaction authorisation missing");
       }
       return balance(walletId);

@@ -52,6 +52,8 @@ class ProducedContractsTest {
   /** Manifest entry -> the publish calls whose events it covers (every status the service sends). */
   static final Map<String, Supplier<List<Publish>>> FIXTURES =
       Map.of(
+          "events/mw-audit-dw/mw.audit.event.v1.schema.json",
+          ProducedContractsTest::auditedCalls,
           STATUS,
           () -> {
             MessageRecord sms = message(TXN + ":sms:P2P_OK", TXN, "corr-1", "SMS", 1);
@@ -73,16 +75,31 @@ class ProducedContractsTest {
                 new Publish(sms, NotifyStatus.EXPIRED, true, 1, "smsc-1", "MW-SYS-103"));
           });
 
+  static final String AUDIT = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
+
+  /** The final statuses of transaction messages, with and without text (ticket 130b). */
+  static List<Publish> auditedCalls() {
+    MessageRecord sms = message(TXN + ":sms:P2P_OK", TXN, "corr-1", "SMS", 1);
+    MessageRecord email = message(TXN + ":email:BILL_OK", TXN, null, "EMAIL", 1);
+    return List.of(
+        new Publish(sms, NotifyStatus.DELIVERED, true, 1, "smsc-1", null),
+        new Publish(email, NotifyStatus.FAILED, true, 4, null, "MW-SYS-102"));
+  }
+
   /** Runs the publish calls through StatusEvents and returns the payloads as the outbox stores them. */
   static List<JsonNode> published(List<Publish> calls) {
+    return published(calls, StatusEvents.TOPIC, calls.size());
+  }
+
+  static List<JsonNode> published(List<Publish> calls, String topic, int expected) {
     OutboxWriter outbox = mock(OutboxWriter.class);
     StatusEvents events = new StatusEvents(outbox);
     for (Publish p : calls) {
       events.publish(p.m(), p.status(), p.isFinal(), p.attempt(), p.providerId(), p.error(), AT);
     }
     ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
-    verify(outbox, atLeastOnce()).append(eq(StatusEvents.TOPIC), anyString(), any(EventMetadata.class), payload.capture());
-    assertThat(payload.getAllValues()).hasSameSizeAs(calls);
+    verify(outbox, atLeastOnce()).append(eq(topic), anyString(), any(EventMetadata.class), payload.capture());
+    assertThat(payload.getAllValues()).hasSize(expected);
     return payload.getAllValues().stream().map(v -> JSON.readTree(JSON.writeValueAsString(v))).toList();
   }
 
@@ -95,7 +112,10 @@ class ProducedContractsTest {
                     entry,
                     () -> {
                       assertThat(FIXTURES).as("fixture for manifest entry %s", entry).containsKey(entry);
-                      for (JsonNode event : published(FIXTURES.get(entry).get())) {
+                      List<JsonNode> events = entry.equals(AUDIT)
+                          ? published(auditedCalls(), StatusEvents.AUDIT_TOPIC, auditedCalls().size())
+                          : published(FIXTURES.get(entry).get());
+                      for (JsonNode event : events) {
                         assertThat(ContractSchemas.schema(ContractManifest.schemaPath(entry)).validate(event))
                             .as("%s: %s", entry, event)
                             .isEmpty();

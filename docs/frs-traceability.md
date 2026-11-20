@@ -150,7 +150,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-14` add money from bank (C2W) | done: c2wbank (folder 08) and from a linked account on the bank-<code> profiles (folder 55, 117e); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
 | `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts (117b); simulator (117d); orchestrator `W2bFlow` with a hold, bank routing V18, app `transfer-to-bank` preview/confirm and add money from a linked account (`linkedAccountId`, 117c); API suite folder `55-bank-avl-w2b` T1-T4, T6-T10 on a REST and a SOAP bank, bank callbacks through the APISIX route `partner-bank-callback` with a shared dev secret, account-number rule in `scripts/log-scan.sh` (117e); USSD Transfer to Bank stays app-only (user decision 2026-11-20; the USSD 'use the app' screen is open) |
 | `UC-16` remittance | partial: USSD status by Upay txn id is core WAL-13 (109c); inbound push credit built: mw-adapter-remit (signed credit, dedup by partner reference, outbox, keyed fingerprint, status API; 119a, 119b), APISIX route `partner-remit-v1`, orchestrator `RemitInFlow` (validate the beneficiary, CreditWallet from SETTLEMENT_UCB_IMT, refused credit -> MANUAL_REVIEW, outcome back to the adapter; 119b); beneficiary lookup `POST /remit/v1/beneficiary-lookup` (masked name and MSISDN, rate-limited per partner, core WAL-01 read by an account-only client; 119c), core-mock REMIT_IN only from a `SETTLEMENT*` wallet to a customer and limit row 2,00,000 Tk per txn (119c), test console Simulators "Send remittance" and API suite folder 53 (119c); AML screen open (ticket 125) |
-| `UC-17` ATM | partial: inbound SOAP (verify, confirm, reversal, cash-in) and UcbAtmMock (120a); cash fails closed (`MW-SYS-ATM_CASH_DISABLED`), cash-out state machine and edge route `partner-ucbatm-ws` (120b1); token issue, orchestrator flows and the suite remain tickets 120b2, 120b3 |
+| `UC-17` ATM | partial: inbound SOAP (verify, confirm, reversal, cash-in) and UcbAtmMock (120a); cash fails closed (`MW-SYS-ATM_CASH_DISABLED`), cash-out state machine and edge route `partner-ucbatm-ws` (120b1); token issue `POST /app/v1/atm/tokens` (PIN step-up, mw-auth HMAC, 10 min, single use, lockout) and the adapter's token check answering DECLINED (120b2); orchestrator flows and the suite remain ticket 120b3 |
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122; 121a built the `mw-adapter-interop` module (family `interop`) and the NPSB participant list mock; the ISO 20022 wire (121b) and the flows and API (121c) remain |
 | `UC-20` bulk disbursement | CSV and XLSX done (129a); preview, balance check, retry: ticket 129b-c |
 | `UC-21` AML | ticket 125 |
@@ -190,7 +190,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-041 | done | rules in `txn.routing_rule` (V14), maker-checker in mw-admin-api (V15, `RoutingRuleChangeRequestIT`), applied from `mw.config.changed.v1` and re-read every 30 s (`RoutingRuleReloadIT`) |
 | PLT-042 | done | prefix to MNO (017/013 gp, 018 robi, 015 teletalk, 019/014 banglalink) with an MNP override winning (`MsisdnRoutingTest`) |
 | PLT-043 | done | a maintenance message for a partner or biller is `MW-SYS-PARTNER_DISABLED` with the bn and en text (`MaintenanceMessageIT`, API folder 35); the adapter's own window stays 131b; a disabled catalogue biller is `MW-SYS-BILLER_DISABLED` with its bn/en maintenance text on the bill fetch (ticket 113, `BillerProjectionIT`), and on an app payment and the USSD bill lookup (ticket 113b, mw-app-gateway `BillerProjectionIT`, mw-ussd `UssdMenuWalkTest`) |
-| PLT-050 | done | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); the app SOAP WSDL is generated from `contracts/api/mw-app-gateway/app-soap.v1.xsd` (ticket 108); the ATM SOAP WSDL is generated from `contracts/api/mw-adapter-atm/atm-soap.v1.xsd` (ticket 120a) |
+| PLT-050 | done | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); the app SOAP WSDL is generated from `contracts/api/mw-app-gateway/app-soap.v1.xsd` (ticket 108); the ATM SOAP WSDL is generated from `contracts/api/mw-adapter-atm/atm-soap.v1.xsd` (ticket 120a); every contract and WSDL listed in `docs/api-catalogue.md` (ticket 136, script-checked) |
 | PLT-051 | done | versioning policy in `contracts/README.md` ("Versioning", ticket 101): breaking change = new `/v2` file and path, `/v1` kept for one release |
 | PLT-052 | done | Swagger UI and `/v3/api-docs` only in profiles `dev`/`test` (off in production, `ApiDocsProductionTest`); test-only APISIX page `/docs/` lists them and the app SOAP WSDL (`deploy/apisix/docs/index.html`, ticket 108) |
 
@@ -210,9 +210,9 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-USSD-01 | done | four MNO SMPP binds: gp and bl transceiver, robi and teletalk transmitter plus receiver (`UssdSmppMnoIT`, `UssdSmppClientTest`); dev keeps robi, bl and teletalk on HTTP |
 | CH-USSD-02 | done | mw-ussd SMPP binds: enquire_link 30 s, reconnect with backoff, window (`UssdSmppProperties`) |
 | CH-USSD-03 | done | one TLV adapter per MNO, tags 0x0501 and 0x1383; gp and bl pack the end bit in bit 0, robi and teletalk in bit 7 (`MnoTlvAdapterTest`) |
-| CH-USSD-04 | ticket 133 | menu JSON in the database with maker-checker built (M6); visual tree editor built (133a: add child, move, delete, counters); server preview 133b |
+| CH-USSD-04 | done | menu JSON in the database with maker-checker built (M6); visual tree editor built (133a: add child, move, delete, counters); server preview `POST /admin/v1/ussd/menus/preview` (133b, `UssdPreviewApiIT`, folder 67) |
 | CH-USSD-05 | done | 30 s per-screen timeout beside the overall session timeout; Redis TTL stays the overall timeout plus grace (mw-ussd) |
-| CH-USSD-06 | ticket 133 | GSM-7 182 and UCS-2 70 built; "0. Next" / "00. Back" pagination built (mw-ussd); browser preview pages per MNO (133a); server preview `POST /admin/v1/ussd/menus/preview` 133b |
+| CH-USSD-06 | done | GSM-7 182 and UCS-2 70 built; "0. Next" / "00. Back" pagination built (mw-ussd); browser preview pages per MNO (133a); server preview `POST /admin/v1/ussd/menus/preview` pages the same way (133b, `UssdPreviewTest`, folder 67) |
 | CH-USSD-07 | done | PIN encrypted on receipt, never logged or kept in the session (spec 18.3, `scripts/log-scan.sh`) |
 | CH-USSD-08 | done | ussd.short_code (code, MNO, root menu, allowed types) and the account type from the core (mw-ussd) |
 | CH-USSD-09 | done | a result that arrives after the session ended goes out by SMS (mw-ussd) |
@@ -224,8 +224,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-WEB-05 | done | session expiry `session-ttl: 15m` (mw-checkout `application.yml`) |
 | CH-POR-01 | ticket 129 | 129a done: CSV and XLSX upload (`BulkFileParser`, bounded XLSX reader) and row validation built; 129b done: upload as PREVIEW with totals and per-row error codes, `GET .../preview`, `POST .../submit` (`BulkPreviewTest`, `BulkBatchApiIT`) |
 | CH-POR-02 | done | bulk maker-checker in mw-portal-api |
-| CH-POR-03 | ticket 129 | async execution, throttle, per-row status, result file built; retry of failed rows in 129 |
-| CH-POR-04 | ticket 129 | balance check before execution |
+| CH-POR-03 | ticket 129 | async execution, throttle, per-row status, result file built; 129c done: retry of FAILED rows, maker-checker, a new attempt key only after the failed attempt is proven to have posted nothing (`RetryFailedRowsIT`) |
+| CH-POR-04 | ticket 129 | 129c done: org wallet balance read from the core at approval and at dispatch start, short -> BLOCKED_FUNDS with the shortfall, nothing sent (`BalanceCheckIT`) |
 | CH-POR-05 | ticket 129 | SP transaction query built; settlements, refunds, reports in 129 |
 | CH-POR-06 | done | OAuth2 on the Keycloak `portals` realm, maker and checker roles per organisation |
 
@@ -243,7 +243,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-08 | ticket 117 | linked bank accounts with AVL: done (117b: `/app/v1/bank-accounts`, AVL API `/bank/v1/accounts/validate`); M9 review: holder bound to the KYC name, AVL 5 per wallet per hour |
 | FL-09 | ticket 117 | W2B with AVL and a hold: done for the app (117c: `W2bFlow` hold until the bank confirms, app API; 117e: suite folder 55; M9 review: AVL again at preview, masked holder shown); USSD app-only (user decision) |
 | FL-10 | ticket 119 | built: IMT push and beneficiary lookup (119a-119c; `RemitInFlowIT`, `RemitInboundIT`, `BeneficiaryLookupServiceTest`); API suite folder 53 |
-| FL-11 | ticket 120 | ATM one-time token: the adapter never stores or logs it (120a); issue, HMAC, expiry and lockout remain ticket 120 |
+| FL-11 | ticket 120 | ATM one-time token: done for the token (120b2): issued by `POST /app/v1/atm/tokens` after the PIN step-up (spent once), stored by mw-auth only as an HMAC under mw-crypto `HMAC_ATMTOKEN` bound to wallet + amount, 10 min, single use, wrong tokens locked like OTPs; the adapter checks it at mw-auth and answers DECLINED, never storing or logging it. The cash-out it unlocks is ticket 120b3 |
 | FL-12 | tickets 121, 122 | BanglaQR on-us and off-us |
 | FL-13 | done | each bulk row is its own transaction linked to the batch (mw-portal-api, `BULK_DISBURSE`) |
 | FL-14 | ticket 125 | completion SMS and event built; push next to the SMS (SMS always, push optional) in mw-notify (ticket 110, `PushDispatchIT`); DW stream and daily drop done (ticket 128, `DwStreamIT`); AML feed remains 125 |
@@ -257,7 +257,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CON-03 | done | JSONata and XSLT mappings in versioned partner records with maker-checker (D28, mw-admin-api) |
 | CON-04 | done | partner audit event and raw masked payload store `partner_payload` with latency and `payloadRef` (ticket 97, `PartnerPayloadIT`); audit side (ticket 130): the adapters send the masked bodies as `payload` with hop PARTNER_CALL and the latency, mw-audit-dw scrubs them again and chains them in `audit.payload` (`PartnerAuditPublisherTest`, `PayloadScrubTest`, `HashChainWithPayloadIT`) |
 | CON-05 | done | `PartnerRouteHealth`: UP, DEGRADED, DOWN, MAINTENANCE (+ DISABLED, DELETED), changes on `mw.partner.route.status.v1` `health` (ticket 97) |
-| CON-06 | ticket 136 | developer guide and sample connector |
+| CON-06 | ticket 136 | developer guide `docs/connectors/developer-guide.md` and the sample connector `deploy/partner-routes/examples/sample-rest-biller.yaml` with its `samplebiller` mock built (ticket 136: `SampleConnectorRouteIT`, `SampleBillerMockIT`); the console-alone Playwright walkthrough and API folder 70 remain (136 split decisions) |
 | EXT-01 | ticket 109 | USSD gateway simulator (GP, SMPP) built; four MNOs in 109 |
 | EXT-02 | done | SMSC simulator in mw-simulators with inbox and delivery receipts |
 | EXT-03 | done | GreenMail SMTP with its web inbox instead of Mailpit (same role) |
@@ -278,7 +278,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-18 | done | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93), the orchestrator calls it (`client/CoreWalletClient`, ticket 95a), mw-auth checks a PIN reset's KYC factors (`client/CoreClient`) and mw-admin-api unlocks an account (`client/CoreAccountClient`) over it (ticket 95b); the core command topics and `core.command.v1` are retired, the core events stay on Kafka |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
 | MCK-02 | ticket 112 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator done in 114 (`BillAggregatorMockIT`); operators 112 |
-| MCK-03 | ticket 136 | magic values are the default trigger of the mock-control engine, an explicit scenario wins (ticket 102, `service/mockcontrol/ScenarioEngine`); trigger table per mock in `docs/concepts/simulators.html`; every new mock in 136 |
+| MCK-03 | done | magic values are the default trigger of the mock-control engine, an explicit scenario wins (ticket 102, `service/mockcontrol/ScenarioEngine`); every mock's triggers, scenarios, switch and journal in `docs/mocks/README.md`, rendered from mw-simulators' registry `MockTriggers` and kept in step by `MockTriggerDocsTest` and `scripts/test/test_connector_docs.sh` (ticket 136) |
 | MCK-04 | done | mw-simulators: `/mock-control/{party}` (D33, tickets 102a/b: every mw-simulators party incl. SMSC, USSD gateway, payShield; `contracts/api/mw-simulators/mock-control.v1.openapi.yaml`); mw-core-mock party `core` on the copied engine, Kafka and `/core/v1` (ticket 103, `contracts/api/mw-core-mock/core-mock-control.v1.openapi.yaml`, `CoreMockScenarioIT`) |
 | MCK-05 | done | DELAY(ms) per operation and scope, SLOW switch with a random range (ticket 102, `MockControlControllerIT`) |
 | MCK-06 | done | LATE_CALLBACK(ms), DUPLICATE_CALLBACK, OUT_OF_ORDER_CALLBACK, NO_CALLBACK and replay `/mock-control/{party}/callbacks/{reference}/replay` (ticket 102) |
@@ -331,10 +331,10 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CMP-03 | ticket 125 | real-time pre-check, fails open with an alert (D32) |
 | CMP-04 | done | `compliance.consent`, committed before any EC call, its id on the EC request (`ConsentBeforeCallTest`) |
 | CMP-05 | ticket 134 | encrypted at rest in mw-compliance (124a); unmask by permission in 134 |
-| AUD-01 | ticket 130 | state changes, operator actions and partner calls audited with masked request/response payloads in the hash chain (`audit.payload`, ticket 130); open: channel request logging (CHANNEL_IN), core-call and notification hops are not sent yet |
+| AUD-01 | done | state changes, operator actions and partner calls audited with masked request/response payloads in the hash chain (`audit.payload`, ticket 130); since ticket 130b also every channel request (CHANNEL_IN: mw-app-gateway, mw-ussd, mw-checkout, mw-portal-api bulk children), core REST call (CORE_CALL, mw-orchestrator) and final notification status (NOTIFICATION, mw-notify), with latency and masked bodies |
 | AUD-02 | done | append-only audit with a hash chain (mw-audit-dw `audit_event`) |
 | AUD-03 | done | search by txnId, actor, action, resource, outcome, time, and (ticket 130) partner, channel, status, amount range, MSISDN (TOKENISE_MSISDN token) via `audit.txn_index`; 3 s over 30 days proven by `AuditSearchPerfIT` (`slow-wait`) |
-| AUD-04 | ticket 135 | `GET /internal/v1/audit/transactions/{txnId}/timeline`: hops in order with latency, gaps and masked payloads (`TimelineIT`); mw-admin-api transaction detail does not call it yet (UI ticket 135) |
+| AUD-04 | ticket 135 | `GET /internal/v1/audit/transactions/{txnId}/timeline`: hops in order with latency, gaps and masked payloads (`TimelineIT`); every hop is produced since ticket 130b (channel in, orchestrator, core calls, partner calls and callbacks, notifications); open: mw-admin-api transaction detail does not call it yet (UI ticket 135) |
 | AUD-05 | done | `GET /internal/v1/audit/search/export.csv` with a row cap; every export writes an `audit.search.exported` operator-action record into the chain (`ExportAuditedIT`) |
 | DAT-01 | deviation | JSON Schema in Git, no schema registry (M9, D10, D31): the FRS allows JSON Schema; the registry is not run. `dw.*` topics are in `contracts/events/mw-data-export/` (ticket 128). `recon.exception` is `contracts/events/mw-recon/mw.recon.exception.v1.schema.json` (ticket 127b; consumers mw-audit-dw, mw-data-export). `kyc.completed` is `contracts/events/mw-compliance/mw.kyc.completed.v1.schema.json` (ticket 124; consumer mw-data-export) |
 | DAT-02 | done | daily DW batch: Kafka stream and the SFTP drop (`DwStreamIT`, `DwDailyExportIT`) |
@@ -350,7 +350,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
 | ADM-04 | tickets 98, 132 | API maker-checker for `ROUTING_RULE`, `MSISDN_PREFIX`, `MNP_OVERRIDE` and `MAINTENANCE_MESSAGE` (ticket 98, `RoutingRuleChangeRequestIT`, API folder 35); the console and testing a rule against a sample request stay 132 |
 | ADM-05 | ticket 132 | API done in 113: `GET /admin/v1/billers`, `POST /admin/v1/billers/{code}/change-requests` UPSERT / ENABLE / DISABLE, maker-checker (`BillerChangeRequestIT`) |
-| ADM-06 | ticket 133 | visual tree editor and paged browser preview built (133a); server preview and short code -> root menu 133b |
+| ADM-06 | done | visual tree editor and paged browser preview built (133a); server preview with the MenuValidator verdict and short code -> root menu per MNO (`mw.content.ussd.<mno>`, 133b; "Check on server" in the console's preview) |
 | ADM-07 | tickets 111, 133 | SMS template editing built; campaigns through maker-checker (`POST /admin/v1/notify-campaigns`, ticket 111); the rule-table editor is 133c, the test send 133d |
 | ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the Error codes tab (131c, `ui/mw-admin-ui`) |
 | ADM-09 | done | transaction search and saga timeline (mw-admin-api, `ui/mw-admin-ui`) |

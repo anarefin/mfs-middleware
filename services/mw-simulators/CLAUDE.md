@@ -38,7 +38,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     (ticket 112a; topup, inquiry, postpaid, status, reverse; keys msisdn, txnRef), `billagg` (billers,
     fetch, pay, status, reverse; biller, billNumber, txnRef; REST and SOAP
     front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path), `merchant-soap`
-    (validate, notify, query, refund; merchantId, txnRef; ticket 115b), and the
+    (validate, notify, query, refund; merchantId, txnRef; ticket 115b), `samplebiller` (fetch, pay, status, reverse,
+    health; biller, billNumber, txnRef; ticket 136, below), and the
     SMPP / TCP parties of ticket 102b (FRS MCT-04): `smsc` (bind, submit; systemId, msisdn), `ussdgw` (bind,
     submit, enquire_link, dial; systemId, msisdn, mno), the per-MNO USSD ports `ussd-gp`, `ussd-robi`,
     `ussd-bl`, `ussd-teletalk` (bind, submit, enquire_link; systemId, msisdn), `payshield` (command; command), and `push` (send; token,
@@ -227,11 +228,40 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 - NPSB switch (`npsb`, ticket 121a, FRS EXT-13, MCK-01; `controller/NpsbController`, `service/NpsbService`,
   `dto/NpsbParticipant`): `GET /npsb/v1/participants` -> 200 `{participants: [{id, name, kind BANK|MFS,
   active}]}` from the versioned seed `src/main/resources/seed/v1/npsb/participants.json` (12 fake participants,
-  8-character BIC-shaped ids `FAKE...`; `FAKEBDX9` is suspended, `active` false). Mock party `npsb` (operation
-  `participants`; keys participant, txnRef): BUSINESS_ERROR 422 `{status FAILED, code}` (default `NARR`),
-  MAINTENANCE 503. The ISO 20022 transfers (pacs.008 -> async pacs.002, pacs.028 status, camt.056 return, a
-  pushed inbound pacs.008 `POST /mock-control/npsb/inbound`) and their data triggers come with ticket 121b.
-  Test: `NpsbSimulatorIT`, `service/SeedFilesTest`.
+  8-character BIC-shaped ids `FAKE...`; `FAKEBDX9` is suspended, `active` false). Mock party `npsb` (operations
+  `participants`, `transfer`, `status`, `return`, `inbound`; keys participant, txnRef = EndToEndId):
+  participants BUSINESS_ERROR 422 `{status FAILED, code}` (default `NARR`), MAINTENANCE 503 everywhere.
+  ISO 20022 (ticket 121b part 2; `service/NpsbIsoXml`, JDK DOM in the XSD element order, safe parse; the wire of
+  mw-adapter-interop's `npsb` seed): `POST /npsb/v1/transfers | status | returns {messageType, document}` (pacs.008 /
+  pacs.028 / camt.056) -> 200 `{msgId, document}` (pacs.002.001.10 / camt.029.001.09), 400 `{code FF01}` for a
+  document that is not the message. Stateful, in memory, one transfer per EndToEndId: a repeat answers the
+  stored state (nothing applied twice); pacs.028 answers the stored state, unknown 404 `{code NOT_FOUND}`; a PDNG
+  transfer settles `sim.npsb.settle-delay` (5 s) after it was booked; camt.056 answers CNCL once for an ACSC
+  transfer, then RJCR (also unknown or not settled). A BUSINESS_ERROR scenario on `transfer` books it RJCT with
+  its `code` (default `NARR`); the other behaviours as `MockCalls.answer`. Data triggers (creditor account's last
+  three digits unless said; MCK-03):
+
+  | Trigger | pacs.002 |
+  | --- | --- |
+  | creditor agent not in the participant seed, or suspended (`FAKEBDX9`) | RJCT `RC01` |
+  | `991` | RJCT `AC01` |
+  | `992` | RJCT `AM04` |
+  | `993` | PDNG, then ACSC after the settle delay (async pacs.002 by inquiry) |
+  | `995` | PDNG, then RJCT `AC01` after the settle delay |
+  | `994` | ACSC booked, first answer held `sim.timeout-delay` (adapter UNKNOWN, the pacs.028 finds ACSC) |
+  | anything else | ACSC, `ClrSysRef` `NPSB-CLR-n` |
+
+  Inbound push `POST /mock-control/npsb/inbound {creditorAccount, amountMinor?, endToEndId?, creditorAgent?
+  (BITSBDDH), debtorAgent? (FAKEBDD1), ageMinutes?}` (client `client/NpsbInboundClient`): a pacs.008.001.08 posted
+  as application/xml to `sim.npsb.inbound-url` (default `http://mw-adapter-interop:8080/partner/v1/npsb/inbound`);
+  operation `inbound` callback dimension: DUPLICATE_CALLBACK sends it twice (the adapter credits once),
+  LATE_CALLBACK waits `delayMs`, NO_CALLBACK sends nothing; `ageMinutes` back-dates CreDtTm (a stale message is
+  refused RJCT `DT01`). Answers `{endToEndId, answers:[{status, body}]}`. Every document the mock sends (pacs.002,
+  camt.029, the pushed pacs.008) is signed by `service/NpsbSigner` in mw-crypto's one XML-DSig profile with the
+  dev switch key `sim.npsb.signing-key` (Vault secret/mw-simulators, PKCS#8, created once by provision
+  `npsb_switch_key`, which copies the certificate to mw-adapter-interop as `npsb-certificate-pem`); unset, unsigned. Out-of-order callbacks have no counterpart on this synchronous wire. The party reset forgets the
+  transfers. Tests: `NpsbSimulatorIT`, `service/NpsbServiceTest` (XSD-valid output, triggers, settle, return
+  once, scenario code, push, signed with the switch key), `service/NpsbSignerTest`, `service/SeedFilesTest`.
 - Bank gateway (ticket 117d, FRS EXT-12, MCK-02/03/08; `controller/BankGatewayController`,
   `service/BankGatewayService`, `BankGatewaySoapService`, `BankGatewayLedger`, `BankTransfer`): the 20 banks of
   `src/main/resources/seed/v1/bank-profiles.csv`, a copy GENERATED by `node deploy/partner-routes/bank/generate.mjs`
@@ -275,6 +305,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   party reset (that bank back to its seed). Callbacks after every applied transfer (not TIMEOUT) to the party's
   `callbackUrl`, body `{transactionId, status, code, message, bankRef}`, signed with `sim.callback-secrets.bank-<code>`
   when set; replay `POST /mock-control/bank-<code>/callbacks/{transactionId}/replay`. Test: `BankGatewaySimulatorIT`.
+- Trigger registry (ticket 136, FRS MCK-03; `service/mockcontrol/MockTriggers`): every party's data triggers
+  (input, match, outcome), grouped per FRS party (`EXT-nn`); `markdown()` renders it with each party's operations,
+  keys, behaviours, switch and journal. `MockTriggerDocsTest`: every party of `MockParties.ALL` in exactly one
+  section, the amount fractions are `MagicAmounts`', and `src/main/resources/mock-triggers.md` is the rendering
+  (on a mismatch it writes `build/mock-triggers.md`: copy it over the resource and into the block of
+  `docs/mocks/README.md`, which `scripts/test/test_connector_docs.sh` compares). A new party or trigger adds a line
+  to `MockTriggers` in the same change.
+- Sample biller `samplebiller` (ticket 136, FRS CON-06): a fifth `AggregatorProfile` on the controller and service
+  below, the biller of the sample connector `deploy/partner-routes/examples/sample-rest-biller.yaml`: REST, plain
+  camelCase (`transactionId`, `receipt`, `billPeriod`), `X-Api-Key` (presence), words DUE / PAID / PENDING / FAILED
+  / REVERSED, codes `SB01`..`SB06`, seed `seed/v1/bills/samplebiller.csv` (biller SAMPLEWATER, `1360000001`..`05`),
+  plus `GET /samplebiller/v1/health` (operation `health`, 200 `{status: UP}`). Test: `SampleBillerMockIT`.
 - Bill aggregator mocks (ticket 114, FRS UC-10, EXT-10, MCK-02/06/08; `controller/BillAggregatorMockController`,
   `service/BillAggregatorMockService`, `AggregatorBillLedger`, `dto/AggregatorProfile`): four profiles, each a mock
   party named after it (operations fetch, pay, status, reverse; keys biller, billNumber, txnRef), in the wire

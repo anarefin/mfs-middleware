@@ -1511,6 +1511,9 @@ curl -sk -X POST https://localhost/test/mock-control/dw/run -H 'apikey: e2e-test
         longer than 70 characters and walk to it: the screen ends with <code>0. পরবর্তী</code> and <code>00. পেছনে</code> and "page 1/2" shows under it; reply
         <code>0</code>: page 2/2; <code>00</code>: page 1 again; <code>00</code> on a first page goes back to the screen before. On teletalk the same
         screen is cut at 70 instead (overflow TRUNCATE).</li>
+      <li><b>Check on server</b> (ops-maker or ops-checker; nothing is stored): <span class="ui">MNO</span> robi, <span class="ui">Check on server</span>: "mw-admin-api accepts
+        the tree; <code>*269#</code> opens <code>main</code>". Point an option at a node that does not exist (JSON) and check again: the red box lists
+        mw-admin-api's MenuValidator problems, e.g. "main: option 1 points to missing node nowhere". A viewer has no such button.</li>
       <li><b>Propose</b> (card <i>Propose this version</i>, maker): MNOs gp / robi / bl / teletalk (all ticked), <span class="ui">Go-live &lt;mno&gt;</span> per MNO
         (UTC; empty = at approval), Reason, <span class="ui">Request publish</span>. Checker approves (<code>vN -&gt; vM</code>). Unticking every MNO:
         "activations: pick each MNO once…".</li>

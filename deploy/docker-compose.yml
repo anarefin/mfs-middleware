@@ -411,6 +411,7 @@ services:
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
       KC_MW_DATA_EXPORT_SECRET: ${KC_MW_DATA_EXPORT_SECRET:?cp dev.env.defaults .env}
+      KC_MW_ADAPTER_INTEROP_SECRET: ${KC_MW_ADAPTER_INTEROP_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
       KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       KC_MW_USSD_SECRET: ${KC_MW_USSD_SECRET:?cp dev.env.defaults .env}
@@ -740,6 +741,7 @@ services:
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
       KC_MW_DATA_EXPORT_SECRET: ${KC_MW_DATA_EXPORT_SECRET:?cp dev.env.defaults .env}
+      KC_MW_ADAPTER_INTEROP_SECRET: ${KC_MW_ADAPTER_INTEROP_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
       KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       KC_MW_USSD_SECRET: ${KC_MW_USSD_SECRET:?cp dev.env.defaults .env}
@@ -818,6 +820,8 @@ services:
       MW_INTERNALAUTH_ALLOWEDCLIENTS: mw-orchestrator,mw-auth,mw-admin-api,mw-simulators,mw-app-gateway,mw-ussd
       # Report readers only (ticket 127c): mw-recon reads GET /core/v1/reports/emoney-total and nothing else.
       MW_INTERNALAUTH_REPORTCLIENTS: mw-recon
+      # Balance readers only (ticket 129c): mw-portal-api reads GET /core/v1/balance/{walletId} of org wallets.
+      MW_INTERNALAUTH_BALANCECLIENTS: mw-portal-api
       # The core party's mock control /mock-control and the global reset's core part (ADR D33, ticket 103):
       # test-only, never production (scripts/check-mock-control-prod.sh; a start with MW_ENV=prod fails).
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev},mock-control
@@ -1477,6 +1481,12 @@ services:
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "2"
       # NPSB switch endpoint; the MVP stack targets mw-simulators (NpsbMock, /npsb/v1/*).
       NPSB_BASE_URL: ${NPSB_BASE_URL:-http://mw-simulators:8080}
+      # XML-DSig through mw-crypto (ticket 121b): mTLS client certificate pki_int/issue/mw-adapter-interop
+      # (SSL bundle mw-service) and the realm services client mw-adapter-interop; mw-crypto's bootstrap
+      # creates the XMLDSIG key (its default bootstrap-purposes, not overridden here).
+      MW_TLS_ENABLED: "true"
+      MW_INTEROP_CRYPTO_ENABLED: "true"
+      MW_INTEROP_CRYPTO_SSL_BUNDLE: mw-service
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
       MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}

@@ -601,6 +601,29 @@ class CoreWalletRestIT {
     assertThat(getAs("mw-recon", "/core/v1/reports/emoney-total")).hasStatus(200);
   }
 
+  // --- org wallet balance (ticket 129c: mw-portal-api's bulk balance check) ---
+
+  private static final String ORG_WALLET = "01311000001";
+
+  @Test
+  void mwPortalApiReadsAnOrgWalletsBalanceAndNothingElse() {
+    long before = total(PAYER);
+    JsonNode org =
+        served(getAs("mw-portal-api", "/core/v1/balance/" + ORG_WALLET), "/core/v1/balance/{walletId}", "get", 200);
+    assertThat(org.path("walletId").asString()).isEqualTo(ORG_WALLET);
+    assertThat(org.path("available").path("valueMinor").asLong()).isEqualTo(available(ORG_WALLET));
+
+    // a customer's balance needs the customer's own authorisation
+    assertThat(getAs("mw-portal-api", "/core/v1/balance/" + PAYER)).hasStatus(401);
+    Signed s = signed(CoreCommandsTestSupport.txnId(), "P2P", PAYER, "WALLET", PAYEE, 1000);
+    assertThat(mvc.post().uri("/core/v1/transfers").header("Authorization", InternalTokens.bearer("mw-portal-api"))
+        .header("X-Txn-Assertion", s.assertion()).contentType(MediaType.APPLICATION_JSON).content(s.body()).exchange())
+        .hasStatus(403);
+    assertThat(getAs("mw-portal-api", "/core/v1/accounts/" + ORG_WALLET)).hasStatus(403);
+    assertThat(getAs("mw-portal-api", "/core/v1/reports/emoney-total")).hasStatus(403);
+    assertThat(total(PAYER)).isEqualTo(before);
+  }
+
   // --- beneficiary lookup (ticket 119c: mw-adapter-remit reads an account and nothing else) ---
 
   @Test

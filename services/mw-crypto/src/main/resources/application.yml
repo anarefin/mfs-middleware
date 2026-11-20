@@ -241,6 +241,8 @@ mw:
       - KEK_COLUMN
       - KEK_FILE
       - XMLDSIG
+      # the ATM cash-out token HMAC (ticket 120b2; caller mw-auth)
+      - HMAC_ATMTOKEN
     bootstrap-period: 30s
     hsm-probe-period: 10s
     pkcs11:
@@ -303,6 +305,8 @@ mw:
         # HTTP_SIGN_EC (/http-signature/**, a partner PEM by its key type) and every HMAC_<use> stay
         # denied until the ATM and merchant SOAP adapter tickets add theirs.
         XMLDSIG: mw-adapter-interop
+        # the ATM cash-out token (ticket 120b2): mw-auth issues and checks it
+        HMAC_ATMTOKEN: mw-auth
   # This service's certificate from Vault PKI (spec 18.2, 18.4, D24; config/TlsProperties,
   # config/ServiceCertificateManager): issued at start through Spring Cloud Vault (AppRole policy:
   # pki_int/issue/mw-crypto only), renewed at two thirds of its life, never written to disk.

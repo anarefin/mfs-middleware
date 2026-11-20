@@ -7,9 +7,12 @@ import java.time.Clock;
 import java.util.HexFormat;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import mfs.mw.adapter.atm.client.AtmTokenClient;
 import mfs.mw.adapter.atm.config.AtmInboundProperties;
+import mfs.mw.adapter.atm.dto.AtmTokenVerdict;
 import mfs.mw.adapter.atm.exception.ErrorCodes;
 import mfs.mw.adapter.atm.exception.MwException;
 import mfs.mw.adapter.atm.repository.AtmInboundStore;
@@ -31,10 +34,15 @@ import org.springframework.transaction.annotation.Transactional;
  * another atmId is {@code MW-IDEM-001}. An advice for an unknown cash-out is
  * {@code MW-VAL-ATM_UNKNOWN_TXN}.
  *
- * <p>Fail closed (M9 review): VerifyTokenAndDebit and CashIn move money, and the token check, the
- * hold and the credit are tickets 120b2/120b3. Until then both answer {@code
- * MW-SYS-ATM_CASH_DISABLED} (503) and write nothing, unless {@code mw.atm.inbound.cash-enabled}
- * (tests only). Nothing is published on {@code mw.partner.inbound.v1} yet (contract gap, CLAUDE.md).
+ * <p>The token (ticket 120b2): a new VerifyTokenAndDebit has mw-auth check (and spend) the token for
+ * the MSISDN and amount before anything is recorded; a refused token is answered DECLINED with no
+ * txnId and records nothing, mw-auth not answering is {@code MW-SYS-ATM_TOKEN_UNAVAILABLE} (503). A
+ * repeat of a recorded atmTxnRef is answered from the record and never checked again (the token is
+ * single use). The check runs outside a database transaction, so no connection waits on mw-auth.
+ *
+ * <p>Fail closed (M9 review): VerifyTokenAndDebit and CashIn move money, and the hold and the credit
+ * are ticket 120b3. Until then both answer {@code MW-SYS-ATM_CASH_DISABLED} (503) and write nothing
+ * (and no token is checked), unless {@code mw.atm.inbound.cash-enabled} (tests only). Nothing is published on {@code mw.partner.inbound.v1} yet (contract gap, CLAUDE.md).
  * The token and the MSISDN are never stored in clear or logged (FL-11).
  */
 @Service
@@ -52,32 +60,62 @@ public class AtmInboundService {
   public static final String VERIFIED = "VERIFIED";
   public static final String CONFIRMED = "CONFIRMED";
   public static final String REVERSED = "REVERSED";
+  public static final String ACCEPTED = "ACCEPTED";
+  public static final String DECLINED = "DECLINED";
   /** The UCB settlement wallet a cash-in is paid from (FRS UC-17). Publishing it is ticket 120b3's. */
   public static final String SETTLEMENT = "ucb-atm-settlement";
 
   private static final Logger log = LoggerFactory.getLogger(AtmInboundService.class);
   private static final SecureRandom RANDOM = new SecureRandom();
+  private static final Pattern TOKEN = Pattern.compile("[0-9]{6}");
 
-  /** The answer to the switch. */
-  public record Ack(String atmTxnRef, String txnId) {}
+  /** The answer to the switch: {@code status} ACCEPTED, or DECLINED (no cash) with no txnId. */
+  public record Ack(String atmTxnRef, String txnId, String status) {
+    public Ack(String atmTxnRef, String txnId) {
+      this(atmTxnRef, txnId, ACCEPTED);
+    }
+  }
 
   private final AtmInboundStore repository;
   private final AtmInboundProperties properties;
+  private final AtmTokenClient tokens;
   private final Clock clock;
 
-  public AtmInboundService(AtmInboundStore repository, AtmInboundProperties properties, Clock clock) {
+  public AtmInboundService(
+      AtmInboundStore repository, AtmInboundProperties properties, AtmTokenClient tokens, Clock clock) {
     this.repository = repository;
     this.properties = properties;
+    this.tokens = tokens;
     this.clock = clock;
   }
 
-  /** Cash-out at the ATM: the wallet of {@code msisdn} is to be debited {@code amountMinor}. */
-  @Transactional
-  public Ack verifyAndDebit(String atmTxnRef, String atmId, String msisdn, long amountMinor) {
+  /**
+   * Cash-out at the ATM: the wallet of {@code msisdn} is to be debited {@code amountMinor} against
+   * the customer's {@code token}.
+   */
+  public Ack verifyAndDebit(String atmTxnRef, String atmId, String msisdn, String token, long amountMinor) {
     requireRef(atmTxnRef, atmId);
     requireWallet(msisdn, amountMinor);
+    if (token == null || !TOKEN.matcher(token).matches()) {
+      throw invalid();
+    }
     requireCashEnabled(VERIFY);
-    return record(VERIFY, atmTxnRef, atmId, fingerprint(atmId, msisdn, amountMinor), VERIFIED);
+    String fingerprint = fingerprint(atmId, msisdn, amountMinor);
+    Optional<AtmInboundStore.Row> seen = repository.find(VERIFY, atmTxnRef);
+    if (seen.isPresent()) {
+      return repeat(VERIFY, atmTxnRef, seen.get(), fingerprint);
+    }
+    AtmTokenVerdict verdict = tokens.verify(msisdn, amountMinor, token);
+    if (!verdict.accepted()) {
+      log.atInfo()
+          .addKeyValue("event", "atm.inbound.declined")
+          .addKeyValue("partnerId", properties.partnerId())
+          .addKeyValue("operation", VERIFY)
+          .addKeyValue("errorCode", verdict.reason())
+          .log("ATM cash-out declined: token refused");
+      return new Ack(atmTxnRef, "", DECLINED);
+    }
+    return record(VERIFY, atmTxnRef, atmId, fingerprint, VERIFIED);
   }
 
   /** The cash left the ATM: the held debit commits. */

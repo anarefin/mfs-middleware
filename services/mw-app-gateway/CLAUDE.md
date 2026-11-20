@@ -155,6 +155,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   answer), FAILED/REJECTED as the envelope. `GET /app/v1/add-money/card/sessions/{txnId}` is the caller's own
   ADD_MONEY_CARD from `app_transaction` (anything else 404 `MW-VAL-003`). Tests `CardSessionServiceTest`,
   `ContractDriftTest`; API folder 56.
+- ATM cash-out token (ticket 120b2, FRS FL-11, UC-17; `controller/AtmTokenController`,
+  `service/AtmTokenService`, `dto/AtmTokenRequest` / `AtmTokenIssue` / `AtmTokenView`, `AuthClient.issueAtmToken`):
+  `POST /app/v1/atm/tokens {amount, encryptedPin}` with `Idempotency-Key`, signed (`@DeviceGate(SIGNED)`),
+  customer only (`txn-type-roles` ATM_CASH_OUT; not a txnType of `POST /app/v1/transactions`); body schema
+  `derived-schemas/app-v1-atm-token-request.json`. The PIN step-up is mw-auth's assertion for ATM_CASH_OUT from
+  `WALLET/<msisdn>` to `PARTNER/ucbatm` (`mw.app-gateway.atm.partner-id`) with this amount and key; then mw-auth
+  `POST /internal/v1/atm-tokens` issues the token against it and spends the assertion. 201 `{token, expiresAt,
+  amount}`; mw-auth's refusals (wrong PIN 401 MW-AUTH-040, lock 423, step-up 401 MW-AUTH-049) pass through. The
+  token lives in mw-auth (its CLAUDE.md: HMAC only, 10 min, single use, bound to wallet + amount, OTP-style
+  lockout); this service never stores or logs it. Tests `AtmTokenServiceTest`, `AtmTokenControllerTest`,
+  `AuthClientIT`, `ApiContractsTest`.
 - Billers and bill fetch (ticket 21, `controller/BillerController`, `service/BillerService`,
   `client/BillPayClient`): read-only calls to mw-adapter-billpay's internal API
   (`contracts/api/mw-adapter-billpay/billpay.v1.openapi.yaml`, `mw.app-gateway.billpay.base-url`
@@ -352,7 +363,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   role `mw-app-gateway`. Keycloak realm `services` client `mw-app-gateway` (audiences `mw-auth`, ADR D25
   `mw-orchestrator`, `mw-notify` for the inbox, and `mw-core-mock` for profile, limits and the statement): a running stack
   needs `deploy/reset.sh` to import it. Compose waits for a healthy mw-auth.
-- eKYC onboarding (ticket 124b, app.v1 1.18.0, FRS UC-01): `POST /app/v1/onboarding/applications`, `POST
+- eKYC onboarding (ticket 124b, app.v1 1.19.0, FRS UC-01): `POST /app/v1/onboarding/applications`, `POST
   .../{id}/documents`, `POST .../{id}/submit`, `GET .../{id}` (`controller/OnboardingController`,
   `service/OnboardingService`, `client/ComplianceClient`). Customer, DSO and Agent apps only (else 403
   MW-AUTH-002). The end user comes from the token only and goes to mw-compliance in `X-Mw-Subject-Type` /
@@ -372,6 +383,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `api/mw-app-gateway/app-soap.v1.xsd` (ticket 108): the SOAP facade. The WSDL is generated from it
   (`config/WebServiceConfig`); `contracts/ContractDriftTest` checks the operations. Not an OpenAPI file, so it
   is owned in `contracts/OWNERS.yml` and copied into the jar, and it is not a `contracts.yml` `apis` entry.
+
+- CHANNEL_IN audit hop (ticket 130b, FRS AUD-01/AUD-04): every transaction request `service/TransactionService.submit` served
+  (published and answered or timed out) writes `channel.request.completed` on `mw.audit.event.v1`
+  (`mapper/ChannelAuditMapper`, `service/ChannelAuditService`: outbox, own transaction, a failure logged
+  `channel.audit.failed` and never fails the request): hop CHANNEL_IN, direction IN, `durationMs`, actor
+  `user`/<scrubbed initiator>, `after` {channel, txnType, status, errorCode?}, outcome FAILURE for REJECTED /
+  FAILED; payload request IN the canonical `TxnRequest` and answer OUT the `TransactionView`, rendered by `MaskingPolicy.describe` (assertion blanked), 4 KB. A refusal before
+  publishing (PIN, OTP, validation) is not a hop.
 
 ## Contracts used
 

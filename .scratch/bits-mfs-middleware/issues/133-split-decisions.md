@@ -22,3 +22,21 @@ the branch that implements a slice. No money, security or foreign-contract choic
   `e2e/51-notify-rules.spec.ts`. NOT-01.
 - **133d** (after 133c): `POST /admin/v1/templates/{id}/test-send` (operator's own allow-listed MSISDN / email,
   `mw.notify.request.v1` priority INFO, OTP-class masking), "Test send" button, API folder 67 complete. ADM-07.
+
+## 133b decisions (implementer, 2026-11-20)
+
+- **Short code -> root menu:** a config list in mw-admin-api, `mw.content.ussd.<mno>` (`short-code`,
+  `root-menu-id` and the screen limits `max-length-gsm`, `max-length-ucs2`, `overflow`), a copy of mw-ussd's
+  `ussd.short_code` V6 rows and `mw.ussd.mno.*` limits kept aligned by hand. Chosen over a new config change
+  type mw-ussd applies: simplest, no contract change, mw-ussd's schema is never read, and a short code changes
+  with an MNO contract, not by an operator. The preview answer names `shortCode` and `rootMenuId`.
+- **"Orphan node"** in the acceptance criterion is read as a dangling reference (an option / next pointing to
+  a node that does not exist), which `MenuValidator` already refuses; an unreachable node is not a problem
+  for mw-ussd's validator, and the copy must stay aligned with it, so no new rule was added.
+- **Roles:** ops-maker and ops-checker (`AdminRole.CONTENT_PREVIEW`): the checker previews what they approve.
+- **Walk limits on the server:** no flow, lookup or core call runs; `pin` and `regex` inputs accept any
+  non-blank answer, so no operator-written pattern is evaluated in mw-admin-api (ReDoS); answers at most 50,
+  each at most 64 characters; a PIN answer is echoed `****`. The console calls the API for the validator
+  verdict ("Check on server"); its own browser walk stays for the interactive paging.
+- **API folder 67** (`67-admin-ussd-templates`) started: the paged robi preview and the refused tree; 133c / 133d
+  add their requests to it.

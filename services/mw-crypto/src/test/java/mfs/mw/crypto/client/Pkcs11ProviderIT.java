@@ -34,7 +34,7 @@ class Pkcs11ProviderIT {
   static final JsonMapper JSON = JsonMapper.builder().build();
   static final List<String> PURPOSES =
       List.of("PIN_TRANSPORT", "PIN_HMAC", "JWT_SIGN", "ASSERTION_SIGN", "AUDIT_ANCHOR_SIGN", "TOKENISE_MSISDN",
-          "TOKENISE_NID", "TOKENISE_ACCOUNT", "KEK_COLUMN", "KEK_FILE", "XMLDSIG");
+          "TOKENISE_NID", "TOKENISE_ACCOUNT", "KEK_COLUMN", "KEK_FILE", "XMLDSIG", "HMAC_ATMTOKEN");
 
   @BeforeAll
   static void stack() {

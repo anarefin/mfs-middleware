@@ -54,6 +54,8 @@ public class BodySchema {
   public static final String LINK_BANK_ACCOUNT = "derived-schemas/app-v1-link-bank-account-request.json";
   /** {@code CardSessionRequest} (ticket 118b). */
   public static final String CARD_SESSION = "derived-schemas/app-v1-card-session-request.json";
+  /** {@code POST /app/v1/atm/tokens}, from {@code AtmTokenRequest} (ticket 120b2). */
+  public static final String ATM_TOKEN = "derived-schemas/app-v1-atm-token-request.json";
   /** {@code POST /app/v1/onboarding/applications} (ticket 124b). */
   public static final String ONBOARDING_APPLICATION = "derived-schemas/app-v1-onboarding-application-request.json";
   /** {@code POST /app/v1/onboarding/applications/{id}/documents} (ticket 124b). */

@@ -7,8 +7,11 @@ import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.ContentVersionView;
 import mfs.mw.admin.api.dto.TemplateChangeBody;
 import mfs.mw.admin.api.dto.UssdMenuChangeBody;
+import mfs.mw.admin.api.dto.UssdPreviewBody;
+import mfs.mw.admin.api.dto.UssdPreviewView;
 import mfs.mw.admin.api.security.OperatorResolver;
 import mfs.mw.admin.api.service.ContentChangeService;
+import mfs.mw.admin.api.service.UssdPreviewService;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -33,10 +36,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ContentController {
 
   private final ContentChangeService service;
+  private final UssdPreviewService preview;
   private final OperatorResolver operators;
 
-  public ContentController(ContentChangeService service, OperatorResolver operators) {
+  public ContentController(ContentChangeService service, UssdPreviewService preview, OperatorResolver operators) {
     this.service = service;
+    this.preview = preview;
     this.operators = operators;
   }
 
@@ -58,6 +63,12 @@ public class ContentController {
   @GetMapping("/ussd-menus/{menuId}/versions/{version}")
   public ContentVersionView menuVersion(@PathVariable String menuId, @PathVariable @Min(1) int version) {
     return service.menuVersion(menuId, version);
+  }
+
+  /** Ticket 133b: a draft tree checked and walked screen by screen; nothing is stored. */
+  @PostMapping("/ussd/menus/preview")
+  public UssdPreviewView previewMenu(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody UssdPreviewBody body) {
+    return preview.preview(operators.resolve(jwt), body);
   }
 
   @PostMapping("/notify-templates/{code}/{channel}/{locale}/change-requests")

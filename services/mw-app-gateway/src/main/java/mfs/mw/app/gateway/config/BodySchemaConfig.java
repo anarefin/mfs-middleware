@@ -57,6 +57,7 @@ public class BodySchemaConfig implements WebMvcConfigurer {
     add(registry, BodySchema.SAVE_FAVOURITE, false, "/app/v1/favourites");
     add(registry, BodySchema.LINK_BANK_ACCOUNT, false, "/app/v1/bank-accounts");
     add(registry, BodySchema.CARD_SESSION, false, "/app/v1/add-money/card/sessions");
+    add(registry, BodySchema.ATM_TOKEN, false, "/app/v1/atm/tokens");
     add(registry, BodySchema.ONBOARDING_APPLICATION, false, "/app/v1/onboarding/applications");
     add(registry, BodySchema.ONBOARDING_DOCUMENT, false, CachedBodyFilter.DOCUMENTS);
   }

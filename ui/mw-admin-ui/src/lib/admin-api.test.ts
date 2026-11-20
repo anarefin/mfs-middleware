@@ -165,4 +165,13 @@ describe("admin API client, change requests (tickets 41, 52)", () => {
     const api = createAdminApi({ baseUrl: "http://x", fetch: recorder(403, own, []) });
     expect(await api.approveChangeRequest("t", CR)).toEqual({ ok: false, status: 403, error: own });
   });
+
+  it("previews a draft menu with a POST of the tree, the MNO and the answers (ticket 133b)", async () => {
+    const sent: Sent[] = [];
+    const api = createAdminApi({ baseUrl: "http://x", fetch: recorder(200, {}, sent) });
+    const menu = { start: "a", messages: {}, nodes: { a: { type: "END" as const } } };
+    await api.previewMenu("tok", { menu, menuId: "main", mno: "robi", language: "bn", inputs: ["0"] });
+    expect(sent.map((s) => [s.method, s.url])).toEqual([["POST", "http://x/admin/v1/ussd/menus/preview"]]);
+    expect(JSON.parse(sent[0]!.body!)).toEqual({ menu, menuId: "main", mno: "robi", language: "bn", inputs: ["0"] });
+  });
 });

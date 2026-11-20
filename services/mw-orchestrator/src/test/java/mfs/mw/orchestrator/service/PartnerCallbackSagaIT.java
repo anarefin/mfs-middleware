@@ -89,7 +89,8 @@ class PartnerCallbackSagaIT {
 
   private List<JsonNode> outbox(String topic, String txnId) {
     return jdbc.queryForList(
-            "select payload::text from outbox where topic = ? and msg_key = ? order by id", String.class, topic, txnId)
+            "select payload::text from outbox where topic = ? and msg_key = ?"
+                + " and coalesce(payload::jsonb ->> 'action', '') <> 'core.call.completed' order by id", String.class, topic, txnId)
         .stream()
         .map(json::readTree)
         .toList();

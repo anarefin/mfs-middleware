@@ -28,6 +28,8 @@ import mfs.mw.app.gateway.PkiTestAuthority;
 import mfs.mw.app.gateway.config.AuthClientProperties;
 import mfs.mw.app.gateway.config.ServiceCertificateManager;
 import mfs.mw.app.gateway.config.TlsProperties;
+import mfs.mw.app.gateway.dto.AtmTokenIssue;
+import mfs.mw.app.gateway.dto.AtmTokenView;
 import mfs.mw.app.gateway.dto.BoundDevice;
 import mfs.mw.app.gateway.dto.EncryptedPin;
 import mfs.mw.app.gateway.dto.PinKey;
@@ -313,6 +315,47 @@ class AuthClientIT {
         .withHeader("Content-Type", "application/json").withBody(envelope("MW-SYS-050"))));
 
     assertFailsClosed(() -> client.authorise(AUTH_REQ));
+  }
+
+  static final String ATM_TOKENS = "/internal/v1/atm-tokens";
+  static final AtmTokenIssue ATM_REQ =
+      new AtmTokenIssue("01711000001", "CUSTOMER_APP", "device-0001", 200000L, "BDT", "idem-9", "aaa.bbb.ccc");
+
+  @Test
+  void anAtmTokenIsIssuedAgainstTheStepUpAssertion() {
+    authServer.stubFor(post(urlEqualTo(ATM_TOKENS)).willReturn(aResponse().withStatus(201)
+        .withHeader("Content-Type", "application/json")
+        .withBody("{\"token\":\"123456\",\"expiresAt\":\"2026-11-20T12:10:00Z\"}")));
+
+    AtmTokenView v = client.issueAtmToken(ATM_REQ);
+
+    assertThat(v.token()).isEqualTo("123456");
+    assertThat(v.expiresAt()).isEqualTo(java.time.Instant.parse("2026-11-20T12:10:00Z"));
+    authServer.verify(postRequestedFor(urlEqualTo(ATM_TOKENS))
+        .withHeader("Authorization", equalTo("Bearer tok-1"))
+        .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.equalToJson(
+            "{\"walletId\":\"01711000001\",\"channel\":\"CUSTOMER_APP\",\"deviceId\":\"device-0001\","
+                + "\"amount\":200000,\"currency\":\"BDT\",\"idempotencyKey\":\"idem-9\",\"assertion\":\"aaa.bbb.ccc\"}")));
+  }
+
+  @Test
+  void aRefusedStepUpPassesThroughAndAnOutageOrAnEmptyTokenFailsClosed() {
+    authServer.stubFor(post(urlEqualTo(ATM_TOKENS)).willReturn(aResponse().withStatus(401)
+        .withHeader("Content-Type", "application/json").withBody(envelope("MW-AUTH-049"))));
+    assertThatThrownBy(() -> client.issueAtmToken(ATM_REQ))
+        .isInstanceOfSatisfying(MwException.class, e -> {
+          assertThat(e.code()).isEqualTo("MW-AUTH-049");
+          assertThat(e.status().value()).isEqualTo(401);
+        });
+    authServer.verify(1, postRequestedFor(urlEqualTo(ATM_TOKENS)));
+
+    authServer.stubFor(post(urlEqualTo(ATM_TOKENS)).willReturn(aResponse().withStatus(201)
+        .withHeader("Content-Type", "application/json").withBody("{\"expiresAt\":\"2026-11-20T12:10:00Z\"}")));
+    assertFailsClosed(() -> client.issueAtmToken(ATM_REQ));
+
+    authServer.stubFor(post(urlEqualTo(ATM_TOKENS)).willReturn(aResponse().withStatus(503)
+        .withHeader("Content-Type", "application/json").withBody(envelope("MW-SYS-050"))));
+    assertFailsClosed(() -> client.issueAtmToken(ATM_REQ));
   }
 
   static final String PIN_KEY = "/internal/v1/pin-key";

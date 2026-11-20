@@ -113,10 +113,15 @@ class BalanceKafkaIT {
           .containsEntry("idempotency-key", req.idempotencyKey());
     });
 
-    List<ConsumerRecord<String, String>> audits = read("mw.audit.event.v1", req.txnId(), 3);
+    // three state changes and the core call's CORE_CALL hop (ticket 130b), which leaves the answer out
+    List<ConsumerRecord<String, String>> audits = read("mw.audit.event.v1", req.txnId(), 4);
     assertValid(audits, AUDIT_SCHEMA);
     assertThat(audits).extracting(ConsumerRecord::value)
-        .noneMatch(v -> v.contains(String.valueOf(CoreRestStub.AVAILABLE)) || v.contains("balance"));
+        .noneMatch(v -> v.contains(String.valueOf(CoreRestStub.AVAILABLE)) || v.contains("available"));
+    assertThat(audits).extracting(ConsumerRecord::value)
+        .filteredOn(v -> v.contains("txn.state.changed"))
+        .hasSize(3)
+        .noneMatch(v -> v.contains("balance"));
     String row = jdbc.queryForObject(
         "select row_to_json(t)::text from transaction t where txn_id = ?::uuid", String.class, req.txnId());
     assertThat(row).contains("COMPLETED").doesNotContain(String.valueOf(CoreRestStub.AVAILABLE));

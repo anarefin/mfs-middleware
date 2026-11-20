@@ -14,4 +14,6 @@ consumes:
   events:
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#atm
     - events/mw-admin-api/mw.config.changed.v1.schema.json
-  apis: []
+  apis:
+    # ticket 120b2: the ATM token check (client/AtmTokenClient, POST /internal/v1/atm-tokens/verifications)
+    - api/mw-auth/auth-internal.v1.openapi.yaml

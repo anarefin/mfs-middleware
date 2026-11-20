@@ -77,7 +77,8 @@ public class SecurityConfig {
       @Value("${mw.tls.enabled:false}") boolean mtls,
       @Qualifier("handlerExceptionResolver") HandlerExceptionResolver errors)
       throws Exception {
-    InternalCallerPolicy policy = new InternalCallerPolicy(props.allowedClients(), mtls, publicConnector::received);
+    InternalCallerPolicy policy = new InternalCallerPolicy(
+        props.allowedClients(), props.clientPaths(), props.reservedPaths(), mtls, publicConnector::received);
     AuthenticationEntryPoint unauthenticated =
         (req, res, e) ->
             errors.resolveException(

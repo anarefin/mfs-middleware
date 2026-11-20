@@ -99,12 +99,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   `scheduler/BulkDispatchJob` (ShedLock `bulk-dispatch`, every `bulk.dispatch.period` 200 ms) ->
   `dispatch()`: token bucket at `bulk.dispatch.rate-per-second` (`MW_BULK_RATE_PER_SECOND`, default
   50) over all running batches, holding at most one period's worth (an idle dispatcher saves no
-  burst); locks that many PENDING rows of APPROVED/EXECUTING batches (`FOR NO KEY UPDATE OF i, b
+  burst); locks that many PENDING rows of EXECUTING batches (an APPROVED one is started first by the balance check below) (`FOR NO KEY UPDATE OF i, b
   SKIP LOCKED`, oldest approval first, file order; the batch row lock makes a pause wait for a
   running dispatch), writes one `mw.txn.request.v1` record per row to the outbox (channel
   `ORG_PORTAL`, txnType `BULK_DISBURSE`, initiator `{ORG, orgId}`, debit `{ORG, wallet}`, credit
   `{WALLET, msisdn, CUSTOMER}`, no PIN, correlationId `bulk-<batchId>`) and marks the rows
-  SUBMITTED with their txnId, in one transaction; APPROVED -> EXECUTING. txnId (UUIDv7 shape:
+  SUBMITTED with their txnId, in one transaction. txnId (UUIDv7 shape:
   the batch id's timestamp + SHA-256 of `bulk:<batchId>:<line>`) and key `bulk-<batchId>-<line>`
   are derived, so a re-run after a crash sends the same request and the orchestrator answers it
   from its idempotency record (never pays twice; `BulkExecutionIT`). Throttle measured on a test
@@ -128,6 +128,41 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   orchestrator `give-up-after` (24 h) after it was sent becomes `UNRESOLVED` (WARN `bulk.row.unresolved`;
   a later status record still settles it, the batch keeps its final status). An unavailable
   orchestrator ends the run with nothing changed. Nothing is re-sent.
+- Balance check (ticket 129c, FRS CH-POR-04; `service/FundsCheck` -> `client/CoreBalanceClient`, schema V8):
+  the org payout wallet's `available` from the core wallet API `GET /core/v1/balance/{walletId}`
+  (`api/mw-core-mock/core-wallet.v1`, consumed; `mw.portal-api.core.base-url` `MW_CORE_BASE_URL`, read
+  timeout 3 s; the same client-credentials token as the orchestrator calls, realm `services` client
+  `mw-portal-api` with audience mapper `aud-mw-core-mock`; the core lets this client read ORGANISATION
+  wallets only, `mw.internal-auth.balance-clients`). At approve (PENDING_APPROVAL, or BLOCKED_FUNDS again)
+  against the batch's total, and at dispatch start (`BulkExecutionService.startApproved`: every APPROVED
+  batch, against its PENDING rows, before anything is sent; the dispatcher only sends EXECUTING batches):
+  short -> `BLOCKED_FUNDS` with `shortfall_minor` and `blocked_reason` `MW-CORE-INSUFFICIENT_BALANCE`
+  (view `shortfall`, `blockedReason`; approve answers 200 with it; audited `bulk.batch.blocked_funds` at
+  approve; WARN `bulk.batch.blocked_funds`), nothing sent; a checker approves it again once funded (or
+  rejects it). No balance (unreachable, non-200, unreadable): approve `503 MW-SYS-041` (retryable),
+  nothing changed; at dispatch start the batch stays APPROVED for the next run (WARN
+  `bulk.batch.balance_unavailable`). `mw.portal-api.core.balance-check` (`MW_BULK_BALANCE_CHECK`, default
+  true; off in the test config, `BalanceCheckIT` switches it on against a stub core). A retry round
+  (below) is not balance-checked: the core refuses a short posting row by row. `BalanceCheckIT`.
+- Retry of FAILED rows (ticket 129c, FRS CH-POR-03; `service/BatchService.requestRetry|approveRetry`,
+  `service/BulkRetryService`, `scheduler/BulkRetryJob` ShedLock `bulk-retry`, every `bulk.retry.period` 2 s,
+  `MW_BULK_RETRY_ENABLED`; schema V8). **A row never pays twice.** The orchestrator answers a re-sent key
+  that ended FAILED with that FAILED (its idempotency record), so a retried row goes out as a new
+  attempt: `batch_item.attempt` n > 0, txnId from `bulk:<batchId>:<line>:<n>`, key
+  `bulk-<batchId>-<line>-a<n>` (`util/BulkIds`; attempt 0 keeps the ticket 34 ids). Maker-checker as
+  the batch: `POST .../{batchId}/retry-failed` (org-maker) records a request on a COMPLETED /
+  COMPLETED_WITH_EXCEPTIONS batch with a FAILED row (else `409 MW-VAL-038`; one pending `409
+  MW-VAL-039`); `POST .../retry-failed/approve` (org-checker, never the requester `403 MW-AUTH-030`;
+  none pending `409 MW-VAL-039`) is one conditional UPDATE: `retry_round` + 1, batch EXECUTING, FAILED
+  rows -> `RETRY_CHECK`; a repeated click finds nothing. Only FAILED rows (never REJECTED, REVERSED,
+  MANUAL_REVIEW, UNRESOLVED, in flight). The job reads each RETRY_CHECK row's failed attempt from the
+  orchestrator's query API and sends it again (PENDING, attempt + 1 only from the attempt it read,
+  txn_id cleared so a late record of the old attempt matches nothing) only when it is still FAILED,
+  never was UNKNOWN, has no `coreRef` and every PostTransfer was refused (`BulkRetryService.postedNothing`,
+  from the timeline's CORE entries, never shown to the org); else back to FAILED (WARN
+  `bulk.row.retry_refused`). Unavailable orchestrator: the rows wait. A RETRY_CHECK row keeps the batch
+  open and is not settled by status records. Audited `bulk.batch.retry_requested|retry_approved`.
+  Views carry `retryRound` and `retryRequestedBy`. `RetryFailedRowsIT`.
 - Views of approved batches carry `parentTxnId`, `progress` (pending, inFlight, completed, failed, manualReview, unresolved, paidAmount), `completedAt`. `GET .../result`
   (`mapper/ResultFile`, maker or checker, `text/csv`, attachment): `line,msisdn,amount,reference,
   status,txnId,errorCode,batchStatus` (`batchStatus` = the batch's status on every line, e.g.
@@ -157,13 +192,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   by `./gradlew :contractsLint`, tested by `contracts/ProducedContractsTest` / `ConsumedContractsTest`,
   and `contracts/ApiContractsTest` for the served and called APIs; no Docker).
 - `events/mw-audit-dw/mw.audit.event.v1` (produced, own type `dto/AuditEvent`; `BulkLifecycleIT`
-  validates every batch audit event against it).
+  validates every batch audit event against it). Since ticket 130b `BulkExecutionService` also writes
+  each child's CHANNEL_IN hop (`BatchAuditMapper.childSent`: `channel.request.completed`, resource
+  `txn/<txnId>`, actor `system`/`mw-portal-api`, direction IN, payload the masked child request) in the
+  dispatch transaction (`BulkExecutionIT`).
 
 - `events/mw-orchestrator/mw.txn.request.v1` (produced, own type `dto/TxnRequest`;
   `BulkExecutionIT` validates every child against it) and `mw.txn.status.v1` (consumed, own type
   `dto/StatusMessage`; `StatusMessageContractTest` reads every valid sample).
 - `api/mw-orchestrator/txn-query.v1.openapi.yaml` (client, own type `dto/OrgTxn`, unknown fields
-  ignored).
+  ignored; `coreRef` and the timeline's CORE entries are read for the retry check, never shown).
+- `api/mw-core-mock/core-wallet.v1.openapi.yaml` (client, ticket 129c: only `GET /core/v1/balance/{walletId}`
+  of the org payout wallet, `client/CoreBalanceClient`).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

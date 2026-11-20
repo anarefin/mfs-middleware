@@ -98,7 +98,7 @@ class CheckoutFlowIT {
 
   @BeforeAll
   void startStub() {
-    TestTopics.ensure("mw.txn.request.v1", "mw.txn.status.v1");
+    TestTopics.ensure("mw.txn.request.v1", "mw.txn.status.v1", "mw.audit.event.v1");
     orchestrator = new OrchestratorStub(TestTopics.bootstrap());
   }
 
@@ -186,6 +186,16 @@ class CheckoutFlowIT {
     assertThat(a.txn().payee().type()).isEqualTo(req.path("creditParty").path("type").asString());
     assertThat(a.txn().payee().id()).isEqualTo(req.path("creditParty").path("id").asString());
     assertThat(a.txn().idempotencyKey()).isEqualTo(req.path("idempotencyKey").asString());
+
+    // ticket 130b: the payment's CHANNEL_IN audit hop, masked
+    List<ConsumerRecord<String, String>> hops = KafkaTestConsumer.read(
+        TestTopics.bootstrap(), "mw.audit.event.v1", 1, Duration.ofSeconds(30), r -> txnId.equals(r.key()));
+    JsonNode hop = JSON.readTree(hops.getFirst().value());
+    assertThat(hop.path("hop").asString()).isEqualTo("CHANNEL_IN");
+    assertThat(hop.path("direction").asString()).isEqualTo("IN");
+    assertThat(hop.path("after").path("status").asString()).isEqualTo("COMPLETED");
+    assertThat(hop.path("service").asString()).isEqualTo("mw-checkout");
+    assertThat(hop.toString()).doesNotContain("01711000001").doesNotContain(FakeAuth.ASSERTION);
 
     JsonNode view = body(merchantGet(MERCHANT, sessionId));
     assertThat(view.path("status").asString()).isEqualTo("PAID");

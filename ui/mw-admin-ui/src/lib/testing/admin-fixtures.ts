@@ -98,3 +98,12 @@ export const expiringCredential: Credential = {
   approvedBy: "ops-e2e-checker01",
   uploadedAt: "2026-11-01T00:00:00.000Z",
 };
+
+/** POST /admin/v1/ussd/menus/preview (ticket 133b): a paged robi dial, its next page and back. */
+export const menuPreview = {
+  menuId: "main", mno: "robi", shortCode: "*269#", rootMenuId: "main", language: "bn",
+  screens: [
+    { input: null, screen: "আপনার সেবা বেছে নিন\n1 সেন্ড মানি\n0. পরবর্তী\n00. পেছনে", page: 0, pages: 2, ended: false },
+    { input: "0", screen: "2 ক্যাশ আউট\n00. পেছনে", page: 1, pages: 2, ended: false },
+  ],
+};
