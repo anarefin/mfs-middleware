@@ -7,6 +7,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.ws.test.server.RequestCreators.withSoapEnvelope;
 
+import org.mockito.ArgumentCaptor;
+
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
@@ -30,6 +32,7 @@ import mfs.mw.app.gateway.dto.BalanceView;
 import mfs.mw.app.gateway.dto.Party;
 import mfs.mw.app.gateway.dto.Quote;
 import mfs.mw.app.gateway.dto.SubmitResult;
+import mfs.mw.app.gateway.dto.TransactionRequest;
 import mfs.mw.app.gateway.dto.TransactionView;
 import mfs.mw.app.gateway.exception.SoapFaultResolver;
 import mfs.mw.app.gateway.mapper.AppSoapMapper;
@@ -177,6 +180,34 @@ class AppSoapEndpointTest {
     assertThat(text(confirm, "txnId")).isEqualTo("019a0000-0000-7000-8000-000000000001");
     assertThat(text(confirm, "status")).isEqualTo("COMPLETED");
     verify(transactions).submit(any(), eq("soap-key-1"), any());
+  }
+
+  /** XSD boolean {@code 1} is true (a confirmed duplicate must not stay false and be refused). */
+  @Test
+  void confirmDuplicateOfOneIsAcceptedAsTrue() {
+    String preview = exchange(envelope("", """
+        <app:PreviewRequest>
+          <app:group>send-money</app:group>
+          <app:creditParty><app:id>%s</app:id></app:creditParty>
+          <app:amount><app:valueMinor>100000</app:valueMinor><app:currency>BDT</app:currency></app:amount>
+        </app:PreviewRequest>
+        """.formatted(PAYEE)));
+    String previewId = text(preview, "previewId");
+
+    exchange(envelope("<app:Idempotency-Key>soap-dup-1</app:Idempotency-Key>", """
+        <app:ConfirmRequest>
+          <app:group>send-money</app:group>
+          <app:previewId>%s</app:previewId>
+          <app:creditParty><app:id>%s</app:id></app:creditParty>
+          <app:amount><app:valueMinor>100000</app:valueMinor><app:currency>BDT</app:currency></app:amount>
+          <app:encryptedPin><app:keyId>core-pin-1</app:keyId><app:ciphertext>Y2lwaGVy</app:ciphertext></app:encryptedPin>
+          <app:confirmDuplicate>1</app:confirmDuplicate>
+        </app:ConfirmRequest>
+        """.formatted(previewId, PAYEE)));
+
+    ArgumentCaptor<TransactionRequest> sent = ArgumentCaptor.forClass(TransactionRequest.class);
+    verify(transactions).submit(any(), eq("soap-dup-1"), sent.capture());
+    assertThat(sent.getValue().confirmDuplicate()).isTrue();
   }
 
   @Test
