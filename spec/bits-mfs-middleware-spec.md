@@ -120,7 +120,7 @@ One Compose project (`deploy/docker-compose.yml`, one hand-written file with pro
 
 ### Core mock (`mw-core-mock`)
 
-- Consumes `core.wallet.command.v1` and `core.payment.command.v1`; emits the events in section 6.3 with the same `commandId` deduplication the real core must provide.
+- Serves the core wallet REST API `/core/v1` (D31, `api/mw-core-mock/core-wallet.v1.openapi.yaml`; the Kafka command topics `core.wallet.command.v1` / `core.payment.command.v1` were retired in ticket 95b); emits the events in section 6.3 with the same idempotency (by `txnId` and operation) the real core must provide.
 - Ledger in its own schema `coremock`: `wallet(id, msisdn, type, status, balance_minor, held_minor, pin_hash)`, `hold`, `entry` (double entry), `command_log`. Seed data: 1,000 customers, 50 agents, 20 merchants, 2 orgs.
 - Rules kept simple and configurable: flat fees per `txnType`, per-txn and daily limits, PIN check (bcrypt), insufficient-funds rejection.
 - Fault injection by admin endpoint: delay, drop reply, duplicate reply, reject, so `UNKNOWN` and TSQ paths can be exercised.
@@ -592,8 +592,6 @@ Kafka carries every financial step between services and to the core, with effect
 | --- | --- | --- | --- | --- | --- |
 | `mw.txn.request.v1` | channel services | orchestrator | txnId | 48 | 7 d |
 | `mw.txn.status.v1` | orchestrator | channel services, notify, audit-dw | txnId | 48 | 7 d |
-| `core.wallet.command.v1` | orchestrator | core Digital Wallet | txnId | 48 | 7 d |
-| `core.payment.command.v1` | orchestrator | core Digital Payment | txnId | 48 | 7 d |
 | `core.wallet.event.v1` | core | orchestrator, audit-dw | txnId | 48 | 7 d |
 | `core.payment.event.v1` | core | orchestrator, audit-dw | txnId | 48 | 7 d |
 | `mw.partner.request.<family>.v1` | orchestrator | adapter-telco / billpay / bank / interop / compliance | txnId | 24 each | 3 d |
@@ -613,7 +611,7 @@ The three partner topics share one record shape per topic (`contracts/events/mw-
 
 ### 6.3 Core command / event contract (proposal to the core team)
 
-**Decision 2026-11-19** (D31, tickets 93–95): the request/reply pairs below move to REST. `mw-orchestrator` calls mw-core-mock's REST API (FRS WAL-01 account, WAL-03 balance, WAL-04 charges, WAL-05 limits, WAL-06..08 holds, WAL-09 transfers, WAL-10 credits, WAL-11 reversals, WAL-12 statements, WAL-13 transaction status), idempotent by `txnId`, with Resilience4j and never from a Kafka listener thread; a timeout or ambiguous answer moves the transaction to `UNKNOWN` and the inquiry asks WAL-13. FRS WAL-02 (PIN verify) is not built: the `mw-auth` assertion (D22) travels in a header on hold, transfer and credit calls. The core keeps publishing wallet-state, hold-expired and ledger events on Kafka. Until ticket 95 lands, the Kafka contract below is the one built.
+**Decision 2026-11-19** (D31, tickets 93–95): the request/reply pairs below move to REST. `mw-orchestrator` calls mw-core-mock's REST API (FRS WAL-01 account, WAL-03 balance, WAL-04 charges, WAL-05 limits, WAL-06..08 holds, WAL-09 transfers, WAL-10 credits, WAL-11 reversals, WAL-12 statements, WAL-13 transaction status), idempotent by `txnId`, with Resilience4j and never from a Kafka listener thread; a timeout or ambiguous answer moves the transaction to `UNKNOWN` and the inquiry asks WAL-13. FRS WAL-02 (PIN verify) is not built: the `mw-auth` assertion (D22) travels in a header on hold, transfer and credit calls. The core keeps publishing wallet-state, hold-expired and ledger events on Kafka. Built: ticket 95a (the orchestrator), ticket 95b (mw-auth's KYC factors check `POST /core/v1/customers/{walletId}/verify-factors`, mw-admin-api's unlock `POST /core/v1/accounts/{walletId}/unlock`; the command topics `core.wallet.command.v1` / `core.payment.command.v1` and the contract `core.command.v1` retired). The command table below names the operations the REST calls carry out (each still answered by its event on `core.wallet.event.v1` / `core.payment.event.v1`); the command envelope and the topic routing below are history.
 
 The middleware proposes this contract; the core team must confirm field names and semantics (open point 1). All commands are idempotent on `commandId`; the core MUST return the same result event for a repeated `commandId`.
 

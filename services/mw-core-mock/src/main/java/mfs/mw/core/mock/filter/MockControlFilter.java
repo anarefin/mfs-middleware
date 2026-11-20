@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import mfs.mw.core.mock.dto.ErrorEnvelope;
+import mfs.mw.core.mock.dto.ReplyMode;
 import mfs.mw.core.mock.exception.ErrorCodes;
 import mfs.mw.core.mock.service.mockcontrol.Decision;
 import mfs.mw.core.mock.service.mockcontrol.RestCall;
@@ -39,6 +40,7 @@ public class MockControlFilter extends OncePerRequestFilter {
 
   static final String CORE_UNAVAILABLE = "MW-SYS-CORE_UNAVAILABLE";
   static final String CORE_ERROR = "MW-SYS-CORE_ERROR";
+  static final String ANSWER_LOST = "MW-TMO-CORE_ANSWER_LOST";
 
   private final ScenarioEngine engine;
   private final JsonMapper json;
@@ -92,7 +94,10 @@ public class MockControlFilter extends OncePerRequestFilter {
     }
     pause(d.delayMs());
     switch (d.mode()) {
-      case TIMEOUT -> pause(d.holdMs());
+      case TIMEOUT -> {
+        pause(d.holdMs());
+        loseIfNoReply(d, wrapper);
+      }
       case SERVER_ERROR_AFTER_SEND -> {
         wrapper.resetBuffer();
         error(wrapper, d.statusOr(500), CORE_ERROR, "Core error after the call was applied (mock control)", true);
@@ -103,8 +108,22 @@ public class MockControlFilter extends OncePerRequestFilter {
       }
       case CONNECTION_RESET -> request.setAttribute(MockAbortValve.ABORT_ATTRIBUTE, "core");
       default -> {
-        // SUCCESS, BUSINESS_FAILURE (already the stored 422), PARTIAL_SUCCESS: the answer as it is
+        // SUCCESS, BUSINESS_FAILURE (already the stored 422), PARTIAL_SUCCESS: the answer as it is,
+        // unless the reply is lost
+        loseIfNoReply(d, wrapper);
       }
+    }
+  }
+
+  /**
+   * NO_CALLBACK (the legacy DROP_REPLY fault, ticket 95b): the call was applied (or refused), but its
+   * answer never reaches the caller, as its result event never does: {@code 504 MW-TMO-CORE_ANSWER_LOST},
+   * an unknown outcome the caller settles by WAL-13.
+   */
+  private void loseIfNoReply(Decision d, ContentCachingResponseWrapper wrapper) throws IOException {
+    if (d.reply() == ReplyMode.NONE) {
+      wrapper.resetBuffer();
+      error(wrapper, 504, ANSWER_LOST, "The core's answer was lost after the call was applied (mock control)", true);
     }
   }
 

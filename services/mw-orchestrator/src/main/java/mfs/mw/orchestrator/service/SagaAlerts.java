@@ -13,6 +13,8 @@ import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * Operational alerts of the saga (spec 6.3, 7.2, 21): each one is a stable {@code event} log line
@@ -25,6 +27,10 @@ import org.springframework.stereotype.Component;
  *   <li>{@code txn.commit.failed} (Sev-1, ERROR) / {@code txn.release.failed} (ERROR): the core
  *       refused a commit or release;
  *   <li>{@code txn.reversal.retry_exhausted}: REVERSING stopped resending without an answer;
+ *   <li>{@code txn.manual_review.entered} (FRS PLT-024, ticket 96a): a transaction entered
+ *       MANUAL_REVIEW (counter {@code mw_manual_review_entered_total}, once the state change has
+ *       committed); mw-notify alerts operations from the MANUAL_REVIEW status on
+ *       {@code mw.txn.status.v1} (ops rule, SMS/email);
  *   <li>{@code txn.manual_review.ageing}: the daily check of the MANUAL_REVIEW queue (count,
  *       oldest age; gauge {@code mw_manual_review_oldest_age}).
  * </ul>
@@ -42,6 +48,7 @@ public class SagaAlerts {
   private final Counter commitFailed;
   private final Counter releaseFailed;
   private final Counter reversalExhausted;
+  private final Counter manualReviewEntered;
   private final AtomicLong oldestManualReviewSeconds = new AtomicLong();
 
   public SagaAlerts(MeterRegistry registry) {
@@ -51,6 +58,8 @@ public class SagaAlerts {
     releaseFailed = counter(registry, "mw.txn.release.failed", "Releases the core refused");
     reversalExhausted =
         counter(registry, "mw.txn.reversal.retry.exhausted", "Reversals that stopped resending unanswered");
+    manualReviewEntered =
+        counter(registry, "mw.manual.review.entered", "Transactions that entered MANUAL_REVIEW");
     Gauge.builder("mw.manual.review.oldest.age", oldestManualReviewSeconds, AtomicLong::get)
         .description("Age in seconds of the oldest MANUAL_REVIEW transaction at the last daily check")
         .baseUnit("seconds")
@@ -104,6 +113,33 @@ public class SagaAlerts {
         .addKeyValue("txnId", txnId.toString())
         .addKeyValue("waitingSeconds", Duration.between(began, now).toSeconds())
         .log("the core has not confirmed the reversal; resends stopped, the core will be asked");
+  }
+
+  /**
+   * A transaction entered MANUAL_REVIEW (FRS PLT-024). Called inside the state change's database
+   * transaction: counted and logged once it commits (never for a rolled-back change), or at once
+   * when no transaction is active.
+   */
+  public void manualReviewEntered(Status from, UUID txnId, ErrorInfo error) {
+    Runnable alert = () -> {
+      manualReviewEntered.increment();
+      log.atWarn()
+          .addKeyValue("event", "txn.manual_review.entered")
+          .addKeyValue("txnId", txnId.toString())
+          .addKeyValue("from", from.name())
+          .addKeyValue("errorCode", error == null ? null : error.code())
+          .log("transaction handed to manual review; operations are alerted");
+    };
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCommit() {
+          alert.run();
+        }
+      });
+    } else {
+      alert.run();
+    }
   }
 
   /** The daily MANUAL_REVIEW check: how many wait and since when the oldest does. */

@@ -1,3 +1,0 @@
-{
-  "invalid-empty-query-command-id.json": ["/payload/queryCommandId must NOT have fewer than 1 characters"]
-}

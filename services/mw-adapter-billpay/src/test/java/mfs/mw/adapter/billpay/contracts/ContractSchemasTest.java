@@ -13,50 +13,47 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * The schema loader resolves {@code https://contracts.bits.mw/} ids, and the relative {@code $ref}s
  * between envelope, payload and {@code common/} schemas, from {@code mwContractsDir} (spec 4.3 rule
- * 2; ticket 48). core.command.v1 HoldFunds is the worked example: envelope -> HoldFunds payload ->
- * common/defs.v1 TxnAssertion and Amount.
+ * 2; ticket 48). mw.txn.request.v1 is the worked example: the request -> common/defs.v1 TxnAssertion,
+ * Party and Amount (ticket 95b retired core.command.v1, the example before).
  */
 class ContractSchemasTest {
 
   static final JsonMapper JSON = JsonMapper.builder().build();
-  static final String CORE_COMMAND = "events/mw-orchestrator/core.command.v1.schema.json";
-  static final String HOLD_FUNDS_SAMPLES =
-      "events/mw-orchestrator/samples/core.command.v1/HoldFunds";
+  static final String TXN_REQUEST = "events/mw-orchestrator/mw.txn.request.v1.schema.json";
+  static final String TXN_REQUEST_SAMPLES = "events/mw-orchestrator/samples/mw.txn.request.v1";
 
   static JsonNode sample(String name) throws Exception {
     return JSON.readTree(
-        Files.readString(ContractSchemas.contractsDir().resolve(HOLD_FUNDS_SAMPLES).resolve(name)));
+        Files.readString(ContractSchemas.contractsDir().resolve(TXN_REQUEST_SAMPLES).resolve(name)));
   }
 
-  static List<Error> validateHoldFunds(String sample) throws Exception {
-    JsonSchema schema = ContractSchemas.schema(CORE_COMMAND);
+  static List<Error> validateTxnRequest(String sample) throws Exception {
+    JsonSchema schema = ContractSchemas.schema(TXN_REQUEST);
     return schema.validate(sample(sample));
   }
 
   @Test
-  void validHoldFundsSamplesPassThroughEnvelopePayloadAndCommonDefs() throws Exception {
-    List<Path> valid = ContractSchemas.samples(HOLD_FUNDS_SAMPLES, "valid");
+  void validTxnRequestSamplesPassThroughTheSchemaAndCommonDefs() throws Exception {
+    List<Path> valid = ContractSchemas.samples(TXN_REQUEST_SAMPLES, "valid");
     assertThat(valid).isNotEmpty();
     for (Path p : valid) {
-      assertThat(validateHoldFunds(p.getFileName().toString())).as("%s", p).isEmpty();
+      assertThat(validateTxnRequest(p.getFileName().toString())).as("%s", p).isEmpty();
     }
   }
 
   @Test
-  void holdFundsWithoutAssertionIsRejectedByThePayloadSchema() throws Exception {
-    List<Error> errors = validateHoldFunds("invalid-hold-funds-without-assertion.json");
+  void aReversalWithoutItsOriginalIsRejectedByTheSchema() throws Exception {
+    List<Error> errors = validateTxnRequest("invalid-reversal-without-original.json");
 
     assertThat(errors)
         .extracting(Error::getMessage)
-        .anySatisfy(m -> assertThat(m).contains("assertion"));
+        .anySatisfy(m -> assertThat(m).contains("originalTxnId"));
   }
 
   @Test
-  void holdFundsWithADecimalAmountIsRejectedByTheCommonAmountType() throws Exception {
-    List<Error> errors = validateHoldFunds("invalid-decimal-amount.json");
+  void aDecimalAmountIsRejectedByTheCommonAmountType() throws Exception {
+    List<Error> errors = validateTxnRequest("invalid-decimal-amount.json");
 
-    // networknt has no discriminator, so it also reports the other oneOf branches; the HoldFunds
-    // branch's error is the decimal valueMinor.
     assertThat(errors)
         .anySatisfy(
             e -> {
@@ -66,18 +63,18 @@ class ContractSchemasTest {
   }
 
   @Test
-  void everyInvalidHoldFundsSampleIsRejected() throws Exception {
-    List<Path> invalid = ContractSchemas.samples(HOLD_FUNDS_SAMPLES, "invalid");
+  void everyInvalidTxnRequestSampleIsRejected() throws Exception {
+    List<Path> invalid = ContractSchemas.samples(TXN_REQUEST_SAMPLES, "invalid");
     assertThat(invalid).isNotEmpty();
     for (Path p : invalid) {
-      assertThat(validateHoldFunds(p.getFileName().toString())).as("%s", p).isNotEmpty();
+      assertThat(validateTxnRequest(p.getFileName().toString())).as("%s", p).isNotEmpty();
     }
   }
 
   @Test
   void schemaIdsMapToFilesUnderMwContractsDir() {
-    assertThat(ContractSchemas.fileFor(ContractSchemas.ID_BASE + CORE_COMMAND))
-        .isEqualTo(ContractSchemas.contractsDir().resolve(CORE_COMMAND))
+    assertThat(ContractSchemas.fileFor(ContractSchemas.ID_BASE + TXN_REQUEST))
+        .isEqualTo(ContractSchemas.contractsDir().resolve(TXN_REQUEST))
         .isRegularFile();
   }
 }

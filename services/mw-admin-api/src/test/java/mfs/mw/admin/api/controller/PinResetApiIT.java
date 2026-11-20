@@ -2,6 +2,9 @@ package mfs.mw.admin.api.controller;
 
 import static mfs.mw.admin.api.controller.WalletUnlockApiIT.operator;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import com.networknt.schema.Schema;
 import java.util.List;
@@ -10,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import mfs.mw.admin.api.TestInfrastructure;
+import mfs.mw.admin.api.client.CoreAccountClient;
 import mfs.mw.admin.api.contracts.ContractSchemas;
 import mfs.mw.admin.api.contracts.OpenApiSchemas;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,6 +24,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
@@ -43,6 +48,8 @@ class PinResetApiIT {
 
   static final RequestPostProcessor MAKER = operator("ops-maker01", "viewer", "ops-maker");
   static final RequestPostProcessor CHECKER = operator("ops-checker01", "viewer", "ops-checker");
+
+  @MockitoBean CoreAccountClient core;
 
   private final MockMvcTester mvc;
   private final JdbcTemplate jdbc;
@@ -123,8 +130,7 @@ class PinResetApiIT {
     assertThat(cmd.path("actor").path("id").asString()).isEqualTo("ops-checker01");
     assertThat(jdbc.queryForObject("select msg_key from outbox where topic = ?", String.class, LOCK_TOPIC))
         .isEqualTo(WALLET);
-    assertThat(jdbc.queryForObject("select count(*) from outbox where topic = 'core.wallet.command.v1'", Integer.class))
-        .as("a reset sends no core command").isZero();
+    verify(core, never()).unlock(any(), any(), any(), any(), any());
 
     JsonNode audit = audits("admin.change_request.approved").getFirst();
     assertThat(ContractSchemas.schema("events/mw-audit-dw/mw.audit.event.v1.schema.json").validate(audit)).isEmpty();

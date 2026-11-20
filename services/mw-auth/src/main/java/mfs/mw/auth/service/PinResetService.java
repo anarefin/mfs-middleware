@@ -5,28 +5,25 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executor;
+import mfs.mw.auth.client.CoreClient;
 import mfs.mw.auth.client.CryptoClient;
 import mfs.mw.auth.config.PinProperties;
 import mfs.mw.auth.dto.CarePinReset;
 import mfs.mw.auth.dto.CarePinResetRequest;
 import mfs.mw.auth.dto.CryptoTokens;
-import mfs.mw.auth.dto.CustomerFactorsAnswer;
 import mfs.mw.auth.dto.EncryptedPin;
 import mfs.mw.auth.dto.ErrorDetail;
 import mfs.mw.auth.dto.PinHmac;
 import mfs.mw.auth.dto.PinResetRequest;
 import mfs.mw.auth.dto.PinResetView;
 import mfs.mw.auth.dto.SignedRequest;
-import mfs.mw.auth.dto.VerifyCustomerFactorsCommand;
 import mfs.mw.auth.entity.AuthDevice;
 import mfs.mw.auth.entity.AuthWallet;
 import mfs.mw.auth.entity.PinReset;
 import mfs.mw.auth.exception.ErrorCodes;
 import mfs.mw.auth.exception.MwException;
 import mfs.mw.auth.mapper.AuditEventMapper;
-import mfs.mw.auth.messaging.EventMetadata;
-import mfs.mw.auth.messaging.Inbox;
-import mfs.mw.auth.messaging.OutboxWriter;
 import mfs.mw.auth.repository.CredentialRepository;
 import mfs.mw.auth.repository.DeviceRepository;
 import mfs.mw.auth.repository.DeviceSessionStore;
@@ -35,6 +32,7 @@ import mfs.mw.auth.repository.RefreshTokenRepository;
 import mfs.mw.auth.util.UuidV7;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -46,9 +44,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <ul>
  *   <li>Self-service ({@link #start} with the KYC factors): signed by the bound device, its {@code
  *       RESET} OTP; the factors tokenised by mw-crypto under TOKENISE_NID (each bound to the wallet,
- *       {@code <walletId>:<factor>}) and sent to the core as {@code VerifyCustomerFactors} through the
- *       outbox, in the transaction that opens the reset {@code PENDING_KYC}. The core's answer
- *       ({@link #kycAnswered}, through the inbox) moves it to {@code VERIFIED} or {@code REJECTED}.
+ *       {@code <walletId>:<factor>}); the reset opens {@code PENDING_KYC}, then, after that commit and
+ *       off the request thread, the core checks the factors over REST ({@code POST
+ *       /core/v1/customers/{walletId}/verify-factors}, ticket 95b, ADR D31; {@link CoreClient}, asked
+ *       again on no definite answer) and its answer ({@link #kycAnswered}) moves the reset to {@code
+ *       VERIFIED} or {@code REJECTED}. No answer at all leaves it {@code PENDING_KYC} until it expires
+ *       (the customer starts again).
  *   <li>Care ({@link #approveCare}, mw-admin-api after maker-checker): a reset {@code APPROVED}
  *       without a device, the customer told by SMS; {@link #start} without factors and unsigned, with
  *       the {@code RESET} OTP of the device in hand (a lost phone: any device), moves it to {@code
@@ -64,8 +65,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class PinResetService {
 
-  public static final String CONSUMER = "mw-auth.pin-reset";
   static final String COMMAND_PREFIX = "pin-reset:";
+  /** The executor of the core's factors checks (virtual threads, {@code config/CoreClientConfig}). */
+  public static final String KYC_EXECUTOR = "kycCheckExecutor";
   private static final Logger log = LoggerFactory.getLogger(PinResetService.class);
 
   private final WalletAccess wallets;
@@ -79,8 +81,8 @@ public class PinResetService {
   private final RefreshTokenRepository refresh;
   private final DeviceSessionStore sessions;
   private final CryptoClient crypto;
-  private final OutboxWriter outbox;
-  private final Inbox inbox;
+  private final CoreClient core;
+  private final Executor kycChecks;
   private final AuditTrail audit;
   private final PinNotices notices;
   private final PinProperties props;
@@ -100,8 +102,8 @@ public class PinResetService {
       RefreshTokenRepository refresh,
       DeviceSessionStore sessions,
       CryptoClient crypto,
-      OutboxWriter outbox,
-      Inbox inbox,
+      CoreClient core,
+      @Qualifier(KYC_EXECUTOR) Executor kycChecks,
       AuditTrail audit,
       PinNotices notices,
       PinProperties props,
@@ -118,8 +120,8 @@ public class PinResetService {
     this.refresh = refresh;
     this.sessions = sessions;
     this.crypto = crypto;
-    this.outbox = outbox;
-    this.inbox = inbox;
+    this.core = core;
+    this.kycChecks = kycChecks;
     this.audit = audit;
     this.notices = notices;
     this.props = props;
@@ -158,22 +160,16 @@ public class PinResetService {
     String commandId = COMMAND_PREFIX + id;
     PinReset reset = new PinReset(id, walletId, PinReset.SELF, PinReset.PENDING_KYC, deviceId,
         now.plus(props.reset().ttl()), null, null);
-    String correlationId = DeviceOtpService.correlationId();
-    VerifyCustomerFactorsCommand cmd = new VerifyCustomerFactorsCommand(
-        1, VerifyCustomerFactorsCommand.TYPE, commandId, txnId, correlationId, now, now.plus(props.reset().commandTtl()),
-        new VerifyCustomerFactorsCommand.Payload(new VerifyCustomerFactorsCommand.Subject("WALLET", walletId),
-            id.toString(),
-            new VerifyCustomerFactorsCommand.Factors(t.tokens().get(0), t.tokens().get(1), t.kid())));
     inTx(() -> {
       otps.consume(walletId, deviceId, checked);
       resets.expire(walletId, PinReset.SELF, now);
       resets.insert(reset, "wallet", commandId, now);
-      outbox.append(props.reset().commandTopic(), txnId, new EventMetadata(correlationId, txnId, commandId, 1), cmd);
       audit.record("auth.pin_reset.requested", walletId, AuditEventMapper.wallet(walletId), "SUCCESS", null,
           Map.of("kind", PinReset.SELF, "status", PinReset.PENDING_KYC));
     });
     log.atInfo().addKeyValue("event", "auth.pin_reset.requested").addKeyValue("txnId", txnId)
         .log("Self-service PIN reset opened on device {}", deviceId);
+    kycChecks.execute(() -> kycAnswered(id, walletId, txnId, core.verifyFactors(walletId, txnId, id, t)));
     return view(reset, now);
   }
 
@@ -233,26 +229,36 @@ public class PinResetService {
         null), now);
   }
 
-  /** The core's answer to VerifyCustomerFactors, once per event (inbox). */
-  public void kycAnswered(CustomerFactorsAnswer a) {
-    inbox.processOnce(CONSUMER, a.eventId(), () -> {
-      Instant now = clock.instant();
-      PinReset r = resets.findByCommandId(a.commandId()).orElse(null);
-      if (r == null) {
-        log.atWarn().addKeyValue("event", "auth.pin_reset.unknown").log("Core answer for an unknown PIN reset");
-        return;
+  /**
+   * The core's answer to the factors check: {@code PENDING_KYC} -> {@code VERIFIED} or {@code REJECTED}
+   * (the reason the core's), audited; a reset no longer pending (expired, replaced) changes nothing; no
+   * definite answer leaves it pending until it expires.
+   */
+  void kycAnswered(UUID resetId, String walletId, String txnId, CoreClient.FactorsAnswer a) {
+    if (a.outcome() == CoreClient.Outcome.UNKNOWN) {
+      log.atWarn().addKeyValue("event", "auth.pin_reset.kyc_unknown").addKeyValue("txnId", txnId)
+          .log("No answer of the core to a PIN reset's factors; it stays pending until it expires");
+      return;
+    }
+    boolean verified = a.outcome() == CoreClient.Outcome.VERIFIED;
+    String to = verified ? PinReset.VERIFIED : PinReset.REJECTED;
+    Instant now = clock.instant();
+    boolean moved = Boolean.TRUE.equals(tx.execute(status -> {
+      if (!resets.move(resetId, PinReset.PENDING_KYC, to, verified ? null : a.reason(), now)) {
+        return false;
       }
-      String to = a.verified() ? PinReset.VERIFIED : PinReset.REJECTED;
-      if (!resets.move(r.id(), PinReset.PENDING_KYC, to, a.verified() ? null : a.reasonCode(), now)) {
-        log.atInfo().addKeyValue("event", "auth.pin_reset.late_answer").log("Core answer for a PIN reset no longer pending");
-        return;
-      }
-      audit.record("auth.pin_reset." + (a.verified() ? "verified" : "rejected"), r.walletId(), AuditEventMapper.SYSTEM,
-          a.verified() ? "SUCCESS" : "FAILURE", Map.of("status", PinReset.PENDING_KYC),
-          a.verified() ? Map.of("status", to) : Map.of("status", to, "reason", String.valueOf(a.reasonCode())));
-      log.atInfo().addKeyValue("event", "auth.pin_reset." + (a.verified() ? "verified" : "rejected"))
-          .addKeyValue("errorCode", a.reasonCode()).log("Core checked the KYC factors of a PIN reset");
-    });
+      audit.record("auth.pin_reset." + (verified ? "verified" : "rejected"), walletId, AuditEventMapper.SYSTEM,
+          verified ? "SUCCESS" : "FAILURE", Map.of("status", PinReset.PENDING_KYC),
+          verified ? Map.of("status", to) : Map.of("status", to, "reason", String.valueOf(a.reason())));
+      return true;
+    }));
+    if (!moved) {
+      log.atInfo().addKeyValue("event", "auth.pin_reset.late_answer").addKeyValue("txnId", txnId)
+          .log("Core answer for a PIN reset no longer pending");
+      return;
+    }
+    log.atInfo().addKeyValue("event", "auth.pin_reset." + (verified ? "verified" : "rejected")).addKeyValue("txnId", txnId)
+        .addKeyValue("errorCode", a.reason()).log("Core checked the KYC factors of a PIN reset");
   }
 
   /** The answer of {@code POST /internal/v1/pin-resets}: the reset and whether it is new. */

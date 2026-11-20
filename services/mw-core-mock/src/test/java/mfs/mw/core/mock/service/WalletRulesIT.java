@@ -206,9 +206,6 @@ class WalletRulesIT {
     envelope.put("payload", Map.of("subject", Map.of("type", "WALLET", "id", wallet), "resetId", resetId,
         "factors", Map.of("nidLast4Token", "NID_MZXW6YTB", "dateOfBirthToken", "NID_ONSWG4TF", "tokenKid",
             "tokenise-nid.v1")));
-    assertThat(ContractSchemas.schema("events/mw-orchestrator/core.command.v1.schema.json").validate(json.valueToTree(envelope)))
-        .as("VerifyCustomerFactors against core.command.v1")
-        .isEmpty();
     return json.convertValue(envelope, CoreCommand.class);
   }
 
@@ -265,9 +262,6 @@ class WalletRulesIT {
     envelope.put("issuedAt", now.toString());
     envelope.put("expiresAt", now.plusSeconds(300).toString());
     envelope.put("payload", payload);
-    assertThat(ContractSchemas.schema("events/mw-orchestrator/core.command.v1.schema.json").validate(json.valueToTree(envelope)))
-        .as("UnlockWallet against core.command.v1")
-        .isEmpty();
     return json.convertValue(envelope, CoreCommand.class);
   }
 

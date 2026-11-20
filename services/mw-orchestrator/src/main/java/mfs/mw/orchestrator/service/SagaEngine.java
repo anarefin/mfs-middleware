@@ -73,6 +73,7 @@ public class SagaEngine {
   private final PartnerCallRepository partnerCalls;
   private final CoreCallRepository coreCalls;
   private final CoreCallDispatcher core;
+  private final SagaAlerts alerts;
   private final Clock clock;
 
   public SagaEngine(
@@ -89,6 +90,7 @@ public class SagaEngine {
       PartnerCallRepository partnerCalls,
       CoreCallRepository coreCalls,
       CoreCallDispatcher core,
+      SagaAlerts alerts,
       Clock clock) {
     this.transactions = transactions;
     this.timers = timers;
@@ -103,6 +105,7 @@ public class SagaEngine {
     this.partnerCalls = partnerCalls;
     this.coreCalls = coreCalls;
     this.core = core;
+    this.alerts = alerts;
     this.clock = clock;
   }
 
@@ -147,6 +150,9 @@ public class SagaEngine {
           .addKeyValue("from", t.from().name())
           .addKeyValue("to", t.to().name())
           .log("transaction state changed");
+      if (t.to() == Status.MANUAL_REVIEW) {
+        alerts.manualReviewEntered(t.from(), rec.txnId(), next.error());
+      }
     }
     rearm(next, t, now);
     perform(t.effect(), next, now);

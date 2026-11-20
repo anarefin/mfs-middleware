@@ -122,6 +122,21 @@ class SagaAlertsTest {
     assertThat(kv(e)).containsEntry("waitingSeconds", "62");
   }
 
+  // --- MANUAL_REVIEW entered (FRS PLT-024, ticket 96a) ----------------------------------------
+
+  @Test
+  void enteringManualReviewIsCountedAndLoggedOnce() {
+    alerts.manualReviewEntered(Status.UNKNOWN, TXN, new ErrorInfo("MW-TMO-004", "unknown", null, false));
+
+    assertThat(count("mw.manual.review.entered")).isEqualTo(1);
+    ILoggingEvent e = only("txn.manual_review.entered");
+    assertThat(e.getLevel()).isEqualTo(Level.WARN);
+    assertThat(kv(e))
+        .containsEntry("txnId", TXN.toString())
+        .containsEntry("from", "UNKNOWN")
+        .containsEntry("errorCode", "MW-TMO-004");
+  }
+
   // --- MANUAL_REVIEW ageing ------------------------------------------------------------------
 
   @Test

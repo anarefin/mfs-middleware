@@ -1,3 +1,0 @@
-{
-  "invalid-missing-expires-at.json": ["/ must have required property 'expiresAt'"]
-}

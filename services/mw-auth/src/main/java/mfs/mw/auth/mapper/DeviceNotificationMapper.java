@@ -62,13 +62,17 @@ public class DeviceNotificationMapper {
   }
 
   /**
-   * The "a new device was bound" notice. Param {@code deviceId} names the new device (the template does not
-   * show it): mw-notify revokes the push tokens of the wallet's other devices on it (ticket 110).
+   * The "a new device was bound" notice. Params (the template shows neither): {@code deviceId} names the new
+   * device, mw-notify revokes the push tokens of the wallet's other devices on it (ticket 110); {@code
+   * bindingEpoch} is the binding's epoch, by which mw-notify orders bindings and push token registrations
+   * instead of its own clock (ticket 110b).
    */
-  public NotificationRequest bound(String wallet, String deviceId, String locale, String correlationId) {
+  public NotificationRequest bound(
+      String wallet, String deviceId, long bindingEpoch, String locale, String correlationId) {
     return new NotificationRequest(
         1, "device-bound:" + UUID.randomUUID(), correlationId, new NotificationRequest.Recipient(wallet),
-        BOUND_TEMPLATE, locale(locale), Map.of("deviceId", deviceId), List.of("SMS"), "TXN", null);
+        BOUND_TEMPLATE, locale(locale), Map.of("deviceId", deviceId, "bindingEpoch", Long.toString(bindingEpoch)),
+        List.of("SMS"), "TXN", null);
   }
 
   /** A notice without parameters (template {@code PIN_RESET_APPROVED}, {@code PIN_CHANGED}), priority TXN. */

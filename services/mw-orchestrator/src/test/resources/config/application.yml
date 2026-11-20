@@ -28,12 +28,13 @@ mw:
       org-payees:
         ORG002: ["BILLER:DESCO", "MERCHANT:01911000001"]
     # Partner "tsqfast" has a status-inquiry schedule shortened to seconds (InquirySagaIT reaches
-    # MANUAL_REVIEW with it); every other partner keeps the spec 7.4 default.
+    # MANUAL_REVIEW with it: two inquiries, then the answer-wait); every other partner keeps the
+    # FRS default (30s, 2m, 10m, 1h).
     inquiry:
+      answer-wait: 2s
       partners:
         tsqfast:
           schedule: 1s,2s
-          cut-off: 5s
   outbox:
     relay:
       # Off by default in tests: Spring caches test contexts, and a relay left running in one

@@ -163,9 +163,9 @@ public class DeviceBindingService {
         closed.add(new String[] {wallet, other});
       }
       closed.add(new String[] {wallet, deviceId});
-      devices.bind(deviceId, wallet, publicKey, now);
+      long epoch = devices.bind(deviceId, wallet, publicKey, now);
       String correlationId = DeviceOtpService.correlationId();
-      NotificationRequest notice = notifications.bound(msisdn, deviceId, checked.locale(), correlationId);
+      NotificationRequest notice = notifications.bound(msisdn, deviceId, epoch, checked.locale(), correlationId);
       outbox.append(props.notifyTopic(), msisdn,
           new EventMetadata(correlationId, notice.messageId(), notice.messageId(), 1), notice);
       return closed;
@@ -201,7 +201,7 @@ public class DeviceBindingService {
     if (idle == null) {
       throw notFound(ErrorCodes.AUTH_NO_SESSION, "No live session");
     }
-    return new LiveSession(walletId, id, idle.toSeconds(), fingerprint(d.publicKey()), d.boundAt());
+    return new LiveSession(walletId, id, idle.toSeconds(), fingerprint(d.publicKey()), d.boundAt(), d.bindingEpoch());
   }
 
   /** Lower-case hex SHA-256 of a base64 SubjectPublicKeyInfo's DER bytes. */

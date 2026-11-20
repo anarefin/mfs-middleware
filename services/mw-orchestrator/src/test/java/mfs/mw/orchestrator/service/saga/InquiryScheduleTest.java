@@ -7,10 +7,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
-/** The status-inquiry schedule of spec 7.4: 30 s, 1 min, 2 min, 5 min, 15 min, 1 h, then 6 h. */
+/**
+ * The status-inquiry schedule of FRS PLT-023/024 (ticket 96a): inquiries after 30 s, 2 min, 10 min
+ * and 1 h, then one {@code answerWait} for the last answer, then MANUAL_REVIEW.
+ */
 class InquiryScheduleTest {
 
   private static final Instant T0 = Instant.parse("2026-11-03T08:00:00Z");
@@ -18,13 +20,10 @@ class InquiryScheduleTest {
   private final InquirySchedule defaults = InquirySchedule.DEFAULT;
 
   @Test
-  void theDefaultIsTheSpecSchedule() {
+  void theDefaultIsTheFrsSchedule() {
     assertThat(defaults.delays())
-        .containsExactly(
-            Duration.ofSeconds(30), Duration.ofMinutes(1), Duration.ofMinutes(2),
-            Duration.ofMinutes(5), Duration.ofMinutes(15), Duration.ofHours(1));
-    assertThat(defaults.repeatEvery()).isEqualTo(Duration.ofHours(6));
-    assertThat(defaults.cutOff()).isEqualTo(Duration.ofHours(24));
+        .containsExactly(Duration.ofSeconds(30), Duration.ofMinutes(2), Duration.ofMinutes(10), Duration.ofHours(1));
+    assertThat(defaults.answerWait()).isEqualTo(Duration.ofSeconds(30));
   }
 
   @Test
@@ -33,70 +32,57 @@ class InquiryScheduleTest {
   }
 
   @Test
-  void eachLaterInquiryWaitsTheNextSlotThenEverySixHoursUntilTheCutOff() {
+  void fourInquiriesThenManualReviewOnceTheLastAnswerHadItsTime() {
     List<Instant> asked = new ArrayList<>();
     Instant now = defaults.first(T0);
     int sent = 0;
-    while (!defaults.exhausted(T0, now)) {
+    while (!defaults.exhausted(sent)) {
       asked.add(now);
       sent++;
-      now = defaults.after(sent, T0, now);
+      now = defaults.next(sent, now);
     }
 
     assertThat(asked)
-        .startsWith(
+        .containsExactly(
             T0.plusSeconds(30),
-            T0.plusSeconds(90),
-            T0.plusSeconds(210),
-            T0.plusSeconds(510),
-            T0.plusSeconds(1_410),
-            T0.plusSeconds(5_010),
-            T0.plusSeconds(5_010 + 6 * 3_600));
-    // six slots end at 1 h 23 min 30 s; every 6 h after that fits 3 more before the 24 h cut-off,
-    // whose own expiry asks nothing: it hands the transaction to an operator
-    assertThat(asked).hasSize(9);
-    assertThat(asked.get(asked.size() - 1)).isBefore(T0.plus(Duration.ofHours(24)));
-    assertThat(now).isEqualTo(T0.plus(Duration.ofHours(24)));
+            T0.plusSeconds(30 + 120),
+            T0.plusSeconds(30 + 120 + 600),
+            T0.plusSeconds(30 + 120 + 600 + 3_600));
+    // the slot after the fourth inquiry asks nothing: it hands the transaction to an operator
+    assertThat(sent).isEqualTo(4);
+    assertThat(now).isEqualTo(T0.plusSeconds(30 + 120 + 600 + 3_600 + 30));
   }
 
   @Test
-  void noSlotLiesBeyondTheCutOff() {
-    InquirySchedule s = new InquirySchedule(List.of(Duration.ofSeconds(10)), Duration.ofHours(6), Duration.ofSeconds(25));
-    assertThat(s.after(1, T0, T0.plusSeconds(10))).isEqualTo(T0.plusSeconds(25));
-    assertThat(s.exhausted(T0, T0.plusSeconds(24))).isFalse();
-    assertThat(s.exhausted(T0, T0.plusSeconds(25))).isTrue();
+  void theScheduleIsExhaustedOnlyOnceEveryWaitWasUsed() {
+    assertThat(defaults.exhausted(0)).isFalse();
+    assertThat(defaults.exhausted(3)).isFalse();
+    assertThat(defaults.exhausted(4)).isTrue();
   }
 
   @Test
-  void aCutOffShorterThanTheFirstSlotStillAsksNothingAfterIt() {
-    InquirySchedule s = new InquirySchedule(List.of(Duration.ofMinutes(1)), Duration.ofHours(6), Duration.ofSeconds(5));
-    assertThat(s.first(T0)).isEqualTo(T0.plusSeconds(5));
-    assertThat(s.exhausted(T0, s.first(T0))).isTrue();
+  void aCustomListGivesItsOwnInquiries() {
+    InquirySchedule s = new InquirySchedule(List.of(Duration.ofSeconds(1), Duration.ofSeconds(2)), Duration.ofSeconds(5));
+    assertThat(s.first(T0)).isEqualTo(T0.plusSeconds(1));
+    assertThat(s.next(1, T0.plusSeconds(1))).isEqualTo(T0.plusSeconds(3));
+    assertThat(s.next(2, T0.plusSeconds(3))).isEqualTo(T0.plusSeconds(8));
+    assertThat(s.exhausted(2)).isTrue();
   }
 
   @Test
-  void anEmptyScheduleRepeatsFromTheStart() {
-    InquirySchedule s = new InquirySchedule(List.of(), Duration.ofSeconds(3), Duration.ofSeconds(10));
-    assertThat(s.first(T0)).isEqualTo(T0.plusSeconds(3));
-    assertThat(s.after(1, T0, T0.plusSeconds(3))).isEqualTo(T0.plusSeconds(6));
-  }
-
-  @Test
-  void zeroOrNegativeDurationsAreRefused() {
-    assertThatThrownBy(() -> new InquirySchedule(List.of(Duration.ZERO), Duration.ofHours(6), Duration.ofHours(24)))
+  void anEmptyListOrNonPositiveDurationIsRefused() {
+    assertThatThrownBy(() -> new InquirySchedule(List.of(), Duration.ofSeconds(30)))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new InquirySchedule(List.of(), Duration.ZERO, Duration.ofHours(24)))
+    assertThatThrownBy(() -> new InquirySchedule(List.of(Duration.ZERO), Duration.ofSeconds(30)))
         .isInstanceOf(IllegalArgumentException.class);
-    assertThatThrownBy(() -> new InquirySchedule(List.of(), Duration.ofHours(6), Duration.ofSeconds(-1)))
+    assertThatThrownBy(() -> new InquirySchedule(List.of(Duration.ofSeconds(1)), Duration.ofSeconds(-1)))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
-  void aPartnerOverrideReplacesOnlyWhatItSets() {
-    InquirySchedule merged =
-        defaults.overriddenBy(Optional.of(List.of(Duration.ofSeconds(1))), Optional.empty(), Optional.of(Duration.ofSeconds(5)));
+  void aPartnerOverrideReplacesOnlyTheListOfWaits() {
+    InquirySchedule merged = defaults.withDelays(List.of(Duration.ofSeconds(1)));
     assertThat(merged.delays()).containsExactly(Duration.ofSeconds(1));
-    assertThat(merged.repeatEvery()).isEqualTo(Duration.ofHours(6));
-    assertThat(merged.cutOff()).isEqualTo(Duration.ofSeconds(5));
+    assertThat(merged.answerWait()).isEqualTo(defaults.answerWait());
   }
 }

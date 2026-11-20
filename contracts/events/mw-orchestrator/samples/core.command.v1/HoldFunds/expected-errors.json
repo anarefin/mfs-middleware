@@ -1,5 +1,0 @@
-{
-  "invalid-assertion-not-a-jws.json": ["/payload/assertion must match pattern \"^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$\""],
-  "invalid-decimal-amount.json": ["/payload/amount/valueMinor must be integer"],
-  "invalid-hold-funds-without-assertion.json": ["/payload must have required property 'assertion'", "/payload must have required property 'idempotencyKey'"]
-}

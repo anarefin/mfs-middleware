@@ -1,3 +1,0 @@
-{
-  "invalid-release-without-hold-id.json": ["/payload must have required property 'holdId'"]
-}

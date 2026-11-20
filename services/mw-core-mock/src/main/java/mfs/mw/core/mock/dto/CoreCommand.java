@@ -5,8 +5,9 @@ import java.time.Instant;
 import tools.jackson.databind.JsonNode;
 
 /**
- * Command envelope on {@code core.wallet.command.v1} (spec 6.3; contract {@code core.command.v1},
- * owned by mw-orchestrator). The payload is read per {@code commandType}.
+ * The core's internal command (spec 6.3): what a {@code /core/v1} money call is carried out as
+ * ({@code service/CoreWalletService}; ticket 95b retired the Kafka contract core.command.v1 and its
+ * topics). The payload is read per {@code commandType}.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record CoreCommand(

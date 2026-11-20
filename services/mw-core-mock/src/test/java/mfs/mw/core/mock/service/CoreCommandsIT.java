@@ -22,7 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Contract tests per command (spec WP06, 6.3) for HoldFunds, CommitHold, ReleaseHold, CreditWallet,
  * ReverseTransaction and QueryTransaction: success and failure event, ledger effect and the balance
  * invariant, against a real PostgreSQL ledger. Every event is validated against {@code core.event.v1}
- * and every command against {@code core.command.v1}. TOPUP carries a 200 poisha fee in the config.
+ * (the commands are the internal ones the REST API builds; core.command.v1 is retired, ticket 95b). TOPUP carries a 200 poisha fee in the config.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Import(TestInfrastructure.class)

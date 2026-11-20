@@ -30,7 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
  * an MSISDN, EMAIL an address (subject, text part and optional HTML part), PUSH a device token (the
  * recipient's {@code pushToken}, else the token registered for its wallet: {@code msisdn}, then {@code
  * subjectId}; title = the template's subject); a channel without its address or a template that cannot be
- * rendered is recorded FAILED. mw-auth's {@code DEVICE_BOUND} notice with param {@code deviceId} also
+ * rendered is recorded FAILED. mw-auth's {@code DEVICE_BOUND} notice with params {@code deviceId} and {@code
+ * bindingEpoch} (ticket 110b) also
  * revokes the push tokens of the wallet's other devices (ticket 110), once per new message. Nothing is
  * sent here, so a Kafka listener thread never waits on the SMSC, the mail server or the push server.
  */
@@ -103,7 +104,22 @@ public class NotificationService {
     String wallet = r.recipient() == null ? null : blankToNull(r.recipient().msisdn());
     if (PushDeviceService.DEVICE_BOUND_TEMPLATE.equals(r.templateCode()) && wallet != null && device != null
         && !device.isBlank()) {
-      pushDevices.deviceBound(wallet, device);
+      pushDevices.deviceBound(wallet, device, epoch(r.params().get(PushDeviceService.EPOCH_PARAM)));
+    }
+  }
+
+  /** mw-auth's binding epoch of a DEVICE_BOUND notice (ticket 110b); null when absent or not a positive number. */
+  private static Long epoch(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      long epoch = Long.parseLong(value.trim());
+      return epoch > 0 ? epoch : null;
+    } catch (NumberFormatException e) {
+      log.atWarn().addKeyValue("event", "notify.push.binding_epoch.invalid")
+          .log("DEVICE_BOUND notice with a binding epoch that is not a number; revoking without it");
+      return null;
     }
   }
 

@@ -6,7 +6,8 @@ info:
     The core wallet over REST (FRS 7.2, ADR D31): accounts, balances, charges, limits, holds,
     transfers, credits, reversals, statements and transaction status. mw-core-mock serves it as the
     proposal for the real core's contract (the vendor has not published one, FRS 10.6); the
-    orchestrator's client (ticket 95) is written against this file. WAL-02 (`POST /pin/verify`) is
+    orchestrator's client (ticket 95a) is written against this file; mw-admin-api unlocks accounts
+    and mw-auth checks a PIN reset's KYC factors through it (ticket 95b, which retired the core command topics). WAL-02 (`POST /pin/verify`) is
     not part of it: the middleware owns the PIN (D20), mw-auth checks it and the core verifies
     mw-auth's transaction assertion instead (D22, D31).
 
@@ -20,7 +21,7 @@ info:
 
     Authorisation: a Keycloak realm `services` client-credentials JWT (spec 18.2) whose `aud`
     contains `mw-core-mock` and whose client (`azp`) is allowed (mw-orchestrator, mw-auth,
-    mw-admin-api); no or bad token `401 MW-AUTH-001`, another client `403 MW-AUTH-002`. Holds and
+    mw-admin-api; the unlock only mw-admin-api, the factors check only mw-auth); no or bad token `401 MW-AUTH-001`, another client `403 MW-AUTH-002`. Holds and
     transfers also carry the customer's authorisation: mw-auth's transaction assertion (a compact
     JWS, D22) in `X-Txn-Assertion`, with the request's `idempotencyKey` (part of the assertion's
     `txnHash`). Missing or refused (signature, `aud` core, `exp`, `sub` the payer, `txnHash`, a
@@ -324,6 +325,64 @@ paths:
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /core/v1/accounts/{walletId}/unlock:
+    parameters:
+      - { name: walletId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+      - $ref: "#/components/parameters/CorrelationId"
+    post:
+      operationId: unlockAccount
+      summary: "Ops unlock of a core-side lock (status LOCKED -> ACTIVE) after maker-checker (ticket 95b); only mw-admin-api"
+      description: >-
+        Idempotent by `txnId` (the change request's unlockTxnId). A wallet that is not LOCKED (ACTIVE, or
+        BLOCKED: an unlock never lifts a block) is `422 MW-CORE-WALLET_NOT_LOCKED`, an unknown one `422
+        MW-CORE-WALLET_NOT_FOUND`; nothing changes. Another client is `403 MW-AUTH-002`. The status change is
+        announced as `WalletStateChanged` on `core.wallet.event.v1`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UnlockRequest" }
+      responses:
+        "200":
+          description: Unlocked (status UNLOCKED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountActionResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /core/v1/customers/{walletId}/verify-factors:
+    parameters:
+      - { name: walletId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+      - $ref: "#/components/parameters/CorrelationId"
+    post:
+      operationId: verifyCustomerFactors
+      summary: "Self-service PIN reset: do the customer's KYC factors match the wallet's KYC record (ticket 95b); only mw-auth"
+      description: >-
+        The factors never travel in clear: each is a keyed hash made by mw-crypto under TOKENISE_NID over
+        `<walletId>:<factor>` (the date as YYYY-MM-DD), bound to the wallet. Idempotent by `txnId`. Refused
+        `422 MW-CORE-FACTORS_MISMATCH`, `MW-CORE-WALLET_NOT_FOUND` or `MW-CORE-WALLET_NOT_ACTIVE` (BLOCKED,
+        HOLD; a core LOCKED wallet may still reset). Another client is `403 MW-AUTH-002`. Carries no PIN.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FactorsRequest" }
+      responses:
+        "200":
+          description: Verified (status VERIFIED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountActionResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /core/v1/statements:
     parameters:
       - $ref: "#/components/parameters/CorrelationId"
@@ -593,6 +652,39 @@ components:
           type: array
           description: Every ledger entry under this txnId (debits equal credits)
           items: { $ref: "#/components/schemas/Entry" }
+    UnlockRequest:
+      type: object
+      required: [txnId, changeRequestId]
+      additionalProperties: false
+      properties:
+        txnId: { $ref: "#/components/schemas/TxnId" }
+        changeRequestId: { type: string, format: uuid, description: The approved mw-admin-api change request }
+        makerId: { type: string, minLength: 1, maxLength: 128, description: Operator who asked for the unlock }
+        checkerId: { type: string, minLength: 1, maxLength: 128, description: Operator who approved it }
+    FactorsRequest:
+      type: object
+      required: [txnId, resetId, factors]
+      additionalProperties: false
+      properties:
+        txnId: { $ref: "#/components/schemas/TxnId" }
+        resetId: { type: string, format: uuid, description: The mw-auth PIN reset }
+        factors:
+          type: object
+          required: [nidLast4Token, dateOfBirthToken, tokenKid]
+          additionalProperties: false
+          properties:
+            nidLast4Token: { type: string, pattern: "^NID_[A-Z2-7]+$", maxLength: 256, description: "TOKENISE_NID hash of '<walletId>:<last 4 NID digits>'" }
+            dateOfBirthToken: { type: string, pattern: "^NID_[A-Z2-7]+$", maxLength: 256, description: "TOKENISE_NID hash of '<walletId>:<YYYY-MM-DD>'" }
+            tokenKid: { type: string, minLength: 1, maxLength: 128, description: "The TOKENISE_NID key version both hashes were made with" }
+    AccountActionResult:
+      type: object
+      required: [txnId, walletId, status, coreRef]
+      properties:
+        txnId: { $ref: "#/components/schemas/TxnId" }
+        walletId: { type: string }
+        status: { enum: [UNLOCKED, VERIFIED] }
+        coreRef: { type: string }
+        resetId: { type: string, format: uuid, description: The PIN reset a factors check belongs to }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

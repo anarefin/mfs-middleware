@@ -54,8 +54,8 @@ val contractsDir = layout.projectDirectory.dir(providers.gradleProperty("mwContr
 // never a top-level val of this script (that serialises the script object).
 val listedContracts = providers.fileContents(layout.projectDirectory.file("contracts.yml")).asText.map { yml ->
     // Read by a test although contracts.yml does not list it (contracts/ContractSchemasTest: the
-    // core.command.v1 HoldFunds worked example of the schema loader).
-    val extraTestContracts = listOf("events/mw-orchestrator/core.command.v1.schema.json")
+    // mw.txn.request.v1 worked example of the schema loader).
+    val extraTestContracts = listOf("events/mw-orchestrator/mw.txn.request.v1.schema.json")
     val paths = yml.lines()
         .filterNot { it.trimStart().startsWith("#") }
         .flatMap { line -> Regex("""(?:events|api|common)/[A-Za-z0-9._/-]+""").findAll(line).map { it.value }.toList() }

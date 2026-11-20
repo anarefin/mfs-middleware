@@ -23,5 +23,5 @@ Under M11 the encrypted PIN rides with the transaction request over Kafka into t
 ## Where in the repo
 
 - spec sections 2, 9.1–9.3, 18.3, 18.7 and decision D22
-- contracts to change: `contracts/events/mw-orchestrator/mw.txn.request.v1.schema.json`, `contracts/events/mw-orchestrator/core.command.v1`
+- contracts to change: `contracts/events/mw-orchestrator/mw.txn.request.v1.schema.json` (the core command contract was retired in ticket 95b; the assertion now travels on `contracts/api/mw-core-mock/core-wallet.v1.openapi.yaml`)
 - tickets 71, 72

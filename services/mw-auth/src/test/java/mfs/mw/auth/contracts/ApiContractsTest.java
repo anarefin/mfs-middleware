@@ -89,7 +89,7 @@ class ApiContractsTest {
     assertValid(OpenApiSchemas.component(INTERNAL_API, "BoundDevice"),
         new BoundDevice("device-0001", "01711000001", "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE", NOW));
     assertValid(OpenApiSchemas.component(INTERNAL_API, "LiveSession"),
-        new LiveSession("01711000001", "device-0001", 300, "ab".repeat(32), NOW));
+        new LiveSession("01711000001", "device-0001", 300, "ab".repeat(32), NOW, 42L));
     assertValid(OpenApiSchemas.component(INTERNAL_API, "SeedPinsResult"),
         new SeedPinsResult(List.of(new SeedPinsResult.Outcome("01711000001", "CREATED"))));
   }

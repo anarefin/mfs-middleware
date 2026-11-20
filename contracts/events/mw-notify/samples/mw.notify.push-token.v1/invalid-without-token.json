@@ -3,5 +3,6 @@
   "walletId": "01711000001",
   "deviceId": "dev-0001",
   "platform": "IOS",
-  "registeredAt": "2026-11-20T08:00:00Z"
+  "registeredAt": "2026-11-20T08:00:00Z",
+  "bindingEpoch": 42
 }

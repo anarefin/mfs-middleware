@@ -73,7 +73,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   success also EMAIL the initiator): `condition` is SpEL in a `SimpleEvaluationContext`
   (read-only getters of `RuleEngine.TxnFacts`: status, txnType, channel, amountMinor,
   initiatorId, debitPartyId, creditPartyId, debitPartyType, creditPartyType; no types, beans or
-  constructors); `recipient` INITIATOR|DEBIT_PARTY|CREDIT_PARTY. An SMS rule needs an
+  constructors); `recipient` INITIATOR|DEBIT_PARTY|CREDIT_PARTY|OPS. `OPS` (ticket 96a, FRS PLT-024,
+  `V16__ops_manual_review_alert.sql`: rules `ops-manual-review-sms` / `-email` on `status == 'MANUAL_REVIEW'`,
+  template `OPS_MANUAL_REVIEW` bn/en) is operations, not a party: SMS to `mw.notify.ops.msisdn`
+  (`MW_NOTIFY_OPS_MSISDN`), email to `mw.notify.ops.email` (`MW_NOTIFY_OPS_EMAIL`), texts in `mw.notify.ops.locale`
+  (default en), params without counterparty and `errorCode` `-` when the status has none; an unset address skips
+  that channel's rule (dev compose: `ops@bits.test`, `01700000999`). A party rule needs an
   MSISDN-shaped id; an EMAIL rule needs the party's address in `notify.contact` (party_id ->
   email; maintained by the admin console later; dev seed `db/dev/R__dev_contacts.sql`, applied
   only when `MW_NOTIFY_FLYWAY_LOCATIONS` adds `classpath:db/dev`, as `deploy/docker-compose.yml`
