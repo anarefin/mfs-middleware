@@ -112,10 +112,18 @@
 112c-topup-matrix                           112b              done     -        31 files +1005 −27     266d341a  (T5 skipped: it only passes by waiting out the inquiry schedule. T11 is ticket 125. T12 is ticket 127)
 113-biller-catalogue                        98                open
 114-bill-aggregators                        113,97,102        open
-115-mw-adapter-merchant                     97,102            open
+115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
+115a-merchant-adapter                       97,102            in progress
+115b-merchant-pay-flow                      115a,113          open
+139-dry-run-oauth2-isolation                115a              open   (security follow-up: dry-run keeps live tokenUrl; all adapter copies)
 116-checkout-refund-list                    95,96             open
 # --- M9 gate: UC-08..12
-117-bank-avl-w2b                            97,98,102         open
+117-bank-avl-w2b                            97,98,102         split (117-split-decisions.md, 2026-11-20)
+117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069
+117b-avl-api-linked-accounts                117a              in progress
+117c-w2b-flow-channels                      117b              open
+117d-bank-gateway-simulator                 117a              open
+117e-bank-suite-regression                  117b,117c,117d    open
 118-mw-adapter-card                         95,97,102         open
 119-mw-adapter-remit                        95,97,102         open
 120-mw-adapter-atm                          95,97,102         open
