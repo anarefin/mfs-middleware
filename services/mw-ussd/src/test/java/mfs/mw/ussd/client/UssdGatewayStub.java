@@ -6,7 +6,6 @@ import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +20,9 @@ import org.jsmpp.DefaultPDUReader;
 import org.jsmpp.DefaultPDUSender;
 import org.jsmpp.SMPPConstant;
 import org.jsmpp.SynchronizedPDUSender;
+import mfs.mw.ussd.transport.GpTlvAdapter;
+import mfs.mw.ussd.transport.MnoTlvAdapter;
+import org.jsmpp.bean.BindType;
 import org.jsmpp.bean.BroadcastSm;
 import org.jsmpp.bean.CancelBroadcastSm;
 import org.jsmpp.bean.CancelSm;
@@ -28,7 +30,6 @@ import org.jsmpp.bean.DataCodings;
 import org.jsmpp.bean.DataSm;
 import org.jsmpp.bean.ESMClass;
 import org.jsmpp.bean.NumberingPlanIndicator;
-import org.jsmpp.bean.OptionalParameter;
 import org.jsmpp.bean.QueryBroadcastSm;
 import org.jsmpp.bean.QuerySm;
 import org.jsmpp.bean.RegisteredDelivery;
@@ -69,9 +70,11 @@ public final class UssdGatewayStub implements AutoCloseable {
   public record Screen(int bindIndex, String address, String serviceCode, String serviceType, int serviceOp,
       int sessionNumber, int sequence, boolean endOfSession, String text) {}
 
+  private final MnoTlvAdapter tlv;
   private final ServerConnection server;
   private final int port;
   private final List<SMPPServerSession> sessions = new CopyOnWriteArrayList<>();
+  private final List<BindType> bindTypes = new CopyOnWriteArrayList<>();
   private final List<Screen> screens = new CopyOnWriteArrayList<>();
   private final Map<Integer, BlockingQueue<Screen>> waiting = new ConcurrentHashMap<>();
   private final AtomicInteger binds = new AtomicInteger();
@@ -85,6 +88,12 @@ public final class UssdGatewayStub implements AutoCloseable {
   private volatile boolean running = true;
 
   public UssdGatewayStub() throws IOException {
+    this(new GpTlvAdapter());
+  }
+
+  /** Plays this MNO's session-info packing. */
+  public UssdGatewayStub(MnoTlvAdapter tlv) throws IOException {
+    this.tlv = tlv;
     int free;
     try (ServerSocket s = new ServerSocket(0)) {
       free = s.getLocalPort();
@@ -105,6 +114,11 @@ public final class UssdGatewayStub implements AutoCloseable {
 
   public int boundSessions() {
     return (int) sessions.stream().filter(s -> s.getSessionState().isBound()).count();
+  }
+
+  /** The bind type of the session at {@code index} (accept order). */
+  public BindType bindType(int index) {
+    return bindTypes.get(index);
   }
 
   public int enquireLinkCount() {
@@ -141,6 +155,7 @@ public final class UssdGatewayStub implements AutoCloseable {
   public void dropBinds() {
     List<SMPPServerSession> all = new ArrayList<>(sessions);
     sessions.clear();
+    bindTypes.clear();
     all.forEach(SMPPServerSession::close);
   }
 
@@ -205,7 +220,7 @@ public final class UssdGatewayStub implements AutoCloseable {
     throw new IllegalStateException("no bound session " + index);
   }
 
-  private static void deliver(SMPPServerSession session, String address, String serviceCode, int op, int number,
+  private void deliver(SMPPServerSession session, String address, String serviceCode, int op, int number,
       int seq, boolean end, String text) {
     boolean ucs2 = !text.chars().allMatch(c -> c < 0x80);
     byte[] body = ucs2 ? text.getBytes(StandardCharsets.UTF_16BE) : text.getBytes(StandardCharsets.US_ASCII);
@@ -213,25 +228,10 @@ public final class UssdGatewayStub implements AutoCloseable {
       session.deliverShortMessage("USSD", TypeOfNumber.INTERNATIONAL, NumberingPlanIndicator.ISDN, address,
           TypeOfNumber.UNKNOWN, NumberingPlanIndicator.UNKNOWN, serviceCode, new ESMClass(), (byte) 0, (byte) 0,
           new RegisteredDelivery(0), ucs2 ? DataCodings.newInstance((byte) 8) : DataCodings.ZERO, body,
-          new OptionalParameter.OctetString(OptionalParameter.Tag.USSD_SERVICE_OP.code(), new byte[] {(byte) op}),
-          new OptionalParameter.OctetString(OptionalParameter.Tag.ITS_SESSION_INFO.code(),
-              new byte[] {(byte) number, (byte) ((seq << 1) | (end ? 1 : 0))}));
+          tlv.write(op, number, seq, end));
     } catch (Exception e) {
       throw new IllegalStateException("deliver_sm failed", e);
     }
-  }
-
-  static byte[] tlv(OptionalParameter[] params, OptionalParameter.Tag tag) {
-    if (params == null) {
-      return null;
-    }
-    for (OptionalParameter p : params) {
-      if (p.tag == tag.code()) {
-        byte[] all = p.serialize();
-        return Arrays.copyOfRange(all, 4, all.length);
-      }
-    }
-    return null;
   }
 
   private void acceptLoop() {
@@ -255,6 +255,7 @@ public final class UssdGatewayStub implements AutoCloseable {
       BindRequest bind = session.waitForBind(5000);
       bind.accept("ussd-stub");
       binds.incrementAndGet();
+      bindTypes.add(bind.getBindType());
       sessions.add(session);
     } catch (Exception e) {
       session.close();
@@ -303,13 +304,13 @@ public final class UssdGatewayStub implements AutoCloseable {
       if (takeOne(queueFull)) {
         throw new ProcessRequestException("queue full", SMPPConstant.STAT_ESME_RMSGQFUL);
       }
-      byte[] op = tlv(sm.getOptionalParameters(), OptionalParameter.Tag.USSD_SERVICE_OP);
-      byte[] info = tlv(sm.getOptionalParameters(), OptionalParameter.Tag.ITS_SESSION_INFO);
+      var fields = tlv.read(sm.getOptionalParameters());
       String text = mfs.mw.ussd.util.UssdText.decode(sm.getDataCoding(), sm.getShortMessage());
-      int number = info == null ? -1 : info[0] & 0xFF;
+      int number = fields.map(MnoTlvAdapter.Fields::sessionNumber).orElse(-1);
       Screen s = new Screen(sessions.indexOf(session), sm.getDestAddress(), sm.getSourceAddr(), sm.getServiceType(),
-          op == null ? -1 : op[0] & 0xFF, number, info == null ? -1 : (info[1] & 0xFF) >> 1,
-          info != null && (info[1] & 1) == 1, text);
+          fields.map(MnoTlvAdapter.Fields::serviceOp).orElse(-1), number,
+          fields.map(MnoTlvAdapter.Fields::sequence).orElse(-1),
+          fields.map(MnoTlvAdapter.Fields::endOfSession).orElse(false), text);
       screens.add(s);
       BlockingQueue<Screen> q = waiting.get(number);
       if (q != null) {

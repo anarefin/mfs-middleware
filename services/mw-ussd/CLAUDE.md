@@ -10,22 +10,28 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   `onAbort`, `send`): `transport/HttpUssdTransport` and `transport/SmppUssdTransport` (ticket 27; `transport/` sits beside `controller/` and calls `service/UssdEngine`).
   An MNO switches transport by configuration alone (`mw.ussd.mno.<mno>.transport` + its
   `mw.ussd.smpp.mno.<mno>` endpoint); `UssdMenuWalkSuite` runs the same walk over both.
-- SMPP transport (spec 9.2, 9.2.1, WP19): `client/UssdSmppClient` (bean in `config/UssdSmppConfig`)
-  holds `mw.ussd.smpp.mno.<mno>.binds` transceiver binds `<mno>-1..n` per SMPP MNO
-  (`client/UssdSmppBind`, jSMPP direct as mw-notify): own `enquire_link` every 30 s (jSMPP's
-  sender is off), 3 misses in a row drop the bind, reconnect 1-60 s exponential; `submit_sm`
-  through a window (outstanding) and a TPS throttle, retried after `retry-delays` (500 ms, 1 s,
-  2 s) on `generic_nack`, 0x58 and 0x14 (a timeout is not retried: the screen may have arrived).
-  Events `smpp.bind.up` / `smpp.bind.down` (`reason` closed|enquire_link|bind_failed),
-  `smpp.submit.retry`; gauge `mw.smpp.bind.up{mno,bind}` (`mw_smpp_bind_up`). `deliver_sm` TLVs:
-  `ussd_service_op` (0x0501) 1 PSSR indication = BEGIN, 18 USSR confirm = CONTINUE;
-  `its_session_info` (0x1383: session number; sequence bits 7..1; end-of-session bit 0) with the
-  end bit = ABORT (subscriber release). Screens go out as op 2 USSR request, the last as 17 PSSR
-  response with the end bit, on the bind that received the session (`SmppUssdTransport` keeps the
-  route in memory). Session id `smpp-<number>-<sha256(msisdn) 16 hex>` (no MSISDN in Redis keys).
-  Each step runs on a virtual thread, never on jSMPP's PDU threads. Text GSM-7 unpacked or UCS-2
-  (`util/UssdText`). Dev: gp binds 2 to `mw-simulators:2776`; robi, bl, teletalk
-  endpoints config-ready. `mw.ussd.smpp.enabled=false` binds nothing (tests). SMPP password key
+- SMPP transport (spec 9.2, 9.2.1, WP19, CH-USSD-01, CH-USSD-03): `client/UssdSmppClient`
+  (bean in `config/UssdSmppConfig`) holds `mw.ussd.smpp.mno.<mno>.binds` sessions per SMPP MNO
+  (`client/UssdSmppBind`, jSMPP direct as mw-notify). `bind-mode` `TRANSCEIVER` is one
+  `bind_transceiver` named `<mno>-n`; `TRANSMITTER_RECEIVER` is a transmitter `<mno>-n-tx` and a
+  receiver `<mno>-n-rx`, and the screen goes out on the transmitter. Own `enquire_link` every 30 s
+  (jSMPP's sender is off), 3 misses in a row drop the bind, reconnect 1-60 s exponential;
+  `submit_sm` through a window (outstanding) and a TPS throttle, retried after `retry-delays`
+  (500 ms, 1 s, 2 s) on `generic_nack`, 0x58 and 0x14 (a timeout is not retried: the screen may
+  have arrived). Events `smpp.bind.up` / `smpp.bind.down` (`reason` closed|enquire_link|bind_failed),
+  `smpp.submit.retry`; gauge `mw.smpp.bind.up{mno,bind}` (`mw_smpp_bind_up`). `deliver_sm` TLVs,
+  read and written by the MNO's `transport/MnoTlvAdapter` (`tlv-profile`, the MNO key when blank):
+  the same tags for every MNO, `ussd_service_op` (0x0501) 1 PSSR indication = BEGIN, 18 USSR
+  confirm = CONTINUE, and `its_session_info` (0x1383). GP and Banglalink pack that as session
+  number, then sequence in bits 7..1 and the end-of-session flag in bit 0 (`EOS_BIT0`); Robi and
+  Teletalk put the end flag in bit 7 (`EOS_BIT7`). The end bit = ABORT (subscriber release).
+  Screens go out as op 2 USSR request, the last as 17 PSSR response with the end bit, on the bind
+  that received the session (`SmppUssdTransport` keeps the route in memory). Session id
+  `smpp-<number>-<sha256(msisdn) 16 hex>` (no MSISDN in Redis keys). Each step runs on a virtual
+  thread, never on jSMPP's PDU threads. Text GSM-7 unpacked or UCS-2 (`util/UssdText`). Dev: gp
+  binds 2 as transceiver to `mw-simulators:2776`; robi (transmitter+receiver, 2777), bl
+  (transceiver, 2778) and teletalk (transmitter+receiver, 2779) stay HTTP until their transport is
+  switched. `mw.ussd.smpp.enabled=false` binds nothing (tests). SMPP password key
   `mw.ussd.smpp.mno.<mno>.password` in Vault (empty in dev: the simulator accepts any bind).
 - HTTP transport: `POST /ussd/{mno}` (`controller/UssdHttpController`, contract
   `api/mw-ussd/ussd-http.v1.openapi.yaml`), JSON `{sessionId, msisdn, serviceCode?, input?,
@@ -44,12 +50,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   403), 4 KiB body cap, quota per MSISDN hash; this service sees no credential).
 - Per MNO (`mw.ussd.mno.<gp|robi|bl|teletalk>`, spec 9.2; `config/UssdProperties`): transport,
   short codes, screen limits (182 GSM-7 / 70 UCS-2), session timeout, overflow TRUNCATE|PAGE.
-  Dev: gp SMPP; robi, bl HTTP + PAGE; teletalk HTTP + TRUNCATE. Short codes, one per MNO: gp `*268#`, robi
-  `*269#`, bl `*270#`, teletalk `*271#`. `UssdEngine` checks the dialled code on BEGIN (`dto/UssdRequest.serviceCode`:
-  HTTP `serviceCode`, SMPP destination address; whitespace ignored): another code ends the session at once with
-  the built-in `UssdEngine.WRONG_CODE_TEXT` ("Dial {code}", the MNO's first code; default language), no
-  session stored, event `ussd.session.refused`; a step without a code, or an MNO without `short-codes`, is
-  not checked. `operator` = the MNO's top-up partnerId
+  Dev: gp SMPP; robi, bl HTTP + PAGE; teletalk HTTP + TRUNCATE. `screen-timeout` is 30 s
+  (CH-USSD-05): the next step after an idle screen ends the session; the Redis TTL stays the overall
+  session timeout plus grace. Short codes live in `ussd.short_code` (V6: code, MNO, root menu id,
+  allowed types). When that table has rows for the MNO it is authoritative; otherwise the yaml
+  `short-codes` (gp `*268#`, robi `*269#`, bl `*270#`, teletalk `*271#`) are the fallback.
+  `UssdEngine` checks the dialled code on BEGIN (`dto/UssdRequest.serviceCode`: HTTP `serviceCode`,
+  SMPP destination address; whitespace ignored). An unknown code ends the session with
+  `UssdEngine.WRONG_CODE_TEXT` ("Dial {code}", the yaml list's first code, in the customer's
+  language), no session stored, event `ussd.session.refused`. A code whose allowed types do not
+  include the account type from core `GET /core/v1/accounts/{msisdn}` (`client/CoreAccountClient`,
+  service JWT, audience mw-core-mock; `mw.ussd.core.mode=stub` in tests) ends with
+  `UssdEngine.TYPE_TEXT` in bn or en. A step without a code is not checked. The root menu id
+  selects that menu when it is not the MNO's active one. `operator` = the MNO's top-up partnerId
   at mw-adapter-telco, filled into `{mno}` of an own-number top-up (bl: `banglalink`; default the key).
 - Menus are data (`dto/Menu`, `MenuNode`, node types MENU, INPUT, CONFIRM, ACTION, DYNAMIC, END,
   text `{bn, en}`): versioned JSON in `ussd.menu`, activated per MNO with a go-live time in
@@ -58,18 +71,29 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   version it started on); versions are immutable and cached once parsed. `service/MenuValidator`
   refuses a tree with dangling references, missing fields, an unknown validator/flow, a regex that
   does not compile, or a PIN input that is stored or does not lead straight to an ACTION.
-  `service/MenuSeeder` stores the dev seed `menus/main-v3.json` (`mw.ussd.seed-menu`, blank = off)
+  `service/MenuSeeder` stores the dev seed `menus/main-v4.json` (`mw.ussd.seed-menu`, blank = off)
   and activates it for every configured MNO without a menu or still on an older version of the
-  seed (v1/v2 -> v3; another menu is never replaced; `main-v2.json` stays as shipped). Seed (ticket 28): 1 Send Money (P2P), 2 Cash Out (customer to agent), 3 Mobile
+  seed (v1/v2/v3 -> v4; another menu is never replaced; `main-v2.json` and `main-v3.json` stay as shipped).
+  mw-seeder's `seed-content/menus/main.json` is the same tree. Seed (ticket 28, menus ticket 109c): 1 Send Money (P2P), 2 Cash Out (customer to agent), 3 Mobile
   Recharge (1 own number: option `set` stores `{msisdn}` / `{mno}` as target and operator; 2 other
   number + DYNAMIC `operators`; product `=PREPAID`), 4 Pay Bill (DYNAMIC `bp.category` source
   `biller-categories` store `category` "Select category" -> DYNAMIC `bp.biller` source `billers` (that
   category's billers), bill number INPUT with `lookup: bill`, CONFIRM with the fetched amount; en screens
   "Select category\n1 Electricity\n2 Water\n3 Gas\n4 Telecom\n5 Internet", after 3 "Select biller\n1 JGTDSL\n2
-  KGDCL\n3 TITAS"; the same nodes in `main-v2.json` and mw-seeder's `seed-content/menus/main.json`), 5 Balance (v3, ADR D26: `bal.pin` ->
-  ACTION `bal.check` flow BALANCE, empty mapping -> `bal.done` "Tk {balance}" / `bal.failed`), 9 language
-  (v3 labels option 3 "রিচার্জ" / "Recharge" so the main screen stays within 70 UCS-2 characters). Every Bangla screen of
-  the seed fits 70 UCS-2 characters (`UssdMenuWalkTest`).
+  KGDCL\n3 TITAS"), 5 Balance (ADR D26: `bal.pin` ->
+  ACTION `bal.check` flow BALANCE, empty mapping -> `bal.done` "Tk {balance}" / `bal.failed`), 6 Payment
+  (MERCHANT_PAY to the merchant wallet), 7 Add Money (ADD_MONEY_BANK, debit the entered bank account,
+  partner `c2wbank` product `C2W`), 8 My Account (balance, mini statement, change PIN, language),
+  9 language, 11 Remittance status. The main screen pages (keys still select an option on a later page).
+  A CONFIRM quotes the fee with core `POST /core/v1/charges/calculate` (WAL-04, lookup `charges`) before
+  the PIN; the test double uses the dev tariff. The mini statement is core `GET /core/v1/statements`
+  (WAL-12, lookup `statement`, no PIN): the latest five TRANSFER, REVERSAL or ADJUSTMENT lines.
+  Remittance status is core `GET /core/v1/transactions/{txnId}` (WAL-13) when the reference is an Upay
+  txn id, otherwise the not-found sentence; there is no remittance partner call (ticket 119).
+  Change PIN is `pin.maintenance` ("Change PIN is under maintenance." / the Bangla line) and does not
+  call mw-auth. `w2b.maintenance` stays an END node and is not a main-menu row.
+  Messages `more` are "0. পরবর্তী" / "0. Next" and `back` are "00. পেছনে" / "00. Back". Every Bangla
+  screen of the seed fits 70 UCS-2 characters (`UssdMenuWalkTest`).
 - Published menus (ticket 39, spec 9.2, 20.4): mw-admin-api's approved versions arrive on
   `mw.config.changed.v1` (compacted; `messaging/ConfigChangedListener`, a retried `@KafkaListener`, group
   mw-ussd, earliest offset, retry topics then DLQ, tombstones skipped) and
@@ -85,13 +109,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   it; a running session keeps its version (`MenuPublisherIT`, on a test-only MNO `itmenu`). Events
   `ussd.menu.published`, `ussd.menu.activated`, `ussd.menu.publish_skipped`.
 - Engine (`service/UssdEngine`): one step per request, never throws (a failure ends with the
-  menu's `unavailable` text). Language `mw.ussd.default-language` (bn) at dial-in, toggled by a
-  MENU option with `switchLanguage` (no profile lookup yet). Validators (`service/InputValidator`):
+  menu's `unavailable` text). Language at dial-in is `ussd.customer_pref` for the SHA-256 of the
+  MSISDN (`util/MaskingPolicy.msisdnHash`; the number is never stored), else bn, toggled by a MENU
+  option with `switchLanguage` (the choice is remembered). Validators (`service/InputValidator`):
   msisdn (canonical, `notSelf`), amount (taka, <= 2 decimals, min/max, stored as `500.00`), pin
   (5 digits unless `pattern`: mw-crypto's PIN rule since ticket 72), numeric (digit count min/max), regex. A bad input re-prompts with
   the validator's `error` (or the menu's `invalid`) above the screen; `max-invalid-attempts` (3)
   in a row end the session. Placeholders `{input}` / `{txnId}` / `{error}` / `{balance}` in texts. A screen over
-  the MNO limit is cut (TRUNCATE) or paged with the menu's `more` option ("0 More", PAGE).
+  the MNO limit is cut (TRUNCATE) or paged (PAGE): a page that continues ends with `more` ("0. Next")
+  and `back` ("00. Back"); the last page ends with `back`. `0` shows the next page, `00` the previous
+  page, and `00` on the first page returns to the previous node (a stack of node ids on the session).
+  A screen that already fits is sent as it is. The PIN input is not pushed, so `00` there returns to
+  the screen before it.
   DYNAMIC sources (`service/DynamicLists.items(source, inputs)`): `billers` = mw-adapter-billpay's live
   catalogue (`service/BillPayDirectory`, sorted by code, label = code, cached `catalogue-ttl` 60 s and kept
   through an outage), only the billers of the session input `category` when it is set;
@@ -110,8 +139,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   ACTION `mapping` values are input names or literals `=VALUE`; `MenuValidator` checks each flow's
   required fields (`TxnRequestMapper.REQUIRED_FIELDS`) and each lookup's arguments.
 - Sessions: Redis `ussd:{mno}:{sessionId}` (`repository/RedisSessionStore`, JSON
-  `dto/UssdSession`: node, path, inputs, language, menu version, pending pages), TTL = MNO session
-  timeout + `session-grace` (30 s); a CONTINUE from another MSISDN is treated as expired. The PIN
+  `dto/UssdSession`: node, path, inputs, language, menu version, pages, the back stack, `screenAt`),
+  TTL = MNO session timeout + `session-grace` (30 s). A CONTINUE whose screen is 30 s old, or whose
+  session is older than the MNO's overall timeout, ends with the menu's `expired` text (both checked
+  before the input; the Redis TTL is not shortened). A CONTINUE from another MSISDN is treated as
+  expired. The PIN
   never reaches the session: it is encrypted on receipt (`util/PinCipher`, RSA-OAEP SHA-256 /
   MGF1-SHA-256 under the mw-crypto `PIN_TRANSPORT` key held by `service/PinTransport`) and handed
   straight to the ACTION, which sends it once to mw-auth (never to Kafka).
@@ -161,7 +193,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
   blocks). COMPLETED -> the node's `onSuccess`; FAILED/REJECTED -> `onFailure` with the status
   error's text (messageBn in bn); no final status in time -> the menu's `processing` text ("being
   processed", the result by SMS once mw-notify sends it); publish failure -> `unavailable`.
-  Flows: P2P, CASH_OUT, TOPUP, BILL_PAY, BALANCE (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
+  Flows: P2P, CASH_OUT, TOPUP, BILL_PAY, MERCHANT_PAY, ADD_MONEY_BANK, BALANCE (`TxnRequestMapper.FLOWS`); agents cash in from the Agent
   app, not over USSD.
 - Business duplicate (ticket 99, FRS PLT-013): a FAILED `MW-VAL-024` from the orchestrator is the confirm
   node: the engine goes back to the PIN input with the menu's `duplicateSuspected` text (optional, built-in

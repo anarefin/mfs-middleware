@@ -20,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.annotation.DirtiesContext;
@@ -48,14 +49,16 @@ class UssdHttpFlowIT {
 
   private final MockMvcTester http;
   private final StringRedisTemplate redis;
+  private final JdbcTemplate jdbc;
   /** Every session value seen while a step was in flight or after it. */
   private final List<String> seenSessions = new CopyOnWriteArrayList<>();
   private OrchestratorStub orchestrator;
 
   @Autowired
-  UssdHttpFlowIT(MockMvcTester http, StringRedisTemplate redis) {
+  UssdHttpFlowIT(MockMvcTester http, StringRedisTemplate redis, JdbcTemplate jdbc) {
     this.http = http;
     this.redis = redis;
+    this.jdbc = jdbc;
   }
 
   @BeforeAll
@@ -67,6 +70,7 @@ class UssdHttpFlowIT {
 
   @BeforeEach
   void replyConsumerReady() {
+    LanguageReset.banglaAgain(jdbc, "01712345678");
     TestTopics.awaitGroupStable("mw-ussd.reply.it-ussd-1", Duration.ofSeconds(60));
   }
 
@@ -128,11 +132,11 @@ class UssdHttpFlowIT {
     List<String> screens = walkToPin(session, true, "10");
     assertThat(screens)
         .containsExactly(
-            "Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English",
-            "Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা",
+            "Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n0. পরবর্তী\n00. পেছনে",
+            "Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n0. Next\n00. Back",
             "Enter recipient Bits number",
             "Enter amount (Tk)",
-            "Send Tk 10.00 to 01812345678?\n1 Confirm\n2 Cancel",
+            "Send Tk 10.00 to 01812345678?\nFee Tk 5.00\n1 Confirm\n2 Cancel",
             "Enter your PIN");
 
     JsonNode done = step(session, "CONTINUE", PIN);
@@ -261,8 +265,10 @@ class UssdHttpFlowIT {
     List<String> keys = new ArrayList<>();
     for (int i = 0; i < 2; i++) {
       String session = "it-" + UUID.randomUUID();
-      assertThat(step(session, "BEGIN", "").path("message").asString()).contains("5 ব্যালেন্স");
-      step(session, "CONTINUE", "9");
+      String menu = step(session, "BEGIN", "").path("message").asString();
+      if (menu.contains("সেন্ড")) {
+        step(session, "CONTINUE", "9");
+      }
       assertThat(step(session, "CONTINUE", "5").path("message").asString()).isEqualTo("Enter your PIN");
 
       JsonNode done = step(session, "CONTINUE", PIN);

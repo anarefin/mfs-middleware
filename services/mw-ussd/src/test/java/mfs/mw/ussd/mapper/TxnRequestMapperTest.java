@@ -154,6 +154,37 @@ class TxnRequestMapperTest {
   }
 
   @Test
+  void merchantPayCreditsTheMerchantWallet() {
+    JsonNode tree = valid("MERCHANT_PAY", Map.of("creditParty", "01911000001", "amount", "25.00"));
+    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("MERCHANT");
+    assertThat(tree.path("amount").path("valueMinor").asLong()).isEqualTo(2_500L);
+    assertThat(tree.path("partner").isMissingNode()).isTrue();
+  }
+
+  @Test
+  void addMoneyDebitsTheBankAccountIntoTheOwnWallet() {
+    UssdSession s =
+        new UssdSession("robi", "sess-6", "01712345678", "main", 4, "bn", "am.send", List.of("main:7"),
+            Map.of(), 0, List.of(), false, NOW);
+    TxnRequest req =
+        new TxnRequestMapper().toRequest(
+            new FlowRequest("ADD_MONEY_BANK", s, "main:7",
+                Map.of("debitParty", "1234567890123", "amount", "500.00", "partnerId", "c2wbank"),
+                new EncryptedPin("PIN_TRANSPORT.v1", "Y2lwaGVy")),
+            "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c11", "k".repeat(64), "corr-6", NOW);
+    JsonNode tree = JSON.valueToTree(req);
+    assertThat(ContractSchemas.schema("events/mw-orchestrator/mw.txn.request.v1.schema.json").validate(tree))
+        .isEmpty();
+    assertThat(tree.path("debitParty").path("type").asString()).isEqualTo("BANK_ACCOUNT");
+    assertThat(tree.path("debitParty").path("id").asString()).isEqualTo("1234567890123");
+    assertThat(tree.path("creditParty").path("id").asString()).isEqualTo("01712345678");
+    assertThat(tree.path("creditParty").path("walletType").asString()).isEqualTo("CUSTOMER");
+    assertThat(tree.path("partner").path("partnerId").asString()).isEqualTo("c2wbank");
+    assertThat(tree.path("partner").path("productCode").asString()).isEqualTo("C2W");
+    assertThat(tree.path("amount").path("valueMinor").asLong()).isEqualTo(50_000L);
+  }
+
+  @Test
   void balanceNeedsNoMappedFieldsAndAMissingAmountIsZero() {
     assertThat(TxnRequestMapper.REQUIRED_FIELDS.get("BALANCE")).isEmpty();
     assertThat(TxnRequestMapper.FLOWS).contains("BALANCE");
@@ -180,6 +211,9 @@ class TxnRequestMapperTest {
             Map.of("creditParty", "01912345678", "amount", "20", "partnerId", "gp", "productCode", "PREPAID"), pin),
         new FlowRequest("BILL_PAY", s, "p",
             Map.of("creditParty", "1234567", "amount", "667", "partnerId", "billagg", "billerCode", "DESCO"), pin),
+        new FlowRequest("MERCHANT_PAY", s, "p", Map.of("creditParty", "01911000001", "amount", "25.00"), pin),
+        new FlowRequest("ADD_MONEY_BANK", s, "p",
+            Map.of("debitParty", "1234567890123", "amount", "500.00", "partnerId", "c2wbank"), pin),
         new FlowRequest("BALANCE", s, "p", Map.of(), pin))) {
       TxnRequest req = mapper.toRequest(f, "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0f", "k".repeat(64), "corr-4", NOW);
 

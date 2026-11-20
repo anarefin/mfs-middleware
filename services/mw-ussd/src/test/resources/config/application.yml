@@ -1,6 +1,10 @@
 # Test-only overrides, merged over src/main/resources/application.yml.
 mw:
   ussd:
+    # The short-code check reads customer type from a stub (every number is CUSTOMER) so the
+    # suite does not call mw-core-mock. ShortCodeIT sets a type when it needs a refusal.
+    core:
+      mode: stub
     # Off by default in tests: a reply consumer left running in a cached context is not needed by
     # most tests (and would need Kafka). UssdHttpFlowIT switches it on.
     consumers:

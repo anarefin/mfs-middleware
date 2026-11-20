@@ -231,7 +231,7 @@ mw:
       - { client-id: merchant-pharmacy, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }
       - { client-id: merchant-fashion, type: MERCHANT, auth-method: HMAC, allowed-routes: [checkout-v1-sessions, checkout-v1-session-get], ip-allow-list: [] }
       - { client-id: org-portal, type: PORTAL, auth-method: JWT, allowed-routes: [portal-org-v1, auth-portals-token], ip-allow-list: [] }
-    # First admin versions: copies of what mw-ussd (menus/main-v3.json) and mw-notify (V5) ship,
+    # First admin versions: copies of what mw-ussd (menus/main-v4.json) and mw-notify (V5) ship,
     # so publishing them changes no text. Keep the copies identical.
     content:
       menus:

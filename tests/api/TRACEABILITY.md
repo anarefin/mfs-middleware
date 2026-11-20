@@ -284,6 +284,11 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |
 | 90 | [p2p frs] T5 a core that never answers ends in MANUAL_REVIEW and alerts operations | - |  |
+| 43 | [ussd frs] a payment to a merchant over USSD shows a free fee and moves the money once | - |  |
+| 43 | [ussd frs] add money from a bank account over USSD credits the wallet once | - |  |
+| 43 | [ussd frs] my account shows a mini statement and does not move money | - |  |
+| 43 | [ussd frs] change PIN on USSD stays on the maintenance text and moves nothing | - |  |
+| 43 | [ussd frs] a remittance reference that is not an Upay txn id says there is none | - |  |
 
 ## FRS UC x T1-T12
 

@@ -1,0 +1,4 @@
+{
+  "name": "43 USSD FRS menus (payment, add money, statement, PIN, remittance)",
+  "description": "Ticket 109c. The live menu's Payment, Add Money, mini statement, change-PIN maintenance text and remittance status. Fee on a confirm is the core charge quote; change PIN does not call mw-auth."
+}

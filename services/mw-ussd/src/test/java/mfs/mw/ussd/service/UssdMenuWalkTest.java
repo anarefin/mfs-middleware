@@ -24,6 +24,7 @@ import mfs.mw.ussd.exception.BillPayUnavailableException;
 import mfs.mw.ussd.dto.ErrorEnvelope;
 import mfs.mw.ussd.dto.Amount;
 import mfs.mw.ussd.mapper.MenuParser;
+import mfs.mw.ussd.mapper.TxnRequestMapper;
 import mfs.mw.ussd.util.TestPinKeys;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -41,7 +42,7 @@ class UssdMenuWalkTest {
   static final String TXN = "019a0000-0000-7000-8000-000000000001";
 
   static final JsonMapper JSON = JsonMapper.builder().build();
-  static final Menu MENU = MenuParser.parseResource(JSON, "menus/main-v3.json");
+  static final Menu MENU = MenuParser.parseResource(JSON, "menus/main-v4.json");
 
   /** The biller catalogue and bill fetch of mw-adapter-billpay, scripted. */
   static final class FakeBills implements BillDirectory {
@@ -80,9 +81,9 @@ class UssdMenuWalkTest {
     return new UssdProperties(
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
         "bn", 3, Map.of(
-            "robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
+            "robi", UssdProperties.Mno.of(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
                 Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END", null),
-            "bl", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
+            "bl", UssdProperties.Mno.of(UssdProperties.Transport.HTTP, List.of("*268#"), 182, 70,
                 Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END", "banglalink")),
         Map.of("operators", List.of(
             new UssdProperties.ListItem("gp", new Text("গ্রামীণফোন", "Grameenphone")),
@@ -123,8 +124,10 @@ class UssdMenuWalkTest {
     };
     return new UssdEngine(
         catalog, sessions, new InputValidator(), new ScreenFormatter(), flow,
-        TestPinTransport.create(), new DynamicLists(p, bills), new Lookups(bills), p,
-        Clock.fixed(Instant.parse("2026-11-04T10:00:00Z"), ZoneOffset.UTC));
+        TestPinTransport.create(), new DynamicLists(p, bills),
+        new Lookups(bills, new mfs.mw.ussd.client.StubCoreReads(), new mfs.mw.ussd.client.StubCoreReads()), p,
+        Clock.fixed(Instant.parse("2026-11-04T10:00:00Z"), ZoneOffset.UTC),
+        new OpenShortCodes(), new MemoryPrefs(), new FixedAccounts());
   }
 
   UssdResponse dial(String session) {
@@ -138,9 +141,9 @@ class UssdMenuWalkTest {
   @Test
   void theMainMenuOffersEveryUssdFlowInBothLanguages() {
     assertThat(dial("m").text())
-        .isEqualTo("Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English");
+        .isEqualTo("Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n0. পরবর্তী\n00. পেছনে");
     assertThat(send("m", "9").text())
-        .isEqualTo("Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n5 Balance\n9 বাংলা");
+        .isEqualTo("Bits\n1 Send Money\n2 Cash Out\n3 Recharge\n4 Pay Bill\n0. Next\n00. Back");
   }
 
   // --- CASH_OUT (customer to agent) ---
@@ -151,7 +154,7 @@ class UssdMenuWalkTest {
     assertThat(send("c1", "2").text()).isEqualTo("এজেন্টের Bits নম্বর দিন");
     assertThat(send("c1", AGENT).text()).isEqualTo("টাকার পরিমাণ দিন");
     assertThat(send("c1", "500").text())
-        .isEqualTo("এজেন্ট 01812345678: 500.00 টাকা ক্যাশ আউট?\n1 নিশ্চিত করুন\n2 বাতিল");
+        .isEqualTo("এজেন্ট 01812345678: 500.00 টাকা, ফি 10.00?\n1 নিশ্চিত করুন\n2 বাতিল");
     assertThat(send("c1", "1").text()).isEqualTo("আপনার পিন দিন");
 
     UssdResponse done = send("c1", "48261");
@@ -174,7 +177,8 @@ class UssdMenuWalkTest {
     assertThat(send("c2", CUSTOMER).text()).isEqualTo("Enter a valid mobile number.\nEnter agent Bits number");
     assertThat(send("c2", "8801812345678").text()).isEqualTo("Enter amount (Tk)");
     assertThat(send("c2", "20").text()).isEqualTo("Enter an amount from Tk 50 to 25000.\nEnter amount (Tk)");
-    assertThat(send("c2", "500").text()).isEqualTo("Cash out Tk 500.00 at agent 01812345678?\n1 Confirm\n2 Cancel");
+    assertThat(send("c2", "500").text())
+        .isEqualTo("Cash out Tk 500.00 at agent 01812345678?\nFee Tk 10.00\n1 Confirm\n2 Cancel");
     assertThat(send("c2", "1").text()).isEqualTo("Enter your PIN");
     assertThat(send("c2", "48261").text()).isEqualTo("Tk 500.00 cashed out at agent 01812345678. TxnID " + TXN);
     assertThat(flow.requests.getFirst().session().language()).isEqualTo("en");
@@ -188,7 +192,7 @@ class UssdMenuWalkTest {
     assertThat(send("t1", "3").text()).isEqualTo("মোবাইল রিচার্জ\n1 নিজের নম্বর\n2 অন্য নম্বর");
     assertThat(send("t1", "1").text()).isEqualTo("রিচার্জের পরিমাণ দিন");
     assertThat(send("t1", "50").text())
-        .isEqualTo("01712345678 নম্বরে 50.00 টাকা রিচার্জ করবেন?\n1 নিশ্চিত করুন\n2 বাতিল");
+        .isEqualTo("01712345678 এ 50.00, ফি 2.00?\n1 নিশ্চিত করুন\n2 বাতিল");
     assertThat(send("t1", "1").text()).isEqualTo("আপনার পিন দিন");
 
     UssdResponse done = send("t1", "48261");
@@ -236,7 +240,8 @@ class UssdMenuWalkTest {
     assertThat(send("t2", "1").text()).isEqualTo("Enter recharge amount (Tk)");
     assertThat(send("t2", "5000").text())
         .isEqualTo("Enter an amount from Tk 10 to 1000.\nEnter recharge amount (Tk)");
-    assertThat(send("t2", "20").text()).isEqualTo("Recharge Tk 20.00 to 01912345678?\n1 Confirm\n2 Cancel");
+    assertThat(send("t2", "20").text())
+        .isEqualTo("Recharge Tk 20.00 to 01912345678?\nFee Tk 2.00\n1 Confirm\n2 Cancel");
     send("t2", "1");
 
     assertThat(send("t2", "48261").text()).isEqualTo("Tk 20.00 recharged to 01912345678. TxnID " + TXN);
@@ -284,7 +289,7 @@ class UssdMenuWalkTest {
     assertThat(send("b1", "1").text()).isEqualTo("বিলার বাছাই করুন\n1 BREB\n2 DESCO\n3 DPDC");
     assertThat(send("b1", "2").text()).isEqualTo("DESCO বিল নম্বর দিন");
     assertThat(send("b1", "1234567").text())
-        .isEqualTo("DESCO বিল 1234567: 667.00 টাকা দিবেন?\n1 নিশ্চিত করুন\n2 বাতিল");
+        .isEqualTo("DESCO বিল 1234567: 667.00 টাকা, ফি 3.00?\n1 নিশ্চিত করুন\n2 বাতিল");
     assertThat(bills.fetched).containsExactly("DESCO/1234567");
     assertThat(send("b1", "1").text()).isEqualTo("আপনার পিন দিন");
 
@@ -312,7 +317,8 @@ class UssdMenuWalkTest {
     assertThat(send("b2", "4").text()).isEqualTo("Invalid input.\nSelect biller\n1 JGTDSL\n2 KGDCL\n3 TITAS");
     assertThat(send("b2", "2").text()).isEqualTo("Enter KGDCL bill number");
     assertThat(send("b2", "12").text()).isEqualTo("Enter a valid bill number.\nEnter KGDCL bill number");
-    assertThat(send("b2", "1234567").text()).isEqualTo("Pay Tk 667.00 for KGDCL bill 1234567?\n1 Confirm\n2 Cancel");
+    assertThat(send("b2", "1234567").text())
+        .isEqualTo("Pay Tk 667.00 for KGDCL bill 1234567?\nFee Tk 3.00\n1 Confirm\n2 Cancel");
     assertThat(bills.fetched).containsExactly("KGDCL/1234567");
     send("b2", "1");
     assertThat(send("b2", "48261").text()).isEqualTo("Tk 667.00 paid for KGDCL bill 1234567. TxnID " + TXN);
@@ -328,7 +334,6 @@ class UssdMenuWalkTest {
     send("b6", "4");
     assertThat(send("b6", "1").text()).isEqualTo("Select biller\n1 BREB\n2 DESCO\n3 DPDC");
     dial("b7");
-    send("b7", "9");
     send("b7", "4");
     assertThat(send("b7", "2").text()).isEqualTo("Select biller\n1 CWASA\n2 WASA");
   }
@@ -353,7 +358,7 @@ class UssdMenuWalkTest {
     assertThat(send("b3", "1234404").text()).isEqualTo("বিল পাওয়া যায়নি\nDESCO বিল নম্বর দিন");
     assertThat(sessions.values.get("ussd:robi:b3")).contains("\"nodeId\":\"bp.number\"");
     bills.failure = null;
-    assertThat(send("b3", "1234567").text()).startsWith("DESCO বিল 1234567: 667.00 টাকা দিবেন?");
+    assertThat(send("b3", "1234567").text()).startsWith("DESCO বিল 1234567: 667.00 টাকা, ফি 3.00?");
     assertThat(flow.requests).isEmpty();
   }
 
@@ -408,6 +413,23 @@ class UssdMenuWalkTest {
     for (String in : List.of("1", AGENT, "25000", "1", "48261")) {
       screens.add(send("w4", in).text());
     }
+    dial("w6");
+    for (String in : List.of("6", "01911000001", "25000", "1", "48261")) {
+      screens.add(send("w6", in).text());
+    }
+    dial("w7");
+    for (String in : List.of("7", "12345678901234567890", "25000", "1", "48261")) {
+      screens.add(send("w7", in).text());
+    }
+    dial("w8");
+    screens.add(send("w8", "8").text());
+    screens.add(send("w8", "2").text());
+    dial("w8b");
+    send("w8b", "8");
+    screens.add(send("w8b", "3").text());
+    dial("w9");
+    screens.add(send("w9", "11").text());
+    screens.add(send("w9", "ABC12345").text());
     flow.next = new mfs.mw.ussd.dto.FlowOutcome(mfs.mw.ussd.dto.FlowOutcome.Kind.COMPLETED, TXN, null, null,
         new mfs.mw.ussd.dto.Balance(new Amount(999_999_999_99L, Amount.BDT), Instant.parse("2026-11-04T10:00:00Z")));
     dial("w5");
@@ -415,5 +437,66 @@ class UssdMenuWalkTest {
       screens.add(send("w5", in).text());
     }
     assertThat(screens).allSatisfy(s -> assertThat(s).hasSizeLessThanOrEqualTo(70).doesNotEndWith("0 আরও"));
+  }
+
+  @Test
+  void paymentQuotesNoFeeThenPaysTheMerchant() throws Exception {
+    dial("pay");
+    assertThat(send("pay", "6").text()).isEqualTo("মার্চেন্টের Bits নম্বর দিন");
+    assertThat(send("pay", "01911000001").text()).isEqualTo("টাকার পরিমাণ দিন");
+    assertThat(send("pay", "25").text())
+        .isEqualTo("01911000001 মার্চেন্টে 25.00 টাকা, ফি 0.00?\n1 নিশ্চিত করুন\n2 বাতিল");
+    assertThat(send("pay", "1").text()).isEqualTo("আপনার পিন দিন");
+    UssdResponse done = send("pay", "48261");
+    assertThat(done.end()).isTrue();
+    assertThat(done.text()).isEqualTo("01911000001 মার্চেন্টকে 25.00 টাকা দেওয়া হয়েছে।");
+    FlowRequest req = flow.requests.getLast();
+    assertThat(req.flow()).isEqualTo(TxnRequestMapper.MERCHANT_PAY);
+    assertThat(req.fields()).containsEntry("creditParty", "01911000001").containsEntry("amount", "25.00");
+    assertThat(TestPinKeys.decrypt(req.pin())).isEqualTo("48261");
+  }
+
+  @Test
+  void addMoneyQuotesNoFeeAndDebitsTheNamedAccount() throws Exception {
+    dial("am");
+    assertThat(send("am", "7").text()).isEqualTo("ব্যাংক অ্যাকাউন্ট দিন");
+    assertThat(send("am", "1234567890123").text()).isEqualTo("টাকার পরিমাণ দিন");
+    assertThat(send("am", "500").text()).isEqualTo("1234567890123\n500.00 টাকা, ফি 0.00?\n1 নিশ্চিত করুন\n2 বাতিল");
+    send("am", "1");
+    UssdResponse done = send("am", "48261");
+    assertThat(done.end()).isTrue();
+    assertThat(done.text()).isEqualTo("500.00 টাকা যোগ হয়েছে।");
+    FlowRequest req = flow.requests.getLast();
+    assertThat(req.flow()).isEqualTo(TxnRequestMapper.ADD_MONEY_BANK);
+    assertThat(req.fields())
+        .containsEntry("debitParty", "1234567890123")
+        .containsEntry("amount", "500.00")
+        .containsEntry("partnerId", "c2wbank");
+    assertThat(TestPinKeys.decrypt(req.pin())).isEqualTo("48261");
+  }
+
+  @Test
+  void myAccountShowsAnEmptyStatementAndKeepsChangePinOnMaintenance() {
+    dial("ac");
+    assertThat(send("ac", "8").text())
+        .isEqualTo("আমার অ্যাকাউন্ট\n1 ব্যালেন্স\n2 স্টেটমেন্ট\n3 পিন পরিবর্তন\n4 English");
+    assertThat(send("ac", "2")).extracting(UssdResponse::end, UssdResponse::text)
+        .containsExactly(true, "কোনো লেনদেন নেই।");
+    assertThat(flow.requests).isEmpty();
+
+    dial("pin");
+    send("pin", "8");
+    assertThat(send("pin", "3")).extracting(UssdResponse::end, UssdResponse::text)
+        .containsExactly(true, "পিন পরিবর্তন এখন বন্ধ।");
+    assertThat(flow.requests).isEmpty();
+  }
+
+  @Test
+  void remittanceStatusWithoutAnUpayReferenceSaysThereIsNone() {
+    dial("re");
+    assertThat(send("re", "11").text()).isEqualTo("রেমিট্যান্স রেফারেন্স দিন");
+    assertThat(send("re", "ABC12345")).extracting(UssdResponse::end, UssdResponse::text)
+        .containsExactly(true, "এই রেফারেন্সে রেমিট্যান্স নেই।");
+    assertThat(flow.requests).isEmpty();
   }
 }

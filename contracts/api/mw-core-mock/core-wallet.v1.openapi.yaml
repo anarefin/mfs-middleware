@@ -436,8 +436,8 @@ components:
       description: >-
         Keycloak realm `services` client-credentials JWT (spec 18.2): signature, expiry, exact
         issuer, `aud` contains `mw-core-mock`, `azp` one of mw-orchestrator, mw-auth, mw-admin-api,
-        mw-app-gateway (profile, limits and statement, ticket 107b). The dev stack also allows
-        mw-simulators.
+        mw-app-gateway (profile, limits and statement, ticket 107b), mw-ussd (fee quote and mini
+        statement, ticket 109c). The dev stack also allows mw-simulators.
       flows:
         clientCredentials:
           tokenUrl: http://keycloak:8080/realms/services/protocol/openid-connect/token

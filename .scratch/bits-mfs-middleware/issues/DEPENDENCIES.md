@@ -93,7 +93,10 @@
 107a-app-preferences                        94,105            done     -        65 files +2028 −21     96650ec1  (saved billers and favourites are not encrypted, user decision)
 107b-app-core-reads                         107a              done     -        32 files +1201 −15     ab25b616  (app-gateway is a core client for profile, limits, and statement. The live suite was not re-run after this merge)
 108-app-soap-facade                         105               open
-109-ussd-frs                                94,105            open
+109-ussd-frs                                94,105            split (109-split-decisions.md, 2026-11-20)
+109b-ussd-session                           94,105            done     -        52 files +1246 −92     34f92e26
+109a-ussd-tlv                               109b              done     -        30 files +1237 −374    d23caa3c  (same 3GPP TLV tags for all four MNOs)
+109c-ussd-menus                             109a              done     -        41 files +2360 −109    5a2445b0  (fee from core charges/calculate; change-PIN stays on maintenance text. Live suite not re-run)
 110-notify-push                             102               done     37m      86 files +2628 −75     76ab0c4c,4757e709
 110b-push-binding-epoch                     110               done     -        34 files +438 −131     480b1d76
 111-notify-campaign-optout-log              110               done     -        79 files +2444 −36     0a3f6bf4

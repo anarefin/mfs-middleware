@@ -102,6 +102,9 @@ public final class MenuValidator {
         for (MenuOption o : n.options()) {
           ref(id, "option " + o.key(), o.next(), nodes, p);
         }
+        if (n.type() == NodeType.CONFIRM) {
+          lookup(id, n, false, p);
+        }
       }
       case INPUT -> {
         ValidatorSpec v = n.validator();
@@ -124,13 +127,7 @@ public final class MenuValidator {
         } else if (n.store() == null || n.store().isBlank()) {
           p.add(id + ": store is required");
         }
-        if (n.lookup() != null) {
-          if (v.isPin() || !Lookups.ARGUMENTS.containsKey(n.lookup())) {
-            p.add(id + ": lookup must be one of " + new TreeSet<>(Lookups.ARGUMENTS.keySet()));
-          } else {
-            missing(id, "lookup " + n.lookup(), Lookups.ARGUMENTS.get(n.lookup()), n, p);
-          }
-        }
+        lookup(id, n, v.isPin(), p);
       }
       case ACTION -> {
         if (!TxnRequestMapper.FLOWS.contains(n.flow())) {
@@ -151,8 +148,20 @@ public final class MenuValidator {
         if (n.text() == null) {
           p.add(id + ": text is required");
         }
+        lookup(id, n, false, p);
       }
       default -> p.add(id + ": unknown type");
+    }
+  }
+
+  private static void lookup(String id, MenuNode n, boolean pin, List<String> p) {
+    if (n.lookup() == null) {
+      return;
+    }
+    if (pin || !Lookups.ARGUMENTS.containsKey(n.lookup())) {
+      p.add(id + ": lookup must be one of " + new TreeSet<>(Lookups.ARGUMENTS.keySet()));
+    } else {
+      missing(id, "lookup " + n.lookup(), Lookups.ARGUMENTS.get(n.lookup()), n, p);
     }
   }
 

@@ -1,6 +1,6 @@
 {
   "menuId": "main",
-  "version": 3,
+  "version": 4,
   "start": "main",
   "messages": {
     "invalid": {
@@ -24,8 +24,12 @@
       "en": "Service temporarily unavailable. Please try later."
     },
     "more": {
-      "bn": "0 আরও",
-      "en": "0 More"
+      "bn": "0. পরবর্তী",
+      "en": "0. Next"
+    },
+    "back": {
+      "bn": "00. পেছনে",
+      "en": "00. Back"
     },
     "wrongPin": {
       "bn": "ভুল পিন। আর {triesLeft} বার চেষ্টা করা যাবে।",
@@ -104,6 +108,38 @@
           },
           "next": "main",
           "switchLanguage": true
+        },
+        {
+          "key": "6",
+          "label": {
+            "bn": "পেমেন্ট",
+            "en": "Payment"
+          },
+          "next": "pay.merchant"
+        },
+        {
+          "key": "7",
+          "label": {
+            "bn": "অ্যাড মানি",
+            "en": "Add Money"
+          },
+          "next": "am.account"
+        },
+        {
+          "key": "8",
+          "label": {
+            "bn": "অ্যাকাউন্ট",
+            "en": "My Account"
+          },
+          "next": "acct"
+        },
+        {
+          "key": "11",
+          "label": {
+            "bn": "রেমিট",
+            "en": "Remittance"
+          },
+          "next": "re.ref"
         }
       ]
     },
@@ -145,8 +181,8 @@
     "p2p.confirm": {
       "type": "CONFIRM",
       "text": {
-        "bn": "{recipient} নম্বরে {amount} টাকা পাঠাবেন?",
-        "en": "Send Tk {amount} to {recipient}?"
+        "bn": "{recipient} নম্বরে {amount} টাকা, ফি {fee}?",
+        "en": "Send Tk {amount} to {recipient}?\nFee Tk {fee}"
       },
       "options": [
         {
@@ -165,7 +201,12 @@
           },
           "next": "cancelled"
         }
-      ]
+      ],
+      "lookup": "charges",
+      "mapping": {
+        "txnType": "=P2P",
+        "amount": "amount"
+      }
     },
     "p2p.pin": {
       "type": "INPUT",
@@ -244,8 +285,8 @@
     "co.confirm": {
       "type": "CONFIRM",
       "text": {
-        "bn": "এজেন্ট {agent}: {amount} টাকা ক্যাশ আউট?",
-        "en": "Cash out Tk {amount} at agent {agent}?"
+        "bn": "এজেন্ট {agent}: {amount} টাকা, ফি {fee}?",
+        "en": "Cash out Tk {amount} at agent {agent}?\nFee Tk {fee}"
       },
       "options": [
         {
@@ -264,7 +305,12 @@
           },
           "next": "cancelled"
         }
-      ]
+      ],
+      "lookup": "charges",
+      "mapping": {
+        "txnType": "=CASH_OUT",
+        "amount": "amount"
+      }
     },
     "co.pin": {
       "type": "INPUT",
@@ -381,8 +427,8 @@
     "tu.confirm": {
       "type": "CONFIRM",
       "text": {
-        "bn": "{target} নম্বরে {amount} টাকা রিচার্জ করবেন?",
-        "en": "Recharge Tk {amount} to {target}?"
+        "bn": "{target} এ {amount}, ফি {fee}?",
+        "en": "Recharge Tk {amount} to {target}?\nFee Tk {fee}"
       },
       "options": [
         {
@@ -401,7 +447,12 @@
           },
           "next": "cancelled"
         }
-      ]
+      ],
+      "lookup": "charges",
+      "mapping": {
+        "txnType": "=TOPUP",
+        "amount": "amount"
+      }
     },
     "tu.pin": {
       "type": "INPUT",
@@ -490,8 +541,8 @@
     "bp.confirm": {
       "type": "CONFIRM",
       "text": {
-        "bn": "{biller} বিল {billNumber}: {amount} টাকা দিবেন?",
-        "en": "Pay Tk {amount} for {biller} bill {billNumber}?"
+        "bn": "{biller} বিল {billNumber}: {amount} টাকা, ফি {fee}?",
+        "en": "Pay Tk {amount} for {biller} bill {billNumber}?\nFee Tk {fee}"
       },
       "options": [
         {
@@ -510,7 +561,12 @@
           },
           "next": "cancelled"
         }
-      ]
+      ],
+      "lookup": "charges",
+      "mapping": {
+        "txnType": "=BILL_PAY",
+        "amount": "amount"
+      }
     },
     "bp.pin": {
       "type": "INPUT",
@@ -594,6 +650,314 @@
       "text": {
         "bn": "বাতিল করা হয়েছে।",
         "en": "Cancelled."
+      }
+    },
+    "w2b.maintenance": {
+      "type": "END",
+      "text": {
+        "bn": "ব্যাংকে স্থানান্তর সাময়িকভাবে বন্ধ।",
+        "en": "Transfer to bank is under maintenance."
+      }
+    },
+    "acct": {
+      "type": "MENU",
+      "text": {
+        "bn": "আমার অ্যাকাউন্ট",
+        "en": "My Account"
+      },
+      "options": [
+        {
+          "key": "1",
+          "label": {
+            "bn": "ব্যালেন্স",
+            "en": "Balance"
+          },
+          "next": "bal.pin"
+        },
+        {
+          "key": "2",
+          "label": {
+            "bn": "স্টেটমেন্ট",
+            "en": "Statement"
+          },
+          "next": "acct.statement",
+          "set": {
+            "wallet": "{msisdn}"
+          }
+        },
+        {
+          "key": "3",
+          "label": {
+            "bn": "পিন পরিবর্তন",
+            "en": "Change PIN"
+          },
+          "next": "pin.maintenance"
+        },
+        {
+          "key": "4",
+          "label": {
+            "bn": "English",
+            "en": "বাংলা"
+          },
+          "next": "main",
+          "switchLanguage": true
+        }
+      ]
+    },
+    "acct.statement": {
+      "type": "END",
+      "lookup": "statement",
+      "mapping": {
+        "walletId": "wallet"
+      },
+      "text": {
+        "bn": "{lines}",
+        "en": "{lines}"
+      }
+    },
+    "pin.maintenance": {
+      "type": "END",
+      "text": {
+        "bn": "পিন পরিবর্তন এখন বন্ধ।",
+        "en": "Change PIN is under maintenance."
+      }
+    },
+    "pay.merchant": {
+      "type": "INPUT",
+      "text": {
+        "bn": "মার্চেন্টের Bits নম্বর দিন",
+        "en": "Enter merchant Bits number"
+      },
+      "validator": {
+        "type": "msisdn",
+        "notSelf": true,
+        "error": {
+          "bn": "সঠিক মোবাইল নম্বর দিন।",
+          "en": "Enter a valid mobile number."
+        }
+      },
+      "store": "merchant",
+      "next": "pay.amount"
+    },
+    "pay.amount": {
+      "type": "INPUT",
+      "text": {
+        "bn": "টাকার পরিমাণ দিন",
+        "en": "Enter amount (Tk)"
+      },
+      "validator": {
+        "type": "amount",
+        "min": "10",
+        "max": "25000",
+        "error": {
+          "bn": "পরিমাণ ১০ থেকে ২৫০০০ টাকার মধ্যে দিন।",
+          "en": "Enter an amount from Tk 10 to 25000."
+        }
+      },
+      "store": "amount",
+      "next": "pay.confirm"
+    },
+    "pay.confirm": {
+      "type": "CONFIRM",
+      "text": {
+        "bn": "{merchant} মার্চেন্টে {amount} টাকা, ফি {fee}?",
+        "en": "Pay Tk {amount} to merchant {merchant}?\nFee Tk {fee}"
+      },
+      "lookup": "charges",
+      "mapping": {
+        "txnType": "=MERCHANT_PAY",
+        "amount": "amount"
+      },
+      "options": [
+        {
+          "key": "1",
+          "label": {
+            "bn": "নিশ্চিত করুন",
+            "en": "Confirm"
+          },
+          "next": "pay.pin"
+        },
+        {
+          "key": "2",
+          "label": {
+            "bn": "বাতিল",
+            "en": "Cancel"
+          },
+          "next": "cancelled"
+        }
+      ]
+    },
+    "pay.pin": {
+      "type": "INPUT",
+      "text": {
+        "bn": "আপনার পিন দিন",
+        "en": "Enter your PIN"
+      },
+      "validator": {
+        "type": "pin",
+        "error": {
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
+        }
+      },
+      "next": "pay.send"
+    },
+    "pay.send": {
+      "type": "ACTION",
+      "flow": "MERCHANT_PAY",
+      "mapping": {
+        "creditParty": "merchant",
+        "amount": "amount"
+      },
+      "onSuccess": "pay.done",
+      "onFailure": "pay.failed"
+    },
+    "pay.done": {
+      "type": "END",
+      "text": {
+        "bn": "{merchant} মার্চেন্টকে {amount} টাকা দেওয়া হয়েছে।",
+        "en": "Tk {amount} paid to merchant {merchant}. TxnID {txnId}"
+      }
+    },
+    "pay.failed": {
+      "type": "END",
+      "text": {
+        "bn": "পেমেন্ট ব্যর্থ: {error}",
+        "en": "Payment failed: {error}"
+      }
+    },
+    "am.account": {
+      "type": "INPUT",
+      "text": {
+        "bn": "ব্যাংক অ্যাকাউন্ট দিন",
+        "en": "Enter bank account number"
+      },
+      "validator": {
+        "type": "numeric",
+        "min": "6",
+        "max": "20",
+        "error": {
+          "bn": "অ্যাকাউন্ট ৬ থেকে ২০ অঙ্কের।",
+          "en": "Enter 6 to 20 digits."
+        }
+      },
+      "store": "account",
+      "next": "am.amount"
+    },
+    "am.amount": {
+      "type": "INPUT",
+      "text": {
+        "bn": "টাকার পরিমাণ দিন",
+        "en": "Enter amount (Tk)"
+      },
+      "validator": {
+        "type": "amount",
+        "min": "10",
+        "max": "25000",
+        "error": {
+          "bn": "পরিমাণ ১০ থেকে ২৫০০০ টাকার মধ্যে দিন।",
+          "en": "Enter an amount from Tk 10 to 25000."
+        }
+      },
+      "store": "amount",
+      "next": "am.confirm"
+    },
+    "am.confirm": {
+      "type": "CONFIRM",
+      "text": {
+        "bn": "{account}\n{amount} টাকা, ফি {fee}?",
+        "en": "Add Tk {amount} from {account}?\nFee Tk {fee}"
+      },
+      "lookup": "charges",
+      "mapping": {
+        "txnType": "=ADD_MONEY_BANK",
+        "amount": "amount"
+      },
+      "options": [
+        {
+          "key": "1",
+          "label": {
+            "bn": "নিশ্চিত করুন",
+            "en": "Confirm"
+          },
+          "next": "am.pin"
+        },
+        {
+          "key": "2",
+          "label": {
+            "bn": "বাতিল",
+            "en": "Cancel"
+          },
+          "next": "cancelled"
+        }
+      ]
+    },
+    "am.pin": {
+      "type": "INPUT",
+      "text": {
+        "bn": "আপনার পিন দিন",
+        "en": "Enter your PIN"
+      },
+      "validator": {
+        "type": "pin",
+        "error": {
+          "bn": "পিন ৫ অঙ্কের।",
+          "en": "The PIN has 5 digits."
+        }
+      },
+      "next": "am.send"
+    },
+    "am.send": {
+      "type": "ACTION",
+      "flow": "ADD_MONEY_BANK",
+      "mapping": {
+        "debitParty": "account",
+        "amount": "amount",
+        "partnerId": "=c2wbank"
+      },
+      "onSuccess": "am.done",
+      "onFailure": "am.failed"
+    },
+    "am.done": {
+      "type": "END",
+      "text": {
+        "bn": "{amount} টাকা যোগ হয়েছে।",
+        "en": "Tk {amount} added. TxnID {txnId}"
+      }
+    },
+    "am.failed": {
+      "type": "END",
+      "text": {
+        "bn": "অ্যাড মানি ব্যর্থ: {error}",
+        "en": "Add Money failed: {error}"
+      }
+    },
+    "re.ref": {
+      "type": "INPUT",
+      "text": {
+        "bn": "রেমিট্যান্স রেফারেন্স দিন",
+        "en": "Enter remittance reference"
+      },
+      "validator": {
+        "type": "regex",
+        "pattern": "[0-9A-Za-z-]{8,64}",
+        "error": {
+          "bn": "রেফারেন্স ৮ থেকে ৬৪ অক্ষর।",
+          "en": "Enter 8 to 64 letters or digits."
+        }
+      },
+      "store": "reference",
+      "lookup": "remit",
+      "mapping": {
+        "reference": "reference"
+      },
+      "next": "re.done"
+    },
+    "re.done": {
+      "type": "END",
+      "text": {
+        "bn": "{status}",
+        "en": "{status}"
       }
     }
   }

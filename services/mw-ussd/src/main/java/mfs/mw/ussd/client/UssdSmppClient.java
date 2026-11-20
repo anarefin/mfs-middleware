@@ -9,16 +9,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import mfs.mw.ussd.config.UssdSmppProperties;
+import mfs.mw.ussd.config.UssdSmppProperties.BindMode;
 import mfs.mw.ussd.dto.SmppUssdMessage;
+import mfs.mw.ussd.transport.MnoTlvAdapter;
+import org.jsmpp.bean.BindType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 
 /**
- * The SMPP binds of every MNO whose USSD runs over SMPP (spec 9.2, 9.2.1): one bind group per MNO
- * ({@code <mno>-1 .. <mno>-n}), all held by this instance for throughput. Inbound {@code
- * deliver_sm} go to the registered {@link UssdSmppListener}; {@link #submit} sends a screen on the
- * named bind (a session's responses use the bind that received it). Gauge {@code mw.smpp.bind.up}
+ * The SMPP binds of every MNO whose USSD runs over SMPP (spec 9.2, 9.2.1, CH-USSD-01): one bind
+ * group per MNO ({@code <mno>-1 .. <mno>-n}), each a transceiver or a transmitter plus a receiver,
+ * all held by this instance for throughput. Inbound {@code deliver_sm} go to the registered
+ * {@link UssdSmppListener}; {@link #submit} sends a screen on the bind that received the session
+ * (the transmitter, when the MNO binds as a pair). Gauge {@code mw.smpp.bind.up}
  * (Prometheus {@code mw_smpp_bind_up}, tags {@code mno}, {@code bind}) is 1 while a bind is up.
  */
 public class UssdSmppClient implements SmartLifecycle {
@@ -32,28 +36,42 @@ public class UssdSmppClient implements SmartLifecycle {
   /**
    * @param smppMnos the MNOs configured with transport SMPP; others are not bound even when their
    *     endpoint is configured (config-ready)
+   * @param tlv the MNO's TLV adapter, keyed by MNO
    */
-  public UssdSmppClient(UssdSmppProperties props, Set<String> smppMnos, MeterRegistry meters, Clock clock) {
+  public UssdSmppClient(UssdSmppProperties props, Set<String> smppMnos, Map<String, MnoTlvAdapter> tlv,
+      MeterRegistry meters, Clock clock) {
     if (!props.enabled()) {
       return;
     }
     for (String mno : new TreeSet<>(smppMnos)) {
       UssdSmppProperties.Endpoint ep = props.mno().get(mno);
-      if (ep == null || ep.host() == null || ep.host().isBlank()) {
+      MnoTlvAdapter adapter = tlv.get(mno);
+      if (ep == null || ep.host() == null || ep.host().isBlank() || adapter == null) {
         log.atError().addKeyValue("event", "smpp.config.missing").addKeyValue("mno", mno)
-            .log("USSD transport SMPP without mw.ussd.smpp.mno settings; not bound");
+            .log("USSD transport SMPP without mw.ussd.smpp.mno settings or a TLV adapter; not bound");
         continue;
       }
       for (int i = 1; i <= ep.binds(); i++) {
-        UssdSmppBind bind = new UssdSmppBind(mno + "-" + i, mno, ep, this::dispatch, clock);
-        binds.put(bind.name(), bind);
-        Gauge.builder("mw.smpp.bind.up", bind, b -> b.isUp() ? 1 : 0)
-            .description("1 while the SMPP bind is up")
-            .tags("mno", mno, "bind", bind.name())
-            .strongReference(true)
-            .register(meters);
+        String logical = mno + "-" + i;
+        if (ep.bindMode() == BindMode.TRANSMITTER_RECEIVER) {
+          open(logical + "-tx", logical, mno, BindType.BIND_TX, ep, adapter, meters, clock);
+          open(logical + "-rx", logical, mno, BindType.BIND_RX, ep, adapter, meters, clock);
+        } else {
+          open(logical, logical, mno, BindType.BIND_TRX, ep, adapter, meters, clock);
+        }
       }
     }
+  }
+
+  private void open(String name, String logical, String mno, BindType type, UssdSmppProperties.Endpoint ep,
+      MnoTlvAdapter adapter, MeterRegistry meters, Clock clock) {
+    UssdSmppBind bind = new UssdSmppBind(name, logical, mno, type, ep, adapter, this::dispatch, clock);
+    binds.put(bind.name(), bind);
+    Gauge.builder("mw.smpp.bind.up", bind, b -> b.isUp() ? 1 : 0)
+        .description("1 while the SMPP bind is up")
+        .tags("mno", mno, "bind", bind.name())
+        .strongReference(true)
+        .register(meters);
   }
 
   /** Where inbound deliver_sm go (the SMPP transport registers itself). */
@@ -74,6 +92,9 @@ public class UssdSmppClient implements SmartLifecycle {
   /** Sends {@code m} on {@code m.bind()}, with the bind's window, throttle and delayed retries. */
   public void submit(SmppUssdMessage m) throws UssdSmppException {
     UssdSmppBind bind = binds.get(m.bind());
+    if (bind == null) {
+      bind = binds.get(m.bind() + "-tx");
+    }
     if (bind == null) {
       throw new UssdSmppException("no such bind", -1);
     }

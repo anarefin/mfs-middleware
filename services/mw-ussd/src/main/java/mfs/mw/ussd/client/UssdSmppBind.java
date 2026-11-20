@@ -4,13 +4,13 @@ import java.io.IOException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import mfs.mw.ussd.config.UssdSmppProperties;
 import mfs.mw.ussd.dto.SmppUssdMessage;
+import mfs.mw.ussd.transport.MnoTlvAdapter;
 import mfs.mw.ussd.util.UssdText;
 import org.jsmpp.GenericNackResponseException;
 import org.jsmpp.InvalidResponseException;
@@ -24,7 +24,6 @@ import org.jsmpp.bean.DeliverSm;
 import org.jsmpp.bean.ESMClass;
 import org.jsmpp.bean.MessageType;
 import org.jsmpp.bean.NumberingPlanIndicator;
-import org.jsmpp.bean.OptionalParameter;
 import org.jsmpp.bean.RegisteredDelivery;
 import org.jsmpp.bean.TypeOfNumber;
 import org.jsmpp.extra.NegativeResponseException;
@@ -38,7 +37,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * One USSD transceiver bind to an MNO gateway (spec 9.2, 9.2.1). A keeper (virtual thread) binds,
+ * One USSD SMPP session to an MNO gateway (spec 9.2, 9.2.1, CH-USSD-01): a transceiver, or one side
+ * of a transmitter + receiver pair. A keeper (virtual thread) binds,
  * sends {@code enquire_link} every {@code enquire-link} and drops the bind after {@code
  * enquire-link-misses} unanswered ones in a row, and reconnects with exponential back-off from
  * {@code reconnect-min} to {@code reconnect-max}. {@code submit_sm} goes through a window
@@ -54,8 +54,11 @@ final class UssdSmppBind {
   private static final Duration TICK = Duration.ofMillis(50);
 
   private final String name;
+  private final String logicalName;
   private final String mno;
+  private final BindType bindType;
   private final UssdSmppProperties.Endpoint ep;
+  private final MnoTlvAdapter tlv;
   private final UssdSmppListener listener;
   private final Clock clock;
   private final Semaphore window;
@@ -71,10 +74,14 @@ final class UssdSmppBind {
   private int misses;
   private long nextSlot;
 
-  UssdSmppBind(String name, String mno, UssdSmppProperties.Endpoint ep, UssdSmppListener listener, Clock clock) {
+  UssdSmppBind(String name, String logicalName, String mno, BindType bindType, UssdSmppProperties.Endpoint ep,
+      MnoTlvAdapter tlv, UssdSmppListener listener, Clock clock) {
     this.name = name;
+    this.logicalName = logicalName;
     this.mno = mno;
+    this.bindType = bindType;
     this.ep = ep;
+    this.tlv = tlv;
     this.listener = listener;
     this.clock = clock;
     this.window = new Semaphore(ep.window(), true);
@@ -191,7 +198,7 @@ final class UssdSmppBind {
         });
     try {
       s.connectAndBind(ep.host(), ep.port(),
-          new BindParameter(BindType.BIND_TRX, ep.systemId(), ep.password(), ep.systemType(),
+          new BindParameter(bindType, ep.systemId(), ep.password(), ep.systemType(),
               TypeOfNumber.UNKNOWN, NumberingPlanIndicator.UNKNOWN, null),
           ep.transactionTimeout().toMillis());
       misses = 0;
@@ -256,11 +263,7 @@ final class UssdSmppBind {
       s.submitShortMessage(ep.serviceType(), TypeOfNumber.UNKNOWN, NumberingPlanIndicator.UNKNOWN, m.serviceCode(),
           TypeOfNumber.UNKNOWN, NumberingPlanIndicator.ISDN, m.address(), new ESMClass(), (byte) 0, (byte) 0, null,
           null, new RegisteredDelivery(0), (byte) 0, DataCodings.newInstance(text.dataCoding()), (byte) 0,
-          text.bytes(),
-          new OptionalParameter.OctetString(OptionalParameter.Tag.USSD_SERVICE_OP.code(),
-              new byte[] {(byte) m.serviceOp()}),
-          new OptionalParameter.OctetString(OptionalParameter.Tag.ITS_SESSION_INFO.code(),
-              new byte[] {(byte) m.sessionNumber(), (byte) (((m.sequence() & 0x7F) << 1) | (m.endOfSession() ? 1 : 0))}));
+          text.bytes(), tlv.write(m.serviceOp(), m.sessionNumber(), m.sequence(), m.endOfSession()));
     } catch (NegativeResponseException e) {
       if (RETRIED.contains(e.getCommandStatus())) {
         throw new Retryable(e.getCommandStatus());
@@ -309,19 +312,6 @@ final class UssdSmppBind {
     }
   }
 
-  static byte[] tlv(OptionalParameter[] params, OptionalParameter.Tag tag) {
-    if (params == null) {
-      return null;
-    }
-    for (OptionalParameter p : params) {
-      if (p.tag == tag.code()) {
-        byte[] all = p.serialize();
-        return Arrays.copyOfRange(all, 4, all.length);
-      }
-    }
-    return null;
-  }
-
   /** deliver_sm from the gateway: a subscriber's dial-in, answer or release. */
   private final class Receiver implements MessageReceiverListener {
 
@@ -330,15 +320,15 @@ final class UssdSmppBind {
       if (MessageType.SMSC_DEL_RECEIPT.containedIn(sm.getEsmClass())) {
         return;
       }
-      byte[] op = tlv(sm.getOptionalParameters(), OptionalParameter.Tag.USSD_SERVICE_OP);
-      byte[] info = tlv(sm.getOptionalParameters(), OptionalParameter.Tag.ITS_SESSION_INFO);
-      if (op == null || op.length < 1 || info == null || info.length < 2) {
+      var fields = tlv.read(sm.getOptionalParameters());
+      if (fields.isEmpty()) {
         log.atWarn().addKeyValue("event", "smpp.deliver_sm.ignored").addKeyValue("bind", name)
             .log("deliver_sm without ussd_service_op or its_session_info");
         return;
       }
-      SmppUssdMessage m = new SmppUssdMessage(mno, name, sm.getSourceAddr(), sm.getDestAddress(), op[0] & 0xFF,
-          info[0] & 0xFF, (info[1] & 0xFF) >> 1, (info[1] & 1) == 1,
+      MnoTlvAdapter.Fields f = fields.get();
+      SmppUssdMessage m = new SmppUssdMessage(mno, logicalName, sm.getSourceAddr(), sm.getDestAddress(),
+          f.serviceOp(), f.sessionNumber(), f.sequence(), f.endOfSession(),
           UssdText.decode(sm.getDataCoding(), sm.getShortMessage()));
       try {
         listener.onDeliver(m);

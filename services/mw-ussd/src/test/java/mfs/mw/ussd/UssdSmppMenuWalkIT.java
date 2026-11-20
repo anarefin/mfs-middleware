@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Objects;
 import mfs.mw.ussd.client.UssdGatewayStub;
 import mfs.mw.ussd.dto.SmppUssdMessage;
+import mfs.mw.ussd.transport.RobiTlvAdapter;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -34,6 +36,7 @@ import org.springframework.test.web.servlet.assertj.MockMvcTester;
 @SpringBootTest(properties = {"mw.ussd.sync-budget=5s", "mw.ussd.instance-id=it-ussd-walk-smpp",
     "mw.ussd.consumers.enabled=true", "mw.ussd.mno.robi.transport=SMPP", "mw.ussd.smpp.enabled=true",
     "mw.ussd.smpp.mno.robi.host=127.0.0.1", "mw.ussd.smpp.mno.robi.binds=2",
+    "mw.ussd.smpp.mno.robi.bind-mode=TRANSCEIVER",
     "mw.ussd.smpp.mno.robi.retry-delays=100ms,100ms,100ms"})
 @AutoConfigureMockMvc
 @Import(TestInfrastructure.class)
@@ -44,7 +47,7 @@ class UssdSmppMenuWalkIT extends UssdMenuWalkSuite {
 
   static {
     try {
-      GATEWAY = new UssdGatewayStub();
+      GATEWAY = new UssdGatewayStub(new RobiTlvAdapter());
     } catch (IOException e) {
       throw new UncheckedIOException(e);
     }
@@ -60,10 +63,11 @@ class UssdSmppMenuWalkIT extends UssdMenuWalkSuite {
   private final MeterRegistry meters;
 
   @Autowired
-  UssdSmppMenuWalkIT(MockMvcTester http, StringRedisTemplate redis, MeterRegistry meters) {
+  UssdSmppMenuWalkIT(MockMvcTester http, StringRedisTemplate redis, MeterRegistry meters, JdbcTemplate jdbc) {
     this.http = http;
     this.redis = redis;
     this.meters = meters;
+    rememberJdbc(jdbc);
   }
 
   @AfterAll

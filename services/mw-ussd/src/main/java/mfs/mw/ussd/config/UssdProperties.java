@@ -65,11 +65,15 @@ public record UssdProperties(
    *
    * @param maxLengthGsm screen limit for GSM-7 text (182)
    * @param maxLengthUcs2 screen limit for UCS-2 text such as Bangla (70)
-   * @param sessionTimeout the MNO's session limit (120-180 s, TBC per MNO)
+   * @param sessionTimeout the MNO's overall session limit (120-180 s)
+   * @param screenTimeout how long one screen stays open before the next step ends the session (30 s,
+   *     CH-USSD-05); the Redis TTL stays the overall timeout plus the session grace
    * @param continueFlag value of the HTTP response flag that keeps the session open
    * @param endFlag value of the HTTP response flag that ends it
    * @param operator mw-adapter-telco's partnerId for this MNO's subscribers (a top-up of the own
    *     number); blank = the MNO key itself (bl: {@code banglalink})
+   * @param tlvProfile which {@code MnoTlvAdapter} reads this MNO's SMPP TLVs ({@code gp}, {@code
+   *     robi}, {@code bl}, {@code teletalk}); blank = the MNO key
    */
   public record Mno(
       @NotNull Transport transport,
@@ -80,10 +84,40 @@ public record UssdProperties(
       @NotNull Overflow overflow,
       @NotBlank String continueFlag,
       @NotBlank String endFlag,
-      String operator) {
+      String operator,
+      Duration screenTimeout,
+      String tlvProfile) {
+
+    /**
+     * A test MNO with the 30 s screen timeout. A second constructor would stop Spring from binding
+     * {@code mw.ussd.mno.*}.
+     */
+    public static Mno of(
+        Transport transport,
+        List<String> shortCodes,
+        int maxLengthGsm,
+        int maxLengthUcs2,
+        Duration sessionTimeout,
+        Overflow overflow,
+        String continueFlag,
+        String endFlag,
+        String operator) {
+      return new Mno(
+          transport, shortCodes, maxLengthGsm, maxLengthUcs2, sessionTimeout, overflow, continueFlag, endFlag,
+          operator, Duration.ofSeconds(30), null);
+    }
 
     public Mno {
       shortCodes = List.copyOf(shortCodes == null ? List.of() : shortCodes);
+      if (screenTimeout == null) {
+        screenTimeout = Duration.ofSeconds(30);
+      }
+      tlvProfile = tlvProfile == null || tlvProfile.isBlank() ? null : tlvProfile;
+    }
+
+    /** The TLV profile, or {@code mnoKey} when none is configured. */
+    public String tlvProfileOr(String mnoKey) {
+      return tlvProfile == null ? mnoKey : tlvProfile;
     }
 
     /** The top-up operator (telco partnerId) of this MNO, whose key is {@code key}. */

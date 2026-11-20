@@ -169,13 +169,14 @@ mw:
   # The core wallet API /core/v1/** (ADR D31, ticket 93; config/SecurityConfig): a Keycloak realm
   # `services` client-credentials JWT with mw-core-mock in `aud`, from one of the allowed clients
   # (mw-orchestrator from ticket 95; mw-auth's VerifyCustomerFactors and mw-admin-api's unlock;
-  # mw-app-gateway's profile, limits and statement, ticket 107b). The dev stack also allows
-  # mw-simulators. The /core-mock/v1/** test/admin API and the probes stay open.
+  # mw-app-gateway's profile, limits and statement, ticket 107b; mw-ussd's fee quote and
+  # mini statement, ticket 109c). The dev stack also allows mw-simulators. The /core-mock/v1/**
+  # test/admin API and the probes stay open.
   internal-auth:
     jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
     issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
     audience: mw-core-mock
-    allowed-clients: mw-orchestrator,mw-auth,mw-admin-api,mw-app-gateway
+    allowed-clients: mw-orchestrator,mw-auth,mw-admin-api,mw-app-gateway,mw-ussd
   coremock:
     # Test-only wallet seed API (ticket 57, WalletSeedController; mw-seeder): off unless the stack sets it.
     seed-api:

@@ -2,10 +2,9 @@ package mfs.mw.ussd.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneOffset;
+import mfs.mw.ussd.MutableClock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -75,16 +74,23 @@ class UssdEngineTest {
   static UssdProperties props(UssdProperties.Overflow overflow, int gsm) {
     return new UssdProperties(
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
-        "bn", 3, Map.of("robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of("*247#"), gsm, 70,
+        "bn", 3, Map.of("robi", UssdProperties.Mno.of(UssdProperties.Transport.HTTP, List.of("*247#"), gsm, 70,
             Duration.ofSeconds(120), overflow, "CON", "END", null)),
         Map.of(), Map.of());
   }
 
   final InMemorySessions sessions = new InMemorySessions();
   final ScriptedFlow flow = new ScriptedFlow();
+  final MutableClock clock = new MutableClock(Instant.parse("2026-11-04T10:00:00Z"));
+  final MemoryPrefs prefs = new MemoryPrefs();
+  final FixedAccounts accounts = new FixedAccounts();
   UssdEngine engine = engine(props(UssdProperties.Overflow.PAGE, 182));
 
   UssdEngine engine(UssdProperties p) {
+    return engine(p, new OpenShortCodes(), accounts, prefs);
+  }
+
+  UssdEngine engine(UssdProperties p, ShortCodeBook codes, CoreAccounts core, CustomerPrefs language) {
     MenuCatalog catalog = new MenuCatalog() {
       @Override
       public Menu active(String mno) {
@@ -95,11 +101,17 @@ class UssdEngineTest {
       public Menu version(String menuId, int version) {
         return MENU;
       }
+
+      @Override
+      public Menu latest(String menuId) {
+        return MENU;
+      }
     };
     return new UssdEngine(
         catalog, sessions, new InputValidator(), new ScreenFormatter(), flow,
-        TestPinTransport.create(), new DynamicLists(p, BILLS), new Lookups(BILLS), p,
-        Clock.fixed(Instant.parse("2026-11-04T10:00:00Z"), ZoneOffset.UTC));
+        TestPinTransport.create(), new DynamicLists(p, BILLS),
+        new Lookups(BILLS, new mfs.mw.ussd.client.StubCoreReads(), new mfs.mw.ussd.client.StubCoreReads()), p, clock, codes, language,
+        core);
   }
 
   UssdResponse dial(String session) {
@@ -147,7 +159,7 @@ class UssdEngineTest {
   void anMnoWithoutShortCodesAcceptsAnyCode() {
     engine = engine(new UssdProperties(
         "test-instance", "mw.txn.request.v1", "mw.txn.status.v1", Duration.ofSeconds(8), Duration.ofSeconds(30),
-        "bn", 3, Map.of("robi", new UssdProperties.Mno(UssdProperties.Transport.HTTP, List.of(), 182, 70,
+        "bn", 3, Map.of("robi", UssdProperties.Mno.of(UssdProperties.Transport.HTTP, List.of(), 182, 70,
             Duration.ofSeconds(120), UssdProperties.Overflow.PAGE, "CON", "END", null)),
         Map.of(), Map.of()));
 
@@ -235,7 +247,7 @@ class UssdEngineTest {
   @Test
   void anUnknownMenuChoiceIsPromptedAgain() {
     dial("s6");
-    assertThat(send("s6", "7").text()).startsWith("ভুল ইনপুট।\nBits\n1 সেন্ড মানি").endsWith("0 আরও");
+    assertThat(send("s6", "7").text()).startsWith("ভুল ইনপুট।\nBits\n1 সেন্ড মানি").contains("0. পরবর্তী");
   }
 
   @Test
@@ -298,8 +310,9 @@ class UssdEngineTest {
 
   /** Dials {@code s} and walks an English P2P of Tk 500 to the PIN prompt. */
   void toPinPrompt(String s) {
-    dial(s);
-    send(s, "9");
+    if (dial(s).text().contains("সেন্ড")) {
+      send(s, "9");
+    }
     send(s, "1");
     send(s, PAYEE);
     send(s, "500");
@@ -484,8 +497,9 @@ class UssdEngineTest {
     for (FlowOutcome.Kind kind : List.of(FlowOutcome.Kind.PROCESSING, FlowOutcome.Kind.UNAVAILABLE)) {
       flow.next = new FlowOutcome(kind, kind == FlowOutcome.Kind.PROCESSING ? "t" : null, null);
       String s = "b6-" + kind;
-      dial(s);
-      send(s, "9");
+      if (dial(s).text().contains("সেন্ড")) {
+        send(s, "9");
+      }
       send(s, "5");
 
       UssdResponse r = send(s, "48261");
@@ -494,6 +508,7 @@ class UssdEngineTest {
       assertThat(r.text()).as(kind.name()).isEqualTo("Could not get your balance. Please try again.").doesNotContain("SMS");
     }
     flow.next = new FlowOutcome(FlowOutcome.Kind.PROCESSING, "t", null);
+    prefs.remember(CUSTOMER, "bn");
     dial("b7");
     send("b7", "5");
     assertThat(send("b7", "48261").text()).isEqualTo("ব্যালেন্স জানা যায়নি। আবার চেষ্টা করুন।");
@@ -548,15 +563,15 @@ class UssdEngineTest {
     send("s14", PAYEE);
     UssdResponse first = send("s14", "500");
     assertThat(first.end()).isFalse();
-    assertThat(first.text()).hasSizeLessThanOrEqualTo(25).endsWith("\n0 More");
-    StringBuilder all = new StringBuilder(first.text().replace("\n0 More", ""));
+    assertThat(first.text()).hasSizeLessThanOrEqualTo(25).contains("\n0. Next");
+    StringBuilder all = new StringBuilder(pageBody(first.text()));
     UssdResponse next = send("s14", "0");
-    while (next.text().endsWith("\n0 More")) {
+    while (next.text().contains("\n0. Next")) {
       assertThat(next.text()).hasSizeLessThanOrEqualTo(25);
-      all.append('\n').append(next.text().replace("\n0 More", ""));
+      all.append('\n').append(pageBody(next.text()));
       next = send("s14", "0");
     }
-    all.append('\n').append(next.text());
+    all.append('\n').append(pageBody(next.text()));
     // nothing is lost: the pages hold the whole screen (split at line breaks or spaces)
     assertThat(all.toString().replaceAll("\\s", ""))
         .isEqualTo("SendTk500.00to01812345678?1Confirm2Cancel");
@@ -574,5 +589,141 @@ class UssdEngineTest {
     UssdResponse r = send("s15", "500");
     assertThat(r.text()).isEqualTo("Send Tk 500.00 to 0181234");
     assertThat(send("s15", "1").text()).isEqualTo("Enter your PIN");
+  }
+
+  private static String pageBody(String page) {
+    return page.replace("\n0. Next", "").replace("\n00. Back", "");
+  }
+
+  @Test
+  void anIdleScreenEndsAtThirtySecondsWhileTheOverallTimeoutStillHolds() {
+    dial("tm");
+    assertThat(sessions.ttls.get("ussd:robi:tm")).isEqualTo(Duration.ofSeconds(150));
+    clock.advance(Duration.ofSeconds(29));
+    assertThat(send("tm", "1").end()).isFalse();
+    clock.advance(Duration.ofSeconds(30));
+    UssdResponse screen = send("tm", PAYEE);
+    assertThat(screen.end()).isTrue();
+    assertThat(screen.text()).isEqualTo("সেশন শেষ হয়েছে। আবার ডায়াল করুন।");
+
+    dial("tm2");
+    clock.advance(Duration.ofSeconds(24));
+    assertThat(send("tm2", "1").text()).isEqualTo("প্রাপকের Bits নম্বর দিন");
+    clock.advance(Duration.ofSeconds(24));
+    assertThat(send("tm2", PAYEE).text()).isEqualTo("টাকার পরিমাণ দিন");
+    clock.advance(Duration.ofSeconds(24));
+    assertThat(send("tm2", "500").text()).startsWith("01812345678");
+    clock.advance(Duration.ofSeconds(24));
+    assertThat(send("tm2", "1").text()).isEqualTo("আপনার পিন দিন");
+    clock.advance(Duration.ofSeconds(24));
+    UssdResponse overall = send("tm2", "48261");
+    assertThat(overall.end()).isTrue();
+    assertThat(overall.text()).isEqualTo("সেশন শেষ হয়েছে। আবার ডায়াল করুন।");
+    assertThat(flow.requests).isEmpty();
+  }
+
+  @Test
+  void zeroZeroReturnsToThePreviousNodeAndZeroShowsTheNextPage() {
+    dial("bk");
+    assertThat(send("bk", "1").text()).isEqualTo("প্রাপকের Bits নম্বর দিন");
+    assertThat(sessions.find("robi", "bk").orElseThrow().back()).containsExactly("main");
+    UssdResponse back = send("bk", "00");
+    assertThat(back.end()).isFalse();
+    assertThat(back.text()).isEqualTo("Bits\n1 সেন্ড মানি\n2 ক্যাশ আউট\n3 রিচার্জ\n4 বিল পে\n5 ব্যালেন্স\n9 English");
+    assertThat(sessions.find("robi", "bk").orElseThrow().nodeId()).isEqualTo("main");
+    assertThat(sessions.find("robi", "bk").orElseThrow().back()).isEmpty();
+
+    engine = engine(props(UssdProperties.Overflow.PAGE, 40));
+    dial("bk2");
+    send("bk2", "9");
+    send("bk2", "1");
+    send("bk2", PAYEE);
+    UssdResponse first = send("bk2", "500");
+    assertThat(first.text()).contains("\n0. Next").contains("\n00. Back");
+    UssdResponse second = send("bk2", "0");
+    assertThat(second.text()).doesNotContain("\n0. Next");
+    UssdResponse previous = send("bk2", "00");
+    assertThat(pageBody(previous.text())).isEqualTo(pageBody(first.text()));
+  }
+
+  @Test
+  void languagePersistsAcrossSessionsForTheSameMsisdn() {
+    dial("L1");
+    send("L1", "9");
+    assertThat(send("L1", "1").text()).isEqualTo("Enter recipient Bits number");
+    assertThat(dial("L2").text()).contains("Send Money").doesNotContain("সেন্ড");
+  }
+
+  @Test
+  void aDisallowedCustomerTypeEndsInBanglaAndEnglish() {
+    MapShortCodes book = new MapShortCodes();
+    book.add(new ShortCode("*247#", "robi", "main", java.util.List.of("AGENT")));
+    FixedAccounts agentOnly = new FixedAccounts();
+    engine = engine(props(UssdProperties.Overflow.PAGE, 182), book, agentOnly, new MemoryPrefs());
+    UssdResponse bn = dialCode("sc1", "*247#");
+    assertThat(bn.end()).isTrue();
+    assertThat(bn.text()).isEqualTo("এই কোডটি আপনার অ্যাকাউন্টের জন্য নয়।");
+    assertThat(sessions.values).isEmpty();
+
+    MemoryPrefs english = new MemoryPrefs();
+    english.remember(CUSTOMER, "en");
+    engine = engine(props(UssdProperties.Overflow.PAGE, 182), book, agentOnly, english);
+    assertThat(dialCode("sc2", "*247#").text()).isEqualTo("This code is not available for your account.");
+  }
+
+  @Test
+  void anUnknownShortCodeFromTheTableEndsTheSession() {
+    MapShortCodes book = new MapShortCodes();
+    book.add(new ShortCode("*247#", "robi", "main", java.util.List.of("CUSTOMER")));
+    engine = engine(props(UssdProperties.Overflow.PAGE, 182), book, accounts, new MemoryPrefs());
+    UssdResponse r = dialCode("sc3", "*999#");
+    assertThat(r.end()).isTrue();
+    assertThat(r.text()).isEqualTo("এই কোডটি এই নেটওয়ার্কে নেই। ডায়াল করুন *247#");
+    assertThat(sessions.values).doesNotContainKey("ussd:robi:sc3");
+  }
+
+  @Test
+  void anAllowedCustomerTypeOpensTheRootMenu() {
+    MapShortCodes book = new MapShortCodes();
+    book.add(new ShortCode("*247#", "robi", "main", java.util.List.of("CUSTOMER")));
+    engine = engine(props(UssdProperties.Overflow.PAGE, 182), book, accounts, prefs);
+    assertThat(dialCode("sc4", "*247#").text()).startsWith("Bits\n1 সেন্ড মানি");
+  }
+
+  @Test
+  void transferToBankShowsTheMaintenanceText() {
+    assertThat(MENU.node("w2b.maintenance").text().bn()).isEqualTo("ব্যাংকে স্থানান্তর সাময়িকভাবে বন্ধ।");
+    assertThat(MENU.node("w2b.maintenance").text().en()).isEqualTo("Transfer to bank is under maintenance.");
+    Menu bank = MenuParser.parse(JSON, """
+        {"menuId":"t","version":1,"start":"main","messages":{
+          "invalid":{"bn":"ভুল","en":"Invalid"},"expired":{"bn":"শেষ","en":"Expired"},
+          "more":{"bn":"0. পরবর্তী","en":"0. Next"},"unavailable":{"bn":"বন্ধ","en":"Down"},
+          "tooManyAttempts":{"bn":"অনেক","en":"Too many"},"processing":{"bn":"প্রক্রিয়া","en":"Processing"}},
+         "nodes":{"main":{"type":"MENU","text":{"bn":"Bits","en":"Bits"},"options":[
+            {"key":"1","label":{"bn":"ব্যাংক","en":"Bank"},"next":"w2b.maintenance"}]},
+          "w2b.maintenance":{"type":"END","text":{"bn":"ব্যাংকে স্থানান্তর সাময়িকভাবে বন্ধ।",
+            "en":"Transfer to bank is under maintenance."}}}}
+        """);
+    MenuCatalog catalog = new MenuCatalog() {
+      @Override
+      public Menu active(String mno) {
+        return bank;
+      }
+
+      @Override
+      public Menu version(String menuId, int version) {
+        return bank;
+      }
+    };
+    engine = new UssdEngine(
+        catalog, sessions, new InputValidator(), new ScreenFormatter(), flow, TestPinTransport.create(),
+        new DynamicLists(props(UssdProperties.Overflow.PAGE, 182), BILLS),
+        new Lookups(BILLS, new mfs.mw.ussd.client.StubCoreReads(), new mfs.mw.ussd.client.StubCoreReads()),
+        props(UssdProperties.Overflow.PAGE, 182), clock, new OpenShortCodes(), prefs, accounts);
+    assertThat(dial("w2b").text()).isEqualTo("Bits\n1 ব্যাংক");
+    UssdResponse shown = send("w2b", "1");
+    assertThat(shown.end()).isTrue();
+    assertThat(shown.text()).isEqualTo("ব্যাংকে স্থানান্তর সাময়িকভাবে বন্ধ।");
+    assertThat(flow.requests).isEmpty();
   }
 }

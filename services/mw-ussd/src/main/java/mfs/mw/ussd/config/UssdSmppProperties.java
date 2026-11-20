@@ -17,6 +17,14 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties("mw.ussd.smpp")
 public record UssdSmppProperties(boolean enabled, Map<String, Endpoint> mno) {
 
+  /** How one MNO's binds are opened (CH-USSD-01). */
+  public enum BindMode {
+    /** One {@code bind_transceiver} session per bind. */
+    TRANSCEIVER,
+    /** A {@code bind_transmitter} and a {@code bind_receiver} per bind. */
+    TRANSMITTER_RECEIVER
+  }
+
   public UssdSmppProperties {
     mno = Map.copyOf(mno == null ? Map.of() : mno);
   }
@@ -24,7 +32,9 @@ public record UssdSmppProperties(boolean enabled, Map<String, Endpoint> mno) {
   /**
    * One MNO's USSD gateway.
    *
-   * @param binds transceiver binds held for throughput (MNO contract value, TBC)
+   * @param binds sessions held for throughput (MNO contract value, TBC); a
+   *     {@link BindMode#TRANSMITTER_RECEIVER} bind is one transmitter plus one receiver
+   * @param bindMode {@link BindMode#TRANSCEIVER} or {@link BindMode#TRANSMITTER_RECEIVER}
    * @param serviceType {@code service_type} of the {@code submit_sm} (USSD)
    * @param enquireLink {@code enquire_link} interval (30 s)
    * @param enquireLinkMisses unanswered enquire_links in a row before the bind is dropped and
@@ -52,7 +62,8 @@ public record UssdSmppProperties(boolean enabled, Map<String, Endpoint> mno) {
       Duration reconnectMax,
       int window,
       int tps,
-      List<Duration> retryDelays) {
+      List<Duration> retryDelays,
+      BindMode bindMode) {
 
     public Endpoint {
       password = password == null ? "" : password;
@@ -70,6 +81,7 @@ public record UssdSmppProperties(boolean enabled, Map<String, Endpoint> mno) {
           List.copyOf(retryDelays == null
               ? List.of(Duration.ofMillis(500), Duration.ofSeconds(1), Duration.ofSeconds(2))
               : retryDelays);
+      bindMode = bindMode == null ? BindMode.TRANSCEIVER : bindMode;
     }
 
     @Override

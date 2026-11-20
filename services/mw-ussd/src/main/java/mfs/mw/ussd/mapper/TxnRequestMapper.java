@@ -32,10 +32,16 @@ public class TxnRequestMapper {
   public static final String CASH_OUT = "CASH_OUT";
   public static final String TOPUP = "TOPUP";
   public static final String BILL_PAY = "BILL_PAY";
+  /** In-store merchant payment: the payee wallet is a merchant. */
+  public static final String MERCHANT_PAY = "MERCHANT_PAY";
+  /** Add money from a linked bank account (C2W): the bank account pays, the own wallet receives. */
+  public static final String ADD_MONEY_BANK = "ADD_MONEY_BANK";
   /** Balance inquiry (ADR D26): amount 0, payer = payee = the own wallet, nothing mapped. */
   public static final String BALANCE = "BALANCE";
   /** Canonical product code of a bill payment (as mw-app-gateway sends it). */
   public static final String BILL_PRODUCT = "BILL";
+  /** Canonical product of a C2W debit (as mw-app-gateway sends it). */
+  public static final String C2W_PRODUCT = "C2W";
 
   private static final Set<String> BASE = Set.of(FlowRequest.CREDIT_PARTY, FlowRequest.AMOUNT);
 
@@ -46,6 +52,8 @@ public class TxnRequestMapper {
           CASH_OUT, BASE,
           TOPUP, Set.of(FlowRequest.CREDIT_PARTY, FlowRequest.AMOUNT, FlowRequest.PARTNER_ID, FlowRequest.PRODUCT_CODE),
           BILL_PAY, Set.of(FlowRequest.CREDIT_PARTY, FlowRequest.AMOUNT, FlowRequest.PARTNER_ID, FlowRequest.BILLER_CODE),
+          MERCHANT_PAY, BASE,
+          ADD_MONEY_BANK, Set.of(FlowRequest.DEBIT_PARTY, FlowRequest.AMOUNT, FlowRequest.PARTNER_ID),
           BALANCE, Set.of());
 
   /** Flows an ACTION node may name. */
@@ -64,7 +72,10 @@ public class TxnRequestMapper {
     UssdSession s = req.session();
     Map<String, String> f = req.fields();
     boolean balance = BALANCE.equals(req.flow());
+    boolean addMoney = ADD_MONEY_BANK.equals(req.flow());
     Party payer = Party.wallet(s.msisdn(), "CUSTOMER");
+    Party debit = addMoney ? new Party("BANK_ACCOUNT", f.get(FlowRequest.DEBIT_PARTY), null, null) : payer;
+    Party credit = addMoney || balance ? payer : creditParty(req.flow(), f.get(FlowRequest.CREDIT_PARTY));
     return new TxnRequest(
         1,
         txnId,
@@ -73,8 +84,8 @@ public class TxnRequestMapper {
         CHANNEL,
         req.flow(),
         new Party("MSISDN", s.msisdn(), null, null),
-        payer,
-        balance ? payer : creditParty(req.flow(), f.get(FlowRequest.CREDIT_PARTY)),
+        debit,
+        credit,
         new Amount(balance ? 0L : minor(f.get(FlowRequest.AMOUNT)), Amount.BDT),
         partner(req.flow(), f),
         null,
@@ -107,6 +118,7 @@ public class TxnRequestMapper {
   private static Party creditParty(String flow, String id) {
     return switch (flow) {
       case CASH_OUT -> Party.wallet(id, "AGENT");
+      case MERCHANT_PAY -> Party.wallet(id, "MERCHANT");
       case TOPUP -> new Party("MSISDN", id, null, null);
       case BILL_PAY -> new Party("BILLER_ACCOUNT", id, null, null);
       default -> Party.wallet(id, "CUSTOMER");
@@ -118,6 +130,7 @@ public class TxnRequestMapper {
       case TOPUP -> new PartnerRef(f.get(FlowRequest.PARTNER_ID), f.get(FlowRequest.PRODUCT_CODE));
       case BILL_PAY ->
           new PartnerRef(f.get(FlowRequest.PARTNER_ID), BILL_PRODUCT, f.get(FlowRequest.BILLER_CODE));
+      case ADD_MONEY_BANK -> new PartnerRef(f.get(FlowRequest.PARTNER_ID), C2W_PRODUCT);
       default -> null;
     };
   }

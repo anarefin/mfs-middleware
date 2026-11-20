@@ -33,7 +33,9 @@ sim:
   ussd-gateway:
     smpp:
       # Off in tests (port clashes between cached contexts); UssdSmppGatewayIT switches it on.
+      # Peers stay off there too: the IT only moves the Grameenphone port.
       enabled: false
+      peers-enabled: false
   payshield:
     # Off in tests (port clashes between cached contexts); PayShieldServerTest starts its own and
     # PayShieldSimulatorIT runs the image against the SoftHSM paysim token. No PKCS#11 on the host.

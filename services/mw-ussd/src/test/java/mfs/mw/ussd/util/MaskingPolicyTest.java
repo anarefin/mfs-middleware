@@ -14,6 +14,12 @@ import org.junit.jupiter.api.Test;
 class MaskingPolicyTest {
 
   @Test
+  void msisdnHashIsSha256HexAndNotTheNumber() {
+    assertThat(MaskingPolicy.msisdnHash("01712345678"))
+        .isEqualTo("d4da32b0678ca6c12ebc4311fcf01809cc2246039b20b9566f6a938e897e7879");
+  }
+
+  @Test
   void msisdnKeepsFirstFourAndLastThree() {
     assertThat(MaskingPolicy.mask(SensitiveType.MSISDN, "01712345789")).isEqualTo("0171****789");
   }

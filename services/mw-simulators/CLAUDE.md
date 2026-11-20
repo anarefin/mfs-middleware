@@ -37,11 +37,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     txnRef), `billagg` (billers, fetch, pay, status, reverse; biller, billNumber, txnRef; REST and SOAP
     front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path), and the
     SMPP / TCP parties of ticket 102b (FRS MCT-04): `smsc` (bind, submit; systemId, msisdn), `ussdgw` (bind,
-    submit, enquire_link, dial; systemId, msisdn, mno), `payshield` (command; command), and `push` (send; token,
+    submit, enquire_link, dial; systemId, msisdn, mno), the per-MNO USSD ports `ussd-gp`, `ussd-robi`,
+    `ussd-bl`, `ussd-teletalk` (bind, submit, enquire_link; systemId, msisdn), `payshield` (command; command), and `push` (send; token,
     topic; ticket 110). Each party lists the
     behaviours it carries out (`MockParty.behaviours`; the SMPP / TCP ones a subset) and `MockParties.check`
     refuses a scenario with another behaviour, an operation it lacks or a `code` not in its form (SMPP
-    command_status `0x58` / `88` for smsc and ussdgw, two characters for payshield): 400 MW-VAL-001. The
+    command_status `0x58` / `88` for smsc, ussdgw and the per-MNO USSD parties, two characters for payshield): 400 MW-VAL-001. The
     file mocks `aml`, `trustbank`, `dw` of ticket 123 are parties too (below). An HTTP
     party's name is the first segment of its wire paths (the journal's key). A new mock adds a line there
     and calls `MockControl.decide(party, operation, keys, magic)` per operation, then carries the
@@ -216,23 +217,29 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   play (HTTP or SMPP) is operation `dial` of the mock party `ussdgw` (keys msisdn, mno): DELAY waits before
   the first step, CONNECTION_RESET hangs up after the first screen, DOWN sends nothing (one screen status
   -1), MAINTENANCE neither (status 503). No journal of plays (inputs carry PINs).
-- USSD gateway simulator, SMPP mode (ticket 27, `client/UssdSmppGateway`): SMPP 3.4 server on
-  `sim.ussd-gateway.smpp.port` (2776, internal network; `sim.ussd-gateway.smpp.enabled`, off in
-  tests except `UssdSmppGatewayIT`) that mw-ussd binds to as transceiver (any bind accepted).
-  MNOs in `sim.ussd-gateway.smpp.mnos` ([gp]) are played over SMPP by the same `POST
+- USSD gateway simulator, SMPP mode (ticket 27, 109a, `client/UssdSmppGateway`): one SMPP 3.4
+  server per MNO. Grameenphone listens on `sim.ussd-gateway.smpp.port` (2776, party `ussd-gp`,
+  packing `EOS_BIT0`). When `sim.ussd-gateway.smpp.peers-enabled` (on in dev, off in tests) robi
+  listens on 2777 (`ussd-robi`, `EOS_BIT7`, transmitter+receiver), bl on 2778 (`ussd-bl`,
+  `EOS_BIT0`, transceiver) and teletalk on 2779 (`ussd-teletalk`, `EOS_BIT7`, transmitter+receiver).
+  A `deliver_sm` goes out on a receiver or transceiver, never a transmitter. MNOs in
+  `sim.ussd-gateway.smpp.mnos` ([gp]) are played over SMPP by the same `POST
   /sim/ussdgw/sessions`: `deliver_sm` with `ussd_service_op` 1 (dial, short message = service
-  code) then 18 per input, `its_session_info` session number 1-128 (round robin over the bound
-  sessions); each `submit_sm` of that session is a screen `{status: 200, message, flag}` (END when
-  op 17 or the end-of-session bit, else CON); no screen within `screen-timeout` (15 s) or no bind
-  -> `{status: -1}` and the play stops; the wait is the `ussdgw` setting `timeoutDelayMs`, else
-  `screen-timeout`. Mock party `ussdgw` (ticket 102b): `bind` (key systemId) BUSINESS_ERROR rejects (default
-  0x0D), DOWN / CONNECTION_RESET close; `submit` (key msisdn = the subscriber) BUSINESS_ERROR refuses the
-  screen (default 0x58 ESME_RTHROTTLED), MALFORMED_RESPONSE answers `generic_nack`, MAINTENANCE 0x08, DOWN
-  closes the bind (all counted in `refused`), TIMEOUT takes the screen and holds the submit_sm_resp,
-  CONNECTION_RESET takes it and closes the bind; `enquire_link`: anything but SUCCESS leaves it
-  unanswered (dropped enquire_link). `POST /sim/ussdgw/smpp/drop` (closes every bind), `GET
-  /sim/ussdgw/smpp/binds` -> `{bound, binds, enquireLinks, refused}`; the old `/sim/ussdgw/smpp/scenario`
-  is an alias (above).
+  code) then 18 per input, `its_session_info` session number 1-128 packed for that MNO (sequence
+  in bits 7..1 and the end bit in bit 0, or the end bit in bit 7); each `submit_sm` of that session
+  is a screen `{status: 200, message, flag}` (END when op 17 or the packing's end bit, else CON);
+  no screen within `screen-timeout` (15 s) or no bind -> `{status: -1}` and the play stops; the
+  wait is that port's party setting `timeoutDelayMs`, and for `ussd-gp` the legacy `ussdgw`
+  setting when its own is unset, else `screen-timeout`. Faults are the port's party (`bind`,
+  `submit`, `enquire_link`); Grameenphone also honours a scenario on `ussdgw` when `ussd-gp` has
+  none, so the old `/sim/ussdgw/smpp/scenario` body still drives it. `bind` (key systemId)
+  BUSINESS_ERROR rejects (default 0x0D), DOWN / CONNECTION_RESET close; `submit` (key msisdn = the
+  subscriber) BUSINESS_ERROR refuses the screen (default 0x58 ESME_RTHROTTLED), MALFORMED_RESPONSE
+  answers `generic_nack`, MAINTENANCE 0x08, DOWN closes the bind (all counted in `refused`),
+  TIMEOUT takes the screen and holds the submit_sm_resp, CONNECTION_RESET takes it and closes the
+  bind; `enquire_link`: anything but SUCCESS leaves it unanswered (dropped enquire_link). Dial
+  stays operation `dial` of `ussdgw`. `POST /sim/ussdgw/smpp/drop` closes every port's binds,
+  `GET /sim/ussdgw/smpp/binds` reports the Grameenphone port `{bound, binds, enquireLinks, refused}`.
 - Merchant IPN receiver (ticket 32, `controller/MerchantIpnController`, `service/MerchantIpnService`):
   plays a checkout merchant's server. `POST /merchant/ipn/**` (stack: mw-checkout sessions' `ipnUrl`
   `http://mw-simulators:8080/merchant/ipn/...`, allowed by mw-checkout's dev-hosts) answers 200 and

@@ -40,6 +40,13 @@ public class MenuService implements MenuCatalog {
   }
 
   @Override
+  public Menu latest(String menuId) {
+    return cached(
+        menus.latest(menuId)
+            .orElseThrow(() -> new MwException(ErrorCodes.SYS_NO_MENU, "Menu not found")));
+  }
+
+  @Override
   public Menu version(String menuId, int version) {
     String key = menuId + ":" + version;
     Menu m = cache.get(key);

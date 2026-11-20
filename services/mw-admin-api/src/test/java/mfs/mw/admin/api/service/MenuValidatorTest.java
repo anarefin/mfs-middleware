@@ -93,6 +93,27 @@ class MenuValidatorTest {
   }
 
   @Test
+  void merchantPayAddMoneyAndTheAccountLookupsAreValid() {
+    Menu m =
+        menu(
+            "\"a\":{\"type\":\"CONFIRM\",\"lookup\":\"charges\","
+                + "\"mapping\":{\"txnType\":\"=MERCHANT_PAY\",\"amount\":\"amount\"},"
+                + "\"text\":{\"bn\":\"ফি {fee}?\",\"en\":\"Fee {fee}?\"},"
+                + "\"options\":[{\"key\":\"1\",\"label\":{\"bn\":\"হ্যাঁ\",\"en\":\"Yes\"},\"next\":\"b\"}]},"
+                + "\"b\":{\"type\":\"ACTION\",\"flow\":\"MERCHANT_PAY\","
+                + "\"mapping\":{\"creditParty\":\"m\",\"amount\":\"amount\"},\"onSuccess\":\"c\",\"onFailure\":\"c\"},"
+                + "\"c\":{\"type\":\"END\",\"lookup\":\"statement\",\"mapping\":{\"walletId\":\"wallet\"},"
+                + "\"text\":{\"bn\":\"{lines}\",\"en\":\"{lines}\"}},"
+                + "\"d\":{\"type\":\"ACTION\",\"flow\":\"ADD_MONEY_BANK\","
+                + "\"mapping\":{\"debitParty\":\"account\",\"amount\":\"amount\",\"partnerId\":\"=c2wbank\"},"
+                + "\"onSuccess\":\"c\",\"onFailure\":\"c\"},"
+                + "\"e\":{\"type\":\"INPUT\",\"text\":{\"bn\":\"রেফ\",\"en\":\"Ref\"},"
+                + "\"validator\":{\"type\":\"regex\",\"pattern\":\"[0-9A-Za-z-]{8,64}\"},\"store\":\"reference\","
+                + "\"lookup\":\"remit\",\"mapping\":{\"reference\":\"reference\"},\"next\":\"c\"}");
+    assertThat(MenuValidator.problems(m)).isEmpty();
+  }
+
+  @Test
   void unknownFlowsAndBadPatternsAreRefused() {
     Menu m =
         menu(

@@ -11,7 +11,7 @@ class ScreenFormatterTest {
   private final ScreenFormatter formatter = new ScreenFormatter();
 
   private static UssdProperties.Mno mno(int gsm, int ucs2, UssdProperties.Overflow overflow) {
-    return new UssdProperties.Mno(
+    return UssdProperties.Mno.of(
         UssdProperties.Transport.HTTP, List.of("*247#"), gsm, ucs2, java.time.Duration.ofSeconds(120),
         overflow, "CON", "END", null);
   }

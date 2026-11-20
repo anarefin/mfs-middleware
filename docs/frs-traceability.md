@@ -137,19 +137,19 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FRS | Repo / tickets |
 | --- | --- |
 | `UC-01` registration with eKYC | ticket 124 |
-| `UC-02` login, device binding, PIN change | mw-auth (D20–D22); app types ticket 106, USSD ticket 109 |
-| `UC-03` balance and statement | balance done (D26); app statement done (107b); USSD statement ticket 109 |
+| `UC-02` login, device binding, PIN change | mw-auth (D20–D22); app types ticket 106. USSD change PIN stays on the maintenance text (109c) |
+| `UC-03` balance and statement | balance done (D26); app statement done (107b); USSD mini statement is core WAL-12 (109c) |
 | `UC-04` P2P | done (`P2P`); FRS T1–T12 ticket 104 |
 | `UC-05`, `UC-06` cash-in, cash-out | done |
 | `UC-07` B2B float | ticket 106 |
 | `UC-08` top-up | prepaid done (one OCS); ticket 112 |
 | `UC-09`, `UC-10` bills | one aggregator done; tickets 113, 114 |
-| `UC-11` merchant payment | ticket 115 |
+| `UC-11` merchant payment | app done (folder 04); USSD menu MERCHANT_PAY (109c); ticket 115 remains |
 | `UC-12` web checkout and refund | pay done; refund ticket 116 |
 | `UC-13` add money from card | ticket 118 |
-| `UC-14` add money from bank (C2W) | done (one bank); ticket 117 |
+| `UC-14` add money from bank (C2W) | done (one bank); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
 | `UC-15` W2B with AVL | ticket 117 |
-| `UC-16` remittance | ticket 119 |
+| `UC-16` remittance | USSD status by Upay txn id is core WAL-13 (109c); inbound credit is ticket 119 |
 | `UC-17` ATM | ticket 120 |
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |
@@ -207,16 +207,16 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-APP-07 | ticket 106 | PIN lockout built (D20: 3 tries, then 1 h, 24 h); per-app-type throttles in 106 |
 | CH-APP-08 | done | saved billers, favourites and the inbox (107a); profile, limits and the statement (107b: WAL-01, WAL-05, WAL-12, max 90 days) |
 | CH-APP-09 | done | `GET /app/v1/transactions/{txnId}` (mw-app-gateway) |
-| CH-USSD-01 | ticket 109 | GP over SMPP built; all four MNOs, TX+RX binds in 109 |
+| CH-USSD-01 | done | four MNO SMPP binds: gp and bl transceiver, robi and teletalk transmitter plus receiver (`UssdSmppMnoIT`, `UssdSmppClientTest`); dev keeps robi, bl and teletalk on HTTP |
 | CH-USSD-02 | done | mw-ussd SMPP binds: enquire_link 30 s, reconnect with backoff, window (`UssdSmppProperties`) |
-| CH-USSD-03 | ticket 109 | per-MNO TLV adapters |
+| CH-USSD-03 | done | one TLV adapter per MNO, tags 0x0501 and 0x1383; gp and bl pack the end bit in bit 0, robi and teletalk in bit 7 (`MnoTlvAdapterTest`) |
 | CH-USSD-04 | ticket 133 | menu JSON in the database with maker-checker built (M6); visual tree editor in 133 |
-| CH-USSD-05 | ticket 109 | sessions in Redis built (ticket 90); 30 s per-screen timeout 109 |
-| CH-USSD-06 | tickets 109, 133 | GSM-7 182-character screen limit built (`UssdProperties`); "0. Next" / "00. Back" pagination 109, preview 133 |
+| CH-USSD-05 | done | 30 s per-screen timeout beside the overall session timeout; Redis TTL stays the overall timeout plus grace (mw-ussd) |
+| CH-USSD-06 | ticket 133 | GSM-7 182 and UCS-2 70 built; "0. Next" / "00. Back" pagination built (mw-ussd); preview in 133 |
 | CH-USSD-07 | done | PIN encrypted on receipt, never logged or kept in the session (spec 18.3, `scripts/log-scan.sh`) |
-| CH-USSD-08 | ticket 109 | short code to root menu and allowed types |
+| CH-USSD-08 | done | ussd.short_code (code, MNO, root menu, allowed types) and the account type from the core (mw-ussd) |
 | CH-USSD-09 | done | a result that arrives after the session ended goes out by SMS (mw-ussd) |
-| CH-USSD-10 | ticket 109 | language per customer, default Bangla |
+| CH-USSD-10 | done | ussd.customer_pref stores the SHA-256 of the MSISDN and the language, default bn (mw-ussd) |
 | CH-WEB-01 | done | mw-checkout session create with API key + HMAC |
 | CH-WEB-02 | done | checkout page flow with OTP and PIN (mw-checkout, D22) |
 | CH-WEB-03 | ticket 116 | redirect and signed IPN with retries built; 24 h retry horizon in 116 |
@@ -368,7 +368,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | MCT-01 | done | `POST /mock-control/{party}/scenarios`, every behaviour (ticket 102, `MockControlControllerIT`) |
 | MCT-02 | done | global, per key (MSISDN, account, biller, bill number, txn id), next N (ticket 102, `ScenarioEngineTest`) |
 | MCT-03 | done | `PUT /mock-control/{party}/switch` DOWN (connection closed), MAINTENANCE (503 5030), SLOW (ticket 102) |
-| MCT-04 | done | SMPP faults on the mock-control engine (ticket 102b): parties `smsc` (bind refusal, ESME_RTHROTTLED and any command_status, missing / late / duplicate / out-of-order DLR, DOWN closes the connection) and `ussdgw` (bind refusal, ESME_RTHROTTLED, generic_nack, dropped enquire_link, dial), `payshield` (error codes per command, cut-short answer, reset); `SmppMockControlIT`, API folder 39 |
+| MCT-04 | done | SMPP faults on the mock-control engine (ticket 102b): parties `smsc` (bind refusal, ESME_RTHROTTLED and any command_status, missing / late / duplicate / out-of-order DLR, DOWN closes the connection), `ussdgw` (bind refusal, ESME_RTHROTTLED, generic_nack, dropped enquire_link, dial) and the per-MNO ports `ussd-gp`, `ussd-robi`, `ussd-bl`, `ussd-teletalk` (ticket 109a, `UssdSmppPortsTest`; `ussd-gp` falls back to `ussdgw`), `payshield` (error codes per command, cut-short answer, reset); `SmppMockControlIT`, API folder 39 |
 | MCT-05 | done | file faults on the mock-control engine (ticket 123): FILE dimension MISSING_FILE, LATE_FILE(delayMs), DUPLICATE_FILE, CORRUPT_FILE, INJECTED_MISMATCH(code, count), scoped by next N files or a key (date, file name), journal READ / WRITE / SKIP / LATE with sha256 (`FileFaultScenarioTest`, `SftpMocksIT`, API folder 44) |
 | MCT-06 | done | `GET` and `DELETE /mock-control/{party}/journal`, DELETE resets the party's state (ticket 102) |
 | MCT-07 | done | `POST /mock-control/reset` on mw-simulators: every local party plus mw-core-mock's ledger back to the seed, one line per party; test route `/test/mock-control/*` (ticket 103, `GlobalResetIT`, `MockControlResetIT`) |

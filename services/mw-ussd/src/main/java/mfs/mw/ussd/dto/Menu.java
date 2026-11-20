@@ -22,6 +22,8 @@ public record Menu(
   public static final String PROCESSING = "processing";
   public static final String UNAVAILABLE = "unavailable";
   public static final String MORE = "more";
+  /** Optional label of the previous page or node ({@code 00. Back}). The engine has a built-in one. */
+  public static final String BACK = "back";
   /** mw-auth said wrong PIN (ticket 72); {@code {triesLeft}} is filled in. Optional: built-in default. */
   public static final String WRONG_PIN = "wrongPin";
   /** The PIN is locked for a while (MW-AUTH-041). Optional. */

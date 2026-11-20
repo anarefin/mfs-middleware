@@ -130,6 +130,13 @@ resilience4j:
         record-exceptions: mfs.mw.ussd.exception.BillPayUnavailableException
         ignore-exceptions: mfs.mw.ussd.exception.BillPayRefusedException
       # mw-auth (client/AuthClient, ticket 72): a refusal (4xx envelope) is an answer, not a failure.
+      # Core account read (client/CoreAccountClient). A 404 is an answer; transport failures count.
+      core:
+        base-config: default
+        minimum-number-of-calls: 10
+        slow-call-duration-threshold: 1500ms
+        wait-duration-in-open-state: 10s
+        record-exceptions: mfs.mw.ussd.exception.CoreUnavailableException
       mw-auth:
         base-config: default
         sliding-window-type: COUNT_BASED
@@ -258,7 +265,7 @@ mw:
     status-topic: mw.txn.status.v1
     # Dev seed: stored in ussd.menu and activated for MNOs without a menu or still on an older
     # version of the seed (service/MenuSeeder).
-    seed-menu: menus/main-v3.json
+    seed-menu: menus/main-v4.json
     # mw-adapter-billpay internal API (DYNAMIC billers, bill lookup; read-only), over the app zone
     # network. Short read timeout: the MNO holds the USSD step open while the bill is fetched.
     billpay:
@@ -296,10 +303,19 @@ mw:
       timeout: 2s
       connect-timeout: 1s
       pin-key-ttl: 10m
+    # Core account read (CH-USSD-08): GET /core/v1/accounts/{msisdn} with this service's JWT
+    # (audience mw-core-mock). mode=stub is the test double and does not call the core.
+    core:
+      mode: http
+      base-url: http://mw-core-mock:8080
+      connect-timeout: 1s
+      read-timeout: 2s
     # Per MNO (spec 9.2): transport, short codes (each MNO its own; a BEGIN with another code ends
     # at once with the wrong-code screen), screen limits (GSM-7 / UCS-2), session timeout
     # (MNO limit, TBC), overflow TRUNCATE|PAGE and the HTTP continue/end flag values. GP runs
-    # over SMPP (WP19, binds in mw.ussd.smpp below); the others are HTTP until their contracts say otherwise.
+    # over SMPP (WP19, binds in mw.ussd.smpp below); robi, bl and teletalk stay HTTP in dev so the
+    # existing dials keep working, and bind over SMPP when their transport is switched (CH-USSD-01).
+    # tlv-profile selects the MNO's TLV adapter (same 3GPP tags; session-info packing differs).
     mno:
       gp:
         transport: SMPP
@@ -307,38 +323,46 @@ mw:
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 180s
+        screen-timeout: 30s
         overflow: PAGE
         continue-flag: CON
         end-flag: END
+        tlv-profile: gp
       robi:
         transport: HTTP
         short-codes: ["*269#"]
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 120s
+        screen-timeout: 30s
         overflow: PAGE
         continue-flag: CON
         end-flag: END
+        tlv-profile: robi
       bl:
         transport: HTTP
         short-codes: ["*270#"]
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 120s
+        screen-timeout: 30s
         overflow: PAGE
         continue-flag: CON
         end-flag: END
         # spec 9.2 names the MNO bl; mw-adapter-telco's top-up partnerId is banglalink
         operator: banglalink
+        tlv-profile: bl
       teletalk:
         transport: HTTP
         short-codes: ["*271#"]
         max-length-gsm: 182
         max-length-ucs2: 70
         session-timeout: 120s
+        screen-timeout: 30s
         overflow: TRUNCATE
         continue-flag: CON
         end-flag: END
+        tlv-profile: teletalk
     # SMPP USSD transport (spec 9.2, 9.2.1, WP19, client/UssdSmppClient): one bind group for every
     # MNO above with transport SMPP; the others are config-ready (switch the MNO's transport to
     # SMPP to bind). Window, TPS and bind count are MNO contract values (TBC). Passwords from
@@ -359,18 +383,22 @@ mw:
           window: 10
           tps: 50
           retry-delays: [500ms, 1s, 2s]
+          bind-mode: TRANSCEIVER
         robi:
           host: ${MW_USSD_SMPP_ROBI_HOST:mw-simulators}
-          port: ${MW_USSD_SMPP_ROBI_PORT:2776}
+          port: ${MW_USSD_SMPP_ROBI_PORT:2777}
           system-id: bits-ussd
+          bind-mode: TRANSMITTER_RECEIVER
         bl:
           host: ${MW_USSD_SMPP_BL_HOST:mw-simulators}
-          port: ${MW_USSD_SMPP_BL_PORT:2776}
+          port: ${MW_USSD_SMPP_BL_PORT:2778}
           system-id: bits-ussd
+          bind-mode: TRANSCEIVER
         teletalk:
           host: ${MW_USSD_SMPP_TELETALK_HOST:mw-simulators}
-          port: ${MW_USSD_SMPP_TELETALK_PORT:2776}
+          port: ${MW_USSD_SMPP_TELETALK_PORT:2779}
           system-id: bits-ussd
+          bind-mode: TRANSMITTER_RECEIVER
 
 # Generated API document and Swagger UI (ticket 101, PLT-050..052): off by default, so a production
 # build exposes neither /v3/api-docs nor /swagger-ui; on in the dev and test profiles below (the dev
