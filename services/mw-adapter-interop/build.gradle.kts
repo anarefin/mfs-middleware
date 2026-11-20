@@ -86,6 +86,15 @@ dependencies {
     // Partner request/response mappings in JSONata, compiled once per partner record version by the
     // mw-* Kamelets' beans (camel-jsonata recompiles on every exchange, so it is not used).
     implementation("com.dashjoin:jsonata:0.9.10")
+    // The NPSB wire (ticket 121b): ISO 20022 messages built and parsed with Prowide (pacs.008 / .002 /
+    // .028 / .004, camt.056 / .029), never string templates; validated against the ISO XSDs in
+    // src/main/resources/iso20022 (Prowide's open source jar ships none).
+    // Prowide's JAXB runtime (com.sun.xml.bind:jaxb-impl) is left out: camel-cxf already brings the
+    // Glassfish one (org.glassfish.jaxb:jaxb-runtime, same version), and two runtimes put two
+    // jaxb-core-<v>.jar files in the boot jar.
+    implementation("com.prowidesoftware:pw-iso20022:SRU2025-10.4.1") {
+        exclude(group = "com.sun.xml.bind", module = "jaxb-impl")
+    }
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")

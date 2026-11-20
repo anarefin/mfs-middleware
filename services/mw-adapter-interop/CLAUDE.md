@@ -8,10 +8,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.interop`. Fol
 - **121a (this module as built):** the adapter module, the partner engine copy, family `interop`, the request
   check, Kafka topic, compose, provision, mw-admin-api family, and the participant list of mw-simulators' `npsb`
   party. No dev seed partner yet: a request for `npsb` is answered FAILED `MW-PTR-UNKNOWN-PARTNER`.
-- **121b:** the ISO 20022 wire (Prowide `pw-iso20022`, XSDs under `src/main/resources/iso20022/`, `mapping/`),
-  XML-DSig sign and verify through mw-crypto, the `npsb` seed (PAY pacs.008, STATUS_QUERY pacs.028, REVERSE
-  camt.056), the inbound `POST /partner/v1/npsb/inbound` (APISIX mTLS + IP allow-list, kind `NPSB_IN` on
-  `mw.partner.inbound.v1`) and the stateful NPSB mock.
+- **121b (built, part 1):** the ISO 20022 wire (Prowide `pw-iso20022`, the ISO XSDs under
+  `src/main/resources/iso20022/`, `mapping/`) and XML-DSig sign / verify through mw-crypto
+  (`client/CryptoXmlSigner`; mw-crypto binds purpose XMLDSIG to this client). See "ISO 20022 wire" below.
+  **Still open (121b, part 2):** the `npsb` seed partner (PAY pacs.008, STATUS_QUERY pacs.028, REVERSE
+  camt.056) wired into the engine, the inbound `POST /partner/v1/npsb/inbound` (APISIX mTLS + IP allow-list,
+  kind `NPSB_IN` on `mw.partner.inbound.v1`), the service certificate (mTLS to mw-crypto) and the stateful
+  NPSB mock.
 - **121c:** mw-orchestrator `NpsbOutFlow` / `NpsbInFlow`, routing rows, mw-app-gateway
   `/app/v1/npsb-transfers/preview|confirm`, Newman folder `57-npsb`.
 
@@ -43,6 +46,31 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.interop`. Fol
   mw-crypto (121b). Compose service `mw-adapter-interop` (profile `core`, 384 MiB, Hikari pool 2,
   `MW_PORT_ADAPTER_INTEROP` 8102, `NPSB_BASE_URL`).
 
+## ISO 20022 wire (ticket 121b)
+
+- `mapping/Iso20022Mapper`: canonical records (`dto/iso/`: `NpsbTransfer`, `NpsbStatus`, `NpsbStatusRequest`,
+  `NpsbReturnRequest`, `NpsbResolution`, `NpsbReturn`) <-> pacs.008.001.08, pacs.002.001.10, pacs.028.001.03,
+  camt.056.001.08, camt.029.001.09, pacs.004.001.09 with Prowide `pw-iso20022` (never string templates); one
+  transaction per message; amounts integer poisha <-> ISO decimal with two places; the `Document` only
+  (default namespace, no prefix). Every message written is validated before it leaves and every message
+  read before Prowide parses it.
+- `mapping/Iso20022Schemas`: the official ISO 20022 XSDs (`src/main/resources/iso20022/<message>.xsd`,
+  downloaded unchanged from iso20022.org), compiled once; safe parse first (no DOCTYPE, no external DTD /
+  schema, secure processing, at most 1 MiB), root must be that message's `Document`; any refusal is
+  `MW-PTR-NPSB-INVALID_MESSAGE` (the validator's text, which quotes values, is never passed on).
+- ISO `Max35Text`: `EndToEndId`, `TxId`, `MsgId` hold at most 35 characters. The engine's stable reference
+  (`BITS` + 32 hex = 36) does not fit `EndToEndId`: the seed (121b part 2) must map it (open decision).
+- `client/CryptoXmlSigner` (`mw.interop.crypto.*`, `config/CryptoClientProperties`, off unless
+  `MW_INTEROP_CRYPTO_ENABLED=true`): `sign` -> mw-crypto `POST /internal/v1/xmldsig/sign {keyId: xmldsig,
+  xml: base64}`; `verifyFromSwitch` -> `/verify {xml, certificatePem: <switch certificate>}` (Vault field
+  `npsb-certificate-pem`; never the document's KeyInfo). `valid: false` = `MW-PTR-NPSB-SIGNATURE` (WARN
+  `security.partner_signature_invalid`); mw-crypto not answering = `MW-SYS-CRYPTO_UNAVAILABLE` (fail
+  closed). Client-credentials token (`client/ServiceTokenClient`, the mw-data-export copy; secret Vault
+  field `crypto-client-secret`), mTLS through the Spring SSL bundle `mw.interop.crypto.ssl-bundle`.
+- Tests: `mapping/Pacs008MappingTest`, `Pacs002MappingTest`, `Camt056MappingTest` (XSD-valid, lossless round
+  trip, schema break, DOCTYPE, wrong message type, a hand-written switch pacs.002), `client/XmlSignatureIT`
+  (WireMock as mw-crypto: signed outbound, valid and tampered inbound, mw-crypto down).
+
 ## Partner engine (`partner` package; ADR D28: the copy of mw-adapter-billpay's)
 
 The engine, its guardrails and its Kamelets are billpay's (mw-adapter-billpay CLAUDE.md "Partner engine").
@@ -65,7 +93,8 @@ adapter apart from the package (`scripts/test/test_partner_engine_copies.sh`): a
 ## Contracts used
 
 - Machine-readable list: `contracts.yml` (checked by `./gradlew :contractsLint`, tested by
-  `contracts/ProducedContractsTest` / `ConsumedContractsTest`). No APIs yet.
+  `contracts/ProducedContractsTest` / `ConsumedContractsTest`). API used:
+  `api/mw-crypto/crypto-internal.v1.openapi.yaml` (`/xmldsig/sign`, `/xmldsig/verify`, ticket 121b).
 - `events/mw-orchestrator/mw.partner.request.v1` (family `interop`, shared payload; samples
   `samples/mw.partner.request.v1/interop`, NPSB ones added in 121a) in; own type `dto/PartnerRequest`. The
   orchestrator produces it with 121c.
