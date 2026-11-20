@@ -1,6 +1,7 @@
 package mfs.mw.adapter.bank.partner.route;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
@@ -18,6 +19,7 @@ import mfs.mw.adapter.bank.TestInfrastructure;
 import mfs.mw.adapter.bank.contracts.ContractSchemas;
 import mfs.mw.adapter.bank.dto.ConfigChangedEvent;
 import mfs.mw.adapter.bank.messaging.PartnerRouteStatusPublisher;
+import mfs.mw.adapter.bank.partner.FakeVaultFunction;
 import mfs.mw.adapter.bank.partner.PartnerCall;
 import mfs.mw.adapter.bank.partner.PartnerResponse;
 import mfs.mw.adapter.bank.partner.config.PartnerConfigStore;
@@ -26,6 +28,7 @@ import org.apache.camel.CamelContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -71,15 +74,18 @@ class PartnerRouteDryRunIT {
   private final JdbcTemplate jdbc;
   private final CamelContext camel;
   private final String family;
+  private final String service;
 
   @Autowired
   PartnerRouteDryRunIT(
-      PartnerConfigStore store, PartnerGateway gateway, JdbcTemplate jdbc, CamelContext camel, PartnerProperties properties) {
+      PartnerConfigStore store, PartnerGateway gateway, JdbcTemplate jdbc, CamelContext camel, PartnerProperties properties,
+      @Value("${spring.application.name}") String service) {
     this.store = store;
     this.gateway = gateway;
     this.jdbc = jdbc;
     this.camel = camel;
     this.family = properties.family();
+    this.service = service;
   }
 
   @BeforeEach
@@ -133,13 +139,18 @@ class PartnerRouteDryRunIT {
         Map.of("creditParty", Map.of("type", "BILLER_ACCOUNT", "id", "77001234")));
   }
 
-  /** The status row of {@code version}, once the dry-run worker wrote it. */
+  /** The status row of {@code version} of newco, once the dry-run worker wrote it. */
   JsonNode status(long version) throws InterruptedException {
+    return status("newco", version);
+  }
+
+  /** The status row of {@code version} of {@code partner}, once the dry-run worker wrote it. */
+  JsonNode status(String partner, long version) throws InterruptedException {
     long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
     while (System.nanoTime() < deadline) {
       List<String> rows = jdbc.queryForList(
-          "select payload::text from outbox where topic = ? and payload->>'version' = ? order by id",
-          String.class, PartnerRouteStatusPublisher.TOPIC, String.valueOf(version));
+          "select payload::text from outbox where topic = ? and msg_key = ? and payload->>'version' = ? order by id",
+          String.class, PartnerRouteStatusPublisher.TOPIC, partner, String.valueOf(version));
       if (!rows.isEmpty()) {
         JsonNode body = JSON.readTree(rows.getLast());
         assertThat(ContractSchemas.schema("events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json").validate(body))
@@ -187,6 +198,72 @@ class PartnerRouteDryRunIT {
     assertThat(bodies).hasSize(3).allSatisfy(b -> assertThat(b).contains("\"tag\":\"v1\""));
     assertThat(camel.getRoute(PartnerRuntime.routeId("newco", 2))).isNull();
     assertThat(camel.getRoute(PartnerRuntime.candidateRouteId("newco", 2))).isNull();
+  }
+
+  /**
+   * Ticket 139: the dry-run of an OAuth2 partner asks the dry-run target for its token, never the
+   * partner's live token endpoint (with the live client secret), and the live version then gets a
+   * token of its own: a candidate's token is never reused live, nor a live one by a candidate.
+   */
+  @Test
+  void anOauth2DryRunNeverReachesTheLiveTokenEndpointAndLiveAndCandidateGetSeparateTokens() throws Exception {
+    FakeVaultFunction.VALUES.put("secret:" + service + "/tokco#client-secret", "fake-tokco-client-secret");
+    token(SIM, "/sim/partners/tokco/oauth/token", "fake-sim-token");
+    token(PARTNER, "/oauth/token", "fake-live-token");
+    SIM.stubFor(post(urlEqualTo("/sim/partners/tokco/v1/payments")).withHeader("Authorization", equalTo("Bearer fake-sim-token"))
+        .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody("{\"receipt\":\"T-1\"}")));
+    PARTNER.stubFor(post(urlEqualTo(PAYMENTS)).withHeader("Authorization", equalTo("Bearer fake-live-token"))
+        .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json").withBody("{\"receipt\":\"T-2\"}")));
+
+    publishTokco(1);
+    assertThat(status("tokco", 1).path("status").asString()).isEqualTo("LIVE");
+    SIM.verify(1, postRequestedFor(urlEqualTo("/sim/partners/tokco/oauth/token")));
+    PARTNER.verify(0, postRequestedFor(urlEqualTo("/oauth/token")));
+
+    PartnerCall live = new PartnerCall("tokco", "PAY", "BILL_PAY", "01933b8e-7c1a-7b2e-9f3d-000000000139", "corr-139",
+        "BITS-139-A", Map.of("creditParty", Map.of("type", "BILLER_ACCOUNT", "id", "77001234")));
+    assertThat(gateway.call(live)).isInstanceOf(PartnerResponse.Success.class);
+    PARTNER.verify(1, postRequestedFor(urlEqualTo("/oauth/token")));
+
+    // the next version's dry-run fetches its own token from the target again, never the live one
+    publishTokco(2);
+    assertThat(status("tokco", 2).path("status").asString()).isEqualTo("LIVE");
+    SIM.verify(2, postRequestedFor(urlEqualTo("/sim/partners/tokco/oauth/token")));
+    PARTNER.verify(1, postRequestedFor(urlEqualTo("/oauth/token")));
+    SIM.verify(2, postRequestedFor(urlEqualTo("/sim/partners/tokco/v1/payments")));
+  }
+
+  static void token(WireMockServer server, String path, String token) {
+    server.stubFor(post(urlEqualTo(path)).willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/json")
+        .withBody("{\"access_token\":\"" + token + "\",\"token_type\":\"bearer\",\"expires_in\":3600}")));
+  }
+
+  void publishTokco(long version) {
+    String route = """
+        - route:
+            from:
+              uri: direct:partner-tokco
+              steps:
+                - to: "kamelet:mw-map?mapping=PAY.request"
+                - to: "kamelet:mw-http-call?url=http://localhost:%1$d&method=POST&path=/v1/payments&auth=oauth2-cc&secretField=client-secret&clientId=bits-mw&tokenUrl=http://localhost:%1$d/oauth/token"
+                - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=422"
+                - to: "kamelet:mw-audit"
+        """.formatted(PARTNER.port());
+    Map<String, Object> value = Map.of(
+        "family", family,
+        "allowedHosts", List.of("localhost"),
+        "timeoutMs", 3000,
+        "route", route,
+        "mappings", Map.of(
+            "PAY.request", "{\"ref\": reference}",
+            "PAY.response", "status = 200 ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.receipt}"
+                + " : {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}"),
+        "dryRun", Map.of(
+            "operation", "PAY",
+            "sample", Map.of("creditParty", Map.of("type", "BILLER_ACCOUNT", "id", "77001234"))));
+    store.apply(new ConfigChangedEvent(
+        1, "partner/tokco", ConfigChangedEvent.ConfigType.PARTNER, ConfigChangedEvent.Change.UPSERT, version, value,
+        Instant.parse("2026-11-20T10:00:00Z"), "ops-maker01", "ops-checker01", "corr-139"));
   }
 
   @Test

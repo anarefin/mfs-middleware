@@ -261,6 +261,31 @@ class AuthKameletsTest {
     TOKENS.verify(2, postRequestedFor(urlEqualTo("/oauth/token")));
   }
 
+  /**
+   * Ticket 139: the token cache is keyed per loaded version (a dry-run candidate is never the live
+   * version) and per client secret: a candidate never reuses the live partner's token, and a
+   * rotated secret never gets the token fetched with the old one.
+   */
+  @Test
+  void aCandidateAndAChangedSecretNeverReuseTheLiveToken() throws Exception {
+    tokenAnswers("fake-live-token", 3600);
+    PartnerRuntime live = runtime(Map.of("client-secret", "fake-client-secret-139"));
+    assertThat(authorised("oauth2", live).getMessage().getHeader("Authorization")).isEqualTo("Bearer fake-live-token");
+
+    tokenAnswers("fake-candidate-token", 3600);
+    PartnerRuntime candidate = new PartnerRuntime("acme", 2, live.config(), PartnerRuntime.candidateRouteId("acme", 2),
+        PartnerRuntime.candidateEndpoint("acme"), Map.of(), live.secrets(), List.of("localhost"), Set.of());
+    assertThat(authorised("oauth2", candidate).getMessage().getHeader("Authorization"))
+        .isEqualTo("Bearer fake-candidate-token");
+    TOKENS.verify(1, postRequestedFor(urlEqualTo("/oauth/token")));
+
+    tokenAnswers("fake-rotated-token", 3600);
+    PartnerRuntime rotated = runtime(Map.of("client-secret", "fake-client-secret-139-rotated"));
+    assertThat(authorised("oauth2", rotated).getMessage().getHeader("Authorization")).isEqualTo("Bearer fake-rotated-token");
+    TOKENS.verify(1, postRequestedFor(urlEqualTo("/oauth/token")));
+    assertThat(authorised("oauth2", live).getMessage().getHeader("Authorization")).isEqualTo("Bearer fake-live-token");
+  }
+
   /** The token endpoint is held to the partner's allowed hosts like every partner call: refused unsent. */
   @Test
   void oauth2NeverCallsATokenUrlOutsideThePartnersAllowedHosts() throws Exception {
