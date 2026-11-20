@@ -37,7 +37,8 @@ public class DynamicLists {
   public static final String CATEGORY_INPUT = "category";
 
   /** The fixed order of the biller categories on the handset. */
-  public static final List<String> CATEGORY_ORDER = List.of("ELECTRICITY", "WATER", "GAS", "TELECOM", "INTERNET");
+  public static final List<String> CATEGORY_ORDER =
+      List.of("UTILITY", "OTHER", "ELECTRICITY", "WATER", "GAS", "TELECOM", "INTERNET");
 
   private final UssdProperties props;
   private final BillDirectory bills;
@@ -45,6 +46,27 @@ public class DynamicLists {
   public DynamicLists(UssdProperties props, BillDirectory bills) {
     this.props = props;
     this.bills = bills;
+  }
+
+  /**
+   * The bill-number prompt from the catalogue (ticket 113b): the biller's first required field label
+   * ("Enter Account number" / "হিসাব নম্বর দিন"), or null when the catalogue has none for it (the
+   * node's own text is shown then).
+   */
+  public String billPrompt(String billerCode, String language) {
+    if (billerCode == null) {
+      return null;
+    }
+    Biller.Field field = bills.billers().stream()
+        .filter(b -> billerCode.equals(b.code()))
+        .map(Biller::keyField)
+        .filter(Objects::nonNull)
+        .findFirst()
+        .orElse(null);
+    if (field == null) {
+      return null;
+    }
+    return Text.BN.equals(language) ? field.labelBn() + " দিন" : "Enter " + field.labelEn();
   }
 
   /** The items of {@code source} for a session whose collected inputs are {@code inputs}. */

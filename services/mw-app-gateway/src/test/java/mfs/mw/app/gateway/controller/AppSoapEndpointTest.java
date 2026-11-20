@@ -111,6 +111,7 @@ class AppSoapEndpointTest {
 
   @MockitoBean OrchestratorQuoteClient quotes;
   @MockitoBean TransactionService transactions;
+  @MockitoBean mfs.mw.app.gateway.service.BillerService billers;
   @MockitoBean BalanceService balances;
 
   final ApplicationContext context;
