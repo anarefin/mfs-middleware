@@ -31,12 +31,13 @@ import org.w3c.dom.Element;
  * reset) like every party; test helper {@code GET /sim/agg/{profile}/bills/{biller}/{billNumber}}.
  * Auth (presence of the profile's scheme, values not checked except ekpay's issued token): sslcommerz
  * {@code X-Key-Id} + {@code X-Signature} + {@code X-Timestamp}, ekpay a Bearer token from its token
- * endpoint, agg3 a WS-Security UsernameToken, agg4 {@code Authorization: Basic}; else 401 / fault 1002.
+ * endpoint, agg3 a WS-Security UsernameToken, agg4 {@code Authorization: Basic}, samplebiller (ticket 136, the
+ * sample connector's biller, plain camelCase) {@code X-Api-Key}; else 401 / fault 1002.
  */
 @RestController
 public class BillAggregatorMockController {
 
-  private static final String REST = "{profile:sslcommerz|ekpay|agg4}";
+  private static final String REST = "{profile:sslcommerz|ekpay|agg4|samplebiller}";
   private static final String WSSE =
       "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd";
   private static final MediaType TEXT_XML_UTF8 = MediaType.parseMediaType("text/xml;charset=UTF-8");
@@ -89,6 +90,12 @@ public class BillAggregatorMockController {
       @RequestBody(required = false) Map<String, Object> body) {
     AggregatorProfile p = BillAggregatorMockService.profile(profile);
     return respond(p, authed(p, headers) ? service.reverse(p, reference) : unauthenticated());
+  }
+
+  @GetMapping("/samplebiller/v1/health")
+  ResponseEntity<Object> health(@RequestHeader HttpHeaders headers) {
+    AggregatorProfile p = BillAggregatorMockService.profile("samplebiller");
+    return respond(p, authed(p, headers) ? service.health(p) : unauthenticated());
   }
 
   @PostMapping(value = "/agg3/v1/soap", consumes = {MediaType.TEXT_XML_VALUE, "application/soap+xml"})
@@ -159,6 +166,7 @@ public class BillAggregatorMockController {
         String a = headers.getFirst(HttpHeaders.AUTHORIZATION);
         yield a != null && a.regionMatches(true, 0, "Basic ", 0, 6) && a.length() > 6;
       }
+      case API_KEY -> present(headers.getFirst("X-Api-Key"));
       case WS_SECURITY -> false;
     };
   }

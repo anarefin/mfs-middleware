@@ -1,0 +1,117 @@
+# Sample connector (ticket 136, FRS CON-06; docs/connectors/developer-guide.md): a REST/JSON biller with an
+# API key, as the `value` of a mw.config.changed.v1 PARTNER record (configKey partner/samplebiller), shown as
+# YAML. It is what an operator enters in the admin console (Partners -> new route), approved by a second
+# person; mw-adapter-billpay loads it without a restart and without Java. Every piece is one field here:
+#   route         Camel YAML DSL built only from the shipped mw-* Kamelets (mw-map, mw-http-call,
+#                 mw-classify, mw-audit), one branch per operation
+#   mappings      JSONata: <OPERATION>.request builds the partner body, <OPERATION>.response classifies the
+#                 answer into SUCCESS / FAILED / PENDING / NOT_FOUND / UNKNOWN
+#   errorMap      the partner's codes -> MW-PTR-SAMPLEBILLER-<suffix> and whether a retry may help
+#   endpoint(s)   MOCK = mw-simulators' samplebiller profile, REAL = the biller; switching is one field
+# The API key is not here: Vault secret/mw-adapter-billpay/samplebiller, field api-key (the console's
+# credential screen writes it), read when the route loads. The biller catalogue entry (SAMPLEWATER ->
+# partner samplebiller) and the routing rule are separate console records.
+#
+# The other side: mw-simulators' samplebiller mock party (/samplebiller/v1/..., seeded bills
+# 1360000001..1360000005 of biller SAMPLEWATER; trigger table in docs/mocks/README.md).
+# Test: services/mw-adapter-billpay/.../SampleConnectorRouteIT (a checked copy of this file).
+family: billpay
+endpoint: MOCK
+endpoints:
+  MOCK: http://mw-simulators:8080
+  REAL: https://api.samplebiller.example
+allowedHosts: [mw-simulators, api.samplebiller.example]
+connectTimeoutMs: 3000
+timeoutMs: 20000
+inquiryRetries: 1
+healthCheck: true
+sensitiveFields: { billNumber: ACCOUNT }
+ambiguousCodes: ["9876"]
+errorMap:
+  SB01: { suffix: BILL_NOT_FOUND, retryable: false }
+  SB02: { suffix: BILL_ALREADY_PAID, retryable: false }
+  SB03: { suffix: PAYMENT_REFUSED, retryable: false }
+  SB04: { suffix: UNKNOWN_BILLER, retryable: false }
+  SB05: { suffix: NOT_PAID, retryable: false }
+  SB06: { suffix: AMOUNT_MISMATCH, retryable: false }
+# Circuit breaker and bulkhead of this partner (null fields keep the resilience4j defaults).
+resilience:
+  failureRateThreshold: 50
+  slidingWindowSize: 20
+  minimumNumberOfCalls: 10
+  slowCallDurationThresholdMs: 10000
+  waitDurationInOpenStateMs: 30000
+  bulkheadMaxConcurrentCalls: 20
+route: |
+  - route:
+      from:
+        uri: direct:partner-samplebiller
+        steps:
+          - choice:
+              when:
+                - simple: "${header.mwOperation} == 'INQUIRY'"
+                  steps:
+                    - to: "kamelet:mw-map?mapping=INQUIRY.request"
+                    - to: "kamelet:mw-http-call?url={{endpoint}}&method=POST&path=/samplebiller/v1/bills/inquiry&auth=apikey&secretField=api-key&authHeader=X-Api-Key"
+                    - to: "kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=200,422"
+                - simple: "${header.mwOperation} == 'PAY'"
+                  steps:
+                    - to: "kamelet:mw-map?mapping=PAY.request"
+                    - to: "kamelet:mw-http-call?url={{endpoint}}&method=POST&path=/samplebiller/v1/payments&auth=apikey&secretField=api-key&authHeader=X-Api-Key"
+                    - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422&pending=true"
+                - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                  steps:
+                    - to: "kamelet:mw-http-call?url={{endpoint}}&method=GET&path=/samplebiller/v1/payments/{reference}&auth=apikey&secretField=api-key&authHeader=X-Api-Key"
+                    - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404&pending=true"
+                # REVERSE: {reference} is the original payment, the body carries reverse:<txnId>; sent once.
+                - simple: "${header.mwOperation} == 'REVERSE'"
+                  steps:
+                    - to: "kamelet:mw-map?mapping=REVERSE.request"
+                    - to: "kamelet:mw-http-call?url={{endpoint}}&method=POST&path=/samplebiller/v1/payments/{reference}/reverse&auth=apikey&secretField=api-key&authHeader=X-Api-Key"
+                    - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=404,422"
+                # HEALTH_CHECK: probed on a schedule because healthCheck is true.
+                - simple: "${header.mwOperation} == 'HEALTH_CHECK'"
+                  steps:
+                    - to: "kamelet:mw-http-call?url={{endpoint}}&method=GET&path=/samplebiller/v1/health&auth=apikey&secretField=api-key&authHeader=X-Api-Key"
+                    - to: "kamelet:mw-classify?mapping=HEALTH_CHECK.response&definiteStatuses=503"
+          - to: "kamelet:mw-audit"
+mappings:
+  INQUIRY.request: '{"billerCode": partner.billerCode, "billNumber": creditParty.id, "billPeriod": billMonth}'
+  INQUIRY.response: >-
+    status = 200 and body.status = "DUE" and $type(body.amount) = "string"
+    ? {"outcome": "SUCCESS", "partnerRef": body.billNumber,
+       "attributes": {"amount": body.amount, "dueDate": body.dueDate, "billPeriod": body.billPeriod}}
+    : status = 200 and body.status = "PAID" ? {"outcome": "FAILED", "code": "SB02", "message": "Bill already paid"}
+    : (status = 422 or status = 404) and $type(body.code) = "string" and body.code != ""
+    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+    : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+  PAY.request: >-
+    {"transactionId": reference, "billerCode": partner.billerCode, "billNumber": creditParty.id,
+     "amount": amount.major}
+  PAY.response: >-
+    (status = 200 or status = 202) and body.status = "PAID" and $type(body.receipt) = "string" and body.receipt != ""
+    ? {"outcome": "SUCCESS", "partnerRef": body.receipt}
+    : (status = 200 or status = 202) and body.status = "PENDING" ? {"outcome": "PENDING", "partnerRef": body.receipt}
+    : (status = 200 or status = 202) ? {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}
+    : (status = 422 or status = 404) and $type(body.code) = "string" and body.code != ""
+    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+    : status = 400 ? {"outcome": "FAILED", "code": "HTTP_400"}
+    : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+  STATUS_QUERY.response: >-
+    status = 200 and body.status = "PAID" and $type(body.receipt) = "string" and body.receipt != ""
+    ? {"outcome": "SUCCESS", "partnerRef": body.receipt}
+    : status = 200 and body.status = "PENDING" ? {"outcome": "PENDING", "partnerRef": body.receipt}
+    : status = 200 and body.status = "FAILED" and $type(body.code) = "string"
+    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+    : status = 404 and body.status = "NOT_FOUND" ? {"outcome": "NOT_FOUND", "code": body.code}
+    : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+  REVERSE.request: '{"reversalId": reversalReference, "amount": amount.major}'
+  REVERSE.response: >-
+    status = 200 and body.status = "REVERSED" and $type(body.reversalRef) = "string" and body.reversalRef != ""
+    ? {"outcome": "SUCCESS", "partnerRef": body.reversalRef}
+    : (status = 422 or status = 404) and $type(body.code) = "string" and body.code != ""
+    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+    : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+  HEALTH_CHECK.response: >-
+    status = 200 ? {"outcome": "SUCCESS", "partnerRef": "health"}
+    : {"outcome": "FAILED", "code": "HTTP_" & $string(status)}

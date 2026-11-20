@@ -11,7 +11,10 @@ per milestone M0–M6), `docs/testing-guide.html` (QA walkthrough: credentials (
 `docs/tutorial/` (onboarding tour for a new developer: architecture, core ideas, every feature's flow, a first day),
 `docs/concepts/` (one page per component (APISIX, Keycloak, Vault, the HSM, the test doubles, the libraries): how this project uses it, with a worked example),
 `docs/adr/` (one record per spec decision D1–D15, M1–M13, plus later ones), `docs/frs-traceability.md` (every
-Upay FRS requirement id and name mapped to the repo name, its status and the ticket; FRS run 89–138, ADRs D29–D33). `scripts/test/test_repo_docs.sh`
+Upay FRS requirement id and name mapped to the repo name, its status and the ticket; FRS run 89–138, ADRs D29–D33),
+`docs/connectors/developer-guide.md` (adding a partner: engine layers, Kamelets, operations, the sample connector;
+ticket 136), `docs/mocks/README.md` (every mock's triggers, scenarios, switch, journal; its block is generated from
+mw-simulators' `MockTriggers`), `docs/api-catalogue.md` (every `contracts/api/` file and published WSDL). `scripts/test/test_repo_docs.sh`
 (in `./gradlew :scriptTests`) fails when they name a script, repo path, `./gradlew` task, API suite
 folder or `VAR=` knob that does not exist, when the README misses an operator script in `scripts/`, or
 when a spec decision row has no ADR: a new script, knob or decision updates these docs in the same change.
