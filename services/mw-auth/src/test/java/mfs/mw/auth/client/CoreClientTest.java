@@ -21,6 +21,7 @@ import mfs.mw.auth.config.CoreClientProperties;
 import mfs.mw.auth.contracts.OpenApiSchemas;
 import mfs.mw.auth.dto.CryptoTokens;
 import org.junit.jupiter.api.AfterEach;
+import org.slf4j.MDC;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -39,7 +40,7 @@ class CoreClientTest {
   private static final UUID RESET = UUID.fromString("5f0e8a52-1d4c-4a8e-9a43-6b9f3c2d1e00");
   private static final CryptoTokens FACTORS = new CryptoTokens("NID", "tokenise-nid.v1", List.of("NID_AAAA", "NID_BBBB"));
 
-  private record Seen(String path, String authorization, JsonNode body) {}
+  private record Seen(String path, String authorization, String correlationId, JsonNode body) {}
 
   private record Answer(int status, String body, long delayMs) {}
 
@@ -55,7 +56,7 @@ class CoreClientTest {
     server.createContext("/", ex -> {
       byte[] in = ex.getRequestBody().readAllBytes();
       seen.add(new Seen(ex.getRequestURI().getRawPath(), ex.getRequestHeaders().getFirst("Authorization"),
-          in.length == 0 ? null : JSON.readTree(in)));
+          ex.getRequestHeaders().getFirst("X-Correlation-Id"), in.length == 0 ? null : JSON.readTree(in)));
       Answer a;
       synchronized (answers) {
         a = answers.isEmpty() ? new Answer(500, "{}", 0) : answers.poll();
@@ -109,6 +110,20 @@ class CoreClientTest {
     assertThat(s.body().path("factors").path("tokenKid").asString()).isEqualTo("tokenise-nid.v1");
     assertThat(OpenApiSchemas.component("api/mw-core-mock/core-wallet.v1.openapi.yaml", "FactorsRequest").validate(s.body()))
         .as("the body against core-wallet.v1 FactorsRequest").isEmpty();
+  }
+
+  @Test
+  void theFactorsCallCarriesTheMdcCorrelationId() {
+    answer(200, "{\"status\":\"VERIFIED\"}");
+    MDC.put("correlationId", "corr-factors-1");
+    try {
+      assertThat(client.verifyFactors("01711000001", TXN, RESET, FACTORS).outcome()).isEqualTo(CoreClient.Outcome.VERIFIED);
+    } finally {
+      MDC.remove("correlationId");
+    }
+
+    assertThat(seen).hasSize(1);
+    assertThat(seen.get(0).correlationId()).isEqualTo("corr-factors-1");
   }
 
   @Test

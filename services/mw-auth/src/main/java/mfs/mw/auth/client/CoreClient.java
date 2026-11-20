@@ -9,6 +9,7 @@ import mfs.mw.auth.config.CoreClientProperties;
 import mfs.mw.auth.dto.CryptoTokens;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -25,7 +26,8 @@ import tools.jackson.databind.json.JsonMapper;
  * service's realm {@code services} token (audience {@code mw-core-mock} besides {@code mw-crypto}),
  * renewed once on a 401 {@code MW-AUTH-001}. The check changes nothing at the core and is idempotent by
  * txnId, so a 5xx, 408, 429, timeout or unreachable core is asked again ({@code attempts}, {@code
- * backoff}) and then answered {@link Outcome#UNKNOWN}. Breaker {@code core}. Runs off the request thread
+ * backoff}) and then answered {@link Outcome#UNKNOWN}. The MDC {@code correlationId} goes out as
+ * {@code X-Correlation-Id}. Breaker {@code core}. Runs off the request thread
  * ({@code service/PinResetService}); never throws; nothing sent or received is logged.
  */
 @Component
@@ -120,12 +122,16 @@ public class CoreClient {
   }
 
   private Answer exchange(String walletId, Object body) {
-    return http.post().uri("/core/v1/customers/{walletId}/verify-factors", walletId)
+    RestClient.RequestBodySpec req = http.post().uri("/core/v1/customers/{walletId}/verify-factors", walletId)
         .accept(MediaType.APPLICATION_JSON)
         .header("Authorization", "Bearer " + tokens.token())
-        .contentType(MediaType.APPLICATION_JSON)
-        .body(body)
-        .exchange((req, res) -> new Answer(res.getStatusCode().value(), read(res.getBody().readAllBytes())));
+        .contentType(MediaType.APPLICATION_JSON);
+    String correlationId = MDC.get("correlationId");
+    if (correlationId != null) {
+      req = req.header("X-Correlation-Id", correlationId);
+    }
+    return req.body(body)
+        .exchange((request, res) -> new Answer(res.getStatusCode().value(), read(res.getBody().readAllBytes())));
   }
 
   private JsonNode read(byte[] bytes) {

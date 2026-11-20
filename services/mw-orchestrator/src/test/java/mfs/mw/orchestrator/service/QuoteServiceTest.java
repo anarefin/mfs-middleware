@@ -135,6 +135,29 @@ class QuoteServiceTest {
   }
 
   @Test
+  void aChargesBodyWithoutValueMinorFailsTheQuoteAndInventsNoFee() {
+    when(core.charges(any(), anyString())).thenReturn(ok("""
+        {"txnType":"P2P","amount":{"valueMinor":100000,"currency":"BDT"},"fee":{"currency":"BDT"},
+         "vat":{"valueMinor":65,"currency":"BDT"},"commission":{"valueMinor":0,"currency":"BDT"},
+         "total":{"valueMinor":100065,"currency":"BDT"}}"""));
+    limits("{\"walletId\":\"01711000001\",\"allowed\":true,\"remaining\":{}}");
+    when(core.account(anyString(), anyString())).thenReturn(ok("{\"walletId\":\"x\",\"type\":\"CUSTOMER\",\"status\":\"ACTIVE\"}"));
+
+    assertThatThrownBy(() -> service.quote(p2p(100_000), "c"))
+        .isInstanceOfSatisfying(MwException.class, e -> {
+          assertThat(e.code()).isEqualTo("MW-SYS-CORE_UNAVAILABLE");
+          assertThat(e.status()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+          assertThat(e.retryable()).isTrue();
+        });
+
+    when(core.charges(any(), anyString())).thenReturn(ok("""
+        {"txnType":"P2P","fee":{"valueMinor":"500","currency":"BDT"},"vat":{"valueMinor":0,"currency":"BDT"},
+         "commission":{"valueMinor":0,"currency":"BDT"}}"""));
+    assertThatThrownBy(() -> service.quote(p2p(100_000), "c"))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-SYS-CORE_UNAVAILABLE"));
+  }
+
+  @Test
   void aCoreRefusalOfTheChargesPassesThroughAndNoAnswerIsUnavailable() {
     when(core.charges(any(), anyString())).thenReturn(new CoreRead(422, "MW-CORE-INVALID_AMOUNT",
         JSON.readTree("{\"code\":\"MW-CORE-INVALID_AMOUNT\"}")));

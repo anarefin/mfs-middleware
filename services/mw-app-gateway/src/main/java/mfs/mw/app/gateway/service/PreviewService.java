@@ -44,8 +44,9 @@ import org.springframework.stereotype.Service;
  * over uuid, channel and wallet>}. Confirm: the previewId's signature, the kept preview of the same
  * wallet (else 400 {@code MW-VAL-027}), the same group and the same canonical hash (else 400 {@code
  * MW-VAL-026}), then exactly {@link TransactionService#submit} (mw-auth's assertion over the same
- * values, the request, the sync wait). The canonical hash covers type, payee (default type, canonical
- * MSISDN), bank account, amount, partner and attributes; not the PIN, the locale or {@code
+ * values, the request, the sync wait). The canonical hash covers type, payee (the type
+ * {@link RequestMapper#creditPartyType} forces from the txnType, canonical MSISDN), bank account,
+ * amount, partner and attributes; not the PIN, the locale or {@code
  * confirmDuplicate}. A preview is not consumed by its confirm: a repeat under the same key is the
  * idempotent repeat of the same transaction.
  */
@@ -228,12 +229,9 @@ public class PreviewService {
     return new QuoteRequest(user.msisdn(), user.walletType(), txn.txnType(), user.channel(), txn.amount(), payee);
   }
 
+  /** The payee type submit publishes. A type the client sent is ignored, so the quote cannot differ. */
   private static String creditType(TransactionRequest txn) {
-    if (txn.creditParty().type() != null) {
-      return txn.creditParty().type();
-    }
-    return RequestMapper.TOPUP.equals(txn.txnType()) ? "MSISDN"
-        : RequestMapper.BILL_PAY.equals(txn.txnType()) ? "BILLER_ACCOUNT" : "WALLET";
+    return RequestMapper.creditPartyType(txn.txnType());
   }
 
   private static String creditId(TransactionRequest txn) {

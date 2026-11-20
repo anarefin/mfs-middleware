@@ -57,8 +57,8 @@ public class PartnerReplyMapper {
    * no answer at all, so UNKNOWN (the orchestrator asks again at the next slot): a FAILED inquiry
    * answer would release a hold the partner may have used.
    */
-  private PartnerReply notSent(PartnerRequest request, String partnerRef, PartnerResponse.NotSent sent) {
-    PartnerResponse.NotSentReason reason = sent.reason();
+  private PartnerReply notSent(PartnerRequest request, String partnerRef, PartnerResponse.NotSent notSent) {
+    PartnerResponse.NotSentReason reason = notSent.reason();
     if (isStatusQuery(request)) {
       return reply(
           request, partnerRef, "UNKNOWN", null, null, "MW-TMO-PARTNER_" + reason.name(),
@@ -77,7 +77,8 @@ public class PartnerReplyMapper {
     if (reason == PartnerResponse.NotSentReason.MAINTENANCE) {
       PartnerResponse.Notice notice =
           PartnerResponse.Notice.orDefault(
-              sent.notice() == null ? null : sent.notice().en(), sent.notice() == null ? null : sent.notice().bn());
+              notSent.notice() == null ? null : notSent.notice().en(),
+              notSent.notice() == null ? null : notSent.notice().bn());
       Map<String, String> attributes = new LinkedHashMap<>();
       attributes.put("messageBn", notice.bn());
       if (partnerRef != null) {

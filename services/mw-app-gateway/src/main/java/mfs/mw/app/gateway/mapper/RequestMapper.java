@@ -137,18 +137,32 @@ public class RequestMapper {
   }
 
   /**
+   * The payee type {@code mw.txn.request.v1} publishes, and the one the preview quotes and hashes.
+   * The txnType decides it; a client-supplied {@code creditParty.type} is ignored (BILL_PAY a
+   * biller account, TOPUP an MSISDN, every wallet payment a WALLET — an agent's for CASH_OUT, a
+   * merchant's for MERCHANT_PAY, a customer's otherwise).
+   */
+  public static String creditPartyType(String txnType) {
+    if (BILL_PAY.equals(txnType)) {
+      return "BILLER_ACCOUNT";
+    }
+    return TOPUP.equals(txnType) ? "MSISDN" : "WALLET";
+  }
+
+  /**
    * A wallet (canonical MSISDN as wallet id; an agent's for CASH_OUT, a merchant's for
    * MERCHANT_PAY, a customer's otherwise; the
    * core checks the real wallet types per txnType), for TOPUP the bare MSISDN to recharge, for
    * BILL_PAY the bill number as a {@code BILLER_ACCOUNT}.
    */
   private static Party creditParty(TransactionRequest body) {
-    if (BILL_PAY.equals(body.txnType())) {
-      return new Party("BILLER_ACCOUNT", body.creditParty().id(), null, null);
+    String type = creditPartyType(body.txnType());
+    if ("BILLER_ACCOUNT".equals(type)) {
+      return new Party(type, body.creditParty().id(), null, null);
     }
     String id = canonical(body.creditParty().id());
-    if (TOPUP.equals(body.txnType())) {
-      return new Party("MSISDN", id, null, null);
+    if ("MSISDN".equals(type)) {
+      return new Party(type, id, null, null);
     }
     return Party.wallet(id, payeeWalletType(body.txnType()));
   }

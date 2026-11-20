@@ -207,6 +207,36 @@ class PartnerRouteRollbackIT {
   }
 
   @Test
+  void aRejectedEndpointOnlySwitchIsRolledBackToTheLiveProfile() {
+    Map<String, Object> endpoints = Map.of(
+        "MOCK", "http://mock.rollco.example",
+        "REAL", "https://api.rollco.example");
+    List<String> hosts = List.of("api.rollco.example", "mock.rollco.example");
+    approvedRoute(ROUTE, 20000, Map.of("allowedHosts", hosts, "endpoint", "REAL", "endpoints", endpoints));
+    report(1, "LIVE");
+    approvedRoute(ROUTE, 20000, Map.of(
+        "allowedHosts", hosts,
+        "endpoint", "MOCK",
+        "endpoints", endpoints,
+        "maintenance", true,
+        "healthCheck", true,
+        "maintenanceWindow", Map.of("messageEn", "Rollco is down", "messageBn", "রলকো বন্ধ")));
+
+    report(2, "REJECTED");
+
+    assertThat(published()).hasSize(3);
+    JsonNode value = published().getLast().path("value");
+    assertThat(value.path("endpoint").asString()).as("the live profile comes back").isEqualTo("REAL");
+    assertThat(value.path("endpoints").path("MOCK").asString()).isEqualTo("http://mock.rollco.example");
+    assertThat(value.path("endpoints").path("REAL").asString()).isEqualTo("https://api.rollco.example");
+    assertThat(value.path("route").asString()).isEqualTo(ROUTE);
+    assertThat(value.path("maintenance").asBoolean()).as("maintenance stays the current operator state").isTrue();
+    assertThat(value.path("healthCheck").asBoolean()).isTrue();
+    assertThat(value.path("maintenanceWindow").path("messageEn").asString()).isEqualTo("Rollco is down");
+    assertThat(currentVersion()).isEqualTo(3);
+  }
+
+  @Test
   void aRejectedVersionThatKeptTheProvenSetIsNotRolledBack() {
     approvedRoute(ROUTE, 20000);
     report(1, "LIVE");

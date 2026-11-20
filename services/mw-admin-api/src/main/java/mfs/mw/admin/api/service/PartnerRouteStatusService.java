@@ -44,7 +44,8 @@ import tools.jackson.databind.json.JsonMapper;
  * reported LIVE before it, without {@code dryRun} (proven, so the adapter loads it at once), as the
  * next version, in the same transaction as the status update ({@link #rolledBack}, review of ticket
  * 84): the set its dry-run proved together (route, mappings, allowedHosts, auth, sensitiveFields,
- * headers, error map) comes back as it was, never paired with the rejected version's hosts or auth;
+ * headers, error map, and the endpoint profile with its URLs) comes back as it was, never paired
+ * with the rejected version's hosts, auth or endpoint;
  * the partner is enabled only when both versions are (a rollback never re-enables a partner the
  * operator disabled); the timeouts stay the current ones (operator state). The merged value must
  * pass the route rules again ({@code partner.route.rollback_refused} otherwise). A rejected version
@@ -121,7 +122,7 @@ public class PartnerRouteStatusService {
           .addKeyValue("event", "partner.route.no_rollback")
           .addKeyValue("partnerId", partnerId)
           .addKeyValue("version", rejected)
-          .log("rejected version kept the live route, hosts and auth; nothing republished");
+          .log("rejected version kept the live route, hosts, auth and endpoint; nothing republished");
       return;
     }
     long version = rejected + 1;
@@ -186,7 +187,9 @@ public class PartnerRouteStatusService {
 
   /**
    * True when the rejected version left the proven set (route, mappings, allowedHosts, auth,
-   * sensitiveFields, headers) as the live version had it: republishing it would be rejected again.
+   * sensitiveFields, headers, and the endpoint profile with its URLs) as the live version had it:
+   * republishing it would be rejected again. Maintenance and the health check are operator state
+   * and are not part of this set.
    */
   private static boolean sameProvenSet(PartnerConfigValue rejected, PartnerConfigValue live) {
     return Objects.equals(rejected.route(), live.route())
@@ -194,7 +197,9 @@ public class PartnerRouteStatusService {
         && Objects.equals(rejected.allowedHosts(), live.allowedHosts())
         && Objects.equals(rejected.auth(), live.auth())
         && Objects.equals(orEmpty(rejected.sensitiveFields()), orEmpty(live.sensitiveFields()))
-        && Objects.equals(orEmpty(rejected.headers()), orEmpty(live.headers()));
+        && Objects.equals(orEmpty(rejected.headers()), orEmpty(live.headers()))
+        && Objects.equals(rejected.endpoint(), live.endpoint())
+        && Objects.equals(orEmpty(rejected.endpoints()), orEmpty(live.endpoints()));
   }
 
   private static Map<String, String> orEmpty(Map<String, String> m) {

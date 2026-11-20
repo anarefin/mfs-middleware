@@ -118,8 +118,8 @@ public class BillFetchService {
       case BULKHEAD_FULL -> "BUSY";
       case CONNECT_FAILED -> "UNAVAILABLE";
       case DISABLED -> "DISABLED";
-      case MAINTENANCE -> "MAINTENANCE";
       case MISCONFIGURED, UNKNOWN_PARTNER -> "MISCONFIGURED";
+      case MAINTENANCE -> throw new IllegalStateException("maintenance is answered by its own arm");
     };
   }
 

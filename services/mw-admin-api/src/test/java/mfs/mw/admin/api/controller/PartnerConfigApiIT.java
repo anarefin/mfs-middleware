@@ -231,6 +231,60 @@ class PartnerConfigApiIT {
 
   // --- seeds ---------------------------------------------------------------------------------
 
+  /**
+   * Ticket 131b: switching maintenance or the endpoint profile is a maker-checker config change on
+   * resourceType {@code partner}, with no route body. A body that also sends a route is refused.
+   */
+  @Test
+  void aMaintenanceChangeAndAnEndpointChangeAreApprovedWithoutARoute() {
+    String maintenance =
+        """
+        {"action":"SET_MAINTENANCE","reason":"planned window","config":{
+          "maintenance":true,
+          "maintenanceWindow":{"start":"2026-11-21T00:00:00Z","end":"2026-11-21T02:00:00Z",
+            "messageEn":"Top-up is under maintenance","messageBn":"টপ-আপ রক্ষণাবেক্ষণে আছে"}}}
+        """;
+    assertThat(approve(CHECKER, asked(MAKER, "ocs", maintenance))).hasStatus(200);
+    JsonNode value = outbox(CONFIG_TOPIC).getFirst().path("value");
+    assertEvent(CONFIG_SCHEMA, outbox(CONFIG_TOPIC).getFirst());
+    assertThat(value.path("maintenance").asBoolean()).isTrue();
+    assertThat(value.path("maintenanceWindow").path("end").asString()).isEqualTo("2026-11-21T02:00:00Z");
+    assertThat(value.path("maintenanceWindow").path("messageEn").asString()).isEqualTo("Top-up is under maintenance");
+    assertThat(value.path("maintenanceWindow").path("messageBn").asString()).isEqualTo("টপ-আপ রক্ষণাবেক্ষণে আছে");
+    assertThat(value.path("family").asString()).isEqualTo("telco");
+    assertThat(value.path("route").asString()).contains("direct:partner-ocs");
+    assertThat(value.has("dryRun")).isFalse();
+
+    String endpoint =
+        """
+        {"action":"SET_ENDPOINT","reason":"switch to the mock","config":{
+          "endpoint":"MOCK",
+          "endpoints":{"MOCK":"http://mw-simulators:8080","REAL":"http://mw-simulators:8080"}}}
+        """;
+    assertThat(approve(CHECKER, asked(MAKER, "ocs", endpoint))).hasStatus(200);
+    JsonNode next = outbox(CONFIG_TOPIC).getLast().path("value");
+    assertThat(next.path("endpoint").asString()).isEqualTo("MOCK");
+    assertThat(next.path("endpoints").path("REAL").asString()).isEqualTo("http://mw-simulators:8080");
+    assertThat(next.path("maintenance").asBoolean()).as("the window stays").isTrue();
+    assertThat(next.path("route").asString()).isEqualTo(value.path("route").asString());
+    assertThat(partner("ocs").path("config").path("endpoint").asString()).isEqualTo("MOCK");
+
+    for (String bad : List.of(
+        """
+        {"action":"SET_MAINTENANCE","reason":"x","config":{"maintenance":true,"route":"- route: {}"}}
+        """,
+        """
+        {"action":"SET_ENDPOINT","reason":"x","family":"telco","config":{
+          "endpoint":"REAL","endpoints":{"MOCK":"http://mw-simulators:8080","REAL":"http://mw-simulators:8080"},
+          "route":"- route: {}","mappings":{"PAY.request":"{}"}}}
+        """)) {
+      MvcTestResult refused = ask(MAKER, "ocs", bad);
+      assertThat(refused).hasStatus(400);
+      assertThat(body(refused).path("code").asString()).isEqualTo("MW-VAL-001");
+      assertThat(body(refused).path("details").toString()).contains("config.route");
+    }
+  }
+
   @Test
   void theDevSeedsAreTheThreeAdaptersPartnersAsRoutes() {
     JsonNode items = body(mvc.get().uri("/admin/v1/partners").with(CHECKER).exchange()).path("items");

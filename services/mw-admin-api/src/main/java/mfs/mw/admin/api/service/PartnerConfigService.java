@@ -33,20 +33,23 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Partner config (ticket 38, spec 15.2 Partners, 20.4): reads, and the maker side of a partner
- * change request. A maker ({@link AdminRole#PARTNER_MAKER}) asks to ENABLE, DISABLE, SET_TIMEOUTS
- * or UPSERT_ROUTE (full config, a partner route of ADR D28); the request stores the full config the
- * approval will publish ({@code payload.config}), the version the maker saw ({@code
- * payload.baseVersion}, null for a new partner) and the changed fields ({@code diff}). Nothing
- * changes until a checker approves ({@link PartnerChangeHandler}). The config is checked here with
- * the adapters' structural and security rules that need no adapter config (ids, the route rules,
- * secret names, suffixes, URL shape); the adapters check it again (host allowlist, https, JSONata,
- * dry-run) and keep the old version when they refuse it.
+ * change request. A maker ({@link AdminRole#PARTNER_MAKER}) asks to ENABLE, DISABLE, SET_TIMEOUTS,
+ * SET_MAINTENANCE, SET_ENDPOINT or UPSERT_ROUTE (full config, a partner route of ADR D28); the
+ * request stores the full config the approval will publish ({@code payload.config}), the version
+ * the maker saw ({@code payload.baseVersion}, null for a new partner) and the changed fields
+ * ({@code diff}). Nothing changes until a checker approves ({@link PartnerChangeHandler}). The
+ * config is checked here with the adapters' structural and security rules that need no adapter
+ * config (ids, the route rules, secret names, suffixes, URL shape, the maintenance window, the
+ * endpoint base URL); the adapters check it again (host allowlist, https, JSONata, dry-run) and
+ * keep the old version when they refuse it.
  *
  * <p>Only UPSERT_ROUTE adds a dry-run (a new route must prove itself first, ticket 83). ENABLE,
- * DISABLE and SET_TIMEOUTS on a proven route (a seed, or a version reported LIVE) publish it without
- * one (ticket 84): the route already runs, so the adapter swaps the new version in at once. On a
- * route that has not passed its dry-run yet (PENDING_DRY_RUN or REJECTED) they keep its dry-run, so
- * the gate still applies to it (review of ticket 84).
+ * DISABLE, SET_TIMEOUTS, SET_MAINTENANCE and SET_ENDPOINT on a proven route (a seed, or a version
+ * reported LIVE) publish it without one (ticket 84): the route already runs, so the adapter swaps
+ * the new version in at once. On a route that has not passed its dry-run yet (PENDING_DRY_RUN or
+ * REJECTED) they keep its dry-run, so the gate still applies to it (review of ticket 84).
+ * SET_MAINTENANCE and SET_ENDPOINT (ticket 131b) take no route, mappings or family: they change the
+ * window (and the maintenance flag) or the endpoint profile on the live config and republish the rest.
  */
 @Service
 public class PartnerConfigService {
@@ -150,6 +153,12 @@ public class PartnerConfigService {
       // a config that leaves enabled out keeps the partner's state (a new one starts enabled)
       next = c.enabled() != null ? c : c.withEnabled(held.map(p -> p.config().isEnabled()).orElse(true));
       base = held.map(Partner::config).orElse(null);
+    } else if (action == PartnerAction.SET_MAINTENANCE || action == PartnerAction.SET_ENDPOINT) {
+      refuseIfAny(problems);
+      Partner p = held.orElseThrow(PartnerConfigService::notFound);
+      family = p.family();
+      base = proven(p) ? p.config().withoutDryRun() : p.config();
+      next = action == PartnerAction.SET_MAINTENANCE ? maintenanceOf(base, body.config()) : endpointOf(base, body.config());
     } else {
       refuseIfAny(problems);
       Partner p = held.orElseThrow(PartnerConfigService::notFound);
@@ -161,7 +170,7 @@ public class PartnerConfigService {
             case DISABLE -> base.withEnabled(false);
             case SET_TIMEOUTS ->
                 base.withTimeouts(body.timeouts().connectTimeoutMs(), body.timeouts().timeoutMs(), body.timeouts().readTimeoutMs());
-            case UPSERT_ROUTE -> throw new IllegalStateException("handled above");
+            case UPSERT_ROUTE, SET_MAINTENANCE, SET_ENDPOINT -> throw new IllegalStateException("handled above");
           };
     }
     List<ErrorDetail> route = new ArrayList<>();
@@ -284,11 +293,24 @@ public class PartnerConfigService {
     return json.convertValue(config, MAP);
   }
 
+  /** The maintenance flag and window on the live config; a field the body sets replaces that field. */
+  private static PartnerConfigValue maintenanceOf(PartnerConfigValue base, PartnerConfigValue patch) {
+    return base.withMaintenance(
+        patch.maintenance() != null ? patch.maintenance() : base.maintenance(),
+        patch.maintenanceWindow() != null ? patch.maintenanceWindow() : base.maintenanceWindow());
+  }
+
+  /** The endpoint profile and its URLs on the live config. The body carries both. */
+  private static PartnerConfigValue endpointOf(PartnerConfigValue base, PartnerConfigValue patch) {
+    return base.withEndpoint(patch.endpoint(), patch.endpoints());
+  }
+
   /** Fields that do not belong to the action are refused rather than ignored. */
   private static void unexpected(PartnerChangeRequestBody body, PartnerAction action, List<ErrorDetail> problems) {
     boolean upsert = action == PartnerAction.UPSERT_ROUTE;
-    if (!upsert && body.config() != null) {
-      problems.add(new ErrorDetail("config", "only UPSERT_ROUTE takes a config"));
+    boolean patch = action == PartnerAction.SET_MAINTENANCE || action == PartnerAction.SET_ENDPOINT;
+    if (!upsert && !patch && body.config() != null) {
+      problems.add(new ErrorDetail("config", "only UPSERT_ROUTE, SET_MAINTENANCE and SET_ENDPOINT take a config"));
     }
     if (!upsert && body.family() != null) {
       problems.add(new ErrorDetail("family", "only UPSERT_ROUTE takes a family"));
@@ -298,6 +320,51 @@ public class PartnerConfigService {
     }
     if (action != PartnerAction.SET_TIMEOUTS && body.timeouts() != null) {
       problems.add(new ErrorDetail("timeouts", "only SET_TIMEOUTS takes timeouts"));
+    }
+    if (!patch) {
+      return;
+    }
+    if (body.config() == null) {
+      problems.add(new ErrorDetail("config", action + " needs a config"));
+      return;
+    }
+    ownFieldsOnly(action, body.config(), problems);
+  }
+
+  /**
+   * SET_MAINTENANCE and SET_ENDPOINT change their own fields of the live config. A route, its
+   * mappings, a family (checked by the caller) or any other config field is a route edit.
+   */
+  private static void ownFieldsOnly(PartnerAction action, PartnerConfigValue c, List<ErrorDetail> problems) {
+    if (c.route() != null) {
+      problems.add(new ErrorDetail("config.route", action + " does not take a route"));
+    }
+    if (c.mappings() != null) {
+      problems.add(new ErrorDetail("config.mappings", action + " does not take mappings"));
+    }
+    if (action == PartnerAction.SET_MAINTENANCE) {
+      if (c.maintenance() == null && c.maintenanceWindow() == null) {
+        problems.add(new ErrorDetail("config.maintenance", "SET_MAINTENANCE needs the flag or the window"));
+      }
+      if (c.endpoint() != null || c.endpoints() != null) {
+        problems.add(new ErrorDetail("config.endpoint", "SET_MAINTENANCE does not take an endpoint"));
+      }
+    } else {
+      if (c.endpoint() == null) {
+        problems.add(new ErrorDetail("config.endpoint", "SET_ENDPOINT needs MOCK or REAL"));
+      }
+      if (c.endpoints() == null) {
+        problems.add(new ErrorDetail("config.endpoints", "SET_ENDPOINT needs the endpoints"));
+      }
+      if (c.maintenance() != null || c.maintenanceWindow() != null) {
+        problems.add(new ErrorDetail("config.maintenance", "SET_ENDPOINT does not take a maintenance window"));
+      }
+    }
+    if (c.enabled() != null || c.connectTimeoutMs() != null || c.timeoutMs() != null || c.readTimeoutMs() != null
+        || c.headers() != null || c.auth() != null || c.errorMap() != null || c.ambiguousCodes() != null
+        || c.sensitiveFields() != null || c.resilience() != null || c.allowedHosts() != null || c.dryRun() != null
+        || c.healthCheck() != null) {
+      problems.add(new ErrorDetail("config", action + " changes only its own fields"));
     }
   }
 

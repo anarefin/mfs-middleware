@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -123,6 +124,49 @@ class PreviewServiceTest {
     ArgumentCaptor<TransactionRequest> checked = ArgumentCaptor.forClass(TransactionRequest.class);
     verify(transactions).check(eq(USER), checked.capture());
     assertThat(checked.getValue().txnType()).as("the group's type, the channel rules applied").isEqualTo("P2P");
+  }
+
+  /**
+   * Submit forces the payee type from the txnType ({@link mfs.mw.app.gateway.mapper.RequestMapper#creditPartyType}).
+   * A type the client sends on the preview must not reach the quote or the preview hash, or the
+   * quote would name a different payee from {@code mw.txn.request.v1} and its assertion.
+   */
+  @Test
+  void aClientSuppliedPayeeTypeIsIgnoredTheWaySubmitIgnoresIt() {
+    when(quotes.quote(any())).thenReturn(quote(true, null));
+    Amount amount = new Amount(100_000L, "BDT");
+
+    PreviewView p2p = service.preview(USER, "send-money", new PreviewRequest(
+        new TransactionRequest.CounterParty("BILLER_ACCOUNT", "+8801711000002"), null, null, amount, "en", null));
+    service.preview(USER, "top-up", new PreviewRequest(
+        new TransactionRequest.CounterParty("WALLET", "8801711000002"), null, null, amount, "en", null));
+    service.preview(USER, "bill-pay", new PreviewRequest(
+        new TransactionRequest.CounterParty("WALLET", "+8801711000002"), null, null, amount, "en", null));
+    service.preview(USER, "cash-out", new PreviewRequest(
+        new TransactionRequest.CounterParty("MSISDN", "01711000002"), null, null, amount, "en", null));
+    service.preview(USER, "payment", new PreviewRequest(
+        new TransactionRequest.CounterParty("BILLER_ACCOUNT", "01911000001"), null, null, amount, "en", null));
+
+    ArgumentCaptor<QuoteRequest> asked = ArgumentCaptor.forClass(QuoteRequest.class);
+    verify(quotes, times(5)).quote(asked.capture());
+    assertThat(asked.getAllValues()).extracting(QuoteRequest::counterparty).containsExactly(
+        new QuoteRequest.Counterparty("WALLET", "01711000002"),
+        new QuoteRequest.Counterparty("MSISDN", "01711000002"),
+        new QuoteRequest.Counterparty("BILLER_ACCOUNT", "+8801711000002"),
+        new QuoteRequest.Counterparty("WALLET", "01711000002"),
+        new QuoteRequest.Counterparty("WALLET", "01911000001"));
+
+    TransactionRequest lied = new TransactionRequest(
+        "P2P", new TransactionRequest.CounterParty("MSISDN", "+8801711000002"), amount, null, "en", null);
+    TransactionRequest plain = new TransactionRequest(
+        "P2P", new TransactionRequest.CounterParty(null, "01711000002"), amount, null, "en", null);
+    assertThat(service.txnHash(lied)).isEqualTo(service.txnHash(plain));
+
+    when(transactions.submit(any(), any(), any())).thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
+    service.confirm(USER, "send-money", "key-1", new ConfirmRequest(
+        p2p.previewId(), new TransactionRequest.CounterParty("MSISDN", "01711000002"), null, null, amount,
+        new EncryptedPin("pin-1", "Y2lwaGVy"), "en", null, null));
+    verify(transactions).submit(eq(USER), eq("key-1"), any());
   }
 
   @Test

@@ -13,7 +13,9 @@
         "ENABLE",
         "DISABLE",
         "SET_TIMEOUTS",
-        "UPSERT_ROUTE"
+        "UPSERT_ROUTE",
+        "SET_MAINTENANCE",
+        "SET_ENDPOINT"
       ]
     },
     "reason": {

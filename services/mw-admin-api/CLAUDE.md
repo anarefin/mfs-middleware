@@ -151,7 +151,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `GET /admin/v1/partners[/{partnerId}]` (`AdminRole.READ_PARTNERS` = transaction readers +
   integration-maker/checker); `POST /admin/v1/partners/{partnerId}/change-requests {action, reason,
   family?, timeouts?, config?}` (`PARTNER_MAKER` = ops-maker, integration-maker): ENABLE / DISABLE /
-  SET_TIMEOUTS (existing partner, else 404; `timeouts` only with SET_TIMEOUTS) or UPSERT_ROUTE (full
+  SET_TIMEOUTS (existing partner, else 404; `timeouts` only with SET_TIMEOUTS), SET_MAINTENANCE
+  (the maintenance flag and window) or SET_ENDPOINT (`MOCK`|`REAL` and the `endpoints` map; ticket
+  131b: neither takes `route`, `mappings` or `family`), or UPSERT_ROUTE (full
   config, below; `family` telco|billpay|bank needed for a new partner, never changes). The old action
   UPSERT and the template shape (`template`, `baseUrl`, `operations`) are gone (ticket 84; the contract
   refuses them, 400). Fields not belonging to the action, an invalid config (`PartnerConfigService.common`:

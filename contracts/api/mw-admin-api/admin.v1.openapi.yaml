@@ -33,8 +33,8 @@ info:
     action does not fit the transaction's current state), 409 MW-VAL-031 (the transaction already
     has an open request), 409 MW-VAL-032 (expired), 409 MW-VAL-033 (already decided).
     Partner config (ticket 38, spec 15.2 Partners, 15.3, 20.4): partners (schema `partner`) are
-    changed only through a change request (resourceType `partner`): ENABLE, DISABLE, SET_TIMEOUTS
-    or UPSERT_ROUTE (onboard / replace the full config, a partner route of ADR D28). Makers `ops-maker` or `integration-maker`,
+    changed only through a change request (resourceType `partner`): ENABLE, DISABLE, SET_TIMEOUTS,
+    SET_MAINTENANCE, SET_ENDPOINT or UPSERT_ROUTE (onboard / replace the full config, a partner route of ADR D28). Makers `ops-maker` or `integration-maker`,
     checkers `ops-checker` or `integration-checker` (never the maker). On approval the partner
     tables are updated, the version goes up by one and the full config is published on the
     compacted topic `mw.config.changed.v1` (key `partner/<id>`), all in one database transaction;
@@ -414,9 +414,13 @@ paths:
       operationId: requestPartnerChange
       summary: Ask for a partner config change (maker)
       description: >-
-        Role `ops-maker` or `integration-maker`. ENABLE / DISABLE / SET_TIMEOUTS change an existing
-        partner (404 MW-VAL-003 otherwise) and republish its route without a dry-run (it already
-        runs); SET_TIMEOUTS needs `timeouts`. UPSERT_ROUTE (ADR D28, ticket 83) needs `config`
+        Role `ops-maker` or `integration-maker`. ENABLE / DISABLE / SET_TIMEOUTS / SET_MAINTENANCE /
+        SET_ENDPOINT change an existing partner (404 MW-VAL-003 otherwise) and republish its route
+        without a dry-run (it already runs); SET_TIMEOUTS needs `timeouts`. SET_MAINTENANCE (ticket
+        131b) sets `config.maintenance` and `config.maintenanceWindow` and SET_ENDPOINT sets
+        `config.endpoint` (`MOCK` or `REAL`) and `config.endpoints`; neither accepts `route`,
+        `mappings` or `family` (400 MW-VAL-001), and the approval republishes the rest of the live
+        config unchanged. UPSERT_ROUTE (ADR D28, ticket 83) needs `config`
         (`route`, `mappings`, `allowedHosts`, `dryRun`, ...) and, for a new partner, `family`: the route is checked with the adapters' loader rules first and refused 400
         MW-VAL-041 with one detail per problem (`field` config.route, `issue` "line N: construct:
         problem"); approved, it goes live in its adapter only once its dry-run passed (`route.status`
@@ -1266,7 +1270,7 @@ components:
       enum: [PUBLISH]
     PartnerAction:
       type: string
-      enum: [ENABLE, DISABLE, SET_TIMEOUTS, UPSERT_ROUTE]
+      enum: [ENABLE, DISABLE, SET_TIMEOUTS, UPSERT_ROUTE, SET_MAINTENANCE, SET_ENDPOINT]
     PartnerId:
       type: string
       pattern: "^[a-z0-9][a-z0-9-]{0,63}$"

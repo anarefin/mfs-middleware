@@ -115,8 +115,16 @@ public class QuoteService {
     return new Quote.Limits(allowed, allowed ? null : l.path("reasonCode").asString(null), remaining);
   }
 
+  /**
+   * A charge the core actually sent. A missing or non-numeric {@code valueMinor} is not a zero fee:
+   * the quote fails as the core being unavailable. A real zero (the core sent {@code 0}) stands.
+   */
   private static Amount money(JsonNode n) {
-    return new Amount(n.path("valueMinor").asLong(0), n.path("currency").asString(Amount.BDT));
+    JsonNode minor = n.path("valueMinor");
+    if (!minor.isIntegralNumber()) {
+      throw unavailable("amount", 200, null);
+    }
+    return new Amount(minor.asLong(), n.path("currency").asString(Amount.BDT));
   }
 
   private static Amount optionalMoney(JsonNode n) {

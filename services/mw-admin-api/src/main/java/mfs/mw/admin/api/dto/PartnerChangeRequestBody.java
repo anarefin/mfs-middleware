@@ -25,7 +25,17 @@ public record PartnerChangeRequestBody(
     DISABLE,
     SET_TIMEOUTS,
     /** Onboard or replace a partner: its full config, a route (ADR D28, ticket 83). */
-    UPSERT_ROUTE
+    UPSERT_ROUTE,
+    /**
+     * The maintenance flag and window (ticket 131b). No route, mappings or family: approval
+     * republishes the live config with only those fields changed.
+     */
+    SET_MAINTENANCE,
+    /**
+     * The endpoint profile ({@code MOCK} or {@code REAL}) and its URLs (ticket 131b). No route,
+     * mappings or family.
+     */
+    SET_ENDPOINT
   }
 
   /** New timeouts; a field left out keeps its value. */
