@@ -565,6 +565,11 @@
     async cr(user, id) { return http('GET', '/admin/v1/change-requests/' + id, { headers: await ops(user) }); },
     async approve(user, id) { return http('POST', '/admin/v1/change-requests/' + id + '/approve', { headers: await ops(user), raw: '' }); },
     async reject(user, id, reason) { return http('POST', '/admin/v1/change-requests/' + id + '/reject', { headers: await ops(user), json: { reason } }); },
+    // ticket 131: partner credentials (write-only upload, metadata reads) and the response-code map
+    async uploadCredential(user, p, name, body) { return http('POST', '/admin/v1/partners/' + p + '/credentials/' + name + '/change-requests', { headers: await ops(user), json: body }); },
+    async credentials(user, p) { return http('GET', '/admin/v1/credentials' + (p ? '?partnerId=' + p : ''), { headers: await ops(user) }); },
+    async expiring(user, days) { return http('GET', '/admin/v1/credentials/expiring?days=' + days, { headers: await ops(user) }); },
+    async askErrorMap(user, p, body) { return http('POST', '/admin/v1/partners/' + p + '/error-map/change-requests', { headers: await ops(user), json: body }); },
   };
 
   // ---------- Org portal (/portal/org/v1/*, realm portals) ----------

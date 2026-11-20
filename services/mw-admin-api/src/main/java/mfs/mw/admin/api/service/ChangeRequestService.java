@@ -563,6 +563,10 @@ public class ChangeRequestService {
     Set<String> out = new java.util.LinkedHashSet<>();
     if (operator.hasAny(AdminRole.READ_PARTNERS)) {
       out.add(Partner.RESOURCE_TYPE);
+      out.add(PartnerConfigService.ERROR_MAP_RESOURCE_TYPE);
+    }
+    if (operator.hasAny(AdminRole.READ_CREDENTIALS)) {
+      out.add(mfs.mw.admin.api.entity.CredentialMeta.RESOURCE_TYPE);
     }
     if (operator.hasAny(AdminRole.READ_CHANNEL_CLIENTS)) {
       out.add(mfs.mw.admin.api.entity.ChannelClient.RESOURCE_TYPE);

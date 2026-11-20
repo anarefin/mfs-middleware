@@ -13,7 +13,7 @@ and `tsq`; `ops *` needs `operator` or `admin`; `<FLOW> ussd *` and `ussd http` 
 Requirement tags are the Cucumber flow tags without `@` (`p2p`, `cash`, `topup`, `billpay`,
 `callback`, `addmoney`, `c2w`, `merchant`, `checkout`, `ipn`, `notify`, `tsq`, `device`, `reversal`,
 `admin`, `operator`, `partner-config`, `wallet-unlock`, `ussd`, `smpp`, `bulk`, `sp-query`, `dlq` (retry topics to the DLQ, ticket 58, no Cucumber flow), plus
-`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto), `history` (the wallet transaction history GET /app/v1/transactions, ADR D25), `balance` (the balance check over USSD and POST /app/v1/balance, ADR D26) and `docs` (the generated API documents of the dev stack under /docs/, ticket 101), `mock` (the mock-control API of mw-simulators, /test/mock-control/*, ADR D33, tickets 102a/102b, and its global reset, ticket 103)); the module tags (`@mw-*`) were run filters, not requirements, and
+`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto), `history` (the wallet transaction history GET /app/v1/transactions, ADR D25), `balance` (the balance check over USSD and POST /app/v1/balance, ADR D26) and `docs` (the generated API documents of the dev stack under /docs/, ticket 101), `mock` (the mock-control API of mw-simulators, /test/mock-control/*, ADR D33, tickets 102a/102b, and its global reset, ticket 103), `credentials` (partner credential upload into Vault and the expiry dashboard of the admin API, ticket 131a)); the module tags (`@mw-*`) were run filters, not requirements, and
 are not carried over (`make api-test FOLDER=` selects folders).
 
 | # | Criterion | Where it is proved |
@@ -238,5 +238,8 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 40 | [mock] one call resets every mock party and brings the core ledger back to its seed | - |  |
 | 40 | [mock] a fault set through the old core fault API is a core scenario the reset clears | - |  |
 | 40 | [mock] an unknown core seed version is reported FAILED and changes nothing else | - |  |
+| 45 | [admin partner-config credentials] an uploaded partner credential is approved by another checker into Vault and only its metadata is ever shown | - |  | FR-19, SEC-04 |
+| 45 | [admin credentials] the expiry dashboard lists a credential expiring within 30 days, soonest first | - |  |
+| 45 | [admin partner-config] an approved response-code map is published as the partner's next version | - |  | FR-19 |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

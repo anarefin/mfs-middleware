@@ -75,6 +75,18 @@ public enum AdminRole {
   public static final Set<AdminRole> READ_CHANNEL_CLIENTS = READ_PARTNERS;
 
   /**
+   * Upload a partner credential (API key, HMAC secret, client certificate) into Vault (ticket 131,
+   * FRS ADM-02): integration staff only (the ticket's roles; secrets are an onboarding task).
+   */
+  public static final Set<AdminRole> CREDENTIAL_MAKER = Set.copyOf(EnumSet.of(INTEGRATION_MAKER));
+
+  /** Approve or reject such an upload; never the maker's own (spec 15.3). */
+  public static final Set<AdminRole> CREDENTIAL_CHECKER = Set.copyOf(EnumSet.of(INTEGRATION_CHECKER));
+
+  /** See credential metadata and the expiry dashboard (never a secret): whoever may read partners. */
+  public static final Set<AdminRole> READ_CREDENTIALS = READ_PARTNERS;
+
+  /**
    * Key changes and the key ceremony (ticket 75, spec 18.8, OWN-08): file, enter a component, and
    * decide (maker and checker two different users, each with a fresh MFA).
    */

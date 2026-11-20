@@ -23,6 +23,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 - Template `LOGIN_OTP` (param otp, priority OTP, bn/en SMS, `V11`, ticket 69): mw-auth's first-PIN login OTP.
 - Templates `PIN_RESET_OTP` (param otp, priority OTP), `PIN_RESET_APPROVED` and `PIN_CHANGED` (no params, TXN) (bn/en SMS,
   `V12`, ticket 70): mw-auth's PIN reset OTP, the approved care reset and the PIN changed / reset notice.
+- Template `OPS_CREDENTIAL_EXPIRING` (bn/en EMAIL, `V13`, ticket 131): mw-admin-api's partner credential
+  expiry alert to the operations mailbox (priority INFO; params partnerId, credential, type, kid, notAfter,
+  daysLeft, threshold; never a secret).
 - Rules (`notify.rule`, seeds in `V5` and `V7`: P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY,
   ADD_MONEY_BANK on success COMPLETED, failure FAILED|REJECTED and processing
   UNKNOWN|MANUAL_REVIEW; failure and processing go to the INITIATOR; BILL_PAY and ADD_MONEY_BANK

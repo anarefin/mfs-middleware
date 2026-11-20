@@ -82,6 +82,14 @@ public record PartnerConfigValue(
         route, mappings, allowedHosts, dryRun);
   }
 
+  /** The error map given replaces the held one (ticket 131); null ambiguous codes keep the held ones. */
+  public PartnerConfigValue withErrorMap(Map<String, ErrorMapping> map, List<String> ambiguous) {
+    return new PartnerConfigValue(
+        enabled, connectTimeoutMs, timeoutMs, readTimeoutMs, headers, auth, map,
+        ambiguous != null ? ambiguous : ambiguousCodes, sensitiveFields, resilience, route, mappings, allowedHosts,
+        dryRun);
+  }
+
   private static <V> Map<String, V> copy(Map<String, V> in) {
     return in == null ? null : Collections.unmodifiableMap(new LinkedHashMap<>(in));
   }
@@ -110,5 +118,14 @@ public record PartnerConfigValue(
 
   /** Canonical code suffix ({@code MW-PTR-<PARTNER>-<suffix>}) and retryability of one partner code. */
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record ErrorMapping(String suffix, boolean retryable) {}
+  public record ErrorMapping(String suffix, boolean retryable) {
+
+    /** {@code retryable} is optional in the contract (default false; ticket 131's error-map screen leaves it out). */
+    @com.fasterxml.jackson.annotation.JsonCreator
+    public static ErrorMapping of(
+        @com.fasterxml.jackson.annotation.JsonProperty("suffix") String suffix,
+        @com.fasterxml.jackson.annotation.JsonProperty("retryable") Boolean retryable) {
+      return new ErrorMapping(suffix, Boolean.TRUE.equals(retryable));
+    }
+  }
 }

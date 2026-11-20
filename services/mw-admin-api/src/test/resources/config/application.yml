@@ -28,6 +28,10 @@ mw:
   apisix:
     # ticket 100a: off in tests; ChannelClientChangeRequestIT turns it on against a stand-in Admin API
     reconcile-cron: "-"
+  credentials:
+    expiry:
+      # ticket 131: off in tests; CredentialExpiryJobIT calls the job directly
+      cron: "-"
   partner-routes:
     status-consumer:
       # Off in tests: a cached context would compete for the topic; PartnerRouteApiIT switches it on.

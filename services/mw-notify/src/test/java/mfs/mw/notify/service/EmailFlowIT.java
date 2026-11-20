@@ -178,6 +178,26 @@ class EmailFlowIT {
   }
 
   @Test
+  void theCredentialExpiryOpsEmailOfMwAdminApiIsSeededInBothLocalesAndRendered() throws Exception {
+    assertThat(jdbc.queryForObject(
+        "select count(*) from template where code = 'OPS_CREDENTIAL_EXPIRING' and channel = 'EMAIL' and locale in ('bn', 'en')",
+        Integer.class)).isEqualTo(2);
+    String id = id();
+    notifications.accept(new NotificationRequest(1, id, null, "corr-" + id,
+        new NotificationRequest.Recipient(null, "ops@bits.example", null, null), "OPS_CREDENTIAL_EXPIRING", "en",
+        Map.of("partnerId", "ocs", "credential", "ocs/ocs-mtls", "type", "CLIENT_CERT", "kid", "ocs-mtls-v2",
+            "notAfter", "2026-11-27T06:00:00Z", "daysLeft", "6", "threshold", "7"),
+        List.of(Channel.EMAIL), Priority.INFO, null, null));
+
+    dispatcher.dispatchDue();
+
+    MimeMessage[] received = MAIL.getReceivedMessages();
+    assertThat(received).hasSize(1);
+    assertThat(received[0].getSubject()).isEqualTo("Bits: partner credential ocs/ocs-mtls expires in 6 days");
+    assertThat(parts(received[0]).get("text/plain")).contains("ocs-mtls-v2").contains("2026-11-27T06:00:00Z");
+  }
+
+  @Test
   void oneRequestForSmsAndEmailSendsBothAndItsRepeatNeither() throws Exception {
     String id = id();
     NotificationRequest r = request(id, "01711000001", "customer01@example.test", List.of(Channel.SMS, Channel.EMAIL));

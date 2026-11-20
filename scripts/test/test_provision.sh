@@ -261,6 +261,24 @@ test_pki_services_may_issue_from_their_own_role_only() {
   return 0
 }
 
+test_mw_admin_api_may_write_but_never_read_the_adapters_partner_secrets() {
+  provision_fixture
+  assert_ok run_provision
+  local p=.policy-mw-admin-api a
+  grep -q 'path "secret/data/mw-admin-api/staged-credentials/\*" { capabilities = \["create", "update", "read"\] }' $p \
+    || fail "mw-admin-api has no credential staging area: $(cat $p)"
+  grep -q 'path "secret/metadata/mw-admin-api/staged-credentials/\*" { capabilities = \["delete"\] }' $p \
+    || fail "mw-admin-api cannot drop a staged credential"
+  for a in mw-adapter-telco mw-adapter-billpay mw-adapter-bank; do
+    grep -q "path \"secret/data/$a/\*\" { capabilities = \[\"create\", \"update\", \"patch\"\] }" $p \
+      || fail "mw-admin-api cannot write $a's partner secrets: $(cat $p)"
+  done
+  grep 'mw-adapter-' $p | grep -q read && fail "mw-admin-api may read an adapter's secrets"
+  grep -q 'secret/data/mw-adapter-telco"' $p && fail "mw-admin-api may write an adapter's own service secret"
+  grep -q 'mw-adapter\|staged-credentials' .policy-mw-orchestrator && fail "another service got the credential rules"
+  return 0
+}
+
 test_a_second_run_keeps_generated_secrets_and_resyncs_env_ones() {
   provision_fixture
   assert_ok run_provision

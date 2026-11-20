@@ -61,5 +61,10 @@ public final class ErrorCodes {
    */
   public static final String VAL_ROUTE_INVALID = "MW-VAL-041";
 
+  // --- partner credentials (ticket 131) ---
+
+  /** The credential store (Vault) is unreachable, refused a write or is not enabled: 503, retryable. */
+  public static final String SYS_CREDENTIAL_STORE_UNAVAILABLE = "MW-SYS-043";
+
   private ErrorCodes() {}
 }
