@@ -8,6 +8,8 @@ export default [
       const up = S.record(await MW.portal.upload('org-maker01', 'msisdn,amount,reference\n01711000004,1.00,SPQ-' + MW.unique() + '\n'));
       S.status(201);
       const id = up.body.batchId;
+      S.record(await MW.portal.submit('org-maker01', up.body.batchId));
+      S.status(200);
       S.record(await MW.portal.approve('org-checker01', id));
       const done = await MW.poll(() => MW.portal.get('org-checker01', id), r => r.body && r.body.status === 'COMPLETED', 120000, 1000);
       S.eq('within 2 minutes the batch is COMPLETED', done.body.status, 'COMPLETED');
