@@ -179,3 +179,4 @@
 137-frs-e2e-completion                      104-129(flows)    open
 138-frs-acceptance-gate                     137               open
 # --- M13 gate: FRS 10.4 acceptance criteria 1-7
+# --- M9 review fix A merged (2026-11-20, fix/m9-review-a eb265a20, 37 files +509 −40): aggregator bare 404 -> UNKNOWN, billMonth sent, checkout refund kept PENDING + duplicate guard, full reversal refused after a live refund (MW-VAL-021), dry-run OAuth2 dummy secret (8 adapter copies; interop synced at merge). Open: merchant NOTIFY retry/DLQ, linked-account owner binding + AVL rate limit (user decision), AVL check in W2B preview, 7 Lows.
