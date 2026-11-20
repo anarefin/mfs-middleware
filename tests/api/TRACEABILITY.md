@@ -164,9 +164,9 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 49 | [billpay] a FIXED biller refuses an amount other than the bill the app fetched before any hold | 1 | BILL_PAY app failure |
 | 49 | [billpay] a MINIMUM biller refuses an amount below its minimum before any hold | 1 | BILL_PAY app failure |
 | 49 | [billpay] an OPEN biller refuses an amount below its range before any hold | 1 | BILL_PAY app failure |
-| 50 | [billpay] every bill aggregator answers a seeded bill in its own wire format | - | |
-| 50 | [billpay] a bill the aggregator holds as paid is a mapped aggregator error | 1 | BILL_PAY app failure |
-| 50 | [billpay] a bill paid through sslcommerz completes and is then fetched as paid | 1 | BILL_PAY app success |
+| 51 | [billpay] every bill aggregator answers a seeded bill in its own wire format | - | |
+| 51 | [billpay] a bill the aggregator holds as paid is a mapped aggregator error | 1 | BILL_PAY app failure |
+| 51 | [billpay] a bill paid through sslcommerz completes and is then fetched as paid | 1 | BILL_PAY app success |
 | 01 | [p2p] a P2P completes and moves the money once | 1 | P2P app success |
 | 01 | [p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves | 1 | P2P app failure |
 | 01 | [p2p] a core rejection (over per-txn limit) moves no money | 1 | P2P app failure |

@@ -440,7 +440,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.
 - Schema `txn` (role `orchestrator_rw`): `transaction`, `saga_step`, `saga_timer`, `idempotency`
   (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`, `wallet_txn`, `routing_rule`, `msisdn_prefix`,
-  `mnp_override`, `maintenance_message`, `biller_rule`); migrations V1..V17 (V17 `biller_rule`, ticket 113c; V14 routing tables and the prefix and partner
+  `mnp_override`, `maintenance_message`, `biller_rule`); migrations V1..V18 (V18 one BILL_PAY routing rule per dev catalogue biller, primary and fallback aggregator, ticket 114; V17 `biller_rule`, ticket 113c; V14 routing tables and the prefix and partner
   seeds, ticket 98; V12 `wallet_txn`,
   V13 = Java migration `repository/WalletPartyMigration` filling it for older rows, ADR D25, `WalletPartyMigrationIT`;
   V11 drops `transaction.encrypted_pin`, ticket 72; V6 `reversal_txn_id`, V7 drops
