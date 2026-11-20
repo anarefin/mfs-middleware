@@ -169,7 +169,7 @@
 129-portal-bulk-sp                          95,116            split (129-split-decisions.md, 1 h cap)
 129a-bulk-xlsx-upload                       95,116            done     75m      18 files +1013 −114    a1acfbd1,fba3ae6b  (poi-ooxml 6.0.0; bounded zip/shared strings/number reader; path stays /bulk/batches)
 129b-bulk-preview                           129a              done     25m      48 files +1137 −236    dd3083e3,e2de20a5 (merge e7d1d038; portal-api V7; PREVIEW expires 72 h; MW-VAL-036/037; Newman 21/22/23/90 submit after upload, not run live)
-129c-bulk-balance-retry                     129b              open   (check orchestrator replay of a FAILED idempotency key before retry; a row must never pay twice)
+129c-bulk-balance-retry                     129b              done     31m      40 files +1623 −63     bc7f1ff3,b577771c (merge 98290bf7; orchestrator replays FAILED for a reused key -> per-attempt key bulk-<batch>-<line>-a<n> only after proof nothing posted; BLOCKED_FUNDS; core balance-clients: mw-portal-api, ORG wallets only (contract change per ticket "via core REST", like report-clients); portal-org.v1 1.1.0. Open: retry round not balance-checked, pause/resume of APPROVED skips the dispatch check, BLOCKED_FUNDS never expires; test_chaos.sh stop-load test fails on clean upay-main)
 129d-sp-portal                              129a              open
 129e-bulk-suite                             129b,129c,129d    open   (Newman 65)
 130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f
