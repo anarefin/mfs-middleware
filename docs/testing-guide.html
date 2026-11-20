@@ -744,6 +744,22 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
     </table></div>
   </div>
 
+  <div class="case" id="c3-8a">
+    <h3><span class="id">3.8a</span>Inbound remittance (partner UCB IMT)</h3>
+    <ol>
+      <li><span class="ui">Simulators &amp; faults</span> → <span class="ui">Send remittance (partner ucb-imt)</span>: beneficiary <code>01711000001</code>, <span class="ui">Look up beneficiary</span>.</li>
+      <li>Expect: the masked name and number only (<code>R********** · 0171****001 · can receive</code>).</li>
+      <li>Amount <code>250</code>, <span class="ui">Send remittance</span>. Expect: <code>CREDITED</code>, wallet <code>+Tk 250.00</code>, <code>SETTLEMENT_UCB_IMT</code> <code>-Tk 250.00</code>.</li>
+    </ol>
+    <h4>Variants</h4>
+    <div class="table-wrap"><table>
+      <tr><th>Change</th><th>Expect</th></tr>
+      <tr><td>amount <code>200000.01</code></td><td><code>REJECTED</code> (core limit 2,00,000 Tk per remittance), nothing credited</td></tr>
+      <tr><td>beneficiary <code>01799999990</code>, look up</td><td><code>lookup refused: MW-VAL-003</code> (no customer wallet)</td></tr>
+      <tr><td>beneficiary <code>01811000001</code> (an agent), send</td><td><code>REJECTED</code>: a remittance credits only a customer wallet</td></tr>
+    </table></div>
+  </div>
+
   <div class="case" id="c3-9">
     <h3><span class="id">3.9</span>Transaction status</h3>
     <p>Block 3: the <span class="ui">txnId</span> of the last submit is filled in. Press <span class="ui">Status</span>:
