@@ -11,6 +11,8 @@ import mfs.mw.adapter.remit.exception.ErrorCodes;
 import mfs.mw.adapter.remit.exception.MwException;
 import mfs.mw.adapter.remit.partner.InboundCall;
 import mfs.mw.adapter.remit.partner.InboundResult;
+import mfs.mw.adapter.remit.util.MaskingPolicy;
+import mfs.mw.adapter.remit.util.SensitiveType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -75,7 +77,8 @@ public class BeneficiaryLookupService {
         .addKeyValue("partnerId", call.partnerId())
         .addKeyValue("eligible", eligible)
         .log("beneficiary lookup answered");
-    return new BeneficiaryLookupResult(maskName(a.holderName()), eligible);
+    return new BeneficiaryLookupResult(
+        maskName(a.holderName()), MaskingPolicy.mask(SensitiveType.MSISDN, msisdn), eligible);
   }
 
   /** The first initial, then one {@code *} per further character: "Rahim Uddin" -> "R**********". */

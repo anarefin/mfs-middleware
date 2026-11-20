@@ -66,6 +66,7 @@ class BeneficiaryLookupServiceTest {
     BeneficiaryLookupResult r = service.lookup(call("ucb-imt"));
 
     assertThat(r.maskedName()).isEqualTo("R**********");
+    assertThat(r.maskedMsisdn()).isEqualTo("0171****001");
     assertThat(r.eligible()).isTrue();
     assertThat(r.toString()).doesNotContain("Rahim").doesNotContain("Uddin").doesNotContain("01711000001");
   }

@@ -72,6 +72,12 @@ public class SecurityConfig {
                     .access(caller(props, FACTORS_CALLER))
                     .requestMatchers(HttpMethod.GET, "/core/v1/reports/emoney-total")
                     .access(reportCaller(props))
+                    .requestMatchers(HttpMethod.GET, "/core/v1/accounts/*")
+                    .access((auth, ctx) -> new AuthorizationDecision(
+                        auth.get() != null
+                            && auth.get().getPrincipal() instanceof Jwt jwt
+                            && (props.allowedClients().contains(jwt.getClaimAsString("azp"))
+                                || props.accountClients().contains(jwt.getClaimAsString("azp")))))
                     .requestMatchers("/core/**")
                     .access(
                         (auth, ctx) ->

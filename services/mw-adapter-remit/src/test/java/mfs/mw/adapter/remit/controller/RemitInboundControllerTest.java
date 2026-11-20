@@ -113,13 +113,14 @@ class RemitInboundControllerTest {
 
   @Test
   void aLookupIs200WithTheMaskedNameAndTheSignedRequestReachesTheService() {
-    when(lookups.lookup(any())).thenReturn(new BeneficiaryLookupResult("R**********", true));
+    when(lookups.lookup(any())).thenReturn(new BeneficiaryLookupResult("R**********", "0171****001", true));
 
     var res = mvc.post().uri(LOOKUP).header("X-Partner-Id", "ucb-imt").contentType(MediaType.APPLICATION_JSON)
         .content(LOOKUP_BODY).exchange();
 
     assertThat(res).hasStatus(200);
     assertThat(res).bodyJson().extractingPath("maskedName").isEqualTo("R**********");
+    assertThat(res).bodyJson().extractingPath("maskedMsisdn").isEqualTo("0171****001");
     assertThat(res).bodyJson().extractingPath("eligible").isEqualTo(true);
     ArgumentCaptor<InboundCall> call = ArgumentCaptor.forClass(InboundCall.class);
     verify(lookups).lookup(call.capture());

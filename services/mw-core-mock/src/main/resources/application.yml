@@ -180,6 +180,9 @@ mw:
     # Clients that may read only GET /core/v1/reports/emoney-total (ticket 127c: mw-recon's trust position job),
     # never another /core/** operation; not part of allowed-clients on purpose.
     report-clients: mw-recon
+    # Clients that may read only GET /core/v1/accounts/{msisdn} (ticket 119c: mw-adapter-remit's beneficiary
+    # lookup), never another /core/** operation; not part of allowed-clients on purpose.
+    account-clients: mw-adapter-remit
   coremock:
     # Test-only wallet seed API (ticket 57, WalletSeedController; mw-seeder): off unless the stack sets it.
     seed-api:

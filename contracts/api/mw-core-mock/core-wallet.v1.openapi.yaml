@@ -70,6 +70,9 @@ paths:
     get:
       operationId: getAccount
       summary: "WAL-01: account info, type, status, KYC level and holder name (wallet id or MSISDN)"
+      description: >-
+        Besides the allowed clients, the account readers (`mw.internal-auth.account-clients`: mw-adapter-remit's
+        beneficiary lookup, ticket 119c) may call this read and nothing else of `/core/**` (`403 MW-AUTH-002`).
       responses:
         "200":
           description: The account
