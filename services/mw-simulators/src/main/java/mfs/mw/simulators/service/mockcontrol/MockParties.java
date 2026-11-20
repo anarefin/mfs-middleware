@@ -42,7 +42,11 @@ public final class MockParties {
 
   public static final List<MockParty> ALL =
       List.of(
-          new MockParty("ocs", "prepaid top-up OCS", List.of("topup", "status", "reverse"), List.of("msisdn", "txnRef")),
+          new MockParty("ocs", "prepaid top-up OCS (legacy single profile)", List.of("topup", "status", "reverse"), List.of("msisdn", "txnRef")),
+          new MockParty("ocs-gp", "Grameenphone OCS", List.of("topup", "inquiry", "postpaid", "status", "reverse"), List.of("msisdn", "txnRef")),
+          new MockParty("ocs-robi", "Robi OCS", List.of("topup", "inquiry", "postpaid", "status", "reverse"), List.of("msisdn", "txnRef")),
+          new MockParty("ocs-teletalk", "Teletalk OCS", List.of("topup", "inquiry", "postpaid", "status", "reverse"), List.of("msisdn", "txnRef")),
+          new MockParty("ocs-bl", "Banglalink OCS", List.of("topup", "inquiry", "postpaid", "status", "reverse"), List.of("msisdn", "txnRef")),
           new MockParty(
               "billagg",
               "utility bill aggregator (REST and SOAP front ends)",

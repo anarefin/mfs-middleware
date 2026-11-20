@@ -265,7 +265,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-05 | ticket 125 | mock side done (ticket 123): mw-simulators party `aml` answers each file of `aml/in` with ALERT / HOLD / BLOCK lines in `aml/out` (rules `seed/v1/aml/rules.json`, draft format `contracts/files/aml/README.md`; `AmlResponderTest`, `SftpMocksIT`, API folder 44); the feed and response handling in 125 |
 | EXT-06 | done | trust bank mock (ticket 123) and the pull (ticket 126): `mw-recon` reads MT940 and MT942 from `trustbank/out` (sshj, Prowide) and classifies them (`Mt940ParserTest`, `ReconMatchingIT`, folder 60) |
 | EXT-07 | ticket 124 | EC NID mock |
-| EXT-08 | ticket 112 | one OCS simulator built; four operator profiles in 112 |
+| EXT-08 | ticket 112 | one OCS simulator built; four operator profiles landed in 112a (`gp-ocs`, `robi-ocs`, `teletalk-ocs`, `bl-ocs`); FL-03 and UC-08 stay open |
 | EXT-09 | ticket 114 | utility aggregator simulator (billagg) built; stateful bills and callbacks in 114 |
 | EXT-10 | ticket 114 | four bill aggregator profiles |
 | EXT-11 | ticket 115 | merchant SOAP |

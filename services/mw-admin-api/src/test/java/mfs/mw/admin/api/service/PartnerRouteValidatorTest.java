@@ -43,9 +43,9 @@ class PartnerRouteValidatorTest {
     return validator.problems("acme", yaml, MAPPINGS, List.of("api.acme.example"));
   }
 
-  /** The dev seeds (billagg with its SOAP branches for the SOAP billers, ocs, c2wbank) pass as they are. */
+  /** The dev seeds (billagg with its SOAP branches for the SOAP billers, ocs and the operator OCS profiles, c2wbank) pass as they are. */
   @ParameterizedTest
-  @ValueSource(strings = {"billagg", "ocs", "c2wbank"})
+  @ValueSource(strings = {"billagg", "ocs", "gp-ocs", "robi-ocs", "teletalk-ocs", "bl-ocs", "c2wbank"})
   void theDevSeedsHaveNoProblems(String id) throws Exception {
     try (java.io.InputStream in = getClass().getResourceAsStream("/partner-seeds/dev/" + id + ".json")) {
       tools.jackson.databind.JsonNode config = JsonMapper.builder().build().readTree(in).get("config");

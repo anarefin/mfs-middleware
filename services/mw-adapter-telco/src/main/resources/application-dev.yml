@@ -8,8 +8,8 @@ mw:
     dry-run:
       base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
     instances:
-      # OCS REST/JSON (wire format: mw-simulators OCS), a partner route as config (ADR D28). The
-      # simulator is the default target; real MNO endpoints come from config-changed records.
+      # Legacy single OCS (ticket 112a): the channel operator ids still alias here. The operator
+      # profiles are gp-ocs, robi-ocs, teletalk-ocs and bl-ocs. Real MNO endpoints replace a record.
       ocs:
         family: telco
         base-url: ${OCS_BASE_URL:http://mw-simulators:8080}
@@ -98,4 +98,381 @@ mw:
                     : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
             : status = 404 and body.status = "NOT_FOUND"
               ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+
+      # Operator OCS profiles (ticket 112a). One auth scheme each, on the route: gp api-key, robi
+      # hmac-sha256, teletalk oauth2-cc, banglalink basic. config.auth is the callback verifier and
+      # only names none, api-key or hmac-sha256, so teletalk and banglalink stay none there.
+      # `ocs` above remains the legacy alias target of gp/robi/banglalink/teletalk.
+      gp-ocs:
+        family: telco
+        base-url: ${OCS_BASE_URL:http://mw-simulators:8080}
+        allowed-hosts: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
+        connect-timeout-ms: 3000
+        timeout-ms: 20000
+        read-timeout-ms: 22000
+        inquiry-retries: 1
+        auth:
+          scheme: api-key
+          credentials-ref: api-key
+        sensitive-fields:
+          subscriber: MSISDN
+        ambiguous-codes: ["GP9876"]
+        error-map:
+          GP1001: { suffix: SUBSCRIBER_BARRED, retryable: false }
+          GP1404: { suffix: BILL_UNKNOWN, retryable: false }
+          GP4091: { suffix: NOT_REVERSIBLE, retryable: false }
+        route: |
+          - route:
+              from:
+                uri: direct:partner-gp-ocs
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'PAY' && ${header.mwPartnerCode} == 'POSTPAID'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.postpaid.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-gp/v1/billpay&auth=apikey&secretField=api-key&authHeader=X-GP-Api-Key"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422"
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-gp/v1/recharge&auth=apikey&secretField=api-key&authHeader=X-GP-Api-Key"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422"
+                        - simple: "${header.mwOperation} == 'INQUIRY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=INQUIRY.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-gp/v1/bills&auth=apikey&secretField=api-key&authHeader=X-GP-Api-Key"
+                            - to: "kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=422"
+                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                          steps:
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=GET&path=/ocs-gp/v1/recharge/{reference}&auth=apikey&secretField=api-key&authHeader=X-GP-Api-Key"
+                            - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404"
+                        - simple: "${header.mwOperation} == 'REVERSE'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=REVERSE.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-gp/v1/recharge/{reference}/reverse&auth=apikey&secretField=api-key&authHeader=X-GP-Api-Key"
+                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=404,422"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          "[PAY.request]": |
+            {"clientTxnId": reference, "subscriber": creditParty.id, "rechargeAmount": amount.major, "connection": "PREPAID"}
+          "[PAY.postpaid.request]": |
+            {"clientTxnId": reference, "subscriber": creditParty.id, "rechargeAmount": amount.major, "connection": "POSTPAID"}
+          "[PAY.response]": |
+            status = 200
+              ? (body.status = "SUCCESS" and $type(body.gpRef) = "string" and body.gpRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.gpRef, "code": body.code}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 422 or status = 400) and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : status = 400
+              ? {"outcome": "FAILED", "code": "HTTP_400", "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[INQUIRY.request]": |
+            {"subscriber": creditParty.id}
+          "[INQUIRY.response]": |
+            status = 200
+              ? (body.status = "DUE" and $type(body.billRef) = "string" and $type(body.outstanding) = "string" and $type(body.minimum) = "string"
+                  ? {"outcome": "SUCCESS", "partnerRef": body.billRef, "code": body.code, "attributes": {"outstanding": body.outstanding, "minimum": body.minimum}}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 422 and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[STATUS_QUERY.response]": |
+            status = 200
+              ? (body.status = "SUCCESS" and $type(body.gpRef) = "string" and body.gpRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.gpRef, "code": body.code}
+                  : body.status = "FAILED" and $type(body.code) = "string" and body.code != ""
+                    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 404 and body.status = "NOT_FOUND"
+              ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[REVERSE.request]": |
+            {"reverseTxnId": reversalReference}
+          "[REVERSE.response]": |
+            status = 200
+              ? (body.status = "REVERSED" and $type(body.gpRef) = "string" and body.gpRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.gpRef, "code": body.code}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 404 or status = 422) and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+      robi-ocs:
+        family: telco
+        base-url: ${OCS_BASE_URL:http://mw-simulators:8080}
+        allowed-hosts: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
+        connect-timeout-ms: 3000
+        timeout-ms: 20000
+        read-timeout-ms: 22000
+        inquiry-retries: 1
+        auth:
+          scheme: hmac-sha256
+          credentials-ref: hmac-secret
+        sensitive-fields:
+          msisdn: MSISDN
+        ambiguous-codes: ["RB9876"]
+        error-map:
+          RB77: { suffix: BARRED, retryable: false }
+          RB1404: { suffix: BILL_UNKNOWN, retryable: false }
+          RB4091: { suffix: NOT_REVERSIBLE, retryable: false }
+        route: |
+          - route:
+              from:
+                uri: direct:partner-robi-ocs
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'PAY' && ${header.mwPartnerCode} == 'POSTPAID'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.postpaid.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-robi/v1/settle&auth=hmac-sha256&secretField=hmac-secret&keyId=robi-ocs"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400"
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-robi/v1/topup&auth=hmac-sha256&secretField=hmac-secret&keyId=robi-ocs"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400"
+                        - simple: "${header.mwOperation} == 'INQUIRY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=INQUIRY.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-robi/v1/invoice&auth=hmac-sha256&secretField=hmac-secret&keyId=robi-ocs"
+                            - to: "kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=400"
+                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                          steps:
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=GET&path=/ocs-robi/v1/topup/{reference}&auth=hmac-sha256&secretField=hmac-secret&keyId=robi-ocs"
+                            - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404"
+                        - simple: "${header.mwOperation} == 'REVERSE'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=REVERSE.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-robi/v1/topup/{reference}/reverse&auth=hmac-sha256&secretField=hmac-secret&keyId=robi-ocs"
+                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=400,404"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          "[PAY.request]": |
+            {"ref": reference, "msisdn": creditParty.id, "amt": amount.major, "kind": "PRE"}
+          "[PAY.postpaid.request]": |
+            {"ref": reference, "msisdn": creditParty.id, "amt": amount.major, "kind": "POST"}
+          "[PAY.response]": |
+            status = 200
+              ? (body.ok = true and $type(body.robiTxn) = "string" and body.robiTxn != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.robiTxn, "code": body.rc}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 400 and $type(body.rc) = "string" and body.rc != ""
+              ? {"outcome": "FAILED", "code": body.rc, "message": body.text}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[INQUIRY.request]": |
+            {"msisdn": creditParty.id}
+          "[INQUIRY.response]": |
+            status = 200
+              ? (body.ok = true and $type(body.invoice) = "string" and $type(body.due) = "string" and $type(body.minPay) = "string"
+                  ? {"outcome": "SUCCESS", "partnerRef": body.invoice, "code": body.rc, "attributes": {"outstanding": body.due, "minimum": body.minPay}}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 400 and $type(body.rc) = "string" and body.rc != ""
+              ? {"outcome": "FAILED", "code": body.rc, "message": body.text}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[STATUS_QUERY.response]": |
+            status = 200
+              ? (body.ok = true and $type(body.robiTxn) = "string" and body.robiTxn != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.robiTxn, "code": body.rc}
+                  : body.ok = false and $type(body.rc) = "string" and body.rc != ""
+                    ? {"outcome": "FAILED", "code": body.rc, "message": body.text}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 404 and body.ok = false
+              ? {"outcome": "NOT_FOUND", "code": body.rc, "message": body.text}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[REVERSE.request]": |
+            {"reverseRef": reversalReference}
+          "[REVERSE.response]": |
+            status = 200
+              ? (body.ok = true and $type(body.robiTxn) = "string" and body.robiTxn != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.robiTxn, "code": body.rc}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 400 or status = 404) and $type(body.rc) = "string" and body.rc != ""
+              ? {"outcome": "FAILED", "code": body.rc, "message": body.text}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+      teletalk-ocs:
+        family: telco
+        base-url: ${OCS_BASE_URL:http://mw-simulators:8080}
+        allowed-hosts: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
+        connect-timeout-ms: 3000
+        timeout-ms: 20000
+        read-timeout-ms: 22000
+        inquiry-retries: 1
+        auth:
+          scheme: none
+        sensitive-fields:
+          mobile: MSISDN
+        ambiguous-codes: ["TT9876"]
+        error-map:
+          TT09: { suffix: INELIGIBLE, retryable: false }
+          TT1404: { suffix: BILL_UNKNOWN, retryable: false }
+          TT4091: { suffix: NOT_REVERSIBLE, retryable: false }
+        route: |
+          - route:
+              from:
+                uri: direct:partner-teletalk-ocs
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'PAY' && ${header.mwPartnerCode} == 'POSTPAID'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.postpaid.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-teletalk/v1/pay&auth=oauth2-cc&secretField=client-secret&clientId=bits-teletalk&tokenUrl=${OCS_BASE_URL:http://mw-simulators:8080}/ocs-teletalk/oauth/token"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=422"
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-teletalk/v1/recharge&auth=oauth2-cc&secretField=client-secret&clientId=bits-teletalk&tokenUrl=${OCS_BASE_URL:http://mw-simulators:8080}/ocs-teletalk/oauth/token"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=422"
+                        - simple: "${header.mwOperation} == 'INQUIRY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=INQUIRY.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-teletalk/v1/bill&auth=oauth2-cc&secretField=client-secret&clientId=bits-teletalk&tokenUrl=${OCS_BASE_URL:http://mw-simulators:8080}/ocs-teletalk/oauth/token"
+                            - to: "kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=422"
+                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                          steps:
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=GET&path=/ocs-teletalk/v1/recharge/{reference}&auth=oauth2-cc&secretField=client-secret&clientId=bits-teletalk&tokenUrl=${OCS_BASE_URL:http://mw-simulators:8080}/ocs-teletalk/oauth/token"
+                            - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404"
+                        - simple: "${header.mwOperation} == 'REVERSE'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=REVERSE.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-teletalk/v1/recharge/{reference}/reverse&auth=oauth2-cc&secretField=client-secret&clientId=bits-teletalk&tokenUrl=${OCS_BASE_URL:http://mw-simulators:8080}/ocs-teletalk/oauth/token"
+                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=404,422"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          "[PAY.request]": |
+            {"transactionRef": reference, "mobile": creditParty.id, "taka": amount.major, "line": "prepaid"}
+          "[PAY.postpaid.request]": |
+            {"transactionRef": reference, "mobile": creditParty.id, "taka": amount.major, "line": "postpaid"}
+          "[PAY.response]": |
+            status = 200
+              ? (body.accepted = true and $type(body.ttId) = "string" and body.ttId != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.ttId, "code": body.errCode}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 422 and $type(body.errCode) = "string" and body.errCode != ""
+              ? {"outcome": "FAILED", "code": body.errCode, "message": body.errText}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[INQUIRY.request]": |
+            {"mobile": creditParty.id}
+          "[INQUIRY.response]": |
+            status = 200
+              ? (body.accepted = true and $type(body.billId) = "string" and $type(body.outstandingTaka) = "string" and $type(body.minimumTaka) = "string"
+                  ? {"outcome": "SUCCESS", "partnerRef": body.billId, "code": body.errCode, "attributes": {"outstanding": body.outstandingTaka, "minimum": body.minimumTaka}}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 422 and $type(body.errCode) = "string" and body.errCode != ""
+              ? {"outcome": "FAILED", "code": body.errCode, "message": body.errText}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[STATUS_QUERY.response]": |
+            status = 200
+              ? (body.accepted = true and $type(body.ttId) = "string" and body.ttId != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.ttId, "code": body.errCode}
+                  : body.accepted = false and $type(body.errCode) = "string" and body.errCode != ""
+                    ? {"outcome": "FAILED", "code": body.errCode, "message": body.errText}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 404 and body.accepted = false
+              ? {"outcome": "NOT_FOUND", "code": body.errCode, "message": body.errText}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[REVERSE.request]": |
+            {"reversalRef": reversalReference}
+          "[REVERSE.response]": |
+            status = 200
+              ? (body.accepted = true and $type(body.ttId) = "string" and body.ttId != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.ttId, "code": body.errCode}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 404 or status = 422) and $type(body.errCode) = "string" and body.errCode != ""
+              ? {"outcome": "FAILED", "code": body.errCode, "message": body.errText}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+      bl-ocs:
+        family: telco
+        base-url: ${OCS_BASE_URL:http://mw-simulators:8080}
+        allowed-hosts: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
+        connect-timeout-ms: 3000
+        timeout-ms: 20000
+        read-timeout-ms: 22000
+        inquiry-retries: 1
+        auth:
+          scheme: none
+        sensitive-fields:
+          number: MSISDN
+        ambiguous-codes: ["BL9876"]
+        error-map:
+          BL42: { suffix: REJECTED, retryable: false }
+          BL1404: { suffix: BILL_UNKNOWN, retryable: false }
+          BL4091: { suffix: NOT_REVERSIBLE, retryable: false }
+        route: |
+          - route:
+              from:
+                uri: direct:partner-bl-ocs
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'PAY' && ${header.mwPartnerCode} == 'POSTPAID'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.postpaid.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-bl/v1/paybill&auth=basic&userField=basic-user&secretField=basic-password"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=403"
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-bl/v1/reload&auth=basic&userField=basic-user&secretField=basic-password"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=403"
+                        - simple: "${header.mwOperation} == 'INQUIRY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=INQUIRY.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-bl/v1/due&auth=basic&userField=basic-user&secretField=basic-password"
+                            - to: "kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=403"
+                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                          steps:
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=GET&path=/ocs-bl/v1/reload/{reference}&auth=basic&userField=basic-user&secretField=basic-password"
+                            - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404"
+                        - simple: "${header.mwOperation} == 'REVERSE'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=REVERSE.request"
+                            - to: "kamelet:mw-http-call?url=${OCS_BASE_URL:http://mw-simulators:8080}&method=POST&path=/ocs-bl/v1/reload/{reference}/reverse&auth=basic&userField=basic-user&secretField=basic-password"
+                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=403,404"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          "[PAY.request]": |
+            {"id": reference, "number": creditParty.id, "value": amount.major, "prepaid": true}
+          "[PAY.postpaid.request]": |
+            {"id": reference, "number": creditParty.id, "value": amount.major, "prepaid": false}
+          "[PAY.response]": |
+            status = 200
+              ? (body.outcome = "OK" and $type(body.blId) = "string" and body.blId != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.blId, "code": body.faultCode}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 403 and $type(body.faultCode) = "string" and body.faultCode != ""
+              ? {"outcome": "FAILED", "code": body.faultCode, "message": body.faultText}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[INQUIRY.request]": |
+            {"number": creditParty.id}
+          "[INQUIRY.response]": |
+            status = 200
+              ? (body.outcome = "DUE" and $type(body.billId) = "string" and $type(body.dueAmount) = "string" and $type(body.minAmount) = "string"
+                  ? {"outcome": "SUCCESS", "partnerRef": body.billId, "code": body.faultCode, "attributes": {"outstanding": body.dueAmount, "minimum": body.minAmount}}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 403 and $type(body.faultCode) = "string" and body.faultCode != ""
+              ? {"outcome": "FAILED", "code": body.faultCode, "message": body.faultText}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[STATUS_QUERY.response]": |
+            status = 200
+              ? (body.outcome = "OK" and $type(body.blId) = "string" and body.blId != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.blId, "code": body.faultCode}
+                  : body.outcome = "NOK" and $type(body.faultCode) = "string" and body.faultCode != ""
+                    ? {"outcome": "FAILED", "code": body.faultCode, "message": body.faultText}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 404 and body.outcome = "UNKNOWN"
+              ? {"outcome": "NOT_FOUND", "code": body.faultCode, "message": body.faultText}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[REVERSE.request]": |
+            {"reversalId": reversalReference}
+          "[REVERSE.response]": |
+            status = 200
+              ? (body.outcome = "REVERSED" and $type(body.blId) = "string" and body.blId != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.blId, "code": body.faultCode}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 403 or status = 404) and $type(body.faultCode) = "string" and body.faultCode != ""
+              ? {"outcome": "FAILED", "code": body.faultCode, "message": body.faultText}
             : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}

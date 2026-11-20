@@ -5,3 +5,11 @@ mw:
       ocs:
         # WireMock runs on localhost.
         allowed-hosts: mw-simulators,localhost
+      gp-ocs:
+        allowed-hosts: mw-simulators,localhost
+      robi-ocs:
+        allowed-hosts: mw-simulators,localhost
+      teletalk-ocs:
+        allowed-hosts: mw-simulators,localhost
+      bl-ocs:
+        allowed-hosts: mw-simulators,localhost

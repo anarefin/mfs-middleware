@@ -117,4 +117,7 @@ never a success.
 
 `deploy/partner-routes/examples/rest-apikey-biller.yaml` is a whole record: a REST/JSON biller with an
 API key, PAY, STATUS_QUERY and INQUIRY. The billagg dev seed in
-`services/mw-adapter-billpay/src/main/resources/application-dev.yml` is another.
+`services/mw-adapter-billpay/src/main/resources/application-dev.yml` is another. The telco operator
+profiles `gp-ocs`, `robi-ocs`, `teletalk-ocs` and `bl-ocs` in
+`services/mw-adapter-telco/src/main/resources/application-dev.yml` are four more, one auth scheme each
+(api-key, hmac-sha256, oauth2-cc, basic); `ocs` stays the legacy alias of the channel operator ids.

@@ -109,7 +109,7 @@
     (ADR D33, ticket 102; contract <code>contracts/api/mw-simulators/mock-control.v1.openapi.yaml</code>), which overrides them on demand.
     It exists only in the Spring profile <code>mock-control</code> (the dev stack sets it); the test route is <code>/test/mock-control/*</code>.</p>
   <ul>
-    <li><code>GET /mock-control/parties</code>: the parties (<code>ocs</code>, <code>billagg</code>, <code>c2wbank</code>, <code>merchant</code>, <code>smsc</code>, <code>ussdgw</code>, <code>payshield</code>), their operations, scope keys and the behaviours each carries out.</li>
+    <li><code>GET /mock-control/parties</code>: the parties (<code>ocs</code>, <code>ocs-gp</code>, <code>ocs-robi</code>, <code>ocs-teletalk</code>, <code>ocs-bl</code>, <code>billagg</code>, <code>c2wbank</code>, <code>merchant</code>, <code>smsc</code>, <code>ussdgw</code>, <code>payshield</code>), their operations, scope keys and the behaviours each carries out.</li>
     <li><code>POST /mock-control/{party}/scenarios {operation?, behaviour, code?, delayMs?, httpStatus?, key?, nextN?}</code>: SUCCESS, BUSINESS_ERROR, TIMEOUT, DELAY,
       HTTP_5XX, MALFORMED_RESPONSE, CONNECTION_RESET, PARTIAL_SUCCESS, and the callback behaviours DUPLICATE_CALLBACK, LATE_CALLBACK, OUT_OF_ORDER_CALLBACK, NO_CALLBACK.
       Scoped to one key (an MSISDN, account, biller, bill number or transaction id), to the next N calls, or global. <code>GET</code> lists, <code>DELETE</code> clears.</li>
@@ -127,6 +127,10 @@
   <div class="table-wrap"><table>
     <tr><th>Mock party</th><th>Operations</th><th>Scope keys</th><th>Magic values (default)</th><th>PARTIAL_SUCCESS</th></tr>
     <tr><td><code>ocs</code></td><td>topup, status, reverse</td><td>msisdn, txnRef</td><td>MSISDN <code>999</code> 422 <code>2001</code>; amounts <code>.13 .77 .99 .55</code></td><td>200 PARTIAL <code>0002</code></td></tr>
+    <tr><td><code>ocs-gp</code></td><td>topup, inquiry, postpaid, status, reverse</td><td>msisdn, txnRef</td><td>MSISDN <code>999</code> 422 <code>GP1001</code>; seeded postpaid <code>01711000021</code> outstanding <code>450.00</code> minimum <code>50.00</code></td><td>success shape</td></tr>
+    <tr><td><code>ocs-robi</code></td><td>topup, inquiry, postpaid, status, reverse</td><td>msisdn, txnRef</td><td>MSISDN <code>999</code> 400 <code>RB77</code>; seeded postpaid <code>01811000021</code> outstanding <code>320.50</code> minimum <code>20.00</code></td><td>success shape</td></tr>
+    <tr><td><code>ocs-teletalk</code></td><td>topup, inquiry, postpaid, status, reverse</td><td>msisdn, txnRef</td><td>MSISDN <code>999</code> 422 <code>TT09</code>; seeded postpaid <code>01511000021</code> outstanding <code>180.00</code> minimum <code>10.00</code></td><td>success shape</td></tr>
+    <tr><td><code>ocs-bl</code></td><td>topup, inquiry, postpaid, status, reverse</td><td>msisdn, txnRef</td><td>MSISDN <code>999</code> 403 <code>BL42</code>; seeded postpaid <code>01911000021</code> outstanding <code>275.75</code> minimum <code>25.00</code></td><td>success shape</td></tr>
     <tr><td><code>billagg</code></td><td>billers, fetch, pay, status, reverse</td><td>biller, billNumber, txnRef</td><td>bill <code>404</code> 3001, <code>000</code> 3002 (fetch), <code>999</code> 3003 (pay); amounts</td><td>200 PARTIAL <code>010</code></td></tr>
     <tr><td><code>c2wbank</code></td><td>debit, status, reverse</td><td>account, txnRef</td><td>account <code>999</code> FAILED <code>4002</code>; amounts</td><td>callback PARTIAL <code>010</code></td></tr>
     <tr><td><code>merchant</code></td><td>ipn</td><td>ipnId, path</td><td>none (200)</td><td>200</td></tr>

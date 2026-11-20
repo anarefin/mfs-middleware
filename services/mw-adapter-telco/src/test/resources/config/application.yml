@@ -24,6 +24,10 @@ mw:
       # WireMock runs on localhost over http.
       allowed-hosts:
         ocs: mw-simulators,localhost
+        gp-ocs: mw-simulators,localhost
+        robi-ocs: mw-simulators,localhost
+        teletalk-ocs: mw-simulators,localhost
+        bl-ocs: mw-simulators,localhost
         gp: localhost
         # PartnerConfigStartupIT (ticket 38)
         robi: localhost
