@@ -169,6 +169,75 @@ class PayloadScrubTest {
   }
 
   @Test
+  void aStrayLessThanOrAnUnmatchedQuoteDoesNotStopTheScan() {
+    assertThat(PayloadScrub.scrub("text/plain", "a < b <pin>1234</pin>")).doesNotContain("1234");
+    assertThat(PayloadScrub.scrub("application/xml", "<a title=\"x <pin>1234</pin>")).doesNotContain("1234");
+    assertThat(PayloadScrub.scrub("application/xml", "<a b='x>y'><pin>5678</pin></a>")).doesNotContain("5678");
+    assertThat(PayloadScrub.scrub("text/plain", "if (a<b) then <otp>9876</otp>")).doesNotContain("9876");
+  }
+
+  @Test
+  void cdataCommentsAndDeclarationsAreBlankedWhole() {
+    assertThat(PayloadScrub.scrub("application/xml", "<r><![CDATA[<pin>1234</pin>]]></r>")).doesNotContain("1234");
+    assertThat(PayloadScrub.scrub("application/xml", "<r><!-- <pin>2345</pin> --></r>")).doesNotContain("2345");
+    assertThat(PayloadScrub.scrub("application/xml", "<r><!-- unterminated <pin>3456</pin>")).doesNotContain("3456");
+    assertThat(PayloadScrub.scrub("application/xml", "<r><![CDATA[ unterminated 4567")).doesNotContain("4567");
+    assertThat(PayloadScrub.scrub("application/xml", "<!DOCTYPE r [<!ENTITY pin \"5678\">]><r/>")).doesNotContain("5678");
+    assertThat(PayloadScrub.scrub("application/xml", "<?pin 6789?><r/>")).doesNotContain("6789");
+    // an ordinary XML declaration is kept
+    assertThat(PayloadScrub.scrub("application/xml", "<?xml version=\"1.0\"?><r>ok</r>"))
+        .isEqualTo("<?xml version=\"1.0\"?><r>ok</r>");
+  }
+
+  @Test
+  void aMismatchedCloseInsideASecretKeepsBlanking() {
+    assertThat(PayloadScrub.scrub("application/xml", "<pin></x>1234</pin>")).doesNotContain("1234");
+    assertThat(PayloadScrub.scrub("application/xml", "<pin><a></b>2345</a>3456</pin><n>ok</n>"))
+        .doesNotContain("2345", "3456")
+        .contains("<n>ok</n>");
+    assertThat(PayloadScrub.scrub("application/xml", "<ns:pin></pin>4567</ns:pin>")).doesNotContain("4567");
+  }
+
+  @Test
+  void fuzzedXmlNeverShowsTheSecretMarker() {
+    java.util.Random rnd = new java.util.Random(130_3L);
+    String marker = "QZXSECRETVALUE";
+    String[] secrets = {"pin", "ns:pin", "userPin", "pinBlock", "otp", "walletPassword", "cvv2"};
+    String[] mutations = {
+      "<", "\"", "'", ">", "<![CDATA[x]]>", "<!-- c -->", "</zz>", "<a>", "</a>", "<!--", "<![CDATA[", "-->",
+      "]]>", "<?x y?>", "<!DOCTYPE d>", "<b k=\"v>\">", "<c/>", "a<b", "&lt;", "<pin", "<a b='"
+    };
+    for (int run = 0; run < 3000; run++) {
+      String secret = secrets[rnd.nextInt(secrets.length)];
+      java.util.List<String> tokens = new java.util.ArrayList<>();
+      int depth = rnd.nextInt(6);
+      for (int d = 0; d < depth; d++) {
+        tokens.add("<e" + d + ">");
+      }
+      tokens.add("<" + secret + (rnd.nextBoolean() ? " a=\"1\"" : "") + ">");
+      tokens.add(marker);
+      tokens.add("</" + secret + ">");
+      for (int d = depth - 1; d >= 0; d--) {
+        tokens.add("</e" + d + ">");
+      }
+      int count = rnd.nextInt(5);
+      for (int k = 0; k < count; k++) {
+        String mutation = mutations[rnd.nextInt(mutations.length)];
+        int secretOpen = tokens.indexOf(tokens.stream().filter(t -> t.startsWith("<" + secret)).findFirst().orElseThrow());
+        // A lone comment / CDATA opener before the secret element turns its opening tag into comment
+        // text: the marker is then no longer in a secret element (by XML), so it goes after it only.
+        int at = mutation.equals("<!--") || mutation.equals("<![CDATA[")
+            ? secretOpen + 1 + rnd.nextInt(tokens.size() - secretOpen)
+            : rnd.nextInt(tokens.size() + 1);
+        tokens.add(at, mutation);
+      }
+      String in = String.join(rnd.nextBoolean() ? "" : " ", tokens);
+      String out = PayloadScrub.scrub(rnd.nextBoolean() ? "application/xml" : "text/plain", in);
+      assertThat(out).as("input %s", in).doesNotContain(marker);
+    }
+  }
+
+  @Test
   void nullAndEmptyStayAsTheyAre() {
     assertThat(PayloadScrub.scrub("application/json", null)).isNull();
     assertThat(PayloadScrub.scrub("text/plain", "")).isEmpty();
