@@ -266,6 +266,9 @@ Checkout (ticket 31, spec 8.2/9.3, contract `contracts/api/mw-checkout/checkout.
 - `checkout-v1-refunds` (`POST /checkout/v1/payments/:paymentId/refunds`, ticket 116): a merchant refund, as
   `checkout-v1-sessions` (Digest, `x-nonce` signed) with a 4 KiB body cap, read timeout 30 s, 120 / 60 s per consumer;
   `checkout-v1-refunds-get` (`GET` on the same path): the payment's refunds, as `checkout-v1-payments-get`.
+- `portal-sp-v1` (`GET /portal/sp/v1/*`, ticket 129d): the SP portal, read-only; as `portal-org-v1`
+  (`openid-connect` bearer-only on realm `portals`, 60 / 60 s per token subject, group `portal-sp-v1`) with
+  `GET` only and a 1 KiB body cap; mw-portal-api checks the token again and needs role `sp-viewer`.
 - `checkout-pay` (`GET|POST /checkout/pay/v1/*`, the hosted page in the browser): no auth plugin
   (the pay token in the path is the bearer), `client-control` 8 KiB (the otp and confirm bodies are
   schema-checked by mw-checkout, not here), 300 / 60 s per

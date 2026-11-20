@@ -1,0 +1,48 @@
+{
+  "name": "portal-sp-v1",
+  "desc": "SP portal API v1 (ticket 129d, FRS UC-20, CH-POR-04/05): read-only, portals realm bearer JWT checked via JWKS (mw-portal-api checks it again and needs role sp-viewer; the org is the token's), no request body, quota per token subject in Redis",
+  "uri": "/portal/sp/v1/*",
+  "methods": ["GET"],
+  "plugins": {
+    "client-control": {
+      "max_body_size": 1024
+    },
+    "openid-connect": {
+      "discovery": "http://keycloak:8080/realms/portals/.well-known/openid-configuration",
+      "client_id": "mw-portal",
+      "bearer_only": true,
+      "use_jwks": true,
+      "realm": "portals",
+      "iat_slack": 10,
+      "set_access_token_header": false,
+      "set_userinfo_header": false,
+      "set_id_token_header": false
+    },
+    "serverless-pre-function": {
+      "phase": "access",
+      "functions": ["@lua:lua/consumer-from-jwt.lua"]
+    },
+    "limit-count": {
+      "count": 60,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "mw_consumer",
+      "group": "portal-sp-v1",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "redis",
+      "redis_port": 6379,
+      "redis_password": "$env://REDIS_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 30, "read": 60 },
+    "nodes": { "mw-portal-api:8080": 1 }
+  }
+}

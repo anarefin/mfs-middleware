@@ -12,12 +12,12 @@ import org.springframework.validation.annotation.Validated;
 
 /**
  * {@code mw.portal-api.*}: bulk file limits (spec 9.4), the Keycloak realm whose tokens are
- * accepted and the realm roles of maker and checker (18.2).
+ * accepted, the realm roles of maker, checker and SP viewer (18.2) and the SP report bounds.
  */
 @Validated
 @ConfigurationProperties("mw.portal-api")
 public record PortalApiProperties(
-    @Valid @NotNull Bulk bulk, @Valid @NotNull Jwt jwt, @Valid @NotNull Roles roles) {
+    @Valid @NotNull Bulk bulk, @Valid @NotNull Jwt jwt, @Valid @NotNull Roles roles, @Valid @NotNull Sp sp) {
 
   /**
    * @param maxRows most data rows in one file (MVP: 10,000; spec 9.4 says up to 100,000, TBC)
@@ -85,6 +85,17 @@ public record PortalApiProperties(
    */
   public record Jwt(@NotBlank String jwkSetUri, @NotBlank String realmPath) {}
 
-  /** Realm roles: the maker uploads, the checker approves or rejects. */
-  public record Roles(@NotBlank String maker, @NotBlank String checker) {}
+  /**
+   * Realm roles: the maker uploads, the checker approves or rejects; the SP viewer reads the SP
+   * portal (ticket 129d).
+   */
+  public record Roles(@NotBlank String maker, @NotBlank String checker, @NotBlank String spViewer) {}
+
+  /**
+   * The SP portal (ticket 129d).
+   *
+   * @param reportMaxRows most transactions in one CSV report (more: 400, narrow the range)
+   * @param reportMaxRange longest [from, to) of one report
+   */
+  public record Sp(@Positive int reportMaxRows, @NotNull Duration reportMaxRange) {}
 }

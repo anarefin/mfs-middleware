@@ -26,6 +26,7 @@ export const PORTAL_PERSONAS: readonly PortalPersona[] = [
   { user: "org-makerchecker01", name: "Habibur Rahman", label: "Habibur Rahman (org-makerchecker01, ORG001 maker and checker)" },
   { user: "org-checker02", name: "Sadia Afrin", label: "Sadia Afrin (org-checker02, ORG002 checker: other org; SP query as payee)" },
   { user: "sp-viewer01", name: "Anisur Rahman", label: "Anisur Rahman (sp-viewer01, no organisation: refused, 403)" },
+  { user: "sp-viewer02", name: "Nasrin Akter", label: "Nasrin Akter (sp-viewer02, ORG002 SP viewer: SP portal)" },
 ];
 
 /** core-mock's other named fixture wallet (no app user of the console). */

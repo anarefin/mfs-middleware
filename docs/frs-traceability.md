@@ -226,7 +226,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-POR-02 | done | bulk maker-checker in mw-portal-api |
 | CH-POR-03 | ticket 129 | async execution, throttle, per-row status, result file built; 129c done: retry of FAILED rows, maker-checker, a new attempt key only after the failed attempt is proven to have posted nothing (`RetryFailedRowsIT`) |
 | CH-POR-04 | ticket 129 | 129c done: org wallet balance read from the core at approval and at dispatch start, short -> BLOCKED_FUNDS with the shortfall, nothing sent (`BalanceCheckIT`) |
-| CH-POR-05 | ticket 129 | SP transaction query built; settlements, refunds, reports in 129 |
+| CH-POR-05 | ticket 129 | 129d done: SP portal `/portal/sp/v1` (role `sp-viewer`, scoped by the token's org only): transactions and the CSV report (`SpScopeTest`); settlements and refunds: slice 129f |
 | CH-POR-06 | done | OAuth2 on the Keycloak `portals` realm, maker and checker roles per organisation |
 
 ## 5. Flows (FRS 5.4)

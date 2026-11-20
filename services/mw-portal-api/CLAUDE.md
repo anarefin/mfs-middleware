@@ -34,6 +34,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   (retryable). The view (`dto/OrgTxn`) drops correlation id, channel, initiator and partner calls;
   customer data arrives masked. Same edge route `/portal/org/v1/*`. `OrgTransactionApiIT` (stub
   orchestrator).
+- SP portal (ticket 129d, FRS UC-20, CH-POR-05; `controller/SpPortalController` -> `service/SpPortalService`
+  -> `client/OrchestratorQueryClient`), behind the APISIX route `/portal/sp/v1/*`
+  (`deploy/apisix/routes/portal-sp-v1.json`, GET only, as the org route otherwise), contract
+  `api/mw-portal-api/portal-sp.v1.openapi.yaml`. Realm role `sp-viewer` only
+  (`mw.portal-api.roles.sp-viewer`; else `403 MW-AUTH-002`), read-only. Every read goes to the orchestrator
+  with the **token's** `orgId` and only the filters named in the service: an `orgId` (or any unknown)
+  query parameter changes nothing (`SpScopeTest`). `GET /portal/sp/v1/transactions` (`status`, `[from, to)`,
+  limit 1..200, offset) and `/transactions/{txnId}` (another org's or unknown `404 MW-VAL-003`; state
+  changes only) are the org query's views. `GET /portal/sp/v1/reports?from&to[&status]` (`mapper/SpReportFile`,
+  `text/csv` attachment `sp-report-<from>-<to>.csv`): the org's transactions of `[from, to)`, read 200 a
+  page; range at most `mw.portal-api.sp.report-max-range` (31 d, else `400 MW-VAL-001`), at most
+  `report-max-rows` (10,000, else `400 MW-VAL-040`); party ids as the orchestrator masked them, amounts in
+  taka, a cell starting `= + - @`, tab or CR prefixed with `'` (CSV injection). Settlements (mw-recon) and
+  refunds (mw-checkout) are not served yet: slice 129f in the ticket's split decisions. Dev user
+  `sp-viewer02` (ORG002) in `portals-realm.json`; the test console's `/sp` page.
 - Auth (`config/SecurityConfig`, `security/`): bearer JWT of realm `portals` on `/portal/**`, verified
   again here (JWKS `mw.portal-api.jwt.jwk-set-uri`, issuer must end with `/realms/portals`). The
   org is the `orgId` claim (user attribute + `mw-portal` client mapper in `portals-realm.json`);
@@ -175,6 +190,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
 
 ## Contracts owned
 
+- `api/mw-portal-api/portal-sp.v1.openapi.yaml` (SP portal API v1, ticket 129d; GET only, no JSON body).
 - `api/mw-portal-api/portal-org.v1.openapi.yaml` (org portal API v1). APISIX checks no body (review
   A6); the edge answers 401/413/429 itself (`deploy/apisix/README.md`). The only JSON body, reject
   `{reason}`, is checked here before binding against

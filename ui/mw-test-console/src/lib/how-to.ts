@@ -5,7 +5,7 @@
 // with data-testid="scope"). Values are applied in their order (App flows: category, user, then the
 // type, as each one resets the fields after it). Pure data: how-to.test.ts checks every page and every fill target.
 
-export const PAGE_KEYS = ["home", "app", "auth", "ussd", "simulators", "files", "inbox", "checkout", "bulk", "transactions", "preferences", "credentials", "seed-data"] as const;
+export const PAGE_KEYS = ["home", "app", "auth", "ussd", "simulators", "files", "inbox", "checkout", "bulk", "sp", "transactions", "preferences", "credentials", "seed-data"] as const;
 export type PageKey = (typeof PAGE_KEYS)[number];
 
 export type Fill = { label: string; values: Record<string, string> };
@@ -33,6 +33,7 @@ export const FILL_FIELDS: Record<PageKey, readonly string[]> = {
   inbox: ["msisdn", "email"],
   checkout: ["merchant", "amount", "locale", "wallet", "pin"],
   bulk: ["user", "rows", "taka", "csv", "batchId", "reason"],
+  sp: ["user", "status", "from", "to", "txnId"],
   transactions: ["txnId", "msisdn", "status", "txnType"],
   preferences: ["user", "billerCode", "accountNo", "nickname", "msisdn", "label", "id"],
   credentials: [],
@@ -249,6 +250,28 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       { label: "Checker org-checker01", values: { user: "org-checker01" } },
       { label: "Broken CSV", values: { user: "org-maker01", csv: "phone,amt\n123,abc" } },
       { label: "SP query as org-checker02", values: { user: "org-checker02", batchId: "" } },
+    ],
+  },
+  sp: {
+    goal: "A service provider reads its own organisation's transactions and a CSV report of them (SP portal, role sp-viewer).",
+    steps: [
+      "Portal user sp-viewer02 (ORG002), List transactions: what ORG002 initiated or collects as payee (DESCO bills, Karim Traders payments).",
+      "Paste a txnId from the list, One transaction: its state changes.",
+      "CSV report: the last 7 days (or From / To, at most 31 days) as a CSV, party ids masked.",
+    ],
+    magic: [
+      { value: "sp-viewer01", meaning: "403 MW-AUTH-002 \"Token carries no organisation\"" },
+      { value: "org-checker02", meaning: "403 MW-AUTH-002 (no sp-viewer role)" },
+      { value: "From / To 40 days apart", meaning: "400 MW-VAL-001 (range over 31 days)" },
+    ],
+    expect: [
+      "Only ORG002's transactions, each with role INITIATOR or PAYEE; another org's txnId is 404 MW-VAL-003.",
+      "The report header: txnId,createdAt,txnType,role,status,amount,fee,debitPartyType,debitPartyId,creditPartyType,creditPartyId,reference,errorCode.",
+    ],
+    fills: [
+      { label: "SP viewer of ORG002", values: { user: "sp-viewer02" } },
+      { label: "No organisation (403)", values: { user: "sp-viewer01" } },
+      { label: "Range over 31 days", values: { user: "sp-viewer02", from: "2026-10-01T00:00:00Z", to: "2026-11-10T00:00:00Z" } },
     ],
   },
   transactions: {

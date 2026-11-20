@@ -60,6 +60,8 @@ files:
   api/mw-adapter-remit/remit-inbound.v1.openapi.yaml: mw-adapter-remit
   api/mw-ussd/ussd-http.v1.openapi.yaml: mw-ussd
   api/mw-portal-api/portal-org.v1.openapi.yaml: mw-portal-api
+  # SP portal (ticket 129d, FRS UC-20, CH-POR-04/05)
+  api/mw-portal-api/portal-sp.v1.openapi.yaml: mw-portal-api
   api/mw-orchestrator/txn-query.v1.openapi.yaml: mw-orchestrator
   api/mw-orchestrator/orchestrator-test.v1.openapi.yaml: mw-orchestrator
   api/mw-audit-dw/audit-query.v1.openapi.yaml: mw-audit-dw

@@ -32,3 +32,23 @@ for one part. Split by seam, each part shippable on its own and leaving the live
   `contracts/OWNERS.yml`), APISIX route `/portal/sp/v1`, test console SP page. `SpScopeTest`.
 - **129e-api-suite** (129b-d): API suite folder 65 (assigned by the run; the ticket's "63" is taken): XLSX upload ->
   preview -> submit -> approve -> execute -> retry; SP queries; `TRACEABILITY.md`; testing guide.
+- **129f-sp-settlements-refunds** (129d, 2026-11-20; from 129d, no clean source today): the SP portal's
+  `GET /portal/sp/v1/settlements` and `/refunds`. 129d shipped transactions and the CSV report only, because
+  neither view has a source mw-portal-api may read through a published contract:
+  - **Settlements** (mw-recon, `api/mw-recon/recon.v1`): `/internal/v1/recon/reports` is per *partner* and
+    mw-recon lets only `azp` mw-admin-api in, on every path (`mw.recon.internal-auth.allowed-clients`), so
+    adding mw-portal-api there would also let it reprocess files and record exception actions. Needs, in
+    mw-recon's contract and code (owner mw-recon): a read-only grant for mw-portal-api limited to the report
+    (per-path caller policy, as the orchestrator's per-client query scope), and a decision who maps an org to
+    its recon partner ids (a portal config `orgId -> [partnerId]` like the orchestrator's
+    `search.org-payees`, or mw-recon's). Security choice for the user (who may read which partner's recon).
+  - **Refunds** (ticket 116): a checkout refund is a REFUND transaction whose initiator is the MERCHANT and
+    whose credit party is the payer, so the orchestrator's org scope (initiator ORG or payee BILLER/MERCHANT
+    of `search.org-payees`) never matches it, and mw-checkout has no internal API (only the merchant's HMAC
+    `/checkout/v1/payments/{id}/refunds`). Options: (a) mw-orchestrator's org scope also matches a REFUND whose
+    debit party is a merchant wallet the org collects for (`role` PAYEE, txn-query 1.6.0; owner
+    mw-orchestrator; privacy scope change), then the portal filters `txnType=REFUND`; (b) a new internal
+    read API in mw-checkout keyed by merchant id plus an org -> merchant map. (a) reuses the existing scope
+    and grant; both change another service's contract, so the user picks.
+  Then: both paths in `portal-sp.v1` (1.1.0), `SpScopeTest` cases, the test console `/sp` page, 129e's
+  Newman folder.
