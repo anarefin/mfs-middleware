@@ -613,7 +613,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   the change request id as idempotency key.
 - `mw.partner.inbound.v1` (owned, consumed): own type `dto/PartnerInbound`;
   `PartnerMessagesTest` reads every valid sample, `PartnerCallbackSagaIT` validates the callbacks
-  it feeds in.
+  it feeds in. Family `card` (mw-adapter-card's 3-D Secure webhook, ticket 118b part 1) is in the schema
+  and produced; this service consumes it with `AddMoneyCardFlow` (ticket 118b part 2, not built yet).
 - Own partner contracts: `dto/PartnerRequest` (produced, `PartnerMessagesTest`, `TopupSagaIT` and
   `InquirySagaIT` validate it) and `dto/PartnerReply` (consumed; the telco samples read into it).
   Reply `outcome` `NOT_FOUND` (ticket 18) answers a STATUS_QUERY only.

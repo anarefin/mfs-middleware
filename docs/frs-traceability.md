@@ -172,7 +172,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-011 | done | key + request hash, `MW-IDEM-001`; mw-app-gateway replays the first 200 body byte for byte (`service/IdempotentReplay`, `IdempotentReplayIT`, ticket 99); API folder 36 |
 | PLT-012 | done | in-flight duplicate answered 202 with the current status (`IdempotencyLockIntakeIT`, re-run in ticket 99) |
 | PLT-013 | done | mw-orchestrator `service/DuplicateGuard` (60 s, `MW_DUPLICATE_WINDOW`): app/USSD `MW-VAL-024` + `confirmDuplicate` (USSD asks the PIN again), API clients `MW-VAL-025` (`DuplicateGuardTest`, `DuplicateGuardIT`, ticket 99); API folder 36 |
-| PLT-014 | tickets 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) and signed nonces (ticket 99) built; card, IMT, NPSB in their adapters |
+| PLT-014 | tickets 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) and signed nonces (ticket 99) built; card built (mw-adapter-card 3-D Secure webhook, ticket 118b); IMT, NPSB in their adapters |
 | PLT-020 | done | saga steps with compensation (`saga_step`, spec 7.1) |
 | PLT-021 | done | step state persisted per step; resume after restart (`scripts/chaos.sh`); a core REST call starts only after its step commits and its answer re-enters the saga in its own transaction (ticket 95a, `CoreCallDispatcher`, `CoreReplyService`) |
 | PLT-022 | done | a refused commit compensates the partner first, then releases a hold that remains (`PartnerReversalIT`, ticket 96b); a completed TOPUP or BILL_PAY is reversed at the partner before ReverseTransaction, and a partner refusal ends MANUAL_REVIEW without a core reversal (`CompletedPartnerReversalIT`, ticket 96c); API folder 30 |
@@ -210,9 +210,9 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-USSD-01 | done | four MNO SMPP binds: gp and bl transceiver, robi and teletalk transmitter plus receiver (`UssdSmppMnoIT`, `UssdSmppClientTest`); dev keeps robi, bl and teletalk on HTTP |
 | CH-USSD-02 | done | mw-ussd SMPP binds: enquire_link 30 s, reconnect with backoff, window (`UssdSmppProperties`) |
 | CH-USSD-03 | done | one TLV adapter per MNO, tags 0x0501 and 0x1383; gp and bl pack the end bit in bit 0, robi and teletalk in bit 7 (`MnoTlvAdapterTest`) |
-| CH-USSD-04 | ticket 133 | menu JSON in the database with maker-checker built (M6); visual tree editor in 133 |
+| CH-USSD-04 | ticket 133b | menu JSON in the database with maker-checker built (M6); visual tree editor built (133a: add child, move, delete, counters); server preview 133b |
 | CH-USSD-05 | done | 30 s per-screen timeout beside the overall session timeout; Redis TTL stays the overall timeout plus grace (mw-ussd) |
-| CH-USSD-06 | ticket 133 | GSM-7 182 and UCS-2 70 built; "0. Next" / "00. Back" pagination built (mw-ussd); preview in 133 |
+| CH-USSD-06 | ticket 133b | GSM-7 182 and UCS-2 70 built; "0. Next" / "00. Back" pagination built (mw-ussd); browser preview pages per MNO (133a); server preview `POST /admin/v1/ussd/menus/preview` 133b |
 | CH-USSD-07 | done | PIN encrypted on receipt, never logged or kept in the session (spec 18.3, `scripts/log-scan.sh`) |
 | CH-USSD-08 | done | ussd.short_code (code, MNO, root menu, allowed types) and the account type from the core (mw-ussd) |
 | CH-USSD-09 | done | a result that arrives after the session ended goes out by SMS (mw-ussd) |
@@ -350,8 +350,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
 | ADM-04 | tickets 98, 132 | API maker-checker for `ROUTING_RULE`, `MSISDN_PREFIX`, `MNP_OVERRIDE` and `MAINTENANCE_MESSAGE` (ticket 98, `RoutingRuleChangeRequestIT`, API folder 35); the console and testing a rule against a sample request stay 132 |
 | ADM-05 | ticket 132 | API done in 113: `GET /admin/v1/billers`, `POST /admin/v1/billers/{code}/change-requests` UPSERT / ENABLE / DISABLE, maker-checker (`BillerChangeRequestIT`) |
-| ADM-06 | ticket 133 | USSD menu JSON editing built; visual editor and preview in 133 |
-| ADM-07 | tickets 111, 133 | SMS template editing built; campaigns through maker-checker (`POST /admin/v1/notify-campaigns`, ticket 111); the rule-table editor and test send are 133 |
+| ADM-06 | ticket 133b | visual tree editor and paged browser preview built (133a); server preview and short code -> root menu 133b |
+| ADM-07 | tickets 111, 133 | SMS template editing built; campaigns through maker-checker (`POST /admin/v1/notify-campaigns`, ticket 111); the rule-table editor is 133c, the test send 133d |
 | ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the Error codes tab (131c, `ui/mw-admin-ui`) |
 | ADM-09 | done | transaction search and saga timeline (mw-admin-api, `ui/mw-admin-ui`) |
 | ADM-10 | ticket 134 | TSQ, force complete and reversal with maker-checker built; resend notification and release hold in 134 |

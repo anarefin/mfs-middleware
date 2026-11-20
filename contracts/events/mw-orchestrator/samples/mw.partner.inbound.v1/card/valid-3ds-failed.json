@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "inboundId": "7a6b5c4d-3e2f-4a1b-9c8d-7e6f5a4b3c2e",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7b02",
+  "correlationId": "corr-0119",
+  "partnerId": "cybersource",
+  "family": "card",
+  "partnerRef": "sess-0002",
+  "receivedAt": "2026-11-20T10:00:06Z",
+  "payload": {
+    "kind": "CALLBACK",
+    "outcome": "FAILED",
+    "partnerCode": "4002",
+    "errorCode": "MW-PTR-CYBERSOURCE-THREE_DS_FAILED",
+    "attributes": { "sessionId": "sess-0002" }
+  }
+}

@@ -56,6 +56,7 @@ class ProducedContractsTest {
   static final Map<String, Function<Outbox, List<Outbox.Record>>> FIXTURES =
       Map.of(
           "events/mw-orchestrator/mw.partner.reply.v1.schema.json#card", ProducedContractsTest::partnerReplies,
+          "events/mw-orchestrator/mw.partner.inbound.v1.schema.json#card", ProducedContractsTest::partnerInbound,
           "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::auditEvents,
           "events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json", ProducedContractsTest::routeStatuses,
           "events/mw-adapter-billpay/mw.partner.recon.v1.schema.json", ProducedContractsTest::reconLines);
@@ -115,6 +116,31 @@ class ProducedContractsTest {
                         r.txnId(),
                         new EventMetadata(r.correlationId(), r.txnId(), r.requestId(), 1),
                         r)));
+  }
+
+  /**
+   * 3-D Secure webhooks (ticket 118b) mapped by {@link mfs.mw.adapter.card.mapper.PartnerInboundMapper} and
+   * published as {@code PartnerCallbackService} publishes them (synchronous {@code EventPublisher.publish}).
+   */
+  static List<Outbox.Record> partnerInbound(Outbox outbox) {
+    var mapper = new mfs.mw.adapter.card.mapper.PartnerInboundMapper();
+    PartnerConfig config = PartnerTestSeeds.seed("cybersource");
+    String ref = "BITS01933B8E7C1A7B2E9F3D2A4C5E6F7A8C";
+    Instant now = CLOCK.instant();
+    List<mfs.mw.adapter.card.dto.PartnerInbound> events =
+        List.of(
+            mapper.toInbound(new mfs.mw.adapter.card.partner.InboundResult("sess-1", ref, "SUCCESS", "100", null,
+                Map.of("sessionId", "sess-1", "transientToken", "tok-fake-1")), config, "cybersource", TXN_ID, "corr-0002", now),
+            mapper.toInbound(new mfs.mw.adapter.card.partner.InboundResult("sess-1", ref, "FAILED", "4002", "3DS failed",
+                Map.of("sessionId", "sess-1")), config, "cybersource", TXN_ID, "corr-0002", now),
+            mapper.toInbound(new mfs.mw.adapter.card.partner.InboundResult(null, ref, "FAILED", "9876", null, Map.of()),
+                config, "cybersource", TXN_ID, "corr-0002", now));
+    events.forEach(
+        e ->
+            outbox.publisher.publish(
+                mfs.mw.adapter.card.service.PartnerCallbackService.TOPIC, e.txnId(),
+                new EventMetadata(e.correlationId(), e.txnId(), e.inboundId(), 1), e));
+    return outbox.records;
   }
 
   /** The adapter framework's audit entries, through {@link PartnerAuditPublisher} itself. */
