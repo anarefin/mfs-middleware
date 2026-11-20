@@ -6,7 +6,9 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import java.util.List;
 import java.util.Map;
 import mfs.mw.app.gateway.PostgresOnlyInfrastructure;
+import mfs.mw.app.gateway.RedisInfrastructure;
 import mfs.mw.app.gateway.client.AuthClient;
+import mfs.mw.app.gateway.client.OrchestratorQuoteClient;
 import mfs.mw.app.gateway.dto.TxnAuthorisation;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,7 +32,7 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
       "mw.outbox.relay.enabled=false"
     })
 @AutoConfigureMockMvc
-@Import(PostgresOnlyInfrastructure.class)
+@Import({PostgresOnlyInfrastructure.class, RedisInfrastructure.class})
 @DirtiesContext
 class KafkaUnavailableIT {
 
@@ -45,9 +47,12 @@ class KafkaUnavailableIT {
 
   /** mw-auth answers (ticket 72): only Kafka is down here. */
   @MockitoBean AuthClient auth;
+  /** Preview runs before the publish (ticket 105); Redis holds it, and the quote is not under test. */
+  @MockitoBean OrchestratorQuoteClient quotes;
 
   @Test
   void publishFailureIsRetryable503AndNothingIsAccepted() {
+    AllowingQuote.allow(quotes);
     when(auth.authorise(any()))
         .thenReturn(new TxnAuthorisation("eyJh.eyJq.c2ln", java.time.Instant.now().plusSeconds(60), false));
     Integer before = jdbc.queryForObject("select count(*) from app_transaction", Integer.class);

@@ -34,6 +34,7 @@ class InternalCallerPolicyTest {
   }
 
   static final String SEARCH = "/internal/v1/transactions";
+  static final String QUOTES = "/internal/v1/quotes";
   static final String DETAIL = SEARCH + "/01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b";
 
   @Test
@@ -67,6 +68,20 @@ class InternalCallerPolicyTest {
     post.setParameter("walletId", "01711000001");
     assertThat(allows("mw-app-gateway", post)).isFalse();
     assertThat(allows("mw-app-gateway", get(SEARCH + "/", Map.of("walletId", "01711000001")))).isFalse();
+  }
+
+  /** Ticket 105: the quote before the PIN is the wallet client's only POST, without query parameters. */
+  @Test
+  void onlyTheWalletClientMayAskForAQuote() {
+    assertThat(allows("mw-app-gateway", new MockHttpServletRequest("POST", QUOTES))).isTrue();
+    MockHttpServletRequest withParam = new MockHttpServletRequest("POST", QUOTES);
+    withParam.setParameter("walletId", "01711000001");
+    assertThat(allows("mw-app-gateway", withParam)).as("the wallet is in the body").isFalse();
+    assertThat(allows("mw-app-gateway", new MockHttpServletRequest("GET", QUOTES))).isFalse();
+    assertThat(allows("mw-admin-api", new MockHttpServletRequest("POST", QUOTES))).isFalse();
+    MockHttpServletRequest portal = new MockHttpServletRequest("POST", QUOTES);
+    portal.setParameter("orgId", "ORG001");
+    assertThat(allows("mw-portal-api", portal)).isFalse();
   }
 
   @Test

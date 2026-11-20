@@ -179,7 +179,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-023 | ticket 96 | `UNKNOWN` and the inquiry schedule built (spec 7.4); a core call without a definite answer (timeout, 5xx) goes UNKNOWN on its step deadline and WAL-13 settles it (ticket 95a, `CoreRestFlowIT`); FRS default 30 s / 2 min / 10 min / 1 h in 96 |
 | PLT-024 | ticket 96 | `MANUAL_REVIEW` after the cut-off built; alert event and metric in 96 |
 | PLT-025 | ticket 96 | partner REVERSE, idempotent and retried until acknowledged |
-| PLT-026 | ticket 105 | core fee returned at validation; preview with fee, VAT and commission in 105 |
+| PLT-026 | done | preview returns the core fee, VAT and commission (`PreviewService`, `POST /app/v1/{group}/preview`, ticket 105) |
 | PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector `client/CoreWalletClient` (connect/read timeouts, breaker `core`, reads retried only; ticket 95a) |
 | PLT-031 | done | no automatic redelivery of a PAY (D28); INQUIRY and STATUS retried |
 | PLT-032 | ticket 98 | fast failure `MW-SYS-PARTNER_CIRCUIT_OPEN` built; failover routing in 98 |
@@ -202,7 +202,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-APP-02 | ticket 106 | MSISDN + PIN + device login in mw-auth built (D21, the PIN checked by the middleware, D20); 15 min access token in 106 |
 | CH-APP-03 | ticket 106 | OTP device binding built; per-app-type device count in 106 |
 | CH-APP-04 | ticket 106 | sessions and forced logout in mw-auth; per-app-type limits in 106 |
-| CH-APP-05 | ticket 105 | preview and confirm |
+| CH-APP-05 | done | `POST /app/v1/{group}/preview` then `/confirm`; `POST /app/v1/transactions` runs both (ticket 105) |
 | CH-APP-06 | ticket 106 | channel roles for customer, agent, merchant apps built (spec 9.1); distributor, DSO, partner in 106 |
 | CH-APP-07 | ticket 106 | PIN lockout built (D20: 3 tries, then 1 h, 24 h); per-app-type throttles in 106 |
 | CH-APP-08 | ticket 107 | balance and history built (D25, D26); profile, limits, billers, favourites, inbox, statement in 107 |

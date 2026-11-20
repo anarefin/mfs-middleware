@@ -11,6 +11,8 @@ async function submit(page: Page, type: string, counterparty: string | null, amo
   await page.getByTestId("txn-type").selectOption(type);
   if (counterparty !== null) await page.getByTestId("counterparty").fill(counterparty);
   await page.getByTestId("amount").fill(amount);
+  await page.getByTestId("preview").click();
+  await expect(page.getByTestId("preview-quote")).toBeVisible();
   await page.getByTestId("submit").click();
   const result = page.getByTestId("result").first();
   await expect(result.getByTestId("headline")).toBeVisible();

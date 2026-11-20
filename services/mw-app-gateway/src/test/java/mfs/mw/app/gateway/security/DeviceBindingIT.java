@@ -25,6 +25,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import mfs.mw.app.gateway.TestInfrastructure;
 import mfs.mw.app.gateway.RedisInfrastructure;
 import mfs.mw.app.gateway.client.AuthClient;
+import mfs.mw.app.gateway.client.OrchestratorQuoteClient;
+import mfs.mw.app.gateway.service.AllowingQuote;
 import mfs.mw.app.gateway.dto.BoundDevice;
 import mfs.mw.app.gateway.dto.LiveSession;
 import mfs.mw.app.gateway.dto.SubmitResult;
@@ -75,6 +77,8 @@ class DeviceBindingIT {
 
   @MockitoBean TransactionService transactions;
   @MockitoBean AuthClient auth;
+  /** Preview runs before the stubbed submit (ticket 105); the quote is not what this gate tests. */
+  @MockitoBean OrchestratorQuoteClient quotes;
 
   /** mw-auth's state as the stub answers it: bound devices by id, live sessions as wallet:device. */
   private final Map<String, BoundDevice> bound = new ConcurrentHashMap<>();
@@ -91,6 +95,7 @@ class DeviceBindingIT {
   @BeforeEach
   void freshWallet() {
     msisdn = "0171" + String.format("%07d", (int) (Math.random() * 10_000_000));
+    AllowingQuote.allow(quotes);
     when(transactions.submit(any(), any(), any()))
         .thenReturn(SubmitResult.processing(TransactionView.processing(TXN_ID)));
     when(transactions.find(any(), any())).thenReturn(TransactionView.processing(TXN_ID));

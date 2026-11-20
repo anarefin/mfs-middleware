@@ -1,0 +1,4 @@
+{
+  "name": "46 App preview and confirm",
+  "description": "Two-step financial API (ticket 105, FRS CH-APP-05, PLT-026). Preview returns fee, VAT, commission, the masked payee and the limits, and moves nothing. Confirm binds to that previewId."
+}

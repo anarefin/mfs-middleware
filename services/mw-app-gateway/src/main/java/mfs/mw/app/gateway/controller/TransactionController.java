@@ -12,6 +12,7 @@ import mfs.mw.app.gateway.dto.TransactionRequest;
 import mfs.mw.app.gateway.dto.TransactionView;
 import mfs.mw.app.gateway.security.AppUserResolver;
 import mfs.mw.app.gateway.security.DeviceGate;
+import mfs.mw.app.gateway.service.PreviewService;
 import mfs.mw.app.gateway.service.TransactionHistoryService;
 import mfs.mw.app.gateway.service.TransactionService;
 import org.springframework.http.ResponseEntity;
@@ -38,16 +39,20 @@ public class TransactionController {
   private final TransactionService service;
   private final TransactionHistoryService history;
   private final AppUserResolver users;
+  private final PreviewService previews;
 
-  public TransactionController(TransactionService service, TransactionHistoryService history, AppUserResolver users) {
+  public TransactionController(
+      TransactionService service, TransactionHistoryService history, AppUserResolver users, PreviewService previews) {
     this.service = service;
     this.history = history;
     this.users = users;
+    this.previews = previews;
   }
 
   /**
    * 200 with the terminal result, or 202 {@code PROCESSING} when the budget runs out (7.5). Moves
-   * money: signed by the bound device (ticket 29).
+   * money: signed by the bound device (ticket 29). Stays for one release (PLT-051, ticket 105) and
+   * runs the preview, then the confirm, of this body.
    */
   @PostMapping
   @DeviceGate(DeviceGate.Level.SIGNED)
@@ -61,7 +66,7 @@ public class TransactionController {
           @Pattern(regexp = "[\\x21-\\x7E]{1,64}", message = "must be 1 to 64 visible ASCII characters")
           String idempotencyKey,
       @Valid @RequestBody TransactionRequest body) {
-    SubmitResult result = service.submit(users.resolve(jwt), idempotencyKey, body);
+    SubmitResult result = previews.submitOneShot(users.resolve(jwt), idempotencyKey, body);
     if (result.done()) {
       return ResponseEntity.ok(result.view());
     }

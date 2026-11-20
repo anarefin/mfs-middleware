@@ -17,6 +17,7 @@ import mfs.mw.app.gateway.dto.TransactionView;
 import mfs.mw.app.gateway.exception.MwException;
 import mfs.mw.app.gateway.security.AppUserResolver;
 import mfs.mw.app.gateway.dto.TransactionHistory;
+import mfs.mw.app.gateway.service.PreviewService;
 import mfs.mw.app.gateway.service.TransactionHistoryService;
 import mfs.mw.app.gateway.service.TransactionService;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,7 @@ class TransactionControllerTest {
   private final MockMvcTester mvc;
 
   @MockitoBean TransactionService service;
+  @MockitoBean PreviewService previews;
   @MockitoBean TransactionHistoryService history;
 
   @Autowired
@@ -82,7 +84,7 @@ class TransactionControllerTest {
     assertThat(r).hasStatus(401);
     assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-001");
     assertThat(r).bodyJson().extractingPath("$.correlationId").isEqualTo("corr-ctl");
-    verify(service, never()).submit(any(), any(), any());
+    verify(previews, never()).submitOneShot(any(), any(), any());
   }
 
   @Test
@@ -93,7 +95,7 @@ class TransactionControllerTest {
     assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-BODY_TOO_LARGE");
     assertThat(r).bodyJson().extractingPath("$.retryable").isEqualTo(false);
     assertThat(r).bodyJson().extractingPath("$.correlationId").isEqualTo("corr-ctl");
-    verify(service, never()).submit(any(), any(), any());
+    verify(previews, never()).submitOneShot(any(), any(), any());
   }
 
   @Test
@@ -117,7 +119,7 @@ class TransactionControllerTest {
                 + "\"encryptedPin\":{\"keyId\":\"core-pin-1\",\"ciphertext\":\"Y2lwaGVy\"}}");
     assertThat(r).hasStatus(400);
     assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
-    verify(service, never()).submit(any(), any(), any());
+    verify(previews, never()).submitOneShot(any(), any(), any());
   }
 
   @Test
@@ -126,7 +128,7 @@ class TransactionControllerTest {
     assertThat(r).hasStatus(400);
     assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
     assertThat(r).bodyJson().extractingPath("$.details[0].field").isEqualTo("Idempotency-Key");
-    verify(service, never()).submit(any(), any(), any());
+    verify(previews, never()).submitOneShot(any(), any(), any());
   }
 
   @Test
@@ -137,7 +139,7 @@ class TransactionControllerTest {
       assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");
       assertThat(r).bodyJson().extractingPath("$.details[0].field").isEqualTo("Idempotency-Key");
     }
-    verify(service, never()).submit(any(), any(), any());
+    verify(previews, never()).submitOneShot(any(), any(), any());
   }
 
   @Test
@@ -152,7 +154,7 @@ class TransactionControllerTest {
           .asArray()
           .containsExactly("amount.valueMinor");
     }
-    verify(service, never()).submit(any(), any(), any());
+    verify(previews, never()).submitOneShot(any(), any(), any());
   }
 
   /** The schema check (formerly at the edge) answers first; Bean Validation checks the formats. */
@@ -177,7 +179,7 @@ class TransactionControllerTest {
                 + "\"encryptedPin\":{\"keyId\":\"core-pin-1\",\"ciphertext\":\"Y2lwaGVy\"}}");
     assertThat(badMsisdn).hasStatus(400);
     assertThat(badMsisdn).bodyJson().extractingPath("$.details[*].field").asArray().containsExactly("creditParty.id");
-    verify(service, never()).submit(any(), any(), any());
+    verify(previews, never()).submitOneShot(any(), any(), any());
   }
 
   @Test
@@ -196,7 +198,7 @@ class TransactionControllerTest {
         .extractingPath("$.details[*].field")
         .asArray()
         .containsExactlyInAnyOrder("partner.partnerId", "partner.productCode");
-    verify(service, never()).submit(any(), any(), any());
+    verify(previews, never()).submitOneShot(any(), any(), any());
   }
 
   @Test
@@ -206,7 +208,7 @@ class TransactionControllerTest {
             + "\"partner\":{\"billerCode\":\"DESCO\"},"
             + "\"amount\":{\"valueMinor\":66700,\"currency\":\"BDT\"},"
             + "\"encryptedPin\":{\"keyId\":\"core-pin-1\",\"ciphertext\":\"Y2lwaGVy\"}}";
-    when(service.submit(any(), eq("key-b"), any()))
+    when(previews.submitOneShot(any(), eq("key-b"), any()))
         .thenReturn(SubmitResult.processing(TransactionView.processing(TXN_ID)));
 
     assertThat(post(customer(), "key-b", bill.formatted("BILLER_ACCOUNT", "1234567"))).hasStatus(202);
@@ -215,7 +217,7 @@ class TransactionControllerTest {
       assertThat(r).as(bad[0] + " " + bad[1]).hasStatus(400);
       assertThat(r).bodyJson().extractingPath("$.details[*].field").asArray().containsExactly("creditParty.id");
     }
-    verify(service, never()).submit(any(), eq("key-x"), any());
+    verify(previews, never()).submitOneShot(any(), eq("key-x"), any());
   }
 
   @Test
@@ -225,7 +227,7 @@ class TransactionControllerTest {
       assertThat(r).as(payee).hasStatus(400);
       assertThat(r).bodyJson().extractingPath("$.details[*].field").asArray().containsExactly("creditParty.id");
     }
-    verify(service, never()).submit(any(), any(), any());
+    verify(previews, never()).submitOneShot(any(), any(), any());
   }
 
   @Test
@@ -249,13 +251,13 @@ class TransactionControllerTest {
             BODY.formatted(100));
     assertThat(distributor).hasStatus(403);
     assertThat(distributor).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
-    verify(service, never()).submit(any(), any(), any());
+    verify(previews, never()).submitOneShot(any(), any(), any());
   }
 
   @Test
   void merchantTokenIsServedAsTheMerchantApp() {
     AppUser merchant = new AppUser("01911000001", "MERCHANT_APP", "MERCHANT");
-    when(service.submit(eq(merchant), eq("key-merchant"), any()))
+    when(previews.submitOneShot(eq(merchant), eq("key-merchant"), any()))
         .thenThrow(
             new MwException("MW-AUTH-002", "This app role cannot initiate this transaction type")
                 .withStatus(HttpStatus.FORBIDDEN));
@@ -269,13 +271,13 @@ class TransactionControllerTest {
             "key-merchant",
             BODY.formatted(100));
     assertThat(r).hasStatus(403);
-    verify(service).submit(eq(merchant), eq("key-merchant"), any());
+    verify(previews).submitOneShot(eq(merchant), eq("key-merchant"), any());
   }
 
   @Test
   void agentTokenIsServedAsTheAgentApp() {
     AppUser agent = new AppUser("01811000001", "AGENT_APP", "AGENT");
-    when(service.submit(eq(agent), eq("key-agent"), any()))
+    when(previews.submitOneShot(eq(agent), eq("key-agent"), any()))
         .thenReturn(SubmitResult.done(TransactionView.processing(TXN_ID).withStatus("COMPLETED")));
     MvcTestResult r =
         post(
@@ -287,19 +289,19 @@ class TransactionControllerTest {
             "key-agent",
             BODY.formatted(100).replace("\"P2P\"", "\"CASH_IN\""));
     assertThat(r).hasStatus(200);
-    verify(service).submit(eq(agent), eq("key-agent"), any());
+    verify(previews).submitOneShot(eq(agent), eq("key-agent"), any());
   }
 
   @Test
   void terminalResultIs200AndBudgetExpiryIs202() {
     TransactionView done = TransactionView.processing(TXN_ID).withStatus("COMPLETED");
-    when(service.submit(eq(CUSTOMER), eq("key-ok"), any())).thenReturn(SubmitResult.done(done));
+    when(previews.submitOneShot(eq(CUSTOMER), eq("key-ok"), any())).thenReturn(SubmitResult.done(done));
     MvcTestResult ok = post(customer(), "key-ok", BODY.formatted(1000));
     assertThat(ok).hasStatus(200);
     assertThat(ok).bodyJson().extractingPath("$.txnId").isEqualTo(TXN_ID);
     assertThat(ok).bodyJson().extractingPath("$.status").isEqualTo("COMPLETED");
 
-    when(service.submit(any(), eq("key-slow"), any()))
+    when(previews.submitOneShot(any(), eq("key-slow"), any()))
         .thenReturn(SubmitResult.processing(TransactionView.processing(TXN_ID)));
     MvcTestResult slow = post(customer(), "key-slow", BODY.formatted(1000));
     assertThat(slow).hasStatus(202);
@@ -311,7 +313,7 @@ class TransactionControllerTest {
 
   @Test
   void serviceFailureIsTheEnvelope() {
-    when(service.submit(any(), any(), any()))
+    when(previews.submitOneShot(any(), any(), any()))
         .thenThrow(
             new MwException("MW-SYS-010", "Service temporarily unavailable")
                 .withStatus(HttpStatus.SERVICE_UNAVAILABLE));

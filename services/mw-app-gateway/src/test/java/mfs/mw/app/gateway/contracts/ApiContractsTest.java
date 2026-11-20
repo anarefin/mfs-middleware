@@ -103,6 +103,25 @@ class ApiContractsTest {
         new ErrorInfo("MW-CORE-INSUFFICIENT_FUNDS", "Insufficient funds", "অপর্যাপ্ত ব্যালেন্স", false))));
   }
 
+  /** Ticket 105: the preview answer (from a contract-shaped orchestrator quote) and the quote request. */
+  @Test
+  void thePreviewAndTheQuoteMatchTheirContracts() {
+    String quote = "{\"txnType\":\"P2P\",\"amount\":{\"valueMinor\":1000,\"currency\":\"BDT\"},"
+        + "\"fee\":{\"valueMinor\":500,\"currency\":\"BDT\"},\"vat\":{\"valueMinor\":65,\"currency\":\"BDT\"},"
+        + "\"commission\":{\"valueMinor\":0,\"currency\":\"BDT\"},\"total\":{\"valueMinor\":1500,\"currency\":\"BDT\"},"
+        + "\"limits\":{\"allowed\":true,\"remaining\":{\"perTxn\":{\"valueMinor\":2500000,\"currency\":\"BDT\"},\"dailyCount\":4}},"
+        + "\"counterparty\":{\"type\":\"WALLET\",\"id\":\"0171****002\",\"name\":\"R.\",\"walletType\":\"CUSTOMER\"}}";
+    assertThat(OpenApiSchemas.component(QUERY_API, "Quote").validate(JSON.readTree(quote))).isEmpty();
+    mfs.mw.app.gateway.dto.Quote q = JSON.readValue(quote, mfs.mw.app.gateway.dto.Quote.class);
+
+    assertValid(OpenApiSchemas.component(APP_API, "Preview"), new mfs.mw.app.gateway.dto.PreviewView(
+        "0190a7c4-0000-4000-8000-000000000001.c2ln", NOW, "P2P", q.amount(), q.fee(), q.vat(), q.commission(), q.total(),
+        q.counterparty(), new mfs.mw.app.gateway.dto.PreviewView.Limits(q.limits().remaining())));
+    assertValid(OpenApiSchemas.component(QUERY_API, "QuoteRequest"), new mfs.mw.app.gateway.dto.QuoteRequest(
+        "01711000001", "CUSTOMER", "TOPUP", "CUSTOMER_APP", new Amount(5_000L, "BDT"),
+        new mfs.mw.app.gateway.dto.QuoteRequest.Counterparty("MSISDN", "01811000002")));
+  }
+
   @Test
   void theBalanceMatchesTheContract() {
     assertValid(OpenApiSchemas.component(APP_API, "Balance"), new mfs.mw.app.gateway.dto.BalanceView(

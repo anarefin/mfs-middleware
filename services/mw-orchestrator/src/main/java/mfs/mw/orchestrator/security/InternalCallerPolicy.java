@@ -20,6 +20,8 @@ import org.springframework.security.oauth2.jwt.Jwt;
  * A wallet-scoped client (mw-app-gateway, ADR D25) may only search ({@code GET
  * /internal/v1/transactions}, never the detail), always with a non-blank {@code walletId}, and only
  * with the query parameters of {@link #WALLET_PARAMS}: it reads one wallet's history and nothing else.
+ * The quote ({@code POST /internal/v1/quotes}, ticket 105: fee, limits and payee before the PIN) is for
+ * a wallet-scoped client only, without query parameters (the signed-in wallet is in the body).
  */
 public final class InternalCallerPolicy {
 
@@ -27,6 +29,7 @@ public final class InternalCallerPolicy {
   static final String REVEAL_PARAM = "reveal";
   static final String WALLET_PARAM = "walletId";
   static final String SEARCH_PATH = "/internal/v1/transactions";
+  static final String QUOTE_PATH = "/internal/v1/quotes";
   /** The only query parameters a wallet-scoped client may send. */
   static final Set<String> WALLET_PARAMS =
       Set.of(WALLET_PARAM, "direction", "txnType", "status", "from", "to", "limit", "offset");
@@ -54,6 +57,10 @@ public final class InternalCallerPolicy {
     if (client == null || !allowedClients.contains(client)) {
       allowed = false;
       reason = "CLIENT_NOT_ALLOWED";
+    } else if (isPath(request, QUOTE_PATH)) {
+      allowed = walletScopedClients.contains(client) && "POST".equals(request.getMethod())
+          && request.getParameterMap().isEmpty();
+      reason = allowed ? null : "QUOTE_NOT_ALLOWED";
     } else if (orgScopedClients.contains(client) && isBlank(request.getParameter(ORG_PARAM))) {
       allowed = false;
       reason = "ORG_REQUIRED";
@@ -96,10 +103,14 @@ public final class InternalCallerPolicy {
 
   /** {@code GET /internal/v1/transactions} exactly (the search, not a detail). */
   private static boolean isSearch(HttpServletRequest request) {
+    return "GET".equals(request.getMethod()) && isPath(request, SEARCH_PATH);
+  }
+
+  private static boolean isPath(HttpServletRequest request, String expected) {
     String uri = request.getRequestURI();
     String context = request.getContextPath();
     String path = uri == null ? "" : context != null && uri.startsWith(context) ? uri.substring(context.length()) : uri;
-    return "GET".equals(request.getMethod()) && SEARCH_PATH.equals(path);
+    return expected.equals(path);
   }
 
   private static boolean asksReveal(HttpServletRequest request) {

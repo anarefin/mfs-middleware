@@ -189,6 +189,9 @@ test_provision_writes_the_service_specific_keys() {
   # internal API with its own realm services client
   [ "$(kv mw-auth spring.data.redis.password)" = redis-t ] || fail "mw-auth redis"
   [ "$(kv mw-app-gateway mw.app-gateway.auth.client-secret)" = app-gateway-t ] || fail "app-gateway mw-auth client secret"
+  # ticket 105: the previewId HMAC key is created once and is long enough to sign
+  [ "$(wc -c <.kv/secret/mw-app-gateway/mw.app-gateway.preview.signing-key | tr -d ' ')" -ge 32 ] \
+    || fail "app-gateway preview signing key"
   # one role + schema per plain service
   grep -q 'role=orchestrator_rw .*schema=txn' .psql-calls || fail "orchestrator role/schema"
   # mw-admin-api also owns schema partner (its Flyway migrates both)

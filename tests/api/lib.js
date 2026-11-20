@@ -449,6 +449,20 @@
     },
     // the wallet history (ADR D25): GET /app/v1/transactions, query e.g. 'direction=IN&limit=5'
     async history(user, query) { return http('GET', '/app/v1/transactions' + (query ? '?' + query : ''), { headers: await app.headers(user) }); },
+    /** Session-level preview (ticket 105): no PIN, nothing moves. */
+    async preview(user, group, body) {
+      const json = JSON.stringify(body);
+      return http('POST', '/app/v1/' + group + '/preview', { headers: await app.headers(user), raw: json });
+    },
+    /** Signed confirm of a previewId (ticket 105). */
+    async confirm(user, group, idem, body) {
+      const d = await ready(user);
+      const json = JSON.stringify(body);
+      const path = '/app/v1/' + group + '/confirm';
+      const h = await signedHeaders(user, d, 'POST', path, json);
+      h['Idempotency-Key'] = idem;
+      return http('POST', path, { headers: h, raw: json });
+    },
   };
 
   // ---------- mw-auth's public API step by step (ticket 76: folders 24-26, 90) ----------
@@ -799,10 +813,58 @@
     // app channel
     S.submit = async (user, body, idem) => {
       S.user = user;
+      S.confirmPath = null;
       S.idem = idem || 'api-' + uuid();
       S.lastBody = body;
       S.lastSubmit = await app.prepare(user, S.idem, body);
       return S.record(await app.send(S.lastSubmit));
+    };
+    const PREVIEW_GROUP = { P2P: 'send-money', CASH_IN: 'cash-in', CASH_OUT: 'cash-out', MERCHANT_PAY: 'payment', TOPUP: 'top-up', BILL_PAY: 'bill-pay', ADD_MONEY_BANK: 'add-money' };
+    /** Preview, then confirm, the same body (ticket 105). A preview refusal is the outcome; the quote is S.quote. */
+    S.previewConfirm = async (user, body, idem) => {
+      S.user = user;
+      S.confirmPath = null;
+      const group = PREVIEW_GROUP[body.txnType];
+      if (!group) throw new Error('no preview group for ' + body.txnType);
+      const preview = {};
+      ['creditParty', 'debitParty', 'partner', 'amount', 'locale', 'attributes'].forEach(k => { if (body[k] != null) preview[k] = body[k]; });
+      const quoted = await app.preview(user, group, preview);
+      S.quote = quoted;
+      if (!quoted.body || !quoted.body.previewId) return S.record(quoted);
+      const confirm = Object.assign({ previewId: quoted.body.previewId }, preview);
+      if (body.encryptedPin) confirm.encryptedPin = body.encryptedPin;
+      if (body.confirmDuplicate) confirm.confirmDuplicate = body.confirmDuplicate;
+      const confirmJson = JSON.stringify(confirm);
+      const confirmPath = '/app/v1/' + group + '/confirm';
+      S.idem = idem || ('api-' + uuid());
+      S.lastBody = confirmJson;
+      S.confirmPath = confirmPath;
+      const d = await ready(user);
+      const h = await signedHeaders(user, d, 'POST', confirmPath, confirmJson);
+      h['Idempotency-Key'] = S.idem;
+      S.lastSubmit = { body: confirmJson, headers: h };
+      return S.record(await http('POST', confirmPath, { headers: h, raw: confirmJson }));
+    };
+    S.previewP2p = async (user, credit, amount, pin) => S.previewConfirm(user, await app.request('P2P', credit, amount, pin));
+    S.previewTxn = async (user, type, credit, amount, pin) => S.previewConfirm(user, await app.request(type, credit, amount, pin));
+    S.previewTopup = async (user, operator, product, msisdn, amount, pin) => {
+      const b = await app.request('TOPUP', msisdn, amount, pin);
+      b.creditParty.type = 'MSISDN';
+      if (operator) b.partner = { partnerId: operator, productCode: product };
+      return S.previewConfirm(user, b);
+    };
+    S.previewBillPay = async (user, biller, bill, amount, pin) => {
+      const b = await app.request('BILL_PAY', bill, amount, pin);
+      b.creditParty.type = 'BILLER_ACCOUNT';
+      if (biller) b.partner = { billerCode: biller };
+      return S.previewConfirm(user, b);
+    };
+    S.previewAddMoney = async (user, bank, account, amount, pin) => {
+      const b = await app.request('ADD_MONEY_BANK', 'unused', amount, pin);
+      delete b.creditParty;
+      b.debitParty = { type: 'BANK_ACCOUNT', id: account };
+      b.partner = { partnerId: bank };
+      return S.previewConfirm(user, b);
     };
     S.balance = async (user, pin) => { S.user = user; return S.record(await app.balance(user, 'api-bal-' + uuid(), pin)); };
     S.p2p = async (user, credit, amount, pin) => S.submit(user, await app.request('P2P', credit, amount, pin));
@@ -826,7 +888,15 @@
       b.partner = { partnerId: bank };
       return S.submit(user, b);
     };
-    S.repeat = async () => S.record(await app.send(await app.prepare(S.user, S.idem, S.lastBody)));
+    S.repeat = async () => {
+      if (S.confirmPath) {
+        const d = await ready(S.user);
+        const h = await signedHeaders(S.user, d, 'POST', S.confirmPath, S.lastBody);
+        h['Idempotency-Key'] = S.idem;
+        return S.record(await http('POST', S.confirmPath, { headers: h, raw: S.lastBody }));
+      }
+      return S.record(await app.send(await app.prepare(S.user, S.idem, S.lastBody)));
+    };
     S.appShows = async (st, within, error) => {
       const id = S.txnId();
       const r = await poll(() => app.status(S.user, id), x => x.body && x.body.status === st, (within || 20) * 1000, 400);

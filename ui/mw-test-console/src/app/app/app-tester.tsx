@@ -4,7 +4,7 @@
 // outcome, see every step, and the wallet's history.
 
 import { ArrowLeftRight, Landmark, Loader2, RotateCcw, Search, Send, Smartphone, Store, UserRound, Wand2 } from "lucide-react";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useCallback, useEffect, useState } from "react";
 import { Busy, EmptyResult, Hint, Panel, Row, TwoColumns } from "@/components/section";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
@@ -12,11 +12,13 @@ import { Input, NativeSelect } from "@/components/ui/input";
 import {
   BILLER_OPTIONS, COUNTERPARTY_LABEL, CUSTOM, DEFAULT_BILLER, DEFAULT_AMOUNT, GOOD_PIN, OPERATORS, counterpartyOptions, defaultCounterparty, scenarios,
 } from "@/lib/app-flow-options";
+import { quoteLines, shownQuote } from "@/lib/app-preview";
 import { APP_ROLES, ROLE_LABEL, msisdnOf, userLabel, usersOf, type AppUser } from "@/lib/app-users";
 import { FILL_EVENT, type FillDetail } from "@/lib/how-to";
 import { FLOWS_BY_ROLE, FLOW_HELP, type AppRole, type TxnType } from "@/lib/personas";
 import { cn } from "@/lib/utils";
-import { appRead, bindDevice, checkBalance, resendLast, submitTxn } from "../actions/app";
+import { appRead, bindDevice, checkBalance, confirmTxn, previewTxn, resendLast } from "../actions/app";
+import type { AppState } from "../actions/app";
 import { Result } from "../components/result";
 import { BillerPicker } from "./biller-picker";
 import { HistoryPanel } from "./history-panel";
@@ -26,18 +28,25 @@ const OTHER = "__other";
 const CHIP_TONE = { good: "border-good/40 text-good", bad: "border-bad/40 text-bad", warn: "border-warn/40 text-warn" } as const;
 
 /** The flow form, re-mounted (key) per flow and user so its counterparty and amount start at that flow's defaults. */
-function FlowForm({ type, user, me, users, busy, submitting, submit, refreshKey }: {
-  type: TxnType; user: string; me?: string; users: readonly AppUser[]; busy: boolean; submitting: boolean; submit: (f: FormData) => void; refreshKey: number;
+function FlowForm({ type, user, me, users, busy, refreshKey, onPreview, onConfirm, onBusy }: {
+  type: TxnType; user: string; me?: string; users: readonly AppUser[]; busy: boolean; refreshKey: number;
+  onPreview: (s: AppState) => void; onConfirm: (s: AppState) => void; onBusy: (busy: boolean) => void;
 }) {
   const options = counterpartyOptions(type, me, users);
   const [cp, setCp] = useState(() => defaultCounterparty(type, me, users));
   const pick = options.some((o) => o.value === cp) ? cp : CUSTOM;
   const chips = scenarios(type, defaultCounterparty(type, me, users));
+  const [previewState, preview, previewing] = useActionState(previewTxn, null);
+  const [confirmState, confirm, confirming] = useActionState(confirmTxn, null);
+  useEffect(() => { onPreview(previewState); }, [previewState, onPreview]);
+  useEffect(() => { onConfirm(confirmState); }, [confirmState, onConfirm]);
+  useEffect(() => { onBusy(previewing || confirming); }, [previewing, confirming, onBusy]);
+  const quote = shownQuote(previewState?.ok === true, previewState?.data);
   const fill = (values: Record<string, string>) =>
     window.dispatchEvent(new CustomEvent<FillDetail>(FILL_EVENT, { detail: { page: "app", values } }));
 
   return (
-    <form action={submit} className="flex flex-col gap-3">
+    <form action={preview} className="flex flex-col gap-3">
       <input type="hidden" name="user" value={user} />
       <input type="hidden" name="txnType" value={type} />
       <div className="flex flex-col gap-1.5" data-testid="scenarios">
@@ -72,10 +81,30 @@ function FlowForm({ type, user, me, users, busy, submitting, submit, refreshKey 
         <Field label="PIN"><Input name="pin" type="password" defaultValue={GOOD_PIN} autoComplete="off" data-testid="pin" /></Field>
       </Row>
       <Field label="Idempotency-Key (empty = new)"><Input name="idempotencyKey" placeholder="tc-…" className="font-mono" /></Field>
-      <Button type="submit" disabled={busy} data-testid="submit">
-        {submitting ? <Loader2 className="animate-spin" /> : <Send />}
-        {submitting ? "running… (up to a minute with a timeout)" : "Submit"}
-      </Button>
+      <input type="hidden" name="previewId" value={quote?.previewId ?? ""} />
+      {quote ? (
+        <div className="rounded-md border px-3 py-2" data-testid="preview-quote">
+          <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            {quoteLines(quote).map((line) => (
+              <div key={line.label} className="contents">
+                <dt className="text-muted-foreground">{line.label}</dt>
+                <dd className="m-0 font-medium tabular-nums">{line.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <Hint>Confirm sends these fields as they are now, with this preview. A changed amount or counterparty is MW-VAL-026.</Hint>
+        </div>
+      ) : null}
+      <Row>
+        <Button type="submit" disabled={busy} data-testid="preview">
+          {previewing ? <Loader2 className="animate-spin" /> : <Search />}
+          {previewing ? "previewing…" : "Preview"}
+        </Button>
+        <Button type="submit" formAction={confirm} disabled={busy || !quote} data-testid="submit">
+          {confirming ? <Loader2 className="animate-spin" /> : <Send />}
+          {confirming ? "confirming… (up to a minute with a timeout)" : "Confirm"}
+        </Button>
+      </Row>
     </form>
   );
 }
@@ -86,12 +115,17 @@ export function AppTester({ users }: { users: AppUser[] }) {
   const [other, setOther] = useState("");
   const [type, setType] = useState<TxnType | null>("P2P");
   const [bindState, bind, binding] = useActionState(bindDevice, null);
-  const [txnState, submit, submitting] = useActionState(submitTxn, null);
+  const [previewState, setPreviewState] = useState<AppState>(null);
+  const [txnState, setTxnState] = useState<AppState>(null);
+  const [flowBusy, setFlowBusy] = useState(false);
+  const onPreview = useCallback((s: AppState) => setPreviewState(s), []);
+  const onConfirm = useCallback((s: AppState) => setTxnState(s), []);
+  const onBusy = useCallback((b: boolean) => setFlowBusy(b), []);
   const [resendState, resend, resending] = useActionState(resendLast, null);
   const [readState, read, reading] = useActionState(appRead, null);
   const [balanceState, balance, checking] = useActionState(checkBalance, null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const busy = binding || submitting || resending || reading || checking;
+  const busy = binding || flowBusy || resending || reading || checking;
 
   const roleUsers = usersOf(users, role);
   const user = pick === OTHER ? other.trim() : pick;
@@ -108,8 +142,8 @@ export function AppTester({ users }: { users: AppUser[] }) {
 
   // every finished call may have moved money or bound a device: refresh the card and the history
   useEffect(() => {
-    if (txnState || resendState || bindState) setRefreshKey((k) => k + 1);
-  }, [txnState, resendState, bindState]);
+    if (previewState || txnState || resendState || bindState) setRefreshKey((k) => k + 1);
+  }, [previewState, txnState, resendState, bindState]);
 
   return (
     <div className="flex flex-col gap-5">
@@ -160,7 +194,8 @@ export function AppTester({ users }: { users: AppUser[] }) {
                 {flow ? (
                   <>
                     <p className="m-0 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{FLOW_HELP[flow].hint}</p>
-                    <FlowForm key={`${flow}|${user}`} type={flow} user={user} me={me} users={users} busy={busy} submitting={submitting} submit={submit} refreshKey={refreshKey} />
+                    <FlowForm key={`${flow}|${user}`} type={flow} user={user} me={me} users={users} busy={busy} refreshKey={refreshKey}
+                      onPreview={onPreview} onConfirm={onConfirm} onBusy={onBusy} />
                   </>
                 ) : null}
                 <form action={resend}>
@@ -206,7 +241,7 @@ export function AppTester({ users }: { users: AppUser[] }) {
           {[txnState, resendState, bindState, readState, balanceState].filter(Boolean).length === 0 ? (
             <EmptyResult>Run something on the left: the result, balances, SMS and every API call show here.</EmptyResult>
           ) : null}
-          {txnState ? <Panel title="Submit" icon={Send}><Result state={txnState} /></Panel> : null}
+          {txnState ? <Panel title="Confirm" icon={Send}><Result state={txnState} /></Panel> : null}
           {resendState ? <Panel title="Resend" icon={RotateCcw}><Result state={resendState} /></Panel> : null}
           {bindState ? <Panel title="Device" icon={Smartphone}><Result state={bindState} /></Panel> : null}
           {readState ? <Panel title="Lookup" icon={Search}><Result state={readState} /></Panel> : null}

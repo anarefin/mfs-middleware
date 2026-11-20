@@ -21,6 +21,13 @@ public final class ErrorCodes {
   public static final String VAL_UNSUPPORTED_TXN_TYPE = "MW-VAL-010";
   /** The counterparty wallet is the initiator's own wallet (wallet-to-wallet types). */
   public static final String VAL_SELF_COUNTERPARTY = "MW-VAL-012";
+  /**
+   * A confirm whose transaction differs from its preview (type, payee, amount, partner, bank account,
+   * attributes; ticket 105, PREVIEW_MISMATCH): nothing authorised or moved, preview again.
+   */
+  public static final String VAL_PREVIEW_MISMATCH = "MW-VAL-026";
+  /** A confirm's previewId is expired, unknown, altered or another wallet's (ticket 105, PREVIEW_EXPIRED). */
+  public static final String VAL_PREVIEW_EXPIRED = "MW-VAL-027";
   /** No valid bearer token (missing, expired, bad signature, wrong realm): HTTP 401. */
   public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
   /** Valid token, but no wallet (claim msisdn) or a role this endpoint does not serve: HTTP 403. */

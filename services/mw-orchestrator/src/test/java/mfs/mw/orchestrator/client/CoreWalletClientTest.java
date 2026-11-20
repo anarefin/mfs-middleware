@@ -269,6 +269,44 @@ class CoreWalletClientTest {
     }
   }
 
+  /** Ticket 105: the quote reads (WAL-01, 04, 05), their bodies against the core contract, the id one segment. */
+  @Test
+  void theQuoteReadsCallTheirEndpointsWithContractBodies() {
+    routes.put("POST /core/v1/charges/calculate", ex -> Response.ok("{\"fee\":{\"valueMinor\":500,\"currency\":\"BDT\"}}"));
+    routes.put("POST /core/v1/limits/check", ex -> Response.ok("{\"allowed\":true}"));
+    routes.put("GET /core/v1/accounts/01711000002", ex -> new Response(404, error("MW-VAL-003"), 0));
+
+    CoreWalletClient.CoreRead charges = client.charges(
+        new mfs.mw.orchestrator.dto.CoreCallBodies.Charges("P2P", Amount.bdt(10_000), "CUSTOMER_APP", "CUSTOMER"), "corr-q");
+    CoreWalletClient.CoreRead limits = client.limits(
+        new mfs.mw.orchestrator.dto.CoreCallBodies.Limits("01711000001", "P2P", Amount.bdt(10_000)), "corr-q");
+    CoreWalletClient.CoreRead account = client.account("01711000002", "corr-q");
+    client.account("../holds?x=1", "corr-q");
+
+    assertThat(charges.ok()).isTrue();
+    assertThat(charges.body().path("fee").path("valueMinor").asLong()).isEqualTo(500);
+    assertThat(limits.ok()).isTrue();
+    assertThat(account.status()).isEqualTo(404);
+    assertThat(account.code()).isEqualTo("MW-VAL-003");
+    assertThat(seen).extracting(Seen::path).containsExactly(
+        "/core/v1/charges/calculate", "/core/v1/limits/check", "/core/v1/accounts/01711000002",
+        "/core/v1/accounts/..%2Fholds%3Fx%3D1");
+    assertThat(seen.get(0).headers()).containsEntry("x-correlation-id", "corr-q").containsEntry("authorization", "Bearer tok-1");
+    String api = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
+    assertThat(mfs.mw.orchestrator.contracts.OpenApiSchemas.component(api, "ChargesRequest").validate(seen.get(0).body())).isEmpty();
+    assertThat(mfs.mw.orchestrator.contracts.OpenApiSchemas.component(api, "LimitsRequest").validate(seen.get(1).body())).isEmpty();
+  }
+
+  @Test
+  void aQuoteReadIsRetriedAndThenUnavailable() {
+    routes.put("POST /core/v1/limits/check", ex -> new Response(503, error("MW-SYS-001"), 0));
+
+    org.assertj.core.api.Assertions.assertThatThrownBy(() -> client.limits(
+            new mfs.mw.orchestrator.dto.CoreCallBodies.Limits("01711000001", "P2P", Amount.bdt(1)), "c"))
+        .isInstanceOf(CoreWalletClient.CoreUnavailableException.class);
+    assertThat(seen).as("a read is retried").hasSize(3);
+  }
+
   @Test
   void anUnreachableCoreIsAmbiguous() {
     server.stop(0);

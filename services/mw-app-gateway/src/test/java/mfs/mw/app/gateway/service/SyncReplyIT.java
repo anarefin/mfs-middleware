@@ -9,9 +9,11 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import mfs.mw.app.gateway.RedisInfrastructure;
 import mfs.mw.app.gateway.TestInfrastructure;
 import mfs.mw.app.gateway.TestTopics;
 import mfs.mw.app.gateway.client.AuthClient;
+import mfs.mw.app.gateway.client.OrchestratorQuoteClient;
 import mfs.mw.app.gateway.dto.ErrorDetail;
 import mfs.mw.app.gateway.dto.TxnAuthorisation;
 import mfs.mw.app.gateway.exception.MwException;
@@ -51,7 +53,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.kafka.retry.delays=1s,1s,1s"
     })
 @AutoConfigureMockMvc
-@Import(TestInfrastructure.class)
+@Import({TestInfrastructure.class, RedisInfrastructure.class})
 @DirtiesContext
 class SyncReplyIT {
 
@@ -84,11 +86,14 @@ class SyncReplyIT {
 
   /** mw-auth (ticket 72): every PIN is right unless a test says otherwise. */
   @MockitoBean AuthClient auth;
+  /** The one-shot submit previews first (ticket 105); the charges are not under test here. */
+  @MockitoBean OrchestratorQuoteClient quotes;
 
   static final String ASSERTION = "eyJhbGciOiJFUzI1NiJ9.eyJqdGkiOiJpdCJ9.c2lnbmF0dXJl";
 
   @BeforeEach
   void replyConsumerReady() {
+    AllowingQuote.allow(quotes);
     when(auth.authorise(any()))
         .thenReturn(new TxnAuthorisation(ASSERTION, java.time.Instant.now().plusSeconds(60), false));
     TestTopics.awaitGroupStable("mw-app-gateway.reply.it-gw-1", Duration.ofSeconds(60));

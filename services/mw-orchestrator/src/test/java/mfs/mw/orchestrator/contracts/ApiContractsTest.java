@@ -125,6 +125,30 @@ class ApiContractsTest {
         .validate(body(new mfs.mw.orchestrator.dto.DuplicateGuardWindow(60)))).isEmpty();
   }
 
+  /** The quote (1.4.0, ticket 105): QuoteService's answer to a full and a minimal core reply. */
+  @Test
+  void aQuoteMatchesQuoteAndTheRequestMatchesQuoteRequest() {
+    var core = org.mockito.Mockito.mock(mfs.mw.orchestrator.client.CoreWalletClient.class);
+    org.mockito.Mockito.when(core.charges(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        .thenReturn(new mfs.mw.orchestrator.client.CoreWalletClient.CoreRead(200, null, JSON.readTree(
+            "{\"fee\":{\"valueMinor\":500,\"currency\":\"BDT\"},\"vat\":{\"valueMinor\":65,\"currency\":\"BDT\"},"
+                + "\"commission\":{\"valueMinor\":0,\"currency\":\"BDT\"},\"total\":{\"valueMinor\":10500,\"currency\":\"BDT\"}}")));
+    org.mockito.Mockito.when(core.limits(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        .thenReturn(new mfs.mw.orchestrator.client.CoreWalletClient.CoreRead(200, null, JSON.readTree(
+            "{\"allowed\":false,\"reasonCode\":\"LIMIT_EXCEEDED_DAILY\",\"remaining\":{\"daily\":{\"valueMinor\":0,\"currency\":\"BDT\"},\"dailyCount\":3}}")));
+    org.mockito.Mockito.when(core.account(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+        .thenReturn(new mfs.mw.orchestrator.client.CoreWalletClient.CoreRead(200, null, JSON.readTree(
+            "{\"walletId\":\"01711000002\",\"type\":\"CUSTOMER\",\"status\":\"ACTIVE\",\"holderName\":\"Rahim\"}")));
+    var request = new mfs.mw.orchestrator.dto.QuoteRequest("01711000001", "CUSTOMER", "P2P", "CUSTOMER_APP",
+        new mfs.mw.orchestrator.dto.QuoteRequest.Money(10_000, "BDT"),
+        new mfs.mw.orchestrator.dto.QuoteRequest.Counterparty("WALLET", "01711000002"));
+
+    var quote = new mfs.mw.orchestrator.service.QuoteService(core).quote(request, "c");
+
+    assertThat(OpenApiSchemas.component(API, "QuoteRequest").validate(body(request))).isEmpty();
+    assertThat(OpenApiSchemas.component(API, "Quote").validate(body(quote))).isEmpty();
+  }
+
   /** Guards the helper: a body that breaks the schema is reported. */
   @Test
   void aPageWithoutItemsIsRejected() {

@@ -22,7 +22,7 @@ export default [
       S.after(() => MW.sim.reset('c2wbank'));
       await MW.callbacks.bankCallbacks('ONCE');
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.addMoney('customer01', 'c2wbank', '1234567890123', 51000, MW.pin);
+      await S.previewAddMoney('customer01', 'c2wbank', '1234567890123', 51000, MW.pin);
       await S.appShows('COMPLETED', 25);
       S.eq('the replayed callback was acknowledged', await MW.sim.replay('c2wbank', MW.callbacks.reference(S.txnId())), 200);
       await S.appShows('COMPLETED');
@@ -37,7 +37,7 @@ export default [
       S.after(() => MW.sim.reset('c2wbank'));
       await MW.callbacks.bankCallbacks('DUPLICATE');
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.addMoney('customer01', 'c2wbank', '1234567890123', 52000, MW.pin);
+      await S.previewAddMoney('customer01', 'c2wbank', '1234567890123', 52000, MW.pin);
       await S.appShows('COMPLETED', 25);
       await S.changedBy({ '01711000001': 52000, 'SETTLEMENT': -52000, 'FEE_INCOME': 0 });
       await S.noLateCallback();
@@ -49,7 +49,7 @@ export default [
       S.after(() => MW.sim.reset('c2wbank'));
       await MW.callbacks.bankCallbacks('ONCE');
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.addMoney('customer01', 'c2wbank', '1234567890999', 50000, MW.pin);
+      await S.previewAddMoney('customer01', 'c2wbank', '1234567890999', 50000, MW.pin);
       await S.appShows('FAILED', 25, 'MW-PTR-C2WBANK-DEBIT_REFUSED');
       await S.noChange();
       await S.noHold('01711000001');
@@ -61,7 +61,7 @@ export default [
       S.after(() => MW.sim.reset('c2wbank'));
       await MW.callbacks.bankCallbacks('ONCE');
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50000, MW.WRONG_PIN);
+      await S.previewAddMoney('customer01', 'c2wbank', '1234567890123', 50000, MW.WRONG_PIN);
       S.status(401);
       S.code('MW-AUTH-040');
       await S.noChange();
@@ -73,7 +73,7 @@ export default [
       S.after(() => MW.sim.reset('c2wbank'));
       await MW.callbacks.bankCallbacks('ONCE');
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50013, MW.pin);
+      await S.previewAddMoney('customer01', 'c2wbank', '1234567890123', 50013, MW.pin);
       await S.appShows('COMPLETED', 120);
       await S.changedBy({ '01711000001': 50013, 'SETTLEMENT': -50013, 'FEE_INCOME': 0 });
       await S.noHold('01711000001');
@@ -86,7 +86,7 @@ export default [
       S.after(() => MW.sim.reset('c2wbank'));
       await MW.callbacks.bankCallbacks('ONCE');
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.addMoney('customer01', 'c2wbank', '1234567890123', 53000, MW.pin);
+      await S.previewAddMoney('customer01', 'c2wbank', '1234567890123', 53000, MW.pin);
       await S.repeat();
       S.sameTxnId();
       await S.appShows('COMPLETED', 25);
@@ -99,7 +99,7 @@ export default [
       await MW.callbacks.bankCallbacks('ONCE');
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.lateUnapplied('c2wbank');
-      await S.addMoney('customer01', 'c2wbank', '1234567890123', 50000, MW.pin);
+      await S.previewAddMoney('customer01', 'c2wbank', '1234567890123', 50000, MW.pin);
       await S.normalOnceAnswered('c2wbank', '/c2wbank/v1/debits');
       await S.appShows('FAILED', 180);
       await S.noChange();

@@ -4,6 +4,7 @@
 // the core-mock balances before and after, and collect the SMS the wallets received.
 
 import { historyQuery, parseHistory } from "@/lib/app-history";
+import { confirmBody, confirmPath, previewBody, previewPath } from "@/lib/app-preview";
 import { formatMinor, takaToMinor, normaliseMsisdn } from "@/lib/format";
 import { parseBillerList, type BillerItem } from "@/lib/seed-catalogue";
 import { TXN_TYPES, type TxnType } from "@/lib/personas";
@@ -32,7 +33,7 @@ async function guarded(t: Trace, fn: () => Promise<Outcome>): Promise<Outcome> {
   }
 }
 
-type LastSubmit = { idem: string; body: string; user: string; notes: string[] };
+type LastSubmit = { idem: string; body: string; path: string; notes: string[] };
 const g = globalThis as unknown as { __tcLast?: Map<string, LastSubmit> };
 const lastSubmit = (g.__tcLast ??= new Map());
 
@@ -50,7 +51,8 @@ export async function bindDevice(_prev: AppState, form: FormData): Promise<AppSt
 
 function buildBody(type: TxnType, f: FormData, amount: number, encryptedPin: unknown): { body: Record<string, unknown>; credit?: string } | string {
   const cp = str(f, "counterparty");
-  const base = { txnType: type, amount: { valueMinor: amount, currency: "BDT" }, encryptedPin };
+  const base: Record<string, unknown> = { txnType: type, amount: { valueMinor: amount, currency: "BDT" } };
+  if (encryptedPin) base.encryptedPin = encryptedPin;
   switch (type) {
     case "P2P": case "CASH_IN": case "CASH_OUT": case "MERCHANT_PAY": {
       const w = normaliseMsisdn(cp);
@@ -90,7 +92,7 @@ async function ensureBankCallback(t: Trace): Promise<void> {
   });
 }
 
-async function follow(t: Trace, user: string, r: EdgeResponse, body: string, idem: string, wallets: string[], started: number): Promise<Outcome> {
+async function follow(t: Trace, user: string, r: EdgeResponse, body: string, idem: string, wallets: string[], started: number, path = "/app/v1/transactions"): Promise<Outcome> {
   const b = (r.body ?? {}) as { txnId?: string; status?: string; code?: string; message?: string };
   const txnId = b.txnId;
   // a core refusal is answered 422 with the error envelope (code MW-CORE-<reason>, txnId): REJECTED
@@ -102,7 +104,7 @@ async function follow(t: Trace, user: string, r: EdgeResponse, body: string, ide
       ok: last.status === 200, body: last.body, ms: last.ms });
     status = (last.body as { status?: string } | null)?.status ?? status;
   }
-  lastSubmit.set(user, { idem, body, user, notes: wallets });
+  lastSubmit.set(user, { idem, body, path, notes: wallets });
   const why = b.code ? ` ${b.code} ${b.message ?? ""}` : "";
   return { ok: !t.failed, headline: txnId ? `${txnId}: ${status}${why}` : `refused:${why || ` HTTP ${r.status}`}`, steps: t.steps, txnId, status,
     data: { idempotencyKey: idem, consoleUrl: txnId ? `${publicUrl()}/console/transactions/${txnId}` : undefined, started } };
@@ -121,6 +123,72 @@ async function finish(o: Outcome, before: Map<string, { b: number | null; h: num
     }
   }
   return { ...o, balances: rows, sms };
+}
+
+/**
+ * Preview one money flow (ticket 105): session-level POST /app/v1/{group}/preview. No PIN, nothing
+ * moves. The answer is the fee, VAT, commission, masked counterparty and limits, plus a previewId.
+ */
+export async function previewTxn(_prev: AppState, form: FormData): Promise<AppState> {
+  const t = new Trace();
+  const user = str(form, "user");
+  const type = str(form, "txnType") as TxnType;
+  const amount = takaToMinor(str(form, "amount"));
+  if (!USER.test(user)) return fail(t, "choose a user");
+  if (!(TXN_TYPES as readonly string[]).includes(type)) return fail(t, "choose a flow");
+  if (!amount) return fail(t, "the amount is taka with at most 2 decimals, e.g. 10 or 20.13");
+  return guarded(t, async () => {
+    const built = buildBody(type, form, amount, undefined);
+    if (typeof built === "string") return fail(t, built);
+    await ready(t, user);
+    const path = previewPath(type);
+    const json = JSON.stringify(previewBody(built.body));
+    const r = await t.call(`preview ${type} (no PIN, nothing moves)`, "POST", path, { headers: await deviceHeaders(user), raw: json });
+    const b = (r.body ?? {}) as { previewId?: string; code?: string; message?: string; fee?: { valueMinor?: number }; total?: { valueMinor?: number }; counterparty?: { name?: string } };
+    if (r.status !== 200 || !b.previewId) {
+      return { ok: false, headline: `preview refused: ${b.code ?? `HTTP ${r.status}`} ${b.message ?? ""}`.trim(), steps: t.steps };
+    }
+    const who = b.counterparty?.name ? `, ${b.counterparty.name}` : "";
+    return {
+      ok: true,
+      headline: `fee ${formatMinor(b.fee?.valueMinor ?? 0)}, total ${formatMinor(b.total?.valueMinor ?? amount)}${who}`,
+      steps: t.steps,
+      data: { ...(b as Record<string, unknown>), previewId: b.previewId },
+    };
+  });
+}
+
+/** Confirm the previewed flow: signed POST /app/v1/{group}/confirm with the PIN and the previewId. */
+export async function confirmTxn(_prev: AppState, form: FormData): Promise<AppState> {
+  const t = new Trace();
+  const user = str(form, "user");
+  const type = str(form, "txnType") as TxnType;
+  const amount = takaToMinor(str(form, "amount"));
+  const pin = str(form, "pin");
+  const previewId = str(form, "previewId");
+  if (!USER.test(user)) return fail(t, "choose a user");
+  if (!(TXN_TYPES as readonly string[]).includes(type)) return fail(t, "choose a flow");
+  if (!amount) return fail(t, "the amount is taka with at most 2 decimals, e.g. 10 or 20.13");
+  if (!/^\d{4,6}$/.test(pin)) return fail(t, "the PIN is 4 to 6 digits (seeded wallets: 13579, MW_SEED_APP_PIN)");
+  if (!previewId) return fail(t, "preview the transaction first");
+  const started = Date.now();
+  return guarded(t, async () => {
+    const payer = await walletOf(user);
+    const encryptedPin = await pins.encrypt(pin);
+    t.note("encrypt the PIN on the device", "RSA-OAEP SHA-256 under the PIN transport key (GET /app/v1/pin-key): mw-auth checks it and the request carries its assertion, never the PIN");
+    const built = buildBody(type, form, amount, encryptedPin);
+    if (typeof built === "string") return fail(t, built);
+    const wallets = [payer, ...(built.credit && built.credit !== payer ? [built.credit] : []), "FEE_INCOME"];
+    const before = await balances(wallets);
+    if (type === "ADD_MONEY_BANK") await ensureBankCallback(t);
+    await ready(t, user);
+    const path = confirmPath(type);
+    const json = JSON.stringify(confirmBody(previewId, built.body));
+    const idem = str(form, "idempotencyKey") || `tc-${crypto.randomUUID()}`;
+    const r = await t.call(`confirm ${type} (signed, Idempotency-Key ${idem})`, "POST", path,
+      { headers: { ...(await signedHeaders(user, "POST", path, json)), "Idempotency-Key": idem }, raw: json }, [200, 201, 202]);
+    return finish(await follow(t, user, r, json, idem, wallets, started, path), before, wallets, started);
+  });
 }
 
 /** Submit one money flow from the app: signed POST /app/v1/transactions, then follow it. */
@@ -196,8 +264,8 @@ export async function resendLast(_prev: AppState, form: FormData): Promise<AppSt
   return guarded(t, async () => {
     const before = await balances(last.notes);
     await ready(t, user);
-    const r = await t.call(`resend the same body with the same Idempotency-Key ${last.idem}`, "POST", "/app/v1/transactions",
-      { headers: { ...(await signedHeaders(user, "POST", "/app/v1/transactions", last.body)), "Idempotency-Key": last.idem }, raw: last.body }, [200, 201, 202]);
+    const r = await t.call(`resend the same body with the same Idempotency-Key ${last.idem}`, "POST", last.path,
+      { headers: { ...(await signedHeaders(user, "POST", last.path, last.body)), "Idempotency-Key": last.idem }, raw: last.body }, [200, 201, 202]);
     t.note("what to check", "the same txnId comes back and no balance moves a second time");
     return finish(await follow(t, user, r, last.body, last.idem, last.notes, started), before, last.notes, started);
   });

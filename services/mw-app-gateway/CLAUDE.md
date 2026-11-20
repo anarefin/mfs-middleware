@@ -6,7 +6,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 ## Responsibilities
 
 - App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, ADD_MONEY_BANK,
-  TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`), `GET /app/v1/transactions` (wallet history, ADR D25),
+  TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`; ticket 105 runs preview then confirm on that body),
+  `POST /app/v1/{group}/preview` and `POST /app/v1/{group}/confirm` (groups send-money, cash-in, cash-out, payment,
+  bill-pay, top-up, add-money; preview moves nothing and needs no PIN), `GET /app/v1/transactions` (wallet history, ADR D25),
   `GET /app/v1/transactions/{txnId}`, `POST /app/v1/balance` (ADR D26), `GET /app/v1/pin-key`,
   `GET /app/v1/billers`, `POST /app/v1/billers/{code}/fetch-bill` and `GET /app/v1/merchant/collections` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only against mw-auth's
@@ -238,7 +240,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   Tests: `PushTokenControllerTest`, `contracts/ProducedContractsTest` (fixture through the real service).
 - Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password; `spring.data.redis.password`
-  synced from `REDIS_PASSWORD`; `mw.app-gateway.auth.client-secret` from `KC_MW_APP_GATEWAY_SECRET`), AppRole, PKI
+  synced from `REDIS_PASSWORD`; `mw.app-gateway.auth.client-secret` from `KC_MW_APP_GATEWAY_SECRET`;
+  `mw.app-gateway.preview.signing-key` created once, ticket 105), AppRole, PKI
   role `mw-app-gateway`. Keycloak realm `services` client `mw-app-gateway` (audiences `mw-auth` and, ADR D25,
   `mw-orchestrator`): a running stack
   needs `deploy/reset.sh` to import it. Compose waits for a healthy mw-auth.

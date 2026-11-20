@@ -123,6 +123,8 @@ provision_mw_app_gateway() {
   gen_once spring.datasource.password 40
   sync_env spring.data.redis.password REDIS_PASSWORD
   sync_env mw.app-gateway.auth.client-secret KC_MW_APP_GATEWAY_SECRET
+  # HMAC-SHA256 key of a previewId (ticket 105); created once, never a config-file value
+  gen_once mw.app-gateway.preview.signing-key 48
   db_role app_gateway_rw app_gateway
 }
 

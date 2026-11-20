@@ -107,6 +107,55 @@ public class CoreWalletClient {
     this.json = json;
   }
 
+  /**
+   * The answer of a quote read (ticket 105): a definite status with the envelope's {@code code} (null
+   * on 2xx) and the body. No definite answer is a {@link CoreUnavailableException}.
+   */
+  public record CoreRead(int status, String code, JsonNode body) {
+    public boolean ok() {
+      return status >= 200 && status < 300;
+    }
+  }
+
+  /** The core could not give a definite answer to a quote read (timeout, connection, 5xx, breaker, bulkhead). */
+  public static final class CoreUnavailableException extends RuntimeException {
+    private static final long serialVersionUID = 1L;
+
+    CoreUnavailableException(String message, Throwable cause) {
+      super(message, cause);
+    }
+  }
+
+  /** WAL-04 {@code POST /core/v1/charges/calculate} (the quote before the PIN, ticket 105). */
+  public CoreRead charges(CoreCallBodies.Charges body, String correlationId) {
+    return read(() -> send(HttpMethod.POST, "/core/v1/charges/calculate", vars(), correlationId, body, null, null));
+  }
+
+  /** WAL-05 {@code POST /core/v1/limits/check} (ticket 105). */
+  public CoreRead limits(CoreCallBodies.Limits body, String correlationId) {
+    return read(() -> send(HttpMethod.POST, "/core/v1/limits/check", vars(), correlationId, body, null, null));
+  }
+
+  /** WAL-01 {@code GET /core/v1/accounts/{msisdn}} (ticket 105: the payee's account). */
+  public CoreRead account(String walletId, String correlationId) {
+    return read(() -> send(HttpMethod.GET, "/core/v1/accounts/{msisdn}", vars(walletId), correlationId, null, null, null));
+  }
+
+  /** A read that moves nothing: bulkhead, breaker and the read retry, as WAL-13. */
+  private CoreRead read(Supplier<Answer> exchange) {
+    Supplier<Answer> guarded =
+        Retry.decorateSupplier(readRetry, Bulkhead.decorateSupplier(bulkhead, CircuitBreaker.decorateSupplier(breaker, exchange)));
+    try {
+      Answer a = guarded.get();
+      String code = a.body() == null ? null : a.body().path("code").asString(null);
+      return new CoreRead(a.status(), a.status() >= 200 && a.status() < 300 ? null : code, a.body());
+    } catch (NoDefiniteAnswer e) {
+      throw new CoreUnavailableException("core answered " + e.answer.status(), null);
+    } catch (RuntimeException e) {
+      throw new CoreUnavailableException(e.getClass().getSimpleName(), e);
+    }
+  }
+
   /** Makes the call of {@code command}'s step and classifies the answer; never throws. */
   public CoreReply call(CoreCommand command) {
     Supplier<Answer> exchange = switch (command.commandType()) {
@@ -228,10 +277,15 @@ public class CoreWalletClient {
    */
   private Answer send(HttpMethod method, String template, Object[] uriVars, CoreCommand command, Object body,
       String assertion, String key) {
-    Answer a = exchange(method, template, uriVars, command, body, assertion, key);
+    return send(method, template, uriVars, command.correlationId(), body, assertion, key);
+  }
+
+  private Answer send(HttpMethod method, String template, Object[] uriVars, String correlationId, Object body,
+      String assertion, String key) {
+    Answer a = exchange(method, template, uriVars, correlationId, body, assertion, key);
     if (a.status() == 401 && a.body() != null && TOKEN_REFUSED.equals(a.body().path("code").asString(null))) {
       tokens.invalidate();
-      a = exchange(method, template, uriVars, command, body, assertion, key);
+      a = exchange(method, template, uriVars, correlationId, body, assertion, key);
     }
     if (a.status() >= 500 || a.status() == 408 || a.status() == 429) {
       throw new NoDefiniteAnswer(a);
@@ -239,13 +293,13 @@ public class CoreWalletClient {
     return a;
   }
 
-  private Answer exchange(HttpMethod method, String template, Object[] uriVars, CoreCommand command, Object body,
+  private Answer exchange(HttpMethod method, String template, Object[] uriVars, String correlationId, Object body,
       String assertion, String key) {
     RestClient.RequestBodySpec req = http.method(method).uri(template, uriVars)
         .accept(MediaType.APPLICATION_JSON)
         .header("Authorization", "Bearer " + tokens.token());
-    if (command.correlationId() != null) {
-      req = req.header("X-Correlation-Id", command.correlationId());
+    if (correlationId != null) {
+      req = req.header("X-Correlation-Id", correlationId);
     }
     if (assertion != null) {
       req = req.header(ASSERTION_HEADER, assertion);

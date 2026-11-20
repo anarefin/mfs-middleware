@@ -55,7 +55,7 @@ export default [
     name: '[billpay] a paid bill debits the payer once and leaves nothing held',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.billPay('customer01', 'DESCO', '1234567', 66700, MW.pin);
+      await S.previewBillPay('customer01', 'DESCO', '1234567', 66700, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
       await S.changedBy({ '01711000001': -67000, 'SETTLEMENT': 66700, 'FEE_INCOME': 261 });
@@ -67,7 +67,7 @@ export default [
     name: '[billpay] a biller refusal releases the hold and moves no money',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.billPay('customer01', 'DESCO', '1234999', 10000, MW.pin);
+      await S.previewBillPay('customer01', 'DESCO', '1234999', 10000, MW.pin);
       S.status(502);
       S.code('MW-PTR-BILLAGG-PAYMENT_REFUSED');
       S.carriesTxnId();
@@ -80,7 +80,7 @@ export default [
     name: '[billpay] a bill payment without a biller is refused by the app API',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.billPay('customer01', null, '1234567', 10000, MW.pin);
+      await S.previewBillPay('customer01', null, '1234567', 10000, MW.pin);
       S.status(400);
       S.code('MW-VAL-001');
       await S.noChange();
@@ -90,7 +90,7 @@ export default [
     name: '[billpay tsq] an aggregator timeout is resolved by status inquiry and the hold is committed',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.billPay('customer01', 'DESCO', '1234567', 10013, MW.pin);
+      await S.previewBillPay('customer01', 'DESCO', '1234567', 10013, MW.pin);
       S.status(202);
       S.txnStatus('PROCESSING');
       await S.appShows('COMPLETED', 120);
@@ -101,7 +101,7 @@ export default [
   {
     name: '[billpay] a paid bill leaves an audit trail of the hold path',
     run: async (MW, S) => {
-      await S.billPay('customer01', 'DESCO', '1234567', 5000, MW.pin);
+      await S.previewBillPay('customer01', 'DESCO', '1234567', 5000, MW.pin);
       S.status(200);
       await S.auditStates('RECEIVED, VALIDATING, HOLDING, PARTNER_PENDING, COMMITTING, COMPLETED');
       await S.auditPartnerCall('mw-adapter-billpay');
@@ -111,7 +111,7 @@ export default [
     name: '[billpay] a bill payment sent twice with the same idempotency key pays the bill once',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
-      await S.billPay('customer01', 'DESCO', '1234567', 10000, MW.pin);
+      await S.previewBillPay('customer01', 'DESCO', '1234567', 10000, MW.pin);
       await S.repeat();
       S.status(200);
       S.sameTxnId();
@@ -125,7 +125,7 @@ export default [
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.lateUnapplied('billagg');
-      await S.billPay('customer01', 'DESCO', '1234567', 10000, MW.pin);
+      await S.previewBillPay('customer01', 'DESCO', '1234567', 10000, MW.pin);
       S.status(202);
       S.txnStatus('PROCESSING');
       await S.normalOnceAnswered('billagg', '/billagg/v1/payments');

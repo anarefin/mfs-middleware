@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits transaction query internal API (mw-orchestrator)
-  version: 1.3.0
+  version: 1.4.0
   description: |
     Internal, read-only API of mw-orchestrator (ticket 35, spec 15.2, 16.2): transaction search
     and the saga timeline. Clients: mw-admin-api (operators), mw-portal-api (an org sees only
@@ -28,6 +28,11 @@ info:
     A wallet party is a party of type WALLET (any walletType) or MERCHANT, matched through a
     keyed hash of `WALLET:<MSISDN>`; an org, a top-up MSISDN, a bank account or a biller account
     is never one. Each such transaction carries `direction`.
+    Quote (1.4.0, ticket 105, FRS CH-APP-05, PLT-026): `POST /internal/v1/quotes` answers what a
+    transaction would cost before the customer enters the PIN: the core's charges (WAL-04), the
+    payer's limit check (WAL-05) and, for a wallet payee, the payee's account (WAL-01) with the name
+    to the initial. A read: no saga, no transaction, nothing stored, no money moves. Only
+    mw-app-gateway calls it (a wallet-scoped client), always for the signed-in wallet.
 servers:
   - url: http://mw-orchestrator:8080
 security:
@@ -84,6 +89,33 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+  /internal/v1/quotes:
+    post:
+      operationId: quoteTransaction
+      summary: Fee, VAT, commission, limit check and payee of a transaction, before the PIN (ticket 105)
+      description: >-
+        Asks the core (ADR D31) for the charges of `txnType` and `amount` for the payer's wallet
+        type and channel, the payer's limit check and, when the payee is a wallet (`counterparty.type`
+        WALLET), the payee's account. A limit the payer would break is not an error here:
+        `limits.allowed` false with the core's `reasonCode` (the channel answers it). Errors: 400
+        MW-VAL-001 (body), 401 / 403 (token, caller), 422 MW-CORE-CREDIT_WALLET_NOT_FOUND (no such
+        payee wallet), 503 MW-SYS-CORE_UNAVAILABLE (the core gave no answer in time, retryable).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuoteRequest" }
+      responses:
+        "200":
+          description: The quote
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Quote" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /internal/v1/transactions/{txnId}:
     get:
       operationId: getTransaction
@@ -265,6 +297,59 @@ components:
         reasonCode: { type: string }
         at: { type: string, format: date-time }
         resultAt: { type: string, format: date-time }
+    QuoteRequest:
+      type: object
+      required: [walletId, walletType, txnType, amount]
+      additionalProperties: false
+      properties:
+        walletId: { type: string, pattern: "^01[3-9][0-9]{8}$", description: "The payer's wallet (canonical MSISDN)" }
+        walletType: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, ORGANISATION] }
+        txnType: { type: string, pattern: "^[A-Z][A-Z0-9_]{0,31}$" }
+        channel: { type: string, pattern: "^[A-Z][A-Z0-9_]{0,31}$" }
+        amount: { $ref: "#/components/schemas/Amount" }
+        counterparty:
+          type: object
+          required: [type, id]
+          additionalProperties: false
+          description: The payee; its account is read only for type WALLET
+          properties:
+            type: { type: string, enum: [WALLET, MSISDN, BILLER_ACCOUNT, BANK_ACCOUNT] }
+            id: { type: string, minLength: 1, maxLength: 64 }
+    Quote:
+      type: object
+      required: [txnType, amount, fee, vat, commission, total, limits]
+      properties:
+        txnType: { type: string }
+        amount: { $ref: "#/components/schemas/Amount" }
+        fee: { $ref: "#/components/schemas/Amount", description: "What the payer pays on top of the amount, VAT included" }
+        vat: { $ref: "#/components/schemas/Amount", description: The VAT inside the fee }
+        commission: { $ref: "#/components/schemas/Amount", description: The commission shares of the fee }
+        total: { $ref: "#/components/schemas/Amount", description: amount + fee }
+        limits:
+          type: object
+          required: [allowed]
+          properties:
+            allowed: { type: boolean }
+            reasonCode:
+              type: string
+              description: The core's limit reason, only when not allowed (e.g. LIMIT_EXCEEDED_DAILY)
+            remaining:
+              type: object
+              description: What is left before this amount; a limit the payer's rule does not set is left out
+              properties:
+                perTxn: { $ref: "#/components/schemas/Amount" }
+                daily: { $ref: "#/components/schemas/Amount" }
+                monthly: { $ref: "#/components/schemas/Amount" }
+                dailyCount: { type: integer, minimum: 0 }
+                monthlyCount: { type: integer, minimum: 0 }
+        counterparty:
+          type: object
+          description: The payee, masked (MSISDN `0171****789`, name to the initial); a wallet payee's name and type from the core
+          properties:
+            type: { type: string }
+            id: { type: string }
+            name: { type: string }
+            walletType: { type: string }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

@@ -27,4 +27,11 @@ public final class CoreCallBodies {
   /** {@code HoldActionRequest} of a commit or release; {@code round} an operator's decision (absent: the saga's). */
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record HoldAction(String reason, Integer round) {}
+
+  /** {@code ChargesRequest} (WAL-04, the quote of ticket 105); {@code customerType} the payer's wallet type. */
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record Charges(String txnType, Amount amount, String channel, String customerType) {}
+
+  /** {@code LimitsRequest} (WAL-05, the quote of ticket 105). */
+  public record Limits(String walletId, String txnType, Amount amount) {}
 }

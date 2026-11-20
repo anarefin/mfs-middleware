@@ -5,6 +5,8 @@ test("@failures a P2P whose core reply is lost is completed by the status inquir
   await page.getByTestId("preset-core-lost-reply").click();
   await expect(page.getByTestId("headline").first()).toContainText("applied");
   await page.goto("app");
+  await page.getByTestId("preview").click();
+  await expect(page.getByTestId("preview-quote")).toBeVisible();
   await page.getByTestId("submit").click();
   const r = page.getByTestId("result").first();
   await expect(r.getByTestId("txn-status")).toHaveText("COMPLETED");

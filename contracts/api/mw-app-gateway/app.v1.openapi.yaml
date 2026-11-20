@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.8.0
+  version: 1.9.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -110,6 +110,9 @@ paths:
       operationId: submitTransaction
       summary: Submit a transaction (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY, ADD_MONEY_BANK)
       description: >-
+        Stays for one release (PLT-051, ticket 105) and runs preview then confirm on this body:
+        the charges, the payer's limit check and a preview binding, then the PIN and the publish.
+        A limit the preview refuses is 422 MW-CORE-* and nothing is published.
         Who may initiate what follows the token's realm role (deny by default): `customer` sends
         P2P, CASH_OUT (the customer's own wallet pays the agent wallet in `creditParty`),
         MERCHANT_PAY (the customer's own wallet pays the merchant wallet in `creditParty`), TOPUP,
@@ -204,6 +207,107 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "504": { $ref: "#/components/responses/Error" }
+  /app/v1/{group}/preview:
+    post:
+      operationId: previewTransaction
+      summary: What a transaction would cost and whether the limits allow it, before the PIN (ticket 105)
+      description: >-
+        Moves no money and needs no PIN: a bound device with a live session (`X-Device-Id`), no
+        signature. The same per-flow rules as POST /app/v1/transactions apply to the body (role per
+        type, counterparty, partner, bank account, attributes; 400 MW-VAL-001 / MW-VAL-012, 403
+        MW-AUTH-002); `txnType` follows from `group`. The gateway asks mw-orchestrator, which asks the
+        core: fee (VAT included), VAT, commission and total from the tariff for the payer's wallet type,
+        the payer's limit check and, for a wallet payee, the payee's account (masked: MSISDN
+        `0171****789`, name to the initial; 422 MW-CORE-CREDIT_WALLET_NOT_FOUND when it does not exist).
+        A limit the amount would break is 422 MW-CORE-<reason> (LIMIT_BELOW_MIN_PER_TXN,
+        LIMIT_EXCEEDED_PER_TXN, LIMIT_EXCEEDED_DAILY, LIMIT_EXCEEDED_DAILY_COUNT, LIMIT_EXCEEDED_MONTHLY,
+        LIMIT_EXCEEDED_MONTHLY_COUNT) with English and Bangla text, and no previewId. Otherwise 200 with
+        a `previewId` (5 minutes) to confirm with. 503 MW-SYS-013 (retryable) when mw-orchestrator or
+        the core cannot be asked; 503 MW-SYS-012 when the preview cannot be kept.
+      parameters:
+        - { $ref: "#/components/parameters/Group" }
+        - { $ref: "#/components/parameters/DeviceId" }
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,128}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PreviewRequest" }
+      responses:
+        "200":
+          description: The preview
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Preview" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /app/v1/{group}/confirm:
+    post:
+      operationId: confirmTransaction
+      summary: Confirm a previewed transaction with the PIN (ticket 105)
+      description: >-
+        The only financial call of the two steps: signed like POST /app/v1/transactions (`X-Timestamp`,
+        `X-Nonce`, `X-Signature`), with an `Idempotency-Key`, the PIN ciphertext and the `previewId`
+        of a preview of the same wallet in the last 5 minutes. The body repeats the previewed
+        transaction; anything that differs from the preview (amount, payee, partner, bank account,
+        attributes) is 400 MW-VAL-026, an expired, unknown, altered or another wallet's previewId 400
+        MW-VAL-027, nothing authorised or moved. Then exactly as POST /app/v1/transactions: mw-auth's
+        assertion (its refusals as there), the request to mw-orchestrator, 200 with the terminal result
+        or 202 PROCESSING, the stored response for a repeated key, MW-VAL-024 for a business duplicate
+        (`confirmDuplicate`), 422 MW-CORE-*, 502 MW-PTR-*. A confirm may be repeated with the same key
+        and previewId while the preview lives.
+      parameters:
+        - { $ref: "#/components/parameters/Group" }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: As for POST /app/v1/transactions.
+          schema: { type: string, pattern: "^[\\x21-\\x7E]{1,64}$" }
+        - { $ref: "#/components/parameters/DeviceId" }
+        - { $ref: "#/components/parameters/Timestamp" }
+        - { $ref: "#/components/parameters/Nonce" }
+        - { $ref: "#/components/parameters/Signature" }
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema: { type: string, pattern: "^[A-Za-z0-9._:-]{1,128}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfirmRequest" }
+      responses:
+        "200":
+          description: Terminal status within the budget (COMPLETED or REVERSED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "202":
+          description: No terminal status within the budget (PROCESSING); poll the Location
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "423": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
         "504": { $ref: "#/components/responses/Error" }
   /app/v1/balance:
     post:
@@ -421,6 +525,14 @@ paths:
         "429": { $ref: "#/components/responses/Error" }
 components:
   parameters:
+    Group:
+      name: group
+      in: path
+      required: true
+      description: >-
+        The transaction group: send-money (P2P), cash-in (CASH_IN), cash-out (CASH_OUT), payment
+        (MERCHANT_PAY), bill-pay (BILL_PAY), top-up (TOPUP), add-money (ADD_MONEY_BANK)
+      schema: { type: string, enum: [send-money, cash-in, cash-out, payment, bill-pay, top-up, add-money] }
     DeviceId:
       name: X-Device-Id
       in: header
@@ -613,6 +725,65 @@ components:
           maxProperties: 20
           propertyNames: { enum: [reference] }
           additionalProperties: { type: string, maxLength: 256 }
+    PreviewRequest:
+      type: object
+      required: [amount]
+      additionalProperties: false
+      description: The transaction of the group, as in TransactionRequest without txnType and PIN.
+      properties:
+        creditParty: { $ref: "#/components/schemas/TransactionRequest/properties/creditParty" }
+        debitParty: { $ref: "#/components/schemas/TransactionRequest/properties/debitParty" }
+        partner: { $ref: "#/components/schemas/TransactionRequest/properties/partner" }
+        amount: { $ref: "#/components/schemas/Amount" }
+        locale: { type: string, enum: [bn, en] }
+        attributes: { $ref: "#/components/schemas/TransactionRequest/properties/attributes" }
+    ConfirmRequest:
+      type: object
+      required: [previewId, amount, encryptedPin]
+      additionalProperties: false
+      description: The previewed transaction again, its previewId and the PIN.
+      properties:
+        previewId: { type: string, minLength: 1, maxLength: 128, description: From the preview answer }
+        creditParty: { $ref: "#/components/schemas/TransactionRequest/properties/creditParty" }
+        debitParty: { $ref: "#/components/schemas/TransactionRequest/properties/debitParty" }
+        partner: { $ref: "#/components/schemas/TransactionRequest/properties/partner" }
+        amount: { $ref: "#/components/schemas/Amount" }
+        encryptedPin: { $ref: "#/components/schemas/TransactionRequest/properties/encryptedPin" }
+        locale: { type: string, enum: [bn, en] }
+        confirmDuplicate: { $ref: "#/components/schemas/TransactionRequest/properties/confirmDuplicate" }
+        attributes: { $ref: "#/components/schemas/TransactionRequest/properties/attributes" }
+    Preview:
+      type: object
+      required: [previewId, expiresAt, txnType, amount, fee, vat, commission, total, limits]
+      properties:
+        previewId: { type: string, description: Confirm with it within 5 minutes }
+        expiresAt: { type: string, format: date-time }
+        txnType: { type: string }
+        amount: { $ref: "#/components/schemas/Money" }
+        fee: { $ref: "#/components/schemas/Money", description: "What the payer pays on top of the amount, VAT included" }
+        vat: { $ref: "#/components/schemas/Money", description: The VAT inside the fee }
+        commission: { $ref: "#/components/schemas/Money", description: The commission shares of the fee }
+        total: { $ref: "#/components/schemas/Money", description: amount + fee (what the payer is debited) }
+        counterparty:
+          type: object
+          description: The payee, masked (MSISDN `0171****789`, account last 4, name to the initial)
+          properties:
+            type: { type: string }
+            id: { type: string }
+            name: { type: string }
+            walletType: { type: string }
+        limits:
+          type: object
+          description: What is left of the payer's limits before this amount (a limit not set is left out)
+          properties:
+            remaining:
+              type: object
+              properties:
+                perTxn: { $ref: "#/components/schemas/Money" }
+                daily: { $ref: "#/components/schemas/Money" }
+                monthly: { $ref: "#/components/schemas/Money" }
+                dailyCount: { type: integer, minimum: 0 }
+                monthlyCount: { type: integer, minimum: 0 }
     PushTokenRequest:
       type: object
       required: [token, platform]

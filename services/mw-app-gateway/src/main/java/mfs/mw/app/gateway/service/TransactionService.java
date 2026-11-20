@@ -74,16 +74,7 @@ public class TransactionService {
   }
 
   public SubmitResult submit(AppUser user, String idempotencyKey, TransactionRequest body) {
-    if (!props.supportedTxnTypes().contains(body.txnType())) {
-      throw new MwException(ErrorCodes.VAL_UNSUPPORTED_TXN_TYPE, "Transaction type is not supported");
-    }
-    if (!props.mayInitiate(user.walletType(), body.txnType())) {
-      throw new MwException(ErrorCodes.AUTH_FORBIDDEN, "This app role cannot initiate this transaction type")
-          .withStatus(HttpStatus.FORBIDDEN);
-    }
-    refuseUnknownAttributes(body);
-    refuseFieldsOfOtherFlows(body);
-    refuseOwnWallet(user, body);
+    check(user, body);
     // FRS PLT-011: a key already answered 200 gets that very body again (or 409 for other content)
     Optional<TransactionView> stored = replay.replay(user, idempotencyKey, body);
     if (stored.isPresent()) {
@@ -121,6 +112,23 @@ public class TransactionService {
       replay.remember(user, idempotencyKey, body, result.view());
     }
     return result;
+  }
+
+  /**
+   * The channel rules of a transaction before anything is asked (also the preview's, ticket 105): type
+   * offered, role may initiate it, attributes allow-listed, the fields of its flow, not the own wallet.
+   */
+  public void check(AppUser user, TransactionRequest body) {
+    if (!props.supportedTxnTypes().contains(body.txnType())) {
+      throw new MwException(ErrorCodes.VAL_UNSUPPORTED_TXN_TYPE, "Transaction type is not supported");
+    }
+    if (!props.mayInitiate(user.walletType(), body.txnType())) {
+      throw new MwException(ErrorCodes.AUTH_FORBIDDEN, "This app role cannot initiate this transaction type")
+          .withStatus(HttpStatus.FORBIDDEN);
+    }
+    refuseUnknownAttributes(body);
+    refuseFieldsOfOtherFlows(body);
+    refuseOwnWallet(user, body);
   }
 
   /** Only allow-listed attribute keys (MW-VAL-001 naming each other key). */

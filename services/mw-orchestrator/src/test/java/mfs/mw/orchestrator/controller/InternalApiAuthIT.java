@@ -107,6 +107,25 @@ class InternalApiAuthIT {
     assertEnvelope(get(SEARCH + "?walletId=01711000001&reveal=true", gateway), 403, "MW-AUTH-002");
   }
 
+  private HttpResponse<String> post(String path, String authorization, String body) throws Exception {
+    HttpRequest req = HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
+        .header("Authorization", authorization).header("Content-Type", "application/json")
+        .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+    return HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString());
+  }
+
+  /** Ticket 105: the quote is the app gateway's alone; its body is checked like any other. */
+  @Test
+  void onlyTheAppGatewayMayAskForAQuote() throws Exception {
+    String quotes = "/internal/v1/quotes";
+    String valid = "{\"walletId\":\"01711000001\",\"walletType\":\"CUSTOMER\",\"txnType\":\"P2P\","
+        + "\"amount\":{\"valueMinor\":100,\"currency\":\"BDT\"}}";
+    assertEnvelope(post(quotes, InternalTokens.bearer("mw-admin-api"), valid), 403, "MW-AUTH-002");
+    assertEnvelope(post(quotes + "?walletId=01711000001", InternalTokens.bearer("mw-app-gateway"), valid), 403, "MW-AUTH-002");
+    // authorised, then the body refused
+    assertEnvelope(post(quotes, InternalTokens.bearer("mw-app-gateway"), "{\"walletId\":\"x\"}"), 400, "MW-VAL-001");
+  }
+
   @Test
   void probesStayOpen() throws Exception {
     assertThat(get("/actuator/health/liveness", null).statusCode()).isEqualTo(200);

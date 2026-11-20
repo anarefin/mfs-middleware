@@ -412,7 +412,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   walletType) or MERCHANT: never ORG, a top-up MSISDN, BANK_ACCOUNT or BILLER_ACCOUNT; a wallet on both sides
   once, as OUT); V13 fills older rows (`on conflict do nothing`). Each item carries `direction`
   (`TransactionQueryService.direction`); unscoped results carry none. Caller: `wallet-scoped-clients`
-  (mw-app-gateway, also in `allowed-clients`) may only call `GET /internal/v1/transactions` with a non-blank
+  (mw-app-gateway, also in `allowed-clients`) may call `POST /internal/v1/quotes` (ticket 105, no query
+  parameters; the wallet is in the body) and `GET /internal/v1/transactions` with a non-blank
   `walletId` and the query parameters walletId, direction, txnType, status, from, to, limit, offset;
   anything else 403 `MW-AUTH-002`, WARN `security.internal_call_denied` reason `PATH_NOT_ALLOWED` /
   `WALLET_REQUIRED` / `PARAM_NOT_ALLOWED` (`security/InternalCallerPolicyTest`, `InternalApiAuthIT`).

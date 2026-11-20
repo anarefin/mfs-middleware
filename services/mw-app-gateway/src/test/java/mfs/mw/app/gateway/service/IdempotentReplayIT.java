@@ -16,6 +16,7 @@ import mfs.mw.app.gateway.TestInfrastructure;
 import mfs.mw.app.gateway.TestTopics;
 import mfs.mw.app.gateway.RedisInfrastructure;
 import mfs.mw.app.gateway.client.AuthClient;
+import mfs.mw.app.gateway.client.OrchestratorQuoteClient;
 import mfs.mw.app.gateway.dto.TxnAuthorisation;
 import mfs.mw.app.gateway.messaging.OrchestratorStub;
 import org.junit.jupiter.api.AfterAll;
@@ -61,6 +62,8 @@ class IdempotentReplayIT {
   private final JsonMapper json;
 
   @MockitoBean AuthClient auth;
+  /** The one-shot submit previews first (ticket 105); the charges are not under test here. */
+  @MockitoBean OrchestratorQuoteClient quotes;
 
   @Autowired
   IdempotentReplayIT(MockMvcTester mvc, JsonMapper json) {
@@ -81,6 +84,7 @@ class IdempotentReplayIT {
 
   @BeforeEach
   void ready() {
+    AllowingQuote.allow(quotes);
     when(auth.authorise(any())).thenReturn(new TxnAuthorisation(ASSERTION, Instant.now().plusSeconds(60), false));
     TestTopics.awaitGroupStable("mw-app-gateway.reply.it-gw-replay", Duration.ofSeconds(60));
   }

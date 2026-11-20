@@ -62,7 +62,7 @@ export const HOW_TO: Record<PageKey, HowTo> = {
     steps: [
       "Pick who is signed in: a Category (customer, agent, merchant), then one of its PIN-ready seeded wallets (or Other MSISDN…); the card shows its live balance, held amount, device and session.",
       "Pick a flow (only the role's flows: an agent cashes in, a merchant only collects), then a counterparty from the list (or Custom…) and a Scenario chip for the outcome to test.",
-      "Submit: the console binds a device the first time (OTP + PIN 13579), logs in at mw-auth and signs the request.",
+      "Preview, then Confirm: preview shows the fee, VAT, commission, masked name and limits (no PIN, nothing moves). Confirm signs the same fields with the PIN. The console binds a device the first time (OTP + PIN 13579) and logs in at mw-auth.",
       "Check the result: final status, balances before / after (fee income into FEE_INCOME, its VAT into VAT_PAYABLE), the SMS and every step.",
       "Press Resend the last submit: same txnId, every balance change Tk 0.00.",
       "Click the txnId to open the transaction in the explorer (timeline, partner calls, audit trail).",

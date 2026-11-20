@@ -149,6 +149,10 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 10 | [p2p notify] sender and receiver get the right SMS text | 1 |  |
 | 14 | [admin operator p2p] an operator finds a P2P by txnId and by MSISDN and sees its timeline and audit trail | 4 | ops search-txnId; ops search-msisdn; ops timeline; ops audit |
 | 14 | [admin operator reversal] an operator finds a P2P by MSISDN and reverses it once a second operator approves | 4 | ops search-msisdn; ops reversal-approved; ops audit |
+| 46 | [p2p] a preview shows the fee, VAT, commission and the masked payee, and confirm debits that fee | 1 | P2P app success |
+| 46 | [p2p] a preview alone moves no money | - | |
+| 46 | [p2p] a confirm whose amount differs from the preview is refused | - | |
+| 46 | [p2p] an amount over the per-transaction limit is refused at preview and moves nothing | 1 | P2P app failure |
 | 01 | [p2p] a P2P completes and moves the money once | 1 | P2P app success |
 | 01 | [p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves | 1 | P2P app failure |
 | 01 | [p2p] a core rejection (over per-txn limit) moves no money | 1 | P2P app failure |

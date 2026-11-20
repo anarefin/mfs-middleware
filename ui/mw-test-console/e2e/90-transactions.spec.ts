@@ -8,6 +8,8 @@ test.describe("@transactions transaction explorer", () => {
     await page.getByTestId("txn-type").selectOption("P2P");
     await page.getByTestId("counterparty").fill("01711000002");
     await page.getByTestId("amount").fill("10");
+    await page.getByTestId("preview").click();
+    await expect(page.getByTestId("preview-quote")).toBeVisible();
     await page.getByTestId("submit").click();
     const r = page.getByTestId("result").first();
     await expect(r.getByTestId("txn-status")).toHaveText("COMPLETED");

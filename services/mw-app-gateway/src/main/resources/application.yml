@@ -304,6 +304,11 @@ mw:
       base-url: ${MW_ORCHESTRATOR_BASE_URL:http://mw-orchestrator:8080}
       connect-timeout: 1s
       read-timeout: 3s
+    # Preview and confirm (ticket 105, FRS CH-APP-05, PLT-026; service/PreviewService): a preview is kept
+    # in Redis preview:<id> for ttl; its previewId is signed with HMAC-SHA256 under signing-key, which
+    # comes from Vault only (secret/mw-app-gateway, created once by the dev provisioning; >= 32 chars).
+    preview:
+      ttl: 5m
     # The device gate (spec 9.1, 18.6; ticket 29, a verifier since ticket 68): every /app/** request
     # comes from a device bound to the token's wallet (X-Device-Id, its key from mw-auth, cached) with
     # a live mw-auth session; a submit is signed (ECDSA P-256) and its nonce used once. Binding, the
