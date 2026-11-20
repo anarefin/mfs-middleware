@@ -6,4 +6,4 @@ The first implementer stopped with no commit. Copy this file onto the branch tha
 - **112b** (after 112a, and after the amount decision below): orchestrator `TopupFlow` postpaid fetch at preview, prepaid denomination check, and `PostpaidTopupIT`. This slice may edit `mw-app-gateway` `/preview`.
 - **112c** (after 112b): T1–T12 for two operators. T3/T4 drive STATUS. No timer sleep. T8 fallback. Traceability and API folder `46-topup-operators` only. `05-topup` still passes.
 
-Amount decision, still open: when the outstanding bill and the minimum due differ, which amounts may be confirmed. Do not guess this in 112a.
+Amount decision (user, 2026-11-20): any amount from the minimum due through the outstanding bill. Preview returns both numbers. The quote stores the fetched bill, and confirm does not fetch again. An amount outside that range is refused before a hold. 112a does not implement this.
