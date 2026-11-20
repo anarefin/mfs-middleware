@@ -1,0 +1,63 @@
+{
+  "x-mw-derived-from": "api/mw-admin-api/admin.v1.openapi.yaml#/paths/~1admin~1v1~1ussd~1menus~1preview/post/requestBody/content/application~1json/schema",
+  "type": "object",
+  "required": [
+    "menu",
+    "mno"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "menu": {
+      "type": "object",
+      "required": [
+        "start",
+        "messages",
+        "nodes"
+      ],
+      "properties": {
+        "start": {
+          "type": "string",
+          "minLength": 1
+        },
+        "messages": {
+          "type": "object"
+        },
+        "nodes": {
+          "type": "object",
+          "minProperties": 1
+        }
+      }
+    },
+    "menuId": {
+      "type": "string"
+    },
+    "mno": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "bn",
+        "en"
+      ]
+    },
+    "inputs": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "string",
+        "maxLength": 64
+      }
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "COMPLETED",
+        "FAILED",
+        "PROCESSING"
+      ]
+    }
+  }
+}

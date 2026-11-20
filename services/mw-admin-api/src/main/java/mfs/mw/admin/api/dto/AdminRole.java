@@ -123,6 +123,9 @@ public enum AdminRole {
   /** Approve or reject such a version; never the maker's own (spec 15.3). */
   public static final Set<AdminRole> CONTENT_CHECKER = Set.copyOf(EnumSet.of(OPS_CHECKER));
 
+  /** Preview a draft USSD menu (ticket 133b): the content makers and checkers. */
+  public static final Set<AdminRole> CONTENT_PREVIEW = Set.copyOf(EnumSet.of(OPS_MAKER, OPS_CHECKER));
+
   /** Never change anything: no method but GET/HEAD/OPTIONS (spec 15.4: viewer; auditor read-only). */
   public static final Set<AdminRole> READ_ONLY = Set.copyOf(EnumSet.of(VIEWER, AUDITOR));
 

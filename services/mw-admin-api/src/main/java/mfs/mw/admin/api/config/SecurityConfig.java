@@ -103,6 +103,8 @@ public class SecurityConfig {
                         "/admin/v1/notify-templates/*/*/*/change-requests",
                         "/admin/v1/notify-campaigns")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.CONTENT_MAKER::contains)))
+                    .requestMatchers(HttpMethod.POST, "/admin/v1/ussd/menus/preview")
+                    .access(roles(r -> r.stream().anyMatch(AdminRole.CONTENT_PREVIEW::contains)))
                     .requestMatchers("/admin/**")
                     .access(roles(r -> !r.isEmpty()))
                     .anyRequest()

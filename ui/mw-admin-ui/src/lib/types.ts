@@ -239,4 +239,10 @@ export type ErrorEnvelope = {
   details: { field?: string; issue?: string }[];
 };
 
+/** admin.v1 UssdMenuPreview (ticket 133b): a draft menu walked on one MNO. */
+export type MenuPreview = {
+  menuId: string; mno: string; shortCode: string; rootMenuId: string; language: "bn" | "en";
+  screens: { input?: string | null; screen: string; page: number; pages: number; ended: boolean }[];
+};
+
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; status: number; error: ErrorEnvelope };

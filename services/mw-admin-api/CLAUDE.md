@@ -269,6 +269,22 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   only in those services (the admin lists only versions made here); the compacted topic keeps only
   the latest record per key, so a consumer starting on an empty database gets the latest version
   only (fine for the single-instance MVP with persistent databases).
+- USSD menu preview (ticket 133b, FRS ADM-06, CH-USSD-06; `ContentController.previewMenu` ->
+  `service/UssdPreviewService`, pure `service/UssdPreview`): `POST /admin/v1/ussd/menus/preview {menu, menuId?,
+  mno, language?, inputs?, outcome?}` (`AdminRole.CONTENT_PREVIEW` = ops-maker, ops-checker; derived schema
+  `admin-v1-ussd-menu-preview.json`). The tree goes through `MenuValidator` exactly as a proposal (`400
+  MW-VAL-040`, one `menu` detail per problem; an MNO outside `mw.content.mnos` is a `mno` detail), then
+  `UssdPreview.walk` answers the inputs screen by screen: `UssdPreview.pages` is a copy of mw-ussd's
+  `ScreenFormatter.pages` (keep aligned), the walk follows the console's browser preview (`0` next page, `00`
+  previous page else previous node, three invalid answers end it, an ACTION resolves to `outcome`, a DYNAMIC
+  list has two samples, `pin` / `regex` inputs accept any answer so no operator pattern runs here, a PIN
+  answer is echoed `****`). Short code -> root menu and screen limits per MNO: `mw.content.ussd.<mno>`
+  (`short-code`, `root-menu-id`, `max-length-gsm`, `max-length-ucs2`, `overflow`), a copy of mw-ussd's
+  `ussd.short_code` rows and `mw.ussd.mno.*` limits in `application.yml`. Decision (133 split): a config
+  copy rather than a new config change type mw-ussd would apply, since this service never reads mw-ussd's
+  schema and the codes change with an MNO contract, not daily. Nothing is stored, published or audited;
+  the body is never logged (`UssdPreviewBody.toString`). Tests `service/UssdPreviewTest`,
+  `controller/UssdPreviewApiIT`.
 - Keys and the key ceremony (ticket 75, spec 18.8, D23, OWN-08; `controller/KeyController` ->
   `service/KeyAdminService`, approval `service/KeyChangeHandler` (resourceType `key`,
   `ChangeRequest.KEY`, resourceId the keyId), `client/CryptoKeyClient`): `GET /admin/v1/keys` (mw-crypto's

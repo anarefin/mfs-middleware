@@ -9,7 +9,7 @@ import Ajv2020 from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
-  approvedPinReset, ceremonyCombined, ceremonyOneShare, completedP2p, expiringCredential, keyPage, page, pendingKeyRotation, pendingReversal, unavailable,
+  approvedPinReset, ceremonyCombined, menuPreview, ceremonyOneShare, completedP2p, expiringCredential, keyPage, page, pendingKeyRotation, pendingReversal, unavailable,
 } from "./testing/admin-fixtures";
 
 const contractsDir = process.env.MW_CONTRACTS_DIR ?? resolve(__dirname, "../../../../contracts");
@@ -46,6 +46,10 @@ describe("component-test fixtures match admin.v1", () => {
   it("a credential is metadata only (ticket 131)", () => {
     check("Credential", expiringCredential);
     check("CredentialPage", { items: [expiringCredential] });
+  });
+
+  it("a menu preview is a UssdMenuPreview (ticket 133b)", () => {
+    check("UssdMenuPreview", menuPreview);
   });
 
   it("the failure is the 5.3 envelope", () => {

@@ -47,6 +47,7 @@ public class BodySchema {
 
   /** {@code POST /admin/v1/ussd-menus/{menuId}/change-requests} (ticket 39). */
   public static final String USSD_MENU_CHANGE = "derived-schemas/admin-v1-ussd-menu-change-request.json";
+  public static final String USSD_MENU_PREVIEW = "derived-schemas/admin-v1-ussd-menu-preview.json";
 
   /** {@code POST /admin/v1/notify-templates/{code}/{channel}/{locale}/change-requests} (ticket 39). */
   public static final String TEMPLATE_CHANGE = "derived-schemas/admin-v1-template-change-request.json";
