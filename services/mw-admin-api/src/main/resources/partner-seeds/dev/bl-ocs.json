@@ -1,0 +1,47 @@
+{
+  "partnerId": "bl-ocs",
+  "family": "telco",
+  "config": {
+    "enabled": true,
+    "connectTimeoutMs": 3000,
+    "timeoutMs": 20000,
+    "readTimeoutMs": 22000,
+    "auth": {
+      "scheme": "none"
+    },
+    "sensitiveFields": {
+      "number": "MSISDN"
+    },
+    "ambiguousCodes": [
+      "BL9876"
+    ],
+    "errorMap": {
+      "BL42": {
+        "suffix": "REJECTED",
+        "retryable": false
+      },
+      "BL1404": {
+        "suffix": "BILL_UNKNOWN",
+        "retryable": false
+      },
+      "BL4091": {
+        "suffix": "NOT_REVERSIBLE",
+        "retryable": false
+      }
+    },
+    "route": "- route:\n    from:\n      uri: direct:partner-bl-ocs\n      steps:\n        - choice:\n            when:\n              - simple: \"${header.mwOperation} == 'PAY' && ${header.mwPartnerCode} == 'POSTPAID'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=PAY.postpaid.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/ocs-bl/v1/paybill&auth=basic&userField=basic-user&secretField=basic-password\"\n                  - to: \"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=403\"\n              - simple: \"${header.mwOperation} == 'PAY'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=PAY.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/ocs-bl/v1/reload&auth=basic&userField=basic-user&secretField=basic-password\"\n                  - to: \"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=403\"\n              - simple: \"${header.mwOperation} == 'INQUIRY'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=INQUIRY.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/ocs-bl/v1/due&auth=basic&userField=basic-user&secretField=basic-password\"\n                  - to: \"kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=403\"\n              - simple: \"${header.mwOperation} == 'STATUS_QUERY'\"\n                steps:\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=GET&path=/ocs-bl/v1/reload/{reference}&auth=basic&userField=basic-user&secretField=basic-password\"\n                  - to: \"kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404\"\n              - simple: \"${header.mwOperation} == 'REVERSE'\"\n                steps:\n                  - to: \"kamelet:mw-map?mapping=REVERSE.request\"\n                  - to: \"kamelet:mw-http-call?url=http://mw-simulators:8080&method=POST&path=/ocs-bl/v1/reload/{reference}/reverse&auth=basic&userField=basic-user&secretField=basic-password\"\n                  - to: \"kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=403,404\"\n        - to: \"kamelet:mw-audit\"\n",
+    "mappings": {
+      "PAY.request": "{\"id\": reference, \"number\": creditParty.id, \"value\": amount.major, \"prepaid\": true}\n",
+      "PAY.postpaid.request": "{\"id\": reference, \"number\": creditParty.id, \"value\": amount.major, \"prepaid\": false}\n",
+      "PAY.response": "status = 200\n  ? (body.outcome = \"OK\" and $type(body.blId) = \"string\" and body.blId != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.blId, \"code\": body.faultCode}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 403 and $type(body.faultCode) = \"string\" and body.faultCode != \"\"\n  ? {\"outcome\": \"FAILED\", \"code\": body.faultCode, \"message\": body.faultText}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "INQUIRY.request": "{\"number\": creditParty.id}\n",
+      "INQUIRY.response": "status = 200\n  ? (body.outcome = \"DUE\" and $type(body.billId) = \"string\" and $type(body.dueAmount) = \"string\" and $type(body.minAmount) = \"string\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.billId, \"code\": body.faultCode, \"attributes\": {\"outstanding\": body.dueAmount, \"minimum\": body.minAmount}}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 403 and $type(body.faultCode) = \"string\" and body.faultCode != \"\"\n  ? {\"outcome\": \"FAILED\", \"code\": body.faultCode, \"message\": body.faultText}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "STATUS_QUERY.response": "status = 200\n  ? (body.outcome = \"OK\" and $type(body.blId) = \"string\" and body.blId != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.blId, \"code\": body.faultCode}\n      : body.outcome = \"NOK\" and $type(body.faultCode) = \"string\" and body.faultCode != \"\"\n        ? {\"outcome\": \"FAILED\", \"code\": body.faultCode, \"message\": body.faultText}\n        : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: status = 404 and body.outcome = \"UNKNOWN\"\n  ? {\"outcome\": \"NOT_FOUND\", \"code\": body.faultCode, \"message\": body.faultText}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n",
+      "REVERSE.request": "{\"reversalId\": reversalReference}\n",
+      "REVERSE.response": "status = 200\n  ? (body.outcome = \"REVERSED\" and $type(body.blId) = \"string\" and body.blId != \"\"\n      ? {\"outcome\": \"SUCCESS\", \"partnerRef\": body.blId, \"code\": body.faultCode}\n      : {\"outcome\": \"UNKNOWN\", \"reason\": \"MALFORMED_REPLY\"})\n: (status = 403 or status = 404) and $type(body.faultCode) = \"string\" and body.faultCode != \"\"\n  ? {\"outcome\": \"FAILED\", \"code\": body.faultCode, \"message\": body.faultText}\n: {\"outcome\": \"UNKNOWN\", \"reason\": \"UNEXPECTED_STATUS\"}\n"
+    },
+    "allowedHosts": [
+      "mw-simulators"
+    ]
+  }
+}

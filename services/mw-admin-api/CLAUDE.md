@@ -176,9 +176,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   `scheduler/PartnerSeedJob` at start-up, insert-if-absent at version 0, never published, checked with
   the route rules, its route row `route_status` SEED, no `route` state in the view); only the dev
   profile (`application-dev.yml`, `SPRING_PROFILES_ACTIVE=dev` in `deploy/docker-compose.yml`) seeds
-  `partner-seeds/dev/ocs.json`, `billagg.json`, `c2wbank.json` (ticket 84), copies of the adapters' dev
-  seeds (mw-adapter-telco `ocs`, -billpay `billagg`, -bank `c2wbank`) with the simulator URL written
-  into the route (keep them identical; the test config seeds them too). V11 drops a version-0 seed
+  `partner-seeds/dev/ocs.json`, `gp-ocs.json`, `robi-ocs.json`, `teletalk-ocs.json`, `bl-ocs.json`
+  (ticket 112a), `billagg.json`, `c2wbank.json` (ticket 84), copies of the adapters' dev
+  seeds (mw-adapter-telco `ocs` and the four operator profiles, -billpay `billagg`, -bank `c2wbank`)
+  with the simulator URL written into the route (keep them identical; the test config seeds them too). V11 drops a version-0 seed
   without a route row so it is stored again in the route shape. Decisions (no product owner available): ops-maker/ops-checker may change
   partners as well as integration-* (an incident disable is an operations task); the ops-emergency
   direct change with 24 h post-approval (15.3) is not built; DELETE / tombstones are not offered (disable

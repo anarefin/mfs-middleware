@@ -73,9 +73,16 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
   20 s, resilience4j instance `ocs` (bulkhead 100, 16 s slow-call threshold), error map `2001`
   TOPUP_REJECTED, `9876` ambiguous. mw-admin-api's dev seed `partner-seeds/dev/ocs.json` is a copy: keep
   them identical.
-- **Aliases** (D28, user decision 2026-11-18): `mw.partners.partner-aliases` maps every operator id the
-  channels send (`gp`, `robi`, `banglalink`, `teletalk`: mw-app-gateway, mw-ussd's operator list and MNO
-  operators, the test console) to `ocs`; a partner record of its own wins over the alias; any other id is
+- **Operator profiles** (ticket 112a): `gp-ocs`, `robi-ocs`, `teletalk-ocs`, `bl-ocs` in the same
+  `application-dev.yml`, each its own route, mapping and error map (`MW-PTR-GP_OCS-*` and the same
+  for `ROBI_OCS`, `TELETALK_OCS`, `BL_OCS`). Auth is on the route: api-key, hmac-sha256, oauth2-cc,
+  basic. Base URL `OCS_BASE_URL`, hosts `MW_OCS_ALLOWED_HOSTS`, the same resilience settings as `ocs`.
+  Selected by those ids. Admin copies: `partner-seeds/dev/gp-ocs.json`, `robi-ocs.json`,
+  `teletalk-ocs.json`, `bl-ocs.json` (simulator URL written out). Proved by `route/OperatorOcsRouteIT`.
+- **Aliases** (D28, user decision 2026-11-18): `mw.partners.partner-aliases` maps the channel operator
+  ids (`gp`, `robi`, `banglalink`, `teletalk`: mw-app-gateway, mw-ussd's operator list and MNO
+  operators, the test console) to the legacy `ocs` record. That alias is the fallback until a caller
+  sends `gp-ocs` and the rest; a partner record of its own wins over the alias. Any other id is
   FAILED `MW-PTR-UNKNOWN-PARTNER`, not retryable, never sent (`TelcoRequestRouteIT`).
 - **Family** `telco` (`mw.partners.family`): records of billpay or bank are skipped (`config.other_family`).
 - **Route status**: every record of version >= 1 ends LIVE (with its Kamelets) or REJECTED on
@@ -110,7 +117,8 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
 - `events/mw-admin-api/mw.config.changed.v1` in (PARTNER records, `configKey` `partner/<id>`, `value` =
   a full `PartnerConfig`); own type `dto/ConfigChangedEvent`. The `value` shape is this adapter's reading
   of an open object; mw-admin-api publishes it in this shape since ticket 38 (`dto/PartnerConfigValue`
-  there; its dev seed `ocs` is a copy of this module's `application-dev.yml` seed, keep them identical).
+  there; its dev seeds `ocs`, `gp-ocs`, `robi-ocs`, `teletalk-ocs` and `bl-ocs` are copies of this
+  module's `application-dev.yml` seeds, keep them identical).
   An approved DISABLE makes the next call NOT_SENT -> FAILED `MW-SYS-PARTNER_DISABLED` without a
   restart; a changed `timeoutMs` builds a new time limiter for the next call. `PartnerConfigReloadIT`
   (record while running) and `PartnerConfigStartupIT` (records already on the topic when the config

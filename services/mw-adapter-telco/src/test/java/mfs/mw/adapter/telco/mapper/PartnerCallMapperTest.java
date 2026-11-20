@@ -96,6 +96,17 @@ class PartnerCallMapperTest {
   }
 
   @Test
+  void anInquiryNeedsTheMsisdnAndNotAnAmount() {
+    PartnerRequest ok = pay(newTxnId(), "01711000021", 2000);
+    PartnerRequest inquiry = withOperation(ok, "INQUIRY");
+
+    assertThat(mapper.problem(inquiry)).isEmpty();
+    assertThat(mapper.toCall(inquiry, "BITS-BILL").operation()).isEqualTo("INQUIRY");
+    assertThat(mapper.problem(withOperation(pay(newTxnId(), "not-a-number", 2000), "INQUIRY")))
+        .contains("credit party must be an MSISDN");
+  }
+
+  @Test
   void aReverseNeedsItsPartnerAndAPositiveAmount() {
     PartnerRequest ok = pay(newTxnId(), "01711000001", 2000);
     PartnerRequest.Payload p = ok.payload();

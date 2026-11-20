@@ -152,6 +152,18 @@ resilience4j:
       ocs:
         base-config: default
         slow-call-duration-threshold: 16s
+      gp-ocs:
+        base-config: default
+        slow-call-duration-threshold: 16s
+      robi-ocs:
+        base-config: default
+        slow-call-duration-threshold: 16s
+      teletalk-ocs:
+        base-config: default
+        slow-call-duration-threshold: 16s
+      bl-ocs:
+        base-config: default
+        slow-call-duration-threshold: 16s
   bulkhead:
     configs:
       default:
@@ -159,6 +171,18 @@ resilience4j:
         max-wait-duration: 0
     instances:
       ocs:
+        base-config: default
+        max-concurrent-calls: 100
+      gp-ocs:
+        base-config: default
+        max-concurrent-calls: 100
+      robi-ocs:
+        base-config: default
+        max-concurrent-calls: 100
+      teletalk-ocs:
+        base-config: default
+        max-concurrent-calls: 100
+      bl-ocs:
         base-config: default
         max-concurrent-calls: 100
   timelimiter:
@@ -221,10 +245,9 @@ mw:
   # Secrets are never here: a route names a field of the partner's own Vault secret
   # (secret/mw-adapter-telco/<partner>), read when the route loads.
   partners:
-    # partnerId a channel sends -> the partner that serves it (D28; no silent default partner). The
-    # channels send the MNO as the top-up operator (mw-app-gateway, mw-ussd's operators list and MNO
-    # operator, the test console): every one is served by the OCS until it gets a partner of its own.
-    # Any other id is refused MW-PTR-UNKNOWN-PARTNER.
+    # Legacy fallback (ticket 112a): gp, robi, banglalink and teletalk still name the single `ocs`
+    # record. The operator profiles are the records gp-ocs, robi-ocs, teletalk-ocs and bl-ocs;
+    # `ocs` stays only as this alias target. Any other id is refused MW-PTR-UNKNOWN-PARTNER.
     partner-aliases:
       gp: ocs
       robi: ocs
@@ -263,6 +286,10 @@ mw:
     security:
       allowed-hosts:
         ocs: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
+        gp-ocs: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
+        robi-ocs: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
+        teletalk-ocs: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
+        bl-ocs: ${MW_OCS_ALLOWED_HOSTS:mw-simulators}
       # Plain http for no host by default (ticket 50); only the dev Compose stack and the tests allow
       # the simulator host.
       insecure-http-hosts: ${MW_PARTNER_INSECURE_HTTP_HOSTS:}
