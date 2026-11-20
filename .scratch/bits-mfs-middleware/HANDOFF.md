@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (96c merged; 108 still in flight on ticket/108-app-soap). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (95c merged; 106 waits until 108 is merged; 108 still in flight on ticket/108-app-soap). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -15,6 +15,7 @@ Updated: 2026-11-20 (96c merged; 108 still in flight on ticket/108-app-soap). Ke
 89 (ADRs/traceability), 90 (Redis 8.10.3 AGPL — written OWN-03 approval still open), 91 (HashiCorp Vault 2.2.2), 92 (contracts),
 93 (core-mock /core/v1 REST), 94 (core-mock model), 95a (orchestrator -> core over REST),
 95b (mw-auth and mw-admin-api on /core/v1; `core.command.v1` retired; DROP_REPLY and NO_CALLBACK lose the REST answer),
+95c (hold expiry: a live saga whose partner has not succeeded confirms the core's hold release; once the partner has succeeded the saga stops for operations; wallet-state events are consumed and move no money),
 96a (inquiry schedule + ops alert),
 96b (partner REVERSE after a refused commit; :mw-orchestrator:build passed; the live suite was not run),
 96c (completed TOPUP or BILL_PAY: partner REVERSE first, core reversal only after the partner accepts; a partner refusal ends MANUAL_REVIEW and leaves the posting),
@@ -42,9 +43,9 @@ Review fix on the earlier salvage: 2308d22e (19 files +342 −57). 88 is superse
 
 ## Next (frontier, in priority order)
 1. **M7 gate (2026-11-20).** Passed: clean build, smoke 60/60, edge 65/65, folder 41 (54), log-scan, ui-e2e 25/25, tester-e2e 40/40. The whole API suite failed 2 of 1386 (folder 13 audit change-request id scrubbed; folder 44 AML journal first WRITE was another file) and was not re-run. The gate fixes are commit 784285bb. The live suite was not re-run after 107 or 109.
-2. Orchestrator queue, one at a time: **95c** next (96c is merged). **108** is still in flight on `ticket/108-app-soap` and is not merged.
-3. Then 106, 112, 113, 115, 117, 130b, 135, still module-disjoint, max five at once. **M8 gate** after 106 and 108 (107 and 109 are in).
-4. 118–121 still name parent ticket 95, and 95c is open. 100c stays until M13. 132 can use the routing API from 98.
+2. **95c** is merged. **106** is the next orchestrator ticket, but it also needs the app gateway, so it waits until **108** is merged. **108** stays open on `ticket/108-app-soap`.
+3. Then 112, 113, 115, 117, 130b, 135, still module-disjoint, max five at once. **M8 gate** after 106 and 108 (107 and 109 are in).
+4. 118, 119, 120, 121, and 126 are unblocked. 100c stays until M13. 132 can use the routing API from 98.
 
 ## Milestone gate procedure (after the last ticket of a milestone)
 1. Code review of the milestone range; one fix pass.

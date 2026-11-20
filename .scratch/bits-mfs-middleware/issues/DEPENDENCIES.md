@@ -70,7 +70,7 @@
 95-orchestrator-core-rest-client            93                split (95-split-decisions.md, 2026-11-20)
 95a-orchestrator-core-rest                  93                done     60m      70 files +2856 −1135   b43b392f,53c83472
 95b-auth-admin-core-rest-retire-topics      95a               done     -        177 files +1816 −2372  70758896,ff3780bc
-95c-hold-expired-wallet-state               95a,94            open
+95c-hold-expired-wallet-state               95a,94            done     -        10 files +496 −23      da3497c4
 97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
 96-orchestrator-saga-frs                    95,97             split (96-split-decisions.md, 2026-11-20)
 96a-inquiry-schedule-ops-alert              95a,97            done     75m      26 files +384 −152     1f61e790
