@@ -95,6 +95,7 @@ dependencies {
     implementation("com.dashjoin:jsonata:0.9.10")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("org.springframework.ws:spring-ws-test:5.0.3")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
     testImplementation("org.testcontainers:testcontainers")
     testImplementation("org.testcontainers:testcontainers-junit-jupiter")

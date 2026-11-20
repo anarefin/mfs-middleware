@@ -6,11 +6,11 @@ import java.time.Instant;
 import java.util.Map;
 
 /**
- * This adapter's own type for {@code mw.partner.inbound.v1} (contract owned by mw-orchestrator):
- * an authenticated, deduplicated ATM call (family {@code atm}, kinds {@code ATM_VERIFY_DEBIT},
- * {@code ATM_CONFIRM_DISPENSE}, {@code ATM_REVERSAL_ADVICE}, {@code ATM_CASH_IN}; ticket 120a).
- * The customer's wallet is the credit party (cash-in) or the debit party (cash-out). The ATM token
- * is never carried (FL-11): its check is ticket 120b's.
+ * Proposed shape of an ATM call on {@code mw.partner.inbound.v1} (contract owned by mw-orchestrator).
+ * Not published: that schema's kinds are only CALLBACK, REMITTANCE and NPSB_CREDIT, and it has no
+ * debit party, so {@code ATM_VERIFY_DEBIT}, {@code ATM_CONFIRM_DISPENSE}, {@code ATM_REVERSAL_ADVICE}
+ * and {@code ATM_CASH_IN} do not fit (ticket 120a). Ticket 120b extends the contract and publishes.
+ * The ATM token is never carried (FL-11).
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)

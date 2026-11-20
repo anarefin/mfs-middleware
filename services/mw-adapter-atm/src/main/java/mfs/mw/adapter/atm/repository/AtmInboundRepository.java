@@ -9,10 +9,7 @@ import org.springframework.stereotype.Repository;
 
 /** Table {@code atm_inbound} (V8): one row per (operation, atmTxnRef) the switch sent (ticket 120a). */
 @Repository
-public class AtmInboundRepository {
-
-  /** A recorded inbound ATM call. */
-  public record Row(String txnId, String inboundId) {}
+public class AtmInboundRepository implements AtmInboundStore {
 
   private final JdbcTemplate jdbc;
 
@@ -21,6 +18,7 @@ public class AtmInboundRepository {
   }
 
   /** Inserts the row unless one exists; true when this call inserted it. */
+  @Override
   public boolean insert(String operation, String atmTxnRef, String txnId, String inboundId, Instant at) {
     return jdbc.update(
         "insert into atm_inbound (operation, atm_txn_ref, txn_id, inbound_id, received_at) "
@@ -28,10 +26,11 @@ public class AtmInboundRepository {
         operation, atmTxnRef, txnId, inboundId, Timestamp.from(at)) == 1;
   }
 
-  public Optional<Row> find(String operation, String atmTxnRef) {
-    List<Row> rows = jdbc.query(
+  @Override
+  public Optional<AtmInboundStore.Row> find(String operation, String atmTxnRef) {
+    List<AtmInboundStore.Row> rows = jdbc.query(
         "select txn_id, inbound_id from atm_inbound where operation = ? and atm_txn_ref = ?",
-        (rs, i) -> new Row(rs.getString(1), rs.getString(2)),
+        (rs, i) -> new AtmInboundStore.Row(rs.getString(1), rs.getString(2)),
         operation, atmTxnRef);
     return rows.stream().findFirst();
   }

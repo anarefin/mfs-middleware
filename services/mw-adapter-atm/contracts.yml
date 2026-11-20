@@ -1,4 +1,6 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
+# mw.partner.inbound.v1 is not listed: its kinds (CALLBACK, REMITTANCE, NPSB_CREDIT) cannot carry
+# an ATM verify, confirm, reversal or cash-in. Publishing waits on ticket 120b (owner mw-orchestrator).
 produces:
   events:
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#atm

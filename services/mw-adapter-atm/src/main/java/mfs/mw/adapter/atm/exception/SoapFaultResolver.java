@@ -48,7 +48,7 @@ public class SoapFaultResolver implements EndpointExceptionResolver, Ordered {
     return true;
   }
 
-  static void write(SoapMessage response, MwException error) {
+  public static void write(SoapMessage response, MwException error) {
     String message = error.getMessage() == null ? "Request failed" : error.getMessage();
     SoapFault fault = error.status().is5xxServerError()
         ? response.getSoapBody().addServerOrReceiverFault(message, Locale.ENGLISH)

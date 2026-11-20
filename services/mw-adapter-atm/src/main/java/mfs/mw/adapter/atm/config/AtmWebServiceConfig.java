@@ -38,8 +38,8 @@ public class AtmWebServiceConfig {
   }
 
   @Bean
-  PayloadValidatingInterceptor atmSchemaValidation() {
-    PayloadValidatingInterceptor interceptor = new PayloadValidatingInterceptor();
+  AtmSchemaInterceptor atmSchemaValidation() {
+    AtmSchemaInterceptor interceptor = new AtmSchemaInterceptor();
     interceptor.setSchema(new ClassPathResource(XSD));
     interceptor.setValidateRequest(true);
     interceptor.setValidateResponse(false);

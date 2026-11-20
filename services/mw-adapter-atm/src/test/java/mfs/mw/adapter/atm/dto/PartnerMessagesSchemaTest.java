@@ -63,11 +63,11 @@ class PartnerMessagesSchemaTest {
   void requestFieldsMarkedSensitiveAreMaskedWhenDescribed() {
     PartnerRequest request = AtmFixtures.pay(AtmFixtures.newTxnId(), AtmFixtures.ACCOUNT, 2000);
 
-    // each party id by its type: the atm session token keeps its last 4 only, the credited wallet is an MSISDN
+    // the settlement org id keeps its last 4; the wallet is an MSISDN. The ATM token is never a party.
     String debit = MaskingPolicy.describe(request.payload().debitParty());
     String credit = MaskingPolicy.describe(request.payload().creditParty());
 
-    assertThat(debit).doesNotContain("sess-fake-0001").contains("0001");
+    assertThat(debit).doesNotContain("ucb-atm-settlement").contains("ment");
     assertThat(credit).doesNotContain(AtmFixtures.ACCOUNT).contains("id=0191****001");
   }
 }

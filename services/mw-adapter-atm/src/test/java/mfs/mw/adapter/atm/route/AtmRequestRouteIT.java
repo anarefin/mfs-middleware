@@ -129,7 +129,7 @@ class AtmRequestRouteIT {
         postRequestedFor(urlEqualTo("/c2wbank/v1/debits"))
             .withRequestBody(
                 equalToJson(
-                    "{\"transactionId\":\"" + ref + "\",\"accountNumber\":\"sess-fake-0001\",\"amount\":\"20.00\"}")));
+                    "{\"transactionId\":\"" + ref + "\",\"accountNumber\":\"ucb-atm-settlement\",\"amount\":\"20.00\"}")));
   }
 
   /**
