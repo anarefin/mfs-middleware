@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (106 merged; 126 is in flight on ticket/126-recon-matching; M8 is the next gate and is not started). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (126 merged; 106, 107, 108 and 109 are all merged; M8 is the next gate and is not started). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -34,19 +34,21 @@ Updated: 2026-11-20 (106 merged; 126 is in flight on ticket/126-recon-matching; 
 109c (USSD menus; fee from core charges/calculate; change-PIN stays on the maintenance text),
 110 (push notifications), 110b (binding epoch from mw-auth; notify migration V17),
 111 (notify campaigns, promotional opt-out, masked log; folder 47),
-123 (AML/trustbank/DW file mocks), 128 (mw-data-export stream, daily SFTP, PII policy, archive),
+123 (AML/trustbank/DW file mocks),
+126 (recon matching and classification, Newman folder 60; statements and settlement lines are classified and no money moves),
+128 (mw-data-export stream, daily SFTP, PII policy, archive),
 130 (audit FRS; PayloadScrub after 4 review rounds: markup containing a secret word is stored as `****` whole, user decision),
 131a (partner credentials backend), 131b (maintenance window + MOCK/REAL endpoint profile; maker-checker actions that leave the route untouched),
 131c (admin UI partner tabs; live Playwright not run).
 Review fix on the earlier salvage: 2308d22e (19 files +342 −57). 88 is superseded by 126/127.
 
 ## In flight when this file was written
-126 on `ticket/126-recon-matching` (not merged). The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
+126 is merged. The `ticket/126-recon-matching` worktree stays. The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
 
 ## Next (frontier, in priority order)
 1. **M7 gate (2026-11-20).** Passed: clean build, smoke 60/60, edge 65/65, folder 41 (54), log-scan, ui-e2e 25/25, tester-e2e 40/40. The whole API suite failed 2 of 1386 (folder 13 audit change-request id scrubbed; folder 44 AML journal first WRITE was another file) and was not re-run. The gate fixes are commit 784285bb. The live suite was not re-run after 107 or 109.
-2. **106** is merged. **126** stays in flight on `ticket/126-recon-matching`.
-3. **M8 gate** is next and is not started (106, 107, 108 and 109 are in). Then 112, 113, 115, 117, 130b, 135, still module-disjoint, max five at once.
+2. **126** is merged. **106, 107, 108, and 109** are all merged.
+3. **M8 gate** is next and is not started. Then 112, 113, 115, 117, 130b, 135, still module-disjoint, max five at once.
 4. 118, 119, 120, and 121 are unblocked. 100c stays until M13. 132 can use the routing API from 98.
 
 ## Milestone gate procedure (after the last ticket of a milestone)
