@@ -739,6 +739,108 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/routing-rules/{id}/change-requests:
+    post:
+      operationId: proposeRoutingRule
+      summary: Propose a routing rule (maker)
+      description: >-
+        Role ops-maker or integration-maker (ticket 98, FRS ADM-04, PLT-040). A different
+        ops-checker or integration-checker approves it. Approval publishes mw.config.changed.v1
+        with configType ROUTING_RULE and configKey routing-rule/{id}. action is UPSERT (default)
+        or DELETE.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,63}$" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoutingChange" }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/msisdn-prefixes/{prefix}/change-requests:
+    post:
+      operationId: proposeMsisdnPrefix
+      summary: Propose an MSISDN prefix (maker)
+      description: >-
+        Ticket 98, FRS PLT-042. Approval publishes configType MSISDN_PREFIX, configKey
+        msisdn-prefix/{prefix}.
+      parameters:
+        - { name: prefix, in: path, required: true, schema: { type: string, pattern: "^0[0-9]{2,5}$" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoutingChange" }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/mnp-overrides/{msisdn}/change-requests:
+    post:
+      operationId: proposeMnpOverride
+      summary: Propose an MNP override (maker)
+      description: >-
+        Ticket 98, FRS PLT-042. The number is masked in views and audits. Approval publishes
+        configType MNP_OVERRIDE, configKey mnp-override/{msisdn}.
+      parameters:
+        - { name: msisdn, in: path, required: true, schema: { type: string, pattern: "^01[0-9]{9}$" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoutingChange" }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/maintenance-messages/{id}/change-requests:
+    post:
+      operationId: proposeMaintenanceMessage
+      summary: Propose a maintenance message (maker)
+      description: >-
+        Ticket 98, FRS PLT-043. The value names a partnerId or a billerCode and carries messageEn
+        and messageBn. Approval publishes configType MAINTENANCE_MESSAGE.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,63}$" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RoutingChange" }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /admin/v1/ussd-menus/{menuId}/change-requests:
     post:
       operationId: proposeUssdMenu
@@ -1095,6 +1197,14 @@ components:
         The wallet's PIN-lock state an UNLOCK expects (LOCKED) and leads to (ACTIVE); a PIN_RESET
         leads to RESET (a new PIN set by the customer).
       enum: [LOCKED, ACTIVE, RESET]
+    RoutingChange:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        action: { type: string, enum: [UPSERT, DELETE], default: UPSERT }
+        value: { type: object, description: The full resource. Required for UPSERT. }
+        reason: { type: string, minLength: 1, maxLength: 500 }
     ChangeRequestStatus:
       type: string
       description: APPROVING (ticket 75) = claimed by a checker whose approval calls mw-crypto; reject and expiry refuse it

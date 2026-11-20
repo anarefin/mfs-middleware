@@ -354,7 +354,7 @@ components:
       type: object
       required: [code, message, correlationId, retryable, details]
       properties:
-        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR(-[A-Z0-9_]+)?)(-[A-Z0-9_]+)$" }
         message: { type: string }
         messageBn: { type: string }
         txnId: { type: string }

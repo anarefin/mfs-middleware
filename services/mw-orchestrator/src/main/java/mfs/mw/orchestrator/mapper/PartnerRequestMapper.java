@@ -34,10 +34,19 @@ public class PartnerRequestMapper {
 
   /** The PAY request of a held transaction; the adapter must answer before {@code deadline}. */
   public PartnerRequest pay(TransactionRecord rec, PartnerCall call, Instant now, Duration deadline) {
+    return pay(rec, call, now, deadline, PAY);
+  }
+
+  /**
+   * A PAY. {@code requestKey} is {@code PAY} for the first attempt and {@code PAY:<partner>} for a
+   * failover, so the first request id stays {@code <txnId>:PAY} and a later attempt is a new request.
+   * The payload operation is always {@code PAY}: the adapter switches on that.
+   */
+  public PartnerRequest pay(TransactionRecord rec, PartnerCall call, Instant now, Duration deadline, String requestKey) {
     String txnId = rec.txnId().toString();
     TxnRequest req = rec.request();
     return new PartnerRequest(
-        1, call.family(), requestId(txnId, PAY), txnId, req.correlationId(), now, now.plus(deadline),
+        1, call.family(), requestId(txnId, requestKey), txnId, req.correlationId(), now, now.plus(deadline),
         new PartnerRequest.Payload(
             PAY, req.txnType(), req.partner(), partnerTxnRef(txnId), req.amount(), req.debitParty(),
             req.creditParty(), null, req.attributes()));

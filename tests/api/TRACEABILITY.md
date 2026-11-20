@@ -224,6 +224,10 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 29 | [balance] the app balance check answers the core's available balance and moves no money | - |  |
 | 29 | [balance assertion] a wrong PIN on the app balance check is refused by mw-auth with MW-AUTH-040 | - |  | SEC-09 |
 | 29 | [balance] a core refusal of the balance check is 422 MW-CORE-WALLET_NOT_ACTIVE | - |  |
+| 35 | [topup] a top-up with no partnerId is routed from the 017 prefix and completes | - |  |
+| 35 | [topup admin] an MNP override to an unknown operator refuses the number with MW-PTR-UNKNOWN | - |  |
+| 35 | [topup mock] ocs switched DOWN fails the top-up at once and is switched back UP | - |  |
+| 35 | [billpay admin] a maintenance message disables DESCO with the Bangla and English text | - |  |
 | 29 | [balance history] a balance check is not in the wallet history | - |  | SEC-10 |
 | 36 | [p2p] the same payment under a new key within the window asks to confirm (MW-VAL-024); the confirmed resend completes | - |  | FR-05 |
 | 36 | [p2p] another amount within the window is no duplicate | - |  | FR-05 |

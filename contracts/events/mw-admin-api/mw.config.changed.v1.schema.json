@@ -12,7 +12,7 @@
       "pattern": "^[a-z0-9-]+(/[A-Za-z0-9_.-]+)+$",
       "description": "<configType path>/<id>, e.g. partner/gp."
     },
-    "configType": { "enum": ["PARTNER", "ROUTE", "TEMPLATE", "USSD_MENU", "LIMIT", "FEATURE_FLAG", "ERROR_MAP"] },
+    "configType": { "enum": ["PARTNER", "ROUTE", "TEMPLATE", "USSD_MENU", "LIMIT", "FEATURE_FLAG", "ERROR_MAP", "ROUTING_RULE", "MSISDN_PREFIX", "MNP_OVERRIDE", "MAINTENANCE_MESSAGE"] },
     "change": { "enum": ["UPSERT", "DELETE"] },
     "version": {
       "type": "integer",

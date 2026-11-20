@@ -70,6 +70,13 @@ public record TransactionRecord(
     return flows.find(request.txnType()).map(Flow::needsHold).orElse(holdId != null);
   }
 
+  /** The request with the partner routing chose, kept for the status inquiry (ticket 98). */
+  public TransactionRecord withRequest(TxnRequest chosen) {
+    return new TransactionRecord(
+        txnId, createdAt, updatedAt, chosen, status, previousStatus, replyTo, feeMinor, coreRef, error,
+        holdId, partnerRef, reversalTxnId);
+  }
+
   /** The REVERSAL request that compensates this transaction. */
   public TransactionRecord withReversal(UUID newReversalTxnId) {
     return new TransactionRecord(
