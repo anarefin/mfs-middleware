@@ -1,6 +1,7 @@
 package mfs.mw.recon.service;
 
 import com.prowidesoftware.swift.model.field.Field61;
+import com.prowidesoftware.swift.model.field.Field62F;
 import com.prowidesoftware.swift.model.field.Field86;
 import com.prowidesoftware.swift.model.mt.mt9xx.MT940;
 import com.prowidesoftware.swift.model.mt.mt9xx.MT942;
@@ -33,6 +34,20 @@ public class Mt940Parser {
       throw e;
     } catch (RuntimeException e) {
       throw new MwException(ErrorCodes.VAL_MALFORMED, "MT940 could not be parsed", e);
+    }
+  }
+
+  /** The MT940 closing balance (field 62F) in poisha, negative when it is a debit; null when absent (REC-07). */
+  public Long closingBalanceMinor(String fin) {
+    try {
+      Field62F closing = MT940.parse(fin).getField62F();
+      if (closing == null || closing.getAmountAsBigDecimal() == null) {
+        return null;
+      }
+      long minor = minor(closing.getAmountAsBigDecimal());
+      return "D".equals(closing.getDCMark()) ? -minor : minor;
+    } catch (RuntimeException e) {
+      throw new MwException(ErrorCodes.VAL_MALFORMED, "MT940 closing balance could not be parsed", e);
     }
   }
 

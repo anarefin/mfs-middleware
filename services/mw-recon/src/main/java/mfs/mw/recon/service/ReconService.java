@@ -49,9 +49,9 @@ public class ReconService {
   private static final Logger log = LoggerFactory.getLogger(ReconService.class);
   private static final Set<String> POSTINGS = Set.of(
       "TransferPosted", "WalletCredited", "HoldCommitted", "TransactionReversed");
-  private static final String PARTNER = "PARTNER";
-  private static final String MT940 = "TRUST_MT940";
-  private static final String MT942 = "TRUST_MT942";
+  static final String PARTNER = "PARTNER";
+  static final String MT940 = "TRUST_MT940";
+  static final String MT942 = "TRUST_MT942";
 
   private final ReconStore store;
   private final MatchingService matching;
@@ -106,6 +106,12 @@ public class ReconService {
     List<StatementLine> parsed = daily ? parser.parseMt940(new String(body, java.nio.charset.StandardCharsets.UTF_8))
         : parser.parseMt942(new String(body, java.nio.charset.StandardCharsets.UTF_8));
     store.addStatementLines(file.id(), parsed);
+    if (daily) {
+      Long closing = parser.closingBalanceMinor(new String(body, java.nio.charset.StandardCharsets.UTF_8));
+      if (closing != null) {
+        store.setClosingBalance(file.id(), closing);
+      }
+    }
     return finish(file, source, false);
   }
 

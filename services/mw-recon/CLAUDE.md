@@ -19,6 +19,21 @@ Statement and settlement reconciliation (spec 13, ticket 126, FRS REC-01..04, RE
 - Publish one `mw.recon.result.v1` per run (key `partnerId`). A file is registered by filename and
   sha256 and skipped the second time. `POST /internal/v1/recon/files/{id}/reprocess` with
   `X-Mw-Operator-Id` runs it again and writes `mw.audit.event.v1`.
+- Reports (ticket 127, REC-05, REC-06): `service/ReportService` totals count and amount per class from
+  `match_result` for a partner and Asia/Dhaka business dates (DAILY = MT940 and partner-file runs, INTRADAY =
+  MT942 runs), rendered as CSV (formula cells defused), XLSX (Apache POI) or PDF (OpenPDF);
+  `GET /internal/v1/recon/reports?partner=&from=&to=&kind=&format=`. `scheduler/DailyReportJob`
+  (`mw.recon.report-cron`, default 02:00) stores yesterday's report per partner in `recon.report`.
+- Trust position (REC-07): the MT940 closing balance (62F) is stored on `source_file`;
+  `service/TrustPositionService` compares it with the e-money total, stores `recon.trust_position` and
+  raises `AMOUNT_MISMATCH` detail `TRUST_POSITION` (owner `finance`) on a gap. The scheduled job that reads
+  the e-money total from the core is not built yet (no core aggregate endpoint in `core-wallet.v1`).
+- Work queue (UC-22): `GET /internal/v1/recon/exceptions` (class, partner, state, minAgeHours, limit),
+  `GET .../{id}` with a suggested action (advice only), `POST .../{id}/explanations` (OPEN or EXPLAINED -> EXPLAINED,
+  audited on `mw.audit.event.v1` as `recon.exception.explained`; ACTIONED or RESOLVED is refused with 409
+  `MW-VAL-006`; FRS 10.4 #7: every difference resolved or explained). The operator comes from
+  `X-Mw-Operator-Id` as for reprocess (no caller authentication in this module yet). Exception states: OPEN, EXPLAINED, ACTIONED,
+  RESOLVED. An action is never taken here: it is a maker-checker change request in mw-admin-api.
 
 ## Contracts owned
 
