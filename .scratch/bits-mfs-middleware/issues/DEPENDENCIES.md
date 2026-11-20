@@ -76,11 +76,11 @@
 96a-inquiry-schedule-ops-alert              95a,97            done     75m      26 files +384 −152     1f61e790
 96b-partner-reverse-refused-commit          96a               open
 96c-partner-leg-reversal-folder30           96b               open
-98-routing-module                           96a,97             open
+98-routing-module                           96a,97            done     -        78 files +2755 −82     245a68ee
 99-idempotency-duplicates-replay            89                done     110m     95 files +2601 −110    e3d9c7c6,45ffe6a3
 100-edge-client-registry                    90,91,99          split (100-split-decisions.md, 2026-11-20)
 100a-client-registry-apisix-sync            90,91,99          done     30m      61 files +2570 −36     cd3d58ea
-100b-oauth2-cc-clients                      100a              open   (run before 118-121)
+100b-oauth2-cc-clients                      100a              done     -        26 files +1049 −22     c7043555  (before 118-121; inbound mTLS stays 100c)
 100c-inbound-mtls-edge-tests                100a              open   (run by M13)
 101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
 102-mock-control-engine                     89                done (102a b8f2d843; 102b 33m 49 files +1774 −467 aacc96ef)
@@ -94,7 +94,7 @@
 109-ussd-frs                                94,105            open
 110-notify-push                             102               done     37m      86 files +2628 −75     76ab0c4c,4757e709
 110b-push-binding-epoch                     110               done     -        34 files +438 −131     480b1d76
-111-notify-campaign-optout-log              110               open
+111-notify-campaign-optout-log              110               done     -        79 files +2444 −36     0a3f6bf4
 # --- M8 gate: UC-02..07 on app and USSD
 112-telco-four-ocs                          97,98,102         open
 113-biller-catalogue                        98                open
@@ -115,7 +115,7 @@
 125-aml-feed-actions                        124,123,96        open
 126-mw-recon-matching                       123,95            open
 127-mw-recon-reports                        126               open
-128-mw-data-export                          123               open
+128-mw-data-export                          123               done     -        189 files +12102 −46   9a1ccad6
 129-portal-bulk-sp                          95,116            open
 130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f
 130b-audit-hops-channels-core-notify        130               open   (CHANNEL_IN in channels, CORE_CALL in orchestrator, NOTIFICATION in mw-notify; closes AUD-01/AUD-04 with 135)
@@ -124,7 +124,8 @@
 131a-admin-credentials-backend              91,97             done     135m     59 files +3307 −41     ce25fff7
 131b-maintenance-endpoint-profile           97,131a           done     -        40 files +1912 −72     6a806373,1b154473  (before 115, 118-121; routing-as-MAINTENANCE waits for 98)
 # --- Salvage DONE (2026-11-20, 2308d22e): 95b, 105, 110b, 131b fast-forwarded onto upay-main. Review fix 19 files +342 −57. NOT RUN: clean build, stack, api-test.sh, tester-e2e. 105 top-up operator resolution waits for 98.
-131c-admin-ui-partner-tabs                  131a,131b         open
+131c-admin-ui-partner-tabs                  131a,131b         done     -        25 files +1329 −49     949689f8
+# --- Wave DONE (2026-11-20, 4b5cd4af): 98, 100b, 111, 128, 131c on upay-main. 104 not started: its done check runs the live API suite. Live Newman, edge-test and ui-e2e were not run.
 132-admin-routing-billers-clients-ui        98,100a,113        open
 133-admin-ussd-editor-templates             109,111           open
 134-admin-actions-compliance-recon-ui       125,127,111       open
