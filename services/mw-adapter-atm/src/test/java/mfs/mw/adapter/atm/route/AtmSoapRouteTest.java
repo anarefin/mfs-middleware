@@ -208,6 +208,27 @@ class AtmSoapRouteTest {
   }
 
   @Test
+  void theSameNonceBytesInAnotherBase64SpellingAreAReplay() {
+    byte[] nonce = "n-replay-2".getBytes(StandardCharsets.UTF_8);
+    String canonical = Base64.getEncoder().encodeToString(nonce);
+    assertThat(canonical).endsWith("==");
+    String header = security(nonce, NOW, PASSWORD);
+    assertThat(exchange(envelope(header, verifyBody("ATM-B1", MSISDN, TOKEN)))).doesNotContain("Fault");
+    String unpadded = header.replace(">" + canonical + "<", ">" + canonical.replace("=", "") + "<");
+    assertThat(unpadded).isNotEqualTo(header);
+    assertThat(exchange(envelope(unpadded, verifyBody("ATM-B2", MSISDN, TOKEN)))).contains("MW-AUTH-001");
+  }
+
+  @Test
+  void aNonCanonicalBase64NonceIsRefusedEvenOnFirstUse() {
+    byte[] nonce = "n-fresh-01".getBytes(StandardCharsets.UTF_8);
+    String canonical = Base64.getEncoder().encodeToString(nonce);
+    String header = security(nonce, NOW, PASSWORD)
+        .replace(">" + canonical + "<", ">" + canonical.replace("=", "") + "<");
+    assertThat(exchange(envelope(header, verifyBody("ATM-B3", MSISDN, TOKEN)))).contains("MW-AUTH-001");
+  }
+
+  @Test
   void aTokenWithoutNonceOrCreatedIsRefused() {
     String noNonce = security().replaceAll("(?s)<wsse:Nonce.*?</wsse:Nonce>", "");
     assertThat(exchange(envelope(noNonce, verifyBody("ATM-N", MSISDN, TOKEN)))).contains("MW-AUTH-001");

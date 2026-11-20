@@ -25,8 +25,10 @@ find no VERIFY row while cash is off, so they answer `MW-VAL-ATM_UNKNOWN_TXN`).
   `ConfirmDispense`, `ReversalAdvice`, `CashIn`. The contract is
   `contracts/api/mw-adapter-atm/atm-soap.v1.xsd`; the WSDL is generated at
   `/partner/ucbatm/ws/v1/atm.wsdl`. Every call needs a WS-Security UsernameToken with a
-  `PasswordDigest` (Base64(SHA-1(nonce + created + password))), a `wsse:Nonce` accepted once
-  (table `callback_nonce`, `config/AtmNonceConfig` -> `partner/auth/CallbackNonces`, 600 s) and a
+  `PasswordDigest` (Base64(SHA-1(nonce + created + password))), a `wsse:Nonce` in canonical
+  Base64 accepted once (table `atm_ws_nonce`, V10, `repository/AtmNonceRepository`, 600 s, each row
+  with its own `expires_at` on the database clock; not the callbacks' `callback_nonce`, whose purge runs on the callbacks'
+  shorter window: ticket 120b2 security fix) and a
   `wsu:Created` within 300 s of now (ticket 120b1, FRS PLT-008); `PasswordText` is refused, so the
   password never crosses the wire. The switch reaches it only through APISIX route
   `partner-ucbatm-ws` (`deploy/apisix/README.md`). A bad token, a bad document or an unknown
