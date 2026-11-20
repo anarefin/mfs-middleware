@@ -1,0 +1,33 @@
+# mw-audit (ADR D28, ticket 82): the masked audit of the partner call; the last step of every
+# partner route.
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-audit
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW audit
+    description: >-
+      Audits the call (spec 12.2, 17): request and response bodies masked with the record's
+      sensitiveFields and free-text scrubbing, cut at 4 KB, never the headers; logged as
+      partner.call.audit and written as mw.audit.event.v1 partner.call.completed through the outbox.
+      Input and output: the route result, unchanged.
+    type: object
+    required: [partnerId]
+    properties:
+      partnerId:
+        title: Partner id
+        description: Set by the route loader.
+        type: string
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - bean:
+            ref: mwAudit
+            method: record
