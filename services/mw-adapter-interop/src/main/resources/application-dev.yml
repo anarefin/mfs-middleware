@@ -7,7 +7,74 @@ mw:
     # Dry-runs of new partner versions go to mw-simulators' programmable stub (ticket 83).
     dry-run:
       base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
-    # The NPSB switch seed (partner id npsb, ISO 20022 pacs.008 / pacs.028 / camt.056 signed through
-    # mw-crypto, against mw-simulators' NpsbMock) comes with ticket 121b; until then the dev profile seeds
-    # no partner and a request is refused MW-PTR-UNKNOWN-PARTNER.
-    instances: {}
+    instances:
+      # The NPSB switch (ticket 121b part 2; wire: mw-simulators NpsbMock, /npsb/v1/*). The ISO 20022 step
+      # is not in the engine: service/NpsbWireService builds the pacs.008 / pacs.028 / camt.056, signs it
+      # through mw-crypto and hands it to this route as {messageType, document} (the signed XML as a JSON
+      # string, so the audit's free-text scrub still masks it); the switch answers 200 {msgId, document}
+      # with its signed pacs.002 / camt.029, which ISO.response passes on unread as the attribute
+      # document: NpsbWireService verifies and reads it (ACSP / ACSC = SUCCESS, RJCT = FAILED through
+      # error-map below, PDNG = UNKNOWN). A 404 to a pacs.028 is NOT_FOUND; a 400 (message refused as a
+      # whole) is FAILED HTTP_400; anything else UNKNOWN. Keep identical to mw-admin-api
+      # partner-seeds/dev/npsb.json.
+      npsb:
+        family: interop
+        base-url: ${NPSB_BASE_URL:http://mw-simulators:8080}
+        allowed-hosts: mw-simulators,localhost
+        connect-timeout-ms: 3000
+        # Under the orchestrator's 30 s partner deadline; a later answer is UNKNOWN and the pacs.028
+        # inquiry resolves it.
+        timeout-ms: 20000
+        read-timeout-ms: 22000
+        inquiry-retries: 1
+        # The messages are signed (XML-DSig through mw-crypto); no per-request auth scheme.
+        auth:
+          scheme: none
+        # ISO 20022 status reason code -> MW-PTR-NPSB-<suffix>; unlisted codes are UNMAPPED.
+        error-map:
+          "[AC01]": { suffix: INVALID_ACCOUNT, retryable: false }
+          "[AC04]": { suffix: ACCOUNT_CLOSED, retryable: false }
+          "[AC06]": { suffix: ACCOUNT_BLOCKED, retryable: false }
+          "[AG01]": { suffix: TRANSACTION_FORBIDDEN, retryable: false }
+          "[AM02]": { suffix: AMOUNT_LIMIT, retryable: false }
+          "[AM04]": { suffix: INSUFFICIENT_FUNDS, retryable: false }
+          "[DUPL]": { suffix: DUPLICATE, retryable: false }
+          "[RC01]": { suffix: INVALID_PARTICIPANT, retryable: false }
+          "[RJCR]": { suffix: RETURN_REFUSED, retryable: false }
+          "[HTTP_400]": { suffix: MESSAGE_REFUSED, retryable: false }
+        route: |
+          - route:
+              from:
+                uri: direct:partner-npsb
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=ISO.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.npsb.base-url}&method=POST&path=/npsb/v1/transfers&auth=none"
+                            - to: "kamelet:mw-classify?mapping=ISO.response&definiteStatuses=400"
+                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=ISO.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.npsb.base-url}&method=POST&path=/npsb/v1/status&auth=none"
+                            - to: "kamelet:mw-classify?mapping=ISO.response&definiteStatuses=400,404"
+                        - simple: "${header.mwOperation} == 'REVERSE'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=ISO.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.npsb.base-url}&method=POST&path=/npsb/v1/returns&auth=none"
+                            - to: "kamelet:mw-classify?mapping=ISO.response&definiteStatuses=400"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          "[ISO.request]": |
+            {"messageType": messageType, "document": document}
+          "[ISO.response]": |
+            status = 200
+              ? ($type(body.document) = "string" and body.document != "" and $type(body.msgId) = "string" and body.msgId != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.msgId, "attributes": {"document": body.document}}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 404
+              ? {"outcome": "NOT_FOUND", "code": "NOT_FOUND", "message": "no transfer for this EndToEndId"}
+            : status = 400
+              ? {"outcome": "FAILED", "code": "HTTP_400", "message": "message refused by the switch"}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}

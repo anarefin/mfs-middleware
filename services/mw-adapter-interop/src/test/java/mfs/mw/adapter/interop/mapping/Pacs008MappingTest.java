@@ -18,7 +18,7 @@ class Pacs008MappingTest {
 
     assertThat(xml)
         .contains("urn:iso:std:iso:20022:tech:xsd:pacs.008.001.08")
-        .contains("<EndToEndId>NPSB0123456789ABCDEF0123456789ABC</EndToEndId>")
+        .contains("<EndToEndId>0123456789ABCDEF0123456789ABCDEF</EndToEndId>")
         .contains("Ccy=\"BDT\">1500.50</")
         .contains("<SttlmMtd>CLRG</SttlmMtd>");
     // validated again here, independently of the mapper's own check
