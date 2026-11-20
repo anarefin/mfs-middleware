@@ -45,9 +45,33 @@ public class PushDeviceRepository {
         walletId, deviceId, deviceId, walletId, token, walletId, deviceId);
   }
 
-  /** Removes every token of the wallet except the one of {@code keepDeviceId} (a re-bind); rows removed. */
-  public int revokeOtherDevices(String walletId, String keepDeviceId) {
-    return jdbc.update("delete from push_device where wallet_id = ? and device_id <> ?", walletId, keepDeviceId);
+  /**
+   * A re-bind of {@code walletId} to {@code deviceId} at {@code at}: removes the wallet's other devices' tokens
+   * and the device's tokens under any other wallet (a device that moved), and records the binding (the
+   * revocation tombstone {@link #revokedBy} reads; an older binding never replaces a newer one). Rows removed.
+   */
+  public int rebind(String walletId, String deviceId, Instant at) {
+    int removed = jdbc.update(
+        "delete from push_device where (wallet_id = ? and device_id <> ?) or (device_id = ? and wallet_id <> ?)",
+        walletId, deviceId, deviceId, walletId);
+    jdbc.update(
+        "insert into push_device_binding (wallet_id, device_id, bound_at) values (?, ?, ?)"
+            + " on conflict (wallet_id) do update set device_id = excluded.device_id, bound_at = excluded.bound_at"
+            + " where push_device_binding.bound_at <= excluded.bound_at",
+        walletId, deviceId, Timestamp.from(at));
+    return removed;
+  }
+
+  /**
+   * Whether a registration of {@code (walletId, deviceId)} stamped {@code registeredAt} was revoked by a
+   * binding at or after it: the wallet bound to another device, or the device bound to another wallet.
+   */
+  public boolean revokedBy(String walletId, String deviceId, Instant registeredAt) {
+    Integer n = jdbc.queryForObject(
+        "select count(*) from push_device_binding where bound_at >= ?"
+            + " and ((wallet_id = ? and device_id <> ?) or (device_id = ? and wallet_id <> ?))",
+        Integer.class, Timestamp.from(registeredAt), walletId, deviceId, deviceId, walletId);
+    return n != null && n > 0;
   }
 
   /** The wallet's newest token, if its app registered one. */

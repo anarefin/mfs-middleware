@@ -157,6 +157,7 @@ class PushDispatchIT {
     clock.set(T0);
     jdbc.update("update message set status = 'FAILED' where status in ('QUEUED', 'RETRY')");
     jdbc.update("delete from push_device");
+    jdbc.update("delete from push_device_binding");
   }
 
   private void register(String wallet, String device, String token, Instant at) {
@@ -290,6 +291,45 @@ class PushDispatchIT {
     txnStatuses.onStatus(p2p(next, "COMPLETED", "en"));
     pushDispatcher.dispatchDue();
     assertThat(STORED).singleElement().satisfies(s -> assertThat(s.body().path("token").asString()).isEqualTo("tok-device-new555"));
+  }
+
+  private void deviceBound(String wallet, String device) {
+    notifications.accept(new NotificationRequest(1, "device-bound:" + UUID.randomUUID(), null, "corr-bind",
+        new NotificationRequest.Recipient(wallet, null, null, null), "DEVICE_BOUND", "en",
+        Map.of("deviceId", device), List.of(Channel.SMS), Priority.TXN, null, null));
+  }
+
+  @Test
+  void aDeviceThatMovesToAnotherWalletLeavesNoRowUnderTheOldWalletAndGetsNoneOfItsPushes() {
+    String walletB = "01711000077";
+    register(WALLET, "dev-moving", "tok-device-mov111", T0.minusSeconds(60));
+
+    deviceBound(walletB, "dev-moving");
+    String txn = txnId();
+    txnStatuses.onStatus(p2p(txn, "COMPLETED", "en"));
+    pushDispatcher.dispatchDue();
+
+    assertThat(jdbc.queryForObject("select count(*) from push_device where wallet_id = ? and device_id = 'dev-moving'",
+        Integer.class, WALLET)).isZero();
+    assertThat(devices.tokenOf(WALLET)).isEmpty();
+    assertThat(CALLS).hasValue(0);
+  }
+
+  @Test
+  void aRegistrationStampedBeforeARevocationIsIgnoredWhenItArrivesLater() {
+    register(WALLET, "dev-old", "tok-device-old222", T0.minusSeconds(60));
+    deviceBound(WALLET, "dev-new"); // revokes dev-old at T0
+
+    // the old device's registration of T0 - 10 s comes in after the revocation (another topic)
+    register(WALLET, "dev-old", "tok-device-late33", T0.minusSeconds(10));
+    // and the moved device's old registration under another wallet is refused too
+    deviceBound("01711000078", "dev-moved");
+    register(WALLET, "dev-moved", "tok-device-late44", T0.minusSeconds(5));
+
+    assertThat(devices.tokenOf(WALLET)).isEmpty();
+    // the new device registers after its binding: kept
+    register(WALLET, "dev-new", "tok-device-new666", T0.plusSeconds(1));
+    assertThat(devices.tokenOf(WALLET)).contains("tok-device-new666");
   }
 
   @Test

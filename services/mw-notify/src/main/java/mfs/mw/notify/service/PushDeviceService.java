@@ -1,5 +1,6 @@
 package mfs.mw.notify.service;
 
+import java.time.Clock;
 import java.util.Optional;
 import mfs.mw.notify.dto.PushTokenEvent;
 import mfs.mw.notify.repository.PushDeviceRepository;
@@ -14,7 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
  * The push device token registry (ticket 110, {@code notify.push_device}). A wallet has one bound device
  * (mw-auth), so a registration from it replaces the wallet's other devices; a registration older than the
  * stored one is ignored. A device re-bind (mw-auth's {@code DEVICE_BOUND} notice, which names the new
- * device) revokes the tokens of the wallet's other devices, so no push goes to the old device afterwards.
+ * device) revokes the tokens of the wallet's other devices and of that device under any other wallet, so no
+ * push goes to an old holder afterwards; the binding is kept ({@code notify.push_device_binding}) so a
+ * registration stamped before it that arrives later is refused.
  * Tokens are logged masked to their last 6 characters.
  */
 @Service
@@ -28,13 +31,28 @@ public class PushDeviceService {
   private static final Logger log = LoggerFactory.getLogger(PushDeviceService.class);
 
   private final PushDeviceRepository devices;
+  private final Clock clock;
 
-  public PushDeviceService(PushDeviceRepository devices) {
+  public PushDeviceService(PushDeviceRepository devices, Clock clock) {
     this.devices = devices;
+    this.clock = clock;
   }
 
+  /**
+   * Stores the token unless a re-bind revoked it (a binding at or after {@code registeredAt} of another device
+   * to the wallet, or of the device to another wallet: the registration arrived late, on another topic than
+   * the notice) or a newer registration of the same device is stored.
+   */
   @Transactional
   public void register(PushTokenEvent e) {
+    if (devices.revokedBy(e.walletId(), e.deviceId(), e.registeredAt())) {
+      log.atInfo()
+          .addKeyValue("event", "notify.push.token.revoked_late")
+          .addKeyValue("correlationId", e.correlationId())
+          .addKeyValue("token", MaskingPolicy.mask(SensitiveType.PUSH_TOKEN, e.token()))
+          .log("push token registration older than the re-bind that revoked it; ignored");
+      return;
+    }
     boolean stored = devices.upsert(e.walletId(), e.deviceId(), e.token(), e.platform().name(), e.registeredAt());
     int replaced = stored ? devices.removeOthers(e.walletId(), e.deviceId(), e.token()) : 0;
     log.atInfo()
@@ -46,10 +64,14 @@ public class PushDeviceService {
         .log(stored ? "push token registered" : "older push token registration ignored");
   }
 
-  /** A device re-bind: every token of the wallet but the new device's is revoked; the rows removed. */
+  /**
+   * A device re-bind, as of now (the notice carries no time; the moment it is accepted is at or after the
+   * binding): the wallet's other devices' tokens and the device's tokens under any other wallet are revoked,
+   * and the binding is kept so a registration stamped before it that arrives later is refused. Rows removed.
+   */
   @Transactional
   public int deviceBound(String walletId, String deviceId) {
-    int revoked = devices.revokeOtherDevices(walletId, deviceId);
+    int revoked = devices.rebind(walletId, deviceId, clock.instant());
     log.atInfo()
         .addKeyValue("event", "notify.push.token.revoked")
         .addKeyValue("revoked", revoked)
