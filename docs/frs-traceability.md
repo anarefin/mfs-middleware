@@ -148,7 +148,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-12` web checkout and refund | pay done; refund ticket 116 |
 | `UC-13` add money from card | ticket 118 |
 | `UC-14` add money from bank (C2W) | done (one bank); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
-| `UC-15` W2B with AVL | ticket 117 |
+| `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts, W2bFlow, app/USSD, simulator open (117b-d) |
 | `UC-16` remittance | USSD status by Upay txn id is core WAL-13 (109c); inbound credit is ticket 119 |
 | `UC-17` ATM | ticket 120 |
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
@@ -269,7 +269,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-09 | ticket 114 | utility aggregator simulator (billagg) built; stateful bills and callbacks in 114 |
 | EXT-10 | ticket 114 | four bill aggregator profiles |
 | EXT-11 | ticket 115 | merchant SOAP |
-| EXT-12 | ticket 117 | C2W bank simulator built; AVL, W2B, bank profiles in 117 |
+| EXT-12 | ticket 117 | partial: 20 bank profiles (REST and SOAP) generated from `deploy/partner-routes/bank/bank-profiles.csv`, AVL/W2B/STATUS/REVERSE routes (117a); bank gateway simulator open |
 | EXT-13 | tickets 121, 122 | NPSB and BanglaQR mock switch |
 | EXT-14 | ticket 118 | CyberSource mock |
 | EXT-15 | ticket 119 | UCB IMT mock |
