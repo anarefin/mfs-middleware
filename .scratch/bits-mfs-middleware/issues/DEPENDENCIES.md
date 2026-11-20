@@ -121,8 +121,8 @@
 139-dry-run-oauth2-isolation                115a              done     12m      20 files +648 −28      901630b7  (open: token cache entries not evicted on route discard)
 116-checkout-refund-list                    95,96             split (116-split-decisions.md, 2026-11-20)
 116a-core-partial-reversal-list             95,96             done     32m      ~32 files +500 −35     d42c5172,2bc20979
-116b-orchestrator-refund-flow               116a              in progress
-116c-checkout-refund-api                    116b              open
+116b-orchestrator-refund-flow               116a              done     35m      17 files +640 −15      369d1af6,5eb639c1  (open: SYSTEM full reversal after a partial refund -> MANUAL_REVIEW)
+116c-checkout-refund-api                    116b              in progress
 # --- M9 gate: UC-08..12
 117-bank-avl-w2b                            97,98,102         split (117-split-decisions.md, 2026-11-20)
 117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069
