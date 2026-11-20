@@ -25,6 +25,8 @@ import org.springframework.validation.annotation.Validated;
  * @param timer the timer sweep
  * @param reversingTimeout how long REVERSING resends ReverseTransaction before MANUAL_REVIEW
  * @param reversalChannels the channels that may send a REVERSAL request (operations: SYSTEM)
+ * @param refundChannels the channels whose REVERSAL is a merchant refund of its own (ticket 116b):
+ *     its own transaction record, partial amounts allowed, only from the merchant owning the payment
  * @param bulkChannels the channels that may send a BULK_DISBURSE (the org portal and the partner app)
  * @param idempotencyLock the Redis double-tap lock in front of the idempotency claim (7.3 rule 4)
  * @param duplicateGuard the business-duplicate window (FRS PLT-013, ticket 99)
@@ -46,7 +48,8 @@ public record OrchestratorProperties(
     @NotNull @DefaultValue({"ORG_PORTAL", "PARTNER_APP"}) Set<String> bulkChannels,
     @NotNull @DefaultValue IdempotencyLock idempotencyLock,
     @NotNull @DefaultValue DuplicateGuard duplicateGuard,
-    @NotNull @DefaultValue Core core) {
+    @NotNull @DefaultValue Core core,
+    @NotNull @DefaultValue("WEB_CHECKOUT") Set<String> refundChannels) {
 
   /**
    * The core wallet REST API {@code /core/v1} (ADR D31, ticket 95a; contract {@code

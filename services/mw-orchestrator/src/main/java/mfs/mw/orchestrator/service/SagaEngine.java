@@ -38,6 +38,7 @@ import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
 import mfs.mw.orchestrator.service.saga.PendingLeg;
+import mfs.mw.orchestrator.service.saga.RefundFlow;
 import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
@@ -288,6 +289,9 @@ public class SagaEngine {
       case REVERSE -> {
         if (effect == Effect.SEND_REVERSAL_QUERY) {
           send(rec, commandMapper.reversalQuery(rec, now, ttl));
+        } else if (RefundFlow.TXN_TYPE.equals(rec.request().txnType())) {
+          // a merchant refund (ticket 116b): its own record, its own txnId, its amount
+          send(rec, commandMapper.refund(rec, now, ttl));
         } else if (effect == Effect.SEND_CORE_REVERSE) {
           // ticket 96c: the partner already confirmed, so this is the core reversal even if the
           // leg was still PARTNER_REVERSE on the way in (fire clears it before perform)

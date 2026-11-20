@@ -125,6 +125,19 @@ public class CoreCommandMapper {
   }
 
   /**
+   * ReverseTransaction of a merchant refund (ticket 116b): the refund is its own record, so it goes
+   * under its own txnId ({@code <refundTxnId>:reverse}, stable across resends) with its amount as
+   * {@code refund}, partial or whole; the core keeps the refunded total of the original.
+   */
+  public CoreCommand refund(TransactionRecord rec, Instant now, Duration ttl) {
+    String txnId = rec.txnId().toString();
+    var req = rec.request();
+    return new CoreCommand(
+        1, "ReverseTransaction", commandId(txnId, STEP_REVERSE), txnId, req.correlationId(), now, now.plus(ttl),
+        new ReversePayload(req.originalTxnId(), req.amount(), null, "merchant refund", req.amount()));
+  }
+
+  /**
    * QueryTransaction without {@code queryCommandId}: the core reports the transaction's current
    * state. Each query has its own commandId ({@code <txnId>:query:<epoch ms>}) so a repeated query
    * is answered afresh rather than from the core's command log; queries change nothing.
