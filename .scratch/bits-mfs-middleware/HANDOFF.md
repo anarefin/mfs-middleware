@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (after merging ticket 96b). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (M7 gate run; the API suite failed). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -37,7 +37,7 @@ None. The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.cl
 
 ## Next (frontier, in priority order)
 1. **96b is merged.** 96c and 95c are the next orchestrator tickets and are not started.
-2. **The M7 live gate is unblocked** (104 and 96b are both on upay-main) and was not run. 104's done check runs `scripts/api-test.sh` on a fresh stack. Folders 35, 41, 46, 47 and 62 are written and have not been run live.
+2. **M7 gate was run on 2026-11-20 and failed.** Base `3f68eb02`. Clean build, smoke, edge-test, folder 41, log-scan, ui-e2e (25/25) and tester-e2e (40/40) passed. The whole API suite failed: 1386 assertions, 2 failed (folder 13 rejected reversal, the audit change-request id scrubbed when the UUID holds a 6-digit run; folder 44 AML, the journal's first WRITE was another response file). No second full-suite loop. The gate fixes are uncommitted in this worktree. Same line in DEPENDENCIES.md.
 3. Unblocked and not started: 95c, 96c, 106/107/108/109, 115, 117, 130b, 135. Then **M8 gate** after the app and USSD tickets.
 4. 118–121 still name parent ticket 95, and 95c is open. 100c stays until M13. 132 can use the routing API from 98.
 
@@ -67,6 +67,6 @@ RetryTopicIT (admin-api/notify/telco), AuthClientIT (app-gateway/ussd), CryptoCl
 - 100a: `$secret://vault` lookup only IT-tested; live edge tests + folder 41 -> 100c.
 - 97 / 131b / 98: maintenance, the endpoint profile, and routing-as-MAINTENANCE are on upay-main.
 - 101: WSDL only after 108 (adapters serve no SOAP).
-- 105 / 98: top-up operator resolution is in the routing module. Live Newman folders 35, 46, 47 and 62, plus tester-e2e and ui-e2e, wait for the M7 gate.
+- 105 / 98: top-up operator resolution is in the routing module. Folders 35, 41, 46, 47 and 62 ran in the M7 suite (the two failures were folders 13 and 44). ui-e2e and tester-e2e passed.
 
 - 123: AML file carries clear MSISDNs (watch-list rules); ticket 125 asks for masked/tokenised parties -> ask the user (security) when 125 starts. DW file layout is 123's draft; 128 must match it.
