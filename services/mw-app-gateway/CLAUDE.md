@@ -140,8 +140,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `linkedAccountId`, never the number; `LinkedAccountService.Resolved.toString` shows the last 4 only.
   `TransactionView` masks every `BANK_ACCOUNT` party to the last 4 (`****1234`), so the 200 answer, the
   `app_transaction` projection and a replayed answer never show the number. Tests `TransactionServiceTest`,
-  `PreviewServiceTest`, `LinkBankAccountIT`. Not yet on the SOAP facade (`app-soap.v1.xsd` has no
-  `linkedAccountId`).
+  `PreviewServiceTest`, `LinkBankAccountIT`. The SOAP facade takes the same: group `transfer-to-bank` and
+  element `linkedAccountId` in `PreviewRequest` / `ConfirmRequest` (`AppSoapEndpointTest`).
 - Billers and bill fetch (ticket 21, `controller/BillerController`, `service/BillerService`,
   `client/BillPayClient`): read-only calls to mw-adapter-billpay's internal API
   (`contracts/api/mw-adapter-billpay/billpay.v1.openapi.yaml`, `mw.app-gateway.billpay.base-url`
