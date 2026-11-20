@@ -50,6 +50,14 @@ public final class SeedFiles {
     return List.copyOf(out);
   }
 
+  /**
+   * The seeded bills of one bill aggregator mock (ticket 114, {@code bills/<profile>.csv}): billerCode,
+   * billNumber, amount (BDT), dueDate, billPeriod, status UNPAID|PAID.
+   */
+  public static List<String[]> bills(String version, String profile) {
+    return read(version, "bills/" + profile + ".csv");
+  }
+
   /** The seeded accounts of the simulated bank gateway (ticket 117d, {@code bank-accounts.csv}). */
   public static List<BankAccountSeed> bankAccounts(String version) {
     List<BankAccountSeed> out = new ArrayList<>();

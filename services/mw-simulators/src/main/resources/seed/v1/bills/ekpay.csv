@@ -1,0 +1,12 @@
+billerCode,billNumber,amount,dueDate,billPeriod,status
+# Seeded bills of the ekpay aggregator mock (ticket 114, FRS MCK-08), seed v1: stateful in the simulator
+# (UNPAID -> PAID -> REVERSED, which is UNPAID again); back to this file only on POST /mock-control/reset or
+# DELETE /mock-control/ekpay/journal. Amounts in BDT (major units). Plain CSV, no quoting.
+NESCO,1140000001,1250.50,2026-12-10,2026-11,UNPAID
+NESCO,1140000002,480.00,2026-12-10,2026-11,UNPAID
+NESCO,1140000003,999.00,2026-12-10,2026-11,PAID
+WZPDCL,1140000011,3200.00,2026-12-15,2026-11,UNPAID
+WZPDCL,1140000012,75.25,2026-12-15,2026-11,UNPAID
+WZPDCL,1140000013,640.00,2026-12-15,2026-11,PAID
+NESCO,1140000020,20.00,2026-12-10,2026-11,UNPAID
+WZPDCL,1140000021,20.00,2026-12-15,2026-11,UNPAID

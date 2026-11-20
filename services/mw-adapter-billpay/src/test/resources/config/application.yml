@@ -46,3 +46,5 @@ mw:
       # A closing test context does not wait the default 10 s per listener container for a consumer
       # caught mid-rebalance (cached contexts share the broker); nothing in a test depends on that drain.
       shutdown-timeout: 100ms
+# The generated bill aggregators (aggregators-dev.yml) may call WireMock on localhost.
+MW_BILL_AGG_ALLOWED_HOSTS: mw-simulators,localhost

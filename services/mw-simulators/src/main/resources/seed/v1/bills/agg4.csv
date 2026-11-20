@@ -1,0 +1,12 @@
+billerCode,billNumber,amount,dueDate,billPeriod,status
+# Seeded bills of the agg4 aggregator mock (ticket 114, FRS MCK-08), seed v1: stateful in the simulator
+# (UNPAID -> PAID -> REVERSED, which is UNPAID again); back to this file only on POST /mock-control/reset or
+# DELETE /mock-control/agg4/journal. Amounts in BDT (major units). Plain CSV, no quoting.
+METLIFE,1140000001,1250.50,2026-12-10,2026-11,UNPAID
+METLIFE,1140000002,480.00,2026-12-10,2026-11,UNPAID
+METLIFE,1140000003,999.00,2026-12-10,2026-11,PAID
+PRAGATI,1140000011,3200.00,2026-12-15,2026-11,UNPAID
+PRAGATI,1140000012,75.25,2026-12-15,2026-11,UNPAID
+PRAGATI,1140000013,640.00,2026-12-15,2026-11,PAID
+METLIFE,1140000020,20.00,2026-12-10,2026-11,UNPAID
+PRAGATI,1140000021,20.00,2026-12-15,2026-11,UNPAID
