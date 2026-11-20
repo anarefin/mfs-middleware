@@ -13,7 +13,7 @@ import { parseRouteForm } from "@/lib/partner-route";
 import { adminApi, operatorToken } from "@/lib/server/admin";
 import { parseTemplateKey, templateProblems, type TemplateKey, type TemplateTexts } from "@/lib/templates";
 import type { ApiResult, ChangeRequest, ErrorEnvelope, PartnerAction, TxnAction, WalletAction } from "@/lib/types";
-import { parseActivations, parseMenu, parseMenuId } from "@/lib/ussd-menu";
+import { MNOS, parseActivations, parseMenu, parseMenuId, serverVerdict, type Lang, type ServerVerdict } from "@/lib/ussd-menu";
 
 export type ActionState = { status: number; error: ErrorEnvelope } | null;
 
@@ -236,6 +236,19 @@ export async function proposeMenu(menuId: string, _prev: ActionState, form: Form
   const r = await adminApi().proposeMenu(await token(), menuId, { menu, activations, reason });
   if (!r.ok) return refused(r);
   redirect(`/approvals?created=${encodeURIComponent(r.data.id)}`);
+}
+
+/**
+ * ops-maker / ops-checker: mw-admin-api's verdict on the edited tree (ticket 133b): its MenuValidator
+ * and the dial screen on the MNO, with the short code and the root menu it opens. Nothing is stored.
+ */
+export async function previewMenuOnServer(menuId: string, mno: string, lang: Lang, menuJson: string): Promise<ServerVerdict> {
+  const menu = parseMenu(menuJson);
+  if (!parseMenuId(menuId) || !menu || !(MNOS as readonly string[]).includes(mno)) {
+    return { ok: false, problems: ["the tree, the menu id or the MNO is not usable"] };
+  }
+  const r = await adminApi().previewMenu(await token(), { menu, menuId, mno, language: lang === "en" ? "en" : "bn" });
+  return serverVerdict(r);
 }
 
 /** Maker (ops-maker): a new version of a notification template (ticket 39). */

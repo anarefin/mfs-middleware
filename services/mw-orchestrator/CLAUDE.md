@@ -437,6 +437,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `{status}` (absent for RECEIVED), `after` `{status, errorCode?}`, random `auditId` (also the
   `mw-idempotency-key` header), key txnId. No parties, amounts or PIN, so nothing to mask. A
   repeated request or a refused event changes no state and is not audited.
+- CORE_CALL hop (ticket 130b, FRS AUD-01/AUD-04): every core REST call `service/CoreCallDispatcher`
+  makes writes `core.call.completed` (`AuditMapper.coreCall`, `service/CoreCallAuditService`, outbox,
+  own transaction after the call; a failed write is logged `core.call.audit_failed` and never stops the
+  answer): hop CORE_CALL, direction OUT, `durationMs`, `after` {commandType, commandId, kind, httpStatus,
+  code?}, outcome SUCCESS only for ANSWERED; payload the command OUT and the answer IN as JSON masked by
+  `util/AuditBodies` (secret-word keys such as `assertion` blanked, `*Name` to an initial, text and
+  numbers `MaskingPolicy.scrub`, 4 KB); a BalanceInquiry's answer is never a payload (ADR D26). The
+  state-change ITs read `txn.state.changed` only; `P2pKafkaIT` checks the two hops.
 - Intake (`service/TransactionService`): idempotency in `txn.idempotency`, scope (channel,
   initiator id, key), TTL 72 h (`mw.orchestrator.idempotency-ttl`). The request hash is SHA-256
   over the business content (channel, type, parties, amount, partner, originalTxnId,
@@ -667,7 +675,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `InquirySagaIT` validate it) and `dto/PartnerReply` (consumed; the telco samples read into it).
   Reply `outcome` `NOT_FOUND` (ticket 18) answers a STATUS_QUERY only.
 - `events/mw-audit-dw/mw.audit.event.v1.schema.json` (produced): own type `dto/AuditEvent`;
-  `SagaServiceIT` and `P2pKafkaIT` validate every audit record against it.
+  `SagaServiceIT` and `P2pKafkaIT` validate every audit record against it (`CoreCallAuditMapperTest`
+  the CORE_CALL hop, ticket 130b).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

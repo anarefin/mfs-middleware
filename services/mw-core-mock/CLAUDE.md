@@ -79,7 +79,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - **E-money total (ticket 127c, REC-07):** `GET /core/v1/reports/emoney-total` -> `EmoneyTotalView {asOf, total,
   walletCount, byType[]}`: the balance (held included) of every wallet but SYSTEM, whatever its status
   (`WalletRepository.emoneyByType`); only an `azp` of `mw.internal-auth.report-clients` (mw-recon, its trust position
-  job), a list apart from `allowed-clients`, so a mw-recon token reaches no other `/core/**` operation (403). Open item for Upay: the real
+  job), a list apart from `allowed-clients`, so a mw-recon token reaches no other `/core/**` operation (403).
+  Likewise `mw.internal-auth.balance-clients` (mw-portal-api, ticket 129c: the bulk balance check) may call only
+  `GET /core/v1/balance/{walletId}`, and `CoreWalletService.ORG_READERS` limits that plain read to ORGANISATION
+  wallets (a customer's is `401 MW-AUTH-046`; `CoreWalletRestIT.mwPortalApiReadsAnOrgWalletsBalanceAndNothingElse`). Open item for Upay: the real
   core must provide the same endpoint.
 - **Account readers (ticket 119c):** `mw.internal-auth.account-clients` (mw-adapter-remit's beneficiary lookup) may
   call only `GET /core/v1/accounts/{msisdn}` (WAL-01), a list apart from `allowed-clients`; any other `/core/**`

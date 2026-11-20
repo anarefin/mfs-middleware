@@ -72,6 +72,8 @@ public class SecurityConfig {
                     .access(caller(props, FACTORS_CALLER))
                     .requestMatchers(HttpMethod.GET, "/core/v1/reports/emoney-total")
                     .access(reportCaller(props))
+                    .requestMatchers(HttpMethod.GET, "/core/v1/balance/*")
+                    .access(balanceCaller(props))
                     .requestMatchers(HttpMethod.GET, "/core/v1/accounts/*")
                     .access((auth, ctx) -> new AuthorizationDecision(
                         auth.get() != null
@@ -116,6 +118,19 @@ public class SecurityConfig {
         auth.get() != null
             && auth.get().getPrincipal() instanceof Jwt jwt
             && props.reportClients().contains(jwt.getClaimAsString("azp")));
+  }
+
+  /**
+   * A balance reader: an allowed client, or an {@code azp} of {@code balance-clients} (ticket 129c:
+   * mw-portal-api), which may read balances and nothing else ({@code CoreWalletService} limits it
+   * to ORGANISATION wallets).
+   */
+  private static AuthorizationManager<RequestAuthorizationContext> balanceCaller(InternalAuthProperties props) {
+    return (auth, ctx) -> new AuthorizationDecision(
+        auth.get() != null
+            && auth.get().getPrincipal() instanceof Jwt jwt
+            && (props.allowedClients().contains(jwt.getClaimAsString("azp"))
+                || props.balanceClients().contains(jwt.getClaimAsString("azp"))));
   }
 
   /** Signature from the realm's JWKS (fetched on first use), expiry, exact issuer and audience. */

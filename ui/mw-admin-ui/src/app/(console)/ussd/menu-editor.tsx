@@ -4,8 +4,8 @@
 // checks it, MW-VAL-040). The preview runs mw-ussd's screen rules on the edited tree; no flow,
 // lookup or PIN leaves the browser (the PIN shows as ****).
 
-import { ArrowDown, ArrowUp, Braces, CircleCheck, CornerDownRight, Eye, ListTree, MessageSquareText, Phone, Plus, Send, Trash2, TriangleAlert } from "lucide-react";
-import { useActionState, useMemo, useState } from "react";
+import { ArrowDown, ArrowUp, Braces, CircleCheck, CornerDownRight, Eye, ListTree, MessageSquareText, Phone, Plus, Send, ShieldCheck, Trash2, TriangleAlert } from "lucide-react";
+import { useActionState, useMemo, useState, useTransition } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import {
   ENGINE_MESSAGES, MNO_SCREENS, MNOS, NODE_TYPES, addChild, deleteNode, menuProblems, moveNode, moveOption, nodeScreen, parseMenu,
   startPreview, stepPreview, textCounter, tree,
-  type ActionOutcome, type Lang, type Menu, type MenuNode, type MenuOption, type Mno, type Preview, type Text,
+  type ActionOutcome, type Lang, type Menu, type MenuNode, type MenuOption, type Mno, type Preview, type ServerVerdict, type Text,
 } from "@/lib/ussd-menu";
 import type { ActionState } from "../actions";
 import { ApiError } from "../api-error";
@@ -25,6 +25,8 @@ type Props = {
   initial: Menu | null;
   baseLabel: string | null;
   action: ((prev: ActionState, form: FormData) => Promise<ActionState>) | null;
+  /** mw-admin-api's verdict on the tree (ticket 133b); null for a role that may not ask. */
+  check?: ((mno: string, lang: Lang, menuJson: string) => Promise<ServerVerdict>) | null;
 };
 
 const EMPTY: Text = { bn: "", en: "" };
@@ -61,7 +63,7 @@ function NodeSelect({ label, value, ids, onChange }: { label: string; value: str
   );
 }
 
-export function MenuEditor({ initial, baseLabel, action }: Props) {
+export function MenuEditor({ initial, baseLabel, action, check = null }: Props) {
   const [menu, setMenu] = useState<Menu>(initial ?? STARTER);
   const [selected, setSelected] = useState<string>((initial ?? STARTER).start);
   const [json, setJson] = useState<string | null>(null);
@@ -247,7 +249,7 @@ export function MenuEditor({ initial, baseLabel, action }: Props) {
         </div>
       </CardSection>
 
-      <PreviewPanel menu={menu} />
+      <PreviewPanel menu={menu} check={check} />
       {action ? <ProposeForm menu={menu} action={action} /> : null}
     </div>
   );
@@ -262,14 +264,20 @@ function NodeScreenSize({ menu, id }: { menu: Menu; id: string }) {
   return <span data-testid="node-screen" className="ml-auto text-xs text-muted-foreground tabular-nums">screen {part("bn")} · {part("en")}</span>;
 }
 
-function PreviewPanel({ menu }: { menu: Menu }) {
+function PreviewPanel({ menu, check }: { menu: Menu; check: Props["check"] }) {
   const [mno, setMno] = useState<Mno>("gp");
   const [msisdn, setMsisdn] = useState("01712345678");
   const [lang, setLang] = useState<Lang>("bn");
   const [outcome, setOutcome] = useState<ActionOutcome>("COMPLETED");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [input, setInput] = useState("");
+  const [verdict, setVerdict] = useState<ServerVerdict | null>(null);
+  const [checking, startCheck] = useTransition();
 
+  const askServer = () => {
+    if (!check) return;
+    startCheck(async () => setVerdict(await check(mno, lang, JSON.stringify(menu))));
+  };
   const dial = () => setPreview(startPreview(menu, { msisdn, lang, mno }));
   const send = () => {
     if (!preview) return;
@@ -295,7 +303,19 @@ function PreviewPanel({ menu }: { menu: Menu }) {
             <option value="COMPLETED">completed</option><option value="FAILED">failed</option><option value="PROCESSING">processing</option>
           </NativeSelect></Field>
           <Button type="button" className="col-span-2" onClick={dial}><Phone />Dial</Button>
+          {check ? <Button type="button" variant="outline" className="col-span-2" onClick={askServer} disabled={checking}><ShieldCheck />Check on server</Button> : null}
         </div>
+        {verdict ? (verdict.ok ? (
+          <p className="m-0 flex items-center gap-2 text-sm text-good" data-testid="server-verdict" data-ok="true">
+            <CircleCheck className="size-4" aria-hidden="true" />mw-admin-api accepts the tree; <span className="font-mono">{verdict.shortCode}</span> opens <span className="font-mono">{verdict.rootMenuId}</span>.
+          </p>
+        ) : (
+          <Alert variant="destructive" data-testid="server-verdict" data-ok="false">
+            <TriangleAlert />
+            <AlertTitle>mw-admin-api refuses the tree:</AlertTitle>
+            <AlertDescription><ul className="font-mono text-xs">{verdict.problems.map((p) => <li key={p}>{p}</li>)}</ul></AlertDescription>
+          </Alert>
+        )) : null}
         {preview ? (
           <>
             <div className="w-full max-w-sm self-center rounded-2xl border bg-muted p-2 shadow-xs">

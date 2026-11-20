@@ -123,8 +123,11 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     `ScreenFormatter` (`screenPages`: break at a line break or space, the menu's `more` line, default
     `0. Next`, and `back`, default `00. Back`; `ussd-page` shows `page n/m`); `0` (the more key) shows the
     next page, `00` the previous page, else the node before (a PIN input is never returned to), as
-    UssdEngine's back stack. Server-side preview, short code -> root menu from the API, notify rules and
-    the template test send: tickets 133b-d (`.scratch/bits-mfs-middleware/issues/133-split-decisions.md`).
+    UssdEngine's back stack. "Check on server" (ticket 133b; ops-maker / ops-checker only, the `check` prop,
+    server action `previewMenuOnServer`) posts the edited tree to `POST /admin/v1/ussd/menus/preview` with the
+    picked MNO and language and shows `serverVerdict`: accepted with the short code and the root menu it opens
+    (`data-testid=server-verdict`, `data-ok`), or MenuValidator's problems one per line. Notify rules and the
+    template test send: tickets 133c-d (`.scratch/bits-mfs-middleware/issues/133-split-decisions.md`).
   - `/console/templates?code&channel&locale`: picker (codes mw-notify seeds as suggestions,
     `lib/templates.ts` `KNOWN_CODES`; any contract-valid code accepted), versions, the live text of the
     newest PUBLISHED version, and the editor (`templates/template-editor.tsx`, client; body with

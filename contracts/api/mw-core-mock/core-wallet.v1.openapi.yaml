@@ -21,7 +21,8 @@ info:
 
     Authorisation: a Keycloak realm `services` client-credentials JWT (spec 18.2) whose `aud`
     contains `mw-core-mock` and whose client (`azp`) is allowed (mw-orchestrator, mw-auth,
-    mw-admin-api; the unlock only mw-admin-api, the factors check only mw-auth); no or bad token `401 MW-AUTH-001`, another client `403 MW-AUTH-002`. Holds and
+    mw-admin-api; the unlock only mw-admin-api, the factors check only mw-auth; mw-portal-api only the
+    balance of an ORGANISATION wallet, ticket 129c); no or bad token `401 MW-AUTH-001`, another client `403 MW-AUTH-002`. Holds and
     transfers also carry the customer's authorisation: mw-auth's transaction assertion (a compact
     JWS, D22) in `X-Txn-Assertion`, with the request's `idempotencyKey` (part of the assertion's
     `txnHash`). Missing or refused (signature, `aud` core, `exp`, `sub` the payer, `txnHash`, a
@@ -32,7 +33,8 @@ info:
     `422 MW-CORE-INVALID_COUNTERPARTY`). Credits need none (money in from a settlement wallet).
     Balance reads (ticket 95a): the orchestrator reads a customer's balance for the customer only, with
     the BALANCE check's `txnId`, its assertion and the `Idempotency-Key` it was signed over; ops callers
-    (mw-admin-api, mw-auth) and system wallets read without.
+    (mw-admin-api, mw-auth) and system wallets read without, as does mw-portal-api for an org's payout
+    wallet (the bulk balance check, ticket 129c).
 
     Operator rounds (ticket 95a): a commit, release or credit with `round` n >= 1 carries out an
     operator's n-th forced decision and is its own operation (`<txnId>:rest:<op>:manual-<n>`), so the
@@ -94,7 +96,8 @@ paths:
         BalanceInquiry of `txnId`, idempotent by it, the assertion checked (subject the wallet, txnHash over
         BALANCE, amount 0, the wallet on both sides, `Idempotency-Key`, the channel) and its jti claimed;
         a wallet that is not ACTIVE is 422 MW-CORE-WALLET_NOT_ACTIVE. Without it: an ops caller
-        (mw-admin-api, mw-auth) or a system wallet, else 401 MW-AUTH-046.
+        (mw-admin-api, mw-auth), a system wallet, or mw-portal-api reading an ORGANISATION wallet
+        (ticket 129c; the only operation that client may call), else 401 MW-AUTH-046.
       parameters:
         - { name: txnId, in: query, required: false, description: "The BALANCE check's txnId (with X-Txn-Assertion)", schema: { $ref: "#/components/schemas/TxnId" } }
         - $ref: "#/components/parameters/TxnAssertion"

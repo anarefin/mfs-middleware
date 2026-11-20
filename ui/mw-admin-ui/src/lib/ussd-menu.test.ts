@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addChild, deleteNode, menuProblems, MNO_SCREENS, moveNode, moveOption, parseActivations, parseMenu, screenPages, startPreview, stepPreview,
+  addChild, deleteNode, menuProblems, MNO_SCREENS, moveNode, moveOption, parseActivations, parseMenu, screenPages, serverVerdict, startPreview, stepPreview,
   textCounter, tree, type Menu,
 } from "./ussd-menu";
 
@@ -239,5 +239,33 @@ describe("tree editing", () => {
     const n = deleteNode(MENU, "cancelled");
     expect(n.nodes["p2p.confirm"]!.options!.map((o) => o.key)).toEqual(["1"]);
     expect(deleteNode(MENU, "main")).toBe(MENU);
+  });
+});
+
+describe("server preview verdict (ticket 133b)", () => {
+  const preview = {
+    menuId: "main", mno: "robi", shortCode: "*269#", rootMenuId: "main", language: "bn" as const,
+    screens: [{ input: null, screen: "Bits", page: 0, pages: 1, ended: false }],
+  };
+
+  it("a walked tree passes, naming the short code and the root menu it opens", () => {
+    expect(serverVerdict({ ok: true, data: preview })).toEqual({
+      ok: true, shortCode: "*269#", rootMenuId: "main", screens: ["Bits"],
+    });
+  });
+
+  it("MenuValidator's problems come back one per line", () => {
+    const error = {
+      code: "MW-VAL-040", message: "The menu tree is not usable", correlationId: "c", retryable: false,
+      details: [{ field: "menu", issue: "main: option 1 points to missing node nowhere" }, { field: "menu", issue: "p2p.pin: a PIN input is never stored" }],
+    };
+    expect(serverVerdict({ ok: false, status: 400, error })).toEqual({
+      ok: false, problems: ["main: option 1 points to missing node nowhere", "p2p.pin: a PIN input is never stored"],
+    });
+  });
+
+  it("any other refusal is its code and message", () => {
+    const error = { code: "MW-AUTH-002", message: "Forbidden", correlationId: "c", retryable: false, details: [] };
+    expect(serverVerdict({ ok: false, status: 403, error })).toEqual({ ok: false, problems: ["MW-AUTH-002: Forbidden"] });
   });
 });

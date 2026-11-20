@@ -210,9 +210,9 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-USSD-01 | done | four MNO SMPP binds: gp and bl transceiver, robi and teletalk transmitter plus receiver (`UssdSmppMnoIT`, `UssdSmppClientTest`); dev keeps robi, bl and teletalk on HTTP |
 | CH-USSD-02 | done | mw-ussd SMPP binds: enquire_link 30 s, reconnect with backoff, window (`UssdSmppProperties`) |
 | CH-USSD-03 | done | one TLV adapter per MNO, tags 0x0501 and 0x1383; gp and bl pack the end bit in bit 0, robi and teletalk in bit 7 (`MnoTlvAdapterTest`) |
-| CH-USSD-04 | ticket 133 | menu JSON in the database with maker-checker built (M6); visual tree editor built (133a: add child, move, delete, counters); server preview 133b |
+| CH-USSD-04 | done | menu JSON in the database with maker-checker built (M6); visual tree editor built (133a: add child, move, delete, counters); server preview `POST /admin/v1/ussd/menus/preview` (133b, `UssdPreviewApiIT`, folder 67) |
 | CH-USSD-05 | done | 30 s per-screen timeout beside the overall session timeout; Redis TTL stays the overall timeout plus grace (mw-ussd) |
-| CH-USSD-06 | ticket 133 | GSM-7 182 and UCS-2 70 built; "0. Next" / "00. Back" pagination built (mw-ussd); browser preview pages per MNO (133a); server preview `POST /admin/v1/ussd/menus/preview` 133b |
+| CH-USSD-06 | done | GSM-7 182 and UCS-2 70 built; "0. Next" / "00. Back" pagination built (mw-ussd); browser preview pages per MNO (133a); server preview `POST /admin/v1/ussd/menus/preview` pages the same way (133b, `UssdPreviewTest`, folder 67) |
 | CH-USSD-07 | done | PIN encrypted on receipt, never logged or kept in the session (spec 18.3, `scripts/log-scan.sh`) |
 | CH-USSD-08 | done | ussd.short_code (code, MNO, root menu, allowed types) and the account type from the core (mw-ussd) |
 | CH-USSD-09 | done | a result that arrives after the session ended goes out by SMS (mw-ussd) |
@@ -224,8 +224,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-WEB-05 | done | session expiry `session-ttl: 15m` (mw-checkout `application.yml`) |
 | CH-POR-01 | ticket 129 | 129a done: CSV and XLSX upload (`BulkFileParser`, bounded XLSX reader) and row validation built; 129b done: upload as PREVIEW with totals and per-row error codes, `GET .../preview`, `POST .../submit` (`BulkPreviewTest`, `BulkBatchApiIT`) |
 | CH-POR-02 | done | bulk maker-checker in mw-portal-api |
-| CH-POR-03 | ticket 129 | async execution, throttle, per-row status, result file built; retry of failed rows in 129 |
-| CH-POR-04 | ticket 129 | balance check before execution |
+| CH-POR-03 | ticket 129 | async execution, throttle, per-row status, result file built; 129c done: retry of FAILED rows, maker-checker, a new attempt key only after the failed attempt is proven to have posted nothing (`RetryFailedRowsIT`) |
+| CH-POR-04 | ticket 129 | 129c done: org wallet balance read from the core at approval and at dispatch start, short -> BLOCKED_FUNDS with the shortfall, nothing sent (`BalanceCheckIT`) |
 | CH-POR-05 | ticket 129 | SP transaction query built; settlements, refunds, reports in 129 |
 | CH-POR-06 | done | OAuth2 on the Keycloak `portals` realm, maker and checker roles per organisation |
 
@@ -331,10 +331,10 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CMP-03 | ticket 125 | real-time pre-check, fails open with an alert (D32) |
 | CMP-04 | done | `compliance.consent`, committed before any EC call, its id on the EC request (`ConsentBeforeCallTest`) |
 | CMP-05 | ticket 134 | encrypted at rest in mw-compliance (124a); unmask by permission in 134 |
-| AUD-01 | ticket 130 | state changes, operator actions and partner calls audited with masked request/response payloads in the hash chain (`audit.payload`, ticket 130); open: channel request logging (CHANNEL_IN), core-call and notification hops are not sent yet |
+| AUD-01 | done | state changes, operator actions and partner calls audited with masked request/response payloads in the hash chain (`audit.payload`, ticket 130); since ticket 130b also every channel request (CHANNEL_IN: mw-app-gateway, mw-ussd, mw-checkout, mw-portal-api bulk children), core REST call (CORE_CALL, mw-orchestrator) and final notification status (NOTIFICATION, mw-notify), with latency and masked bodies |
 | AUD-02 | done | append-only audit with a hash chain (mw-audit-dw `audit_event`) |
 | AUD-03 | done | search by txnId, actor, action, resource, outcome, time, and (ticket 130) partner, channel, status, amount range, MSISDN (TOKENISE_MSISDN token) via `audit.txn_index`; 3 s over 30 days proven by `AuditSearchPerfIT` (`slow-wait`) |
-| AUD-04 | ticket 135 | `GET /internal/v1/audit/transactions/{txnId}/timeline`: hops in order with latency, gaps and masked payloads (`TimelineIT`); mw-admin-api transaction detail does not call it yet (UI ticket 135) |
+| AUD-04 | ticket 135 | `GET /internal/v1/audit/transactions/{txnId}/timeline`: hops in order with latency, gaps and masked payloads (`TimelineIT`); every hop is produced since ticket 130b (channel in, orchestrator, core calls, partner calls and callbacks, notifications); open: mw-admin-api transaction detail does not call it yet (UI ticket 135) |
 | AUD-05 | done | `GET /internal/v1/audit/search/export.csv` with a row cap; every export writes an `audit.search.exported` operator-action record into the chain (`ExportAuditedIT`) |
 | DAT-01 | deviation | JSON Schema in Git, no schema registry (M9, D10, D31): the FRS allows JSON Schema; the registry is not run. `dw.*` topics are in `contracts/events/mw-data-export/` (ticket 128). `recon.exception` is `contracts/events/mw-recon/mw.recon.exception.v1.schema.json` (ticket 127b; consumers mw-audit-dw, mw-data-export). `kyc.completed` is `contracts/events/mw-compliance/mw.kyc.completed.v1.schema.json` (ticket 124; consumer mw-data-export) |
 | DAT-02 | done | daily DW batch: Kafka stream and the SFTP drop (`DwStreamIT`, `DwDailyExportIT`) |
@@ -350,7 +350,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
 | ADM-04 | tickets 98, 132 | API maker-checker for `ROUTING_RULE`, `MSISDN_PREFIX`, `MNP_OVERRIDE` and `MAINTENANCE_MESSAGE` (ticket 98, `RoutingRuleChangeRequestIT`, API folder 35); the console and testing a rule against a sample request stay 132 |
 | ADM-05 | ticket 132 | API done in 113: `GET /admin/v1/billers`, `POST /admin/v1/billers/{code}/change-requests` UPSERT / ENABLE / DISABLE, maker-checker (`BillerChangeRequestIT`) |
-| ADM-06 | ticket 133 | visual tree editor and paged browser preview built (133a); server preview and short code -> root menu 133b |
+| ADM-06 | done | visual tree editor and paged browser preview built (133a); server preview with the MenuValidator verdict and short code -> root menu per MNO (`mw.content.ussd.<mno>`, 133b; "Check on server" in the console's preview) |
 | ADM-07 | tickets 111, 133 | SMS template editing built; campaigns through maker-checker (`POST /admin/v1/notify-campaigns`, ticket 111); the rule-table editor is 133c, the test send 133d |
 | ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the Error codes tab (131c, `ui/mw-admin-ui`) |
 | ADM-09 | done | transaction search and saga timeline (mw-admin-api, `ui/mw-admin-ui`) |

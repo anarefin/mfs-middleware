@@ -19,6 +19,7 @@ import mfs.mw.app.gateway.dto.TransactionView;
 import mfs.mw.app.gateway.dto.TxnRequest;
 import mfs.mw.app.gateway.exception.ErrorCodes;
 import mfs.mw.app.gateway.exception.MwException;
+import mfs.mw.app.gateway.mapper.ChannelAuditMapper;
 import mfs.mw.app.gateway.mapper.RequestMapper;
 import mfs.mw.app.gateway.messaging.EventPublisher;
 import mfs.mw.app.gateway.repository.AppTransactionRepository;
@@ -41,6 +42,7 @@ import org.springframework.stereotype.Service;
 public class TransactionService {
 
   private static final Logger log = LoggerFactory.getLogger(TransactionService.class);
+  private static final String SERVICE = "mw-app-gateway";
 
   /** Types whose counterparty is another wallet of this core. */
   private static final java.util.Set<String> WALLET_TO_WALLET =
@@ -55,6 +57,7 @@ public class TransactionService {
   private final AuthClient auth;
   private final IdempotentReplay replay;
   private final LinkedAccountService linked;
+  private final ChannelAuditService audits;
 
   public TransactionService(
       EventPublisher publisher,
@@ -66,7 +69,8 @@ public class TransactionService {
       BillerService billers,
       AuthClient auth,
       IdempotentReplay replay,
-      LinkedAccountService linked) {
+      LinkedAccountService linked,
+      ChannelAuditService audits) {
     this.exchange = new TxnReplyExchange(publisher, waiters, props);
     this.mapper = mapper;
     this.transactions = transactions;
@@ -76,6 +80,7 @@ public class TransactionService {
     this.auth = auth;
     this.replay = replay;
     this.linked = linked;
+    this.audits = audits;
   }
 
   public SubmitResult submit(AppUser user, String idempotencyKey, TransactionRequest body) {
@@ -84,6 +89,7 @@ public class TransactionService {
 
   public SubmitResult submit(
       AppUser user, String idempotencyKey, TransactionRequest body, Map<String, String> bill) {
+    long started = System.nanoTime();
     check(user, body);
     // FRS PLT-011: a key already answered 200 gets that very body again (or 409 for other content)
     Optional<TransactionView> stored = replay.replay(user, idempotencyKey, body);
@@ -121,13 +127,15 @@ public class TransactionService {
         .log("transaction request published");
 
     StatusMessage status = exchange.await(answer, txnId);
-    if (status == null) {
-      return SubmitResult.processing(TransactionView.processing(txnId));
-    }
-    SubmitResult result = answerFor(status);
-    if (result.done()) {
+    SubmitResult result = status == null ? SubmitResult.processing(TransactionView.processing(txnId)) : answerFor(status);
+    if (status != null && result.done()) {
       replay.remember(user, idempotencyKey, body, result.view());
     }
+    TransactionView view = result.view();
+    audits.served(
+        new ChannelAuditMapper.Served(SERVICE, user.channel(), txnId, correlationId, user.msisdn(), body.txnType(),
+            view.status(), view.error() == null ? null : view.error().code(), req, view),
+        (System.nanoTime() - started) / 1_000_000);
     return result;
   }
 

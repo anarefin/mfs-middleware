@@ -9,6 +9,8 @@ import java.util.Optional;
  * decision); APPROVED -> EXECUTING
  * (first child sent) <-> PAUSED -> COMPLETED (every row settled) or COMPLETED_WITH_EXCEPTIONS
  * (every row settled or given up, at least one MANUAL_REVIEW or UNRESOLVED; M3 gate decision).
+ * BLOCKED_FUNDS (ticket 129c): the org wallet held less than the batch at approval or when the
+ * dispatcher would have started it; nothing was sent, a checker approves it again.
  */
 public enum BatchStatus {
   PREVIEW,
@@ -19,7 +21,8 @@ public enum BatchStatus {
   EXECUTING,
   PAUSED,
   COMPLETED,
-  COMPLETED_WITH_EXCEPTIONS;
+  COMPLETED_WITH_EXCEPTIONS,
+  BLOCKED_FUNDS;
 
   /** Whether the batch was approved, so it has children and a result file. */
   public boolean approved() {

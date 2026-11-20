@@ -42,7 +42,20 @@ class ProducedContractsTest {
 
   /** Fixtures per manifest entry: the messages the service sends on that topic. */
   static final Map<String, Supplier<List<Object>>> FIXTURES =
-      Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests);
+      Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests,
+          "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::channelHops);
+
+  /** {@code ChannelAuditService.served} (ticket 130b): the CHANNEL_IN hop of every flow, answered or not. */
+  static List<Object> channelHops() {
+    return txnRequests().stream()
+        .map(r -> (mfs.mw.ussd.dto.TxnRequest) r)
+        .map(r -> (Object) mfs.mw.ussd.mapper.ChannelAuditMapper.channelIn(
+            new mfs.mw.ussd.mapper.ChannelAuditMapper.Served("mw-ussd", r.channel(), r.txnId(), r.correlationId(),
+                r.initiator().id(), r.txnType(), "BALANCE".equals(r.txnType()) ? "COMPLETED" : "PROCESSING", null, r,
+                null),
+            NOW, 40))
+        .toList();
+  }
 
   /** One request per flow an ACTION node may name ({@code TxnRequestMapper.FLOWS}). */
   static List<Object> txnRequests() {

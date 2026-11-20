@@ -45,10 +45,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
     `after` = operation, filters (an MSISDN only as "given"), rowCount, truncated); `ExportAuditedIT`.
   - Test-only mirrors `/test/v1/audit/transactions/{txnId}/timeline` and `/test/v1/audit/search/export.csv`
     (API suite folder 42).
-  - Open items: the channels' request logging does not send CHANNEL_IN events yet, mw-orchestrator sends
-    no CORE_CALL hop and mw-notify no NOTIFICATION hop (the timeline shows what producers send); mw-admin-api's
-    transaction detail does not call the timeline yet (left out while ticket 100a changes mw-admin-api;
-    UI in ticket 135).
+  - Producers of the other hops (ticket 130b): CHANNEL_IN `channel.request.completed` from mw-app-gateway,
+    mw-ussd and mw-checkout (one per transaction request served, with its latency) and mw-portal-api (one per
+    bulk child sent); CORE_CALL `core.call.completed` from mw-orchestrator (one per core REST call, latency,
+    command and answer); NOTIFICATION `notification.completed` from mw-notify (one per final status of a
+    transaction's message). Open item: mw-admin-api's transaction detail does not call the timeline yet
+    (UI in ticket 135).
 - Internal audit search (ticket 35, contract `api/mw-audit-dw/audit-query.v1.openapi.yaml`;
   `controller/AuditSearchController` -> `service/AuditSearchService` -> `repository/AuditSearchRepository`):
   `GET /internal/v1/audit/events` (txnId, actorType, actorId, action, resource, outcome, `[from, to)` on

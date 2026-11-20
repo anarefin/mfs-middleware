@@ -5,7 +5,7 @@
 import type { TemplateKey } from "./templates";
 import type { Menu } from "./ussd-menu";
 import type {
-  ApiResult, ChangeRequest, ChangeRequestPage, ContentVersion, ContentVersionPage, CredentialPage, ErrorEnvelope, KeyCeremony, KeyPage, Partner,
+  ApiResult, ChangeRequest, ChangeRequestPage, ContentVersion, ContentVersionPage, CredentialPage, ErrorEnvelope, KeyCeremony, KeyPage, MenuPreview, Partner,
   PartnerAction, PartnerConfig, PartnerFamily, PartnerPage, PartnerTimeouts, TxnAction, TxnDetail, TxnPage, WalletAction,
 } from "./types";
 
@@ -34,6 +34,10 @@ export type ErrorMapBody = {
   ambiguousCodes: string[];
 };
 export type MenuProposal = { menu: Menu; activations: { mno: string; goLiveAt?: string }[]; reason: string };
+/** POST /admin/v1/ussd/menus/preview (ticket 133b): a draft tree checked and walked on one MNO. */
+export type MenuPreviewBody = {
+  menu: Menu; menuId?: string; mno: string; language?: "bn" | "en"; inputs?: string[]; outcome?: "COMPLETED" | "FAILED" | "PROCESSING";
+};
 export type TemplateProposal = {
   body: string; subject?: string; htmlBody?: string; senderId?: string; validFrom?: string; reason: string;
 };
@@ -184,6 +188,9 @@ export function createAdminApi(opts: AdminApiOptions) {
     },
     proposeMenu(token: string, menuId: string, body: MenuProposal): Promise<ApiResult<ChangeRequest>> {
       return post<ChangeRequest>(token, `/admin/v1/ussd-menus/${encodeURIComponent(menuId)}/change-requests`, body);
+    },
+    previewMenu(token: string, body: MenuPreviewBody): Promise<ApiResult<MenuPreview>> {
+      return post<MenuPreview>(token, "/admin/v1/ussd/menus/preview", body);
     },
     // notification templates (ticket 39)
     listTemplateVersions(token: string, k: TemplateKey, limit = 20): Promise<ApiResult<ContentVersionPage>> {
