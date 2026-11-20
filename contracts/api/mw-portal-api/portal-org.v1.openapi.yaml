@@ -6,7 +6,7 @@ info:
     Org portal API v1 (spec 8.2, 9.4), served by mw-portal-api behind APISIX route
     `/portal/org/v1/*`. Bearer JWT from Keycloak realm `portals`; the org is the token's `orgId`
     claim, the user's realm roles decide what they may do: `org-maker` uploads bulk disbursement
-    files, `org-checker` approves or rejects them (maker-checker: never the batch's own maker,
+    files, checks their preview and submits them, `org-checker` approves or rejects them (maker-checker: never the batch's own maker,
     even with both roles). A user only ever sees their own org's batches (another org's is 404).
     Every error is the 5.3 envelope. The APISIX edge answers some errors itself, also as the
     envelope: 401 MW-AUTH-001, 413 MW-VAL-BODY_TOO_LARGE (body over 3 MiB), 429
@@ -25,18 +25,24 @@ paths:
         (any case), one payee per line, blank lines skipped, a field may be wrapped in double
         quotes. `msisdn` 01XNNNNNNNN, 8801XNNNNNNNN or +8801XNNNNNNNN; `amount` in taka, above 0,
         at most 2 decimals (e.g. `100.50`); `reference` 1 to 32 of `A-Za-z0-9._-`, unique within
-        the file. At most 10,000 data rows and 2 MiB: larger is 400 MW-VAL-030. The file is all
-        or nothing: any bad row is 400 MW-VAL-031 with one `details[]` entry per problem (`field`
-        `line <n>: <column>` or `line <n>`, the header being line 1; the first 100 listed, the
-        message counts them all; values are never echoed) and nothing is stored. A valid file is
-        stored as one batch awaiting approval. Needs role `org-maker`.
+        the file. At most 10,000 data rows and 2 MiB: larger is 400 MW-VAL-030. A bad header or a
+        file without rows is 400 MW-VAL-031 (`details[]` `field` `line 1` or `file`) and nothing is
+        stored. Otherwise the file is stored as one batch in status PREVIEW (ticket 129b) with every
+        row: a row that breaks a rule is kept as invalid with its error codes (`MSISDN_INVALID`,
+        `AMOUNT_INVALID`, `REFERENCE_INVALID`, `REFERENCE_DUPLICATE` (a later row repeating a
+        reference), `FIELD_COUNT` (not 3 fields)), is never executed and never "fixed"; values that
+        failed are never kept or echoed. The answer gives `rowCount` (every data row), `validCount`,
+        `invalidCount`, `totalAmount` (the valid rows) and `rowErrors` (the first 100 invalid rows
+        with their codes); `GET .../preview` pages through every row, `POST .../submit` sends the
+        batch for approval. Needs role `org-maker`.
 
         Or XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, ticket 129):
         the first sheet, row 1 the same header, one payee per row (blank rows skipped), the same
         rules and errors, `line <n>` being the sheet's row number. Format the `msisdn` column as
         text (a number loses its leading 0). Numbers are read in plain decimal notation. A formula
-        anywhere is 400 MW-VAL-031 (never evaluated), as are an external link and a file that is
-        not a workbook (`field` `file`); more rows or cells than the caps, or a workbook that
+        anywhere is 400 MW-VAL-031 (never evaluated; the whole file is refused), as are an
+        external link and a file that is not a workbook (`field` `file`); a row with a value right
+        of the third column is invalid (`FIELD_COUNT`); more rows or cells than the caps, or a workbook that
         inflates beyond 64 MiB, or holds more than 4 shared strings per allowed row, is 400
         MW-VAL-030. Cell text is read up to 256 characters. A number with an exponent of more
         than 2 digits, more than 30 digits or more than 20 decimals is kept as typed and fails
@@ -56,7 +62,7 @@ paths:
             schema: { type: string, format: binary }
       responses:
         "201":
-          description: Stored, status PENDING_APPROVAL
+          description: Stored, status PREVIEW
           headers:
             Location:
               schema: { type: string }
@@ -113,6 +119,67 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/preview:
+    get:
+      operationId: previewBulkBatch
+      summary: The batch's totals and one page of its rows (ticket 129b)
+      description: >-
+        Every row in file order (`line` as in the upload, header = line 1), in any status of the
+        batch. A valid row has its masked MSISDN (`0171****789`), amount and reference; an invalid
+        row has `valid` false, its `errors` codes (see the upload) and only the amount and
+        reference that passed their own rule (never its MSISDN). `valid=true` or `false` keeps
+        only the valid or invalid rows. `limit` 1 to 200 (default 50), `offset` from 0 (default
+        0), else 400 MW-VAL-001. Needs role `org-maker` or `org-checker`; another org's batch is
+        404 MW-VAL-003.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: valid
+          in: query
+          required: false
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: The page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BatchPreview" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /portal/org/v1/bulk/batches/{batchId}/submit:
+    post:
+      operationId: submitBulkBatch
+      summary: Send a PREVIEW batch for approval (maker, ticket 129b)
+      description: >-
+        PREVIEW -> PENDING_APPROVAL; only its valid rows will ever be executed. Needs role
+        `org-maker` and the maker who uploaded the batch (else 403 MW-AUTH-002). A batch no longer
+        in PREVIEW (already submitted, expired) is 409 MW-VAL-036; one without a valid row is 409
+        MW-VAL-037. No body.
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/BatchId"
+      responses:
+        "200":
+          description: Submitted, status PENDING_APPROVAL
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Batch" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
   /portal/org/v1/bulk/batches/{batchId}/approve:
     post:
@@ -190,7 +257,9 @@ paths:
         is the row's state: PENDING (not sent yet), SUBMITTED (running), COMPLETED (paid), FAILED,
         REJECTED, REVERSED (not paid; `errorCode` says why), MANUAL_REVIEW (outcome being checked
         by operations) or UNRESOLVED (no outcome known long after it was sent; operations
-        reconcile it). `batchStatus` is the batch's status on every line: COMPLETED_WITH_EXCEPTIONS
+        reconcile it), INVALID (broke a row rule at upload, never sent: `msisdn` empty, `amount` and
+        `reference` only when they passed their rule, `errorCode` its row error codes joined by
+        `|`). `batchStatus` is the batch's status on every line: COMPLETED_WITH_EXCEPTIONS
         when any row is MANUAL_REVIEW or UNRESOLVED. Final once the batch is COMPLETED or
         COMPLETED_WITH_EXCEPTIONS; before that it shows the current state. Needs role `org-maker`
         or `org-checker`; a batch that was never approved (also REJECTED, EXPIRED) is 409
@@ -396,12 +465,13 @@ components:
     BatchStatus:
       type: string
       description: >-
-        PENDING_APPROVAL -> APPROVED or REJECTED (maker-checker), or EXPIRED when no checker decided
-        within 72 h of the upload; APPROVED -> EXECUTING (first row sent) <-> PAUSED -> COMPLETED
+        PREVIEW (uploaded, rows checked) -> PENDING_APPROVAL (submitted by its maker) or EXPIRED
+        when not submitted within 72 h of the upload; PENDING_APPROVAL -> APPROVED or REJECTED
+        (maker-checker), or EXPIRED when no checker decided within 72 h of the upload; APPROVED -> EXECUTING (first row sent) <-> PAUSED -> COMPLETED
         (every row settled) or COMPLETED_WITH_EXCEPTIONS (every row settled or given up, at least
         one MANUAL_REVIEW or UNRESOLVED). More states may be added within v1; clients must accept
         unknown values.
-      enum: [PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, EXECUTING, PAUSED, COMPLETED, COMPLETED_WITH_EXCEPTIONS]
+      enum: [PREVIEW, PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, EXECUTING, PAUSED, COMPLETED, COMPLETED_WITH_EXCEPTIONS]
     BatchProgress:
       type: object
       description: Row counts of an approved batch.
@@ -422,13 +492,24 @@ components:
         currency: { type: string, const: BDT }
     Batch:
       type: object
-      required: [batchId, orgId, status, rowCount, totalAmount, makerId, createdAt]
+      required: [batchId, orgId, status, rowCount, validCount, invalidCount, totalAmount, makerId, createdAt]
       properties:
         batchId: { type: string, format: uuid }
         orgId: { type: string }
         status: { $ref: "#/components/schemas/BatchStatus" }
-        rowCount: { type: integer, minimum: 1 }
-        totalAmount: { $ref: "#/components/schemas/Amount" }
+        rowCount: { type: integer, minimum: 1, description: Every data row of the file }
+        validCount: { type: integer, minimum: 0, description: Rows that will be executed }
+        invalidCount: { type: integer, minimum: 0, description: Rows that broke a row rule; never executed }
+        totalAmount: { $ref: "#/components/schemas/Amount", description: The amount of the valid rows }
+        rowErrors:
+          type: array
+          description: Upload answer only, the first 100 invalid rows with their codes
+          items:
+            type: object
+            required: [line, errors]
+            properties:
+              line: { type: integer, minimum: 2 }
+              errors: { type: array, minItems: 1, items: { $ref: "#/components/schemas/RowErrorCode" } }
         makerId: { type: string, description: Username of the maker }
         checkerId: { type: string, description: Username of the checker, once decided }
         reason: { type: string, description: Rejection reason }
@@ -440,6 +521,34 @@ components:
           description: The parent BULK_DISBURSE transaction of an approved batch; every child carries it
         progress: { $ref: "#/components/schemas/BatchProgress" }
         completedAt: { type: string, format: date-time, description: When the last row settled }
+    RowErrorCode:
+      type: string
+      description: Why a row of an upload is invalid. More codes may be added within v1.
+      enum: [MSISDN_INVALID, AMOUNT_INVALID, REFERENCE_INVALID, REFERENCE_DUPLICATE, FIELD_COUNT]
+    BatchPreview:
+      type: object
+      required: [batchId, status, rowCount, validCount, invalidCount, totalAmount, offset, limit, rows]
+      properties:
+        batchId: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/BatchStatus" }
+        rowCount: { type: integer, minimum: 1 }
+        validCount: { type: integer, minimum: 0 }
+        invalidCount: { type: integer, minimum: 0 }
+        totalAmount: { $ref: "#/components/schemas/Amount" }
+        offset: { type: integer, minimum: 0 }
+        limit: { type: integer, minimum: 1, maximum: 200 }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [line, valid]
+            properties:
+              line: { type: integer, minimum: 2 }
+              msisdn: { type: string, description: "Masked (0171****789); valid rows only" }
+              amount: { $ref: "#/components/schemas/Amount" }
+              reference: { type: string }
+              valid: { type: boolean }
+              errors: { type: array, minItems: 1, items: { $ref: "#/components/schemas/RowErrorCode" } }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

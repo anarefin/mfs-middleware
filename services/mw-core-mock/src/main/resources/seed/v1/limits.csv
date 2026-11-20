@@ -8,5 +8,9 @@ txn_type,customer_type,kyc_level,per_txn_min,per_txn_max,daily_count,daily_amoun
 # Customer P2P and cash out, full KYC: count limits (generous: the API suite reruns on one stack in a day)
 P2P,CUSTOMER,FULL,100,500000,500,1500000,10000,20000000
 CASH_OUT,CUSTOMER,FULL,100,500000,300,1500000,5000,20000000
+# Inbound remittance (ticket 119c, the mock's decision): the receiving customer's per-txn cap is
+# 2,00,000 Tk; BASIC KYC keeps the BASIC cap. Only the per-txn min/max apply to a payee.
+REMIT_IN,CUSTOMER,*,100,20000000,,,,
+REMIT_IN,CUSTOMER,BASIC,100,100000,,,,
 # An organisation pays a whole bulk batch out in a day (ticket 34: 10,000 rows of up to 5,000 Tk)
 *,ORGANISATION,*,100,500000,,5000000000,,

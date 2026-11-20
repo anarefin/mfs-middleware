@@ -31,8 +31,9 @@ import org.w3c.dom.NodeList;
  * name, a {@code PasswordDigest} password (Base64(SHA-1(nonce + created + password)), OASIS
  * UsernameToken profile 1.0), a {@code wsse:Nonce} and a {@code wsu:Created}. {@code PasswordText}
  * is refused, so the password never crosses the wire. {@code Created} must be within
- * {@value #SKEW_SECONDS} s of now and the nonce is accepted once (table {@code callback_nonce}),
- * so a captured request cannot be replayed. Anything else is the SOAP fault {@code MW-AUTH-001}
+ * {@value #SKEW_SECONDS} s of now and the nonce is accepted once
+ * (table {@code atm_ws_nonce}, canonical Base64 only), so a captured request cannot be replayed.
+ * Anything else is the SOAP fault {@code MW-AUTH-001}
  * before the endpoint runs; the reason is logged, never the header or the password. TLS is the
  * edge's (route {@code partner-ucbatm-ws}).
  */
@@ -102,6 +103,11 @@ public class WsSecurityInterceptor implements EndpointInterceptor {
     }
     if (nonceBytes.length < 8 || nonceText.length() > MAX_NONCE_CHARS) {
       return "nonce too short or too long";
+    }
+    // the replay key is the text: only the canonical spelling of the bytes is accepted, so the
+    // same nonce cannot pass again as other Base64 text (no padding, other trailing bits)
+    if (!nonceText.equals(Base64.getEncoder().encodeToString(nonceBytes))) {
+      return "nonce not in canonical Base64";
     }
     boolean userOk = equal(properties.wsUsername(), user.getTextContent().strip());
     boolean digestOk = equal(digest(nonceBytes, createdText, expected), password.getTextContent().strip());

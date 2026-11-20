@@ -13,6 +13,10 @@ import mfs.mw.auth.config.AuthProperties;
 import mfs.mw.auth.config.ServiceCertificateManager;
 import mfs.mw.auth.dto.CryptoDerivePinRequest;
 import mfs.mw.auth.dto.CryptoEnvelope;
+import mfs.mw.auth.dto.CryptoHmacSignRequest;
+import mfs.mw.auth.dto.CryptoHmacSigned;
+import mfs.mw.auth.dto.CryptoHmacVerified;
+import mfs.mw.auth.dto.CryptoHmacVerifyRequest;
 import mfs.mw.auth.dto.CryptoJwsSignRequest;
 import mfs.mw.auth.dto.CryptoJwsSigned;
 import mfs.mw.auth.dto.CryptoPinDerived;
@@ -65,6 +69,14 @@ public class CryptoClient {
     @Override
     public String toString() {
       return "MsisdnToken[token=****, kid=" + kid + "]";
+    }
+  }
+
+  /** An HMAC (base64) and the HMAC_<use> key version that made it (ticket 120b2). */
+  public record Mac(String mac, String kid) {
+    @Override
+    public String toString() {
+      return "Mac[mac=****, kid=" + kid + "]";
     }
   }
 
@@ -157,6 +169,26 @@ public class CryptoClient {
       throw unavailable("pin.derive", null);
     }
     return d;
+  }
+
+  /** HMAC-SHA256 of {@code data} under the ACTIVE version of the HMAC_<use> key {@code keyId}. */
+  public Mac signHmac(String keyId, byte[] data) {
+    CryptoHmacSigned s = call("hmac.sign", "/internal/v1/hmac/sign",
+        new CryptoHmacSignRequest(keyId, Base64.getEncoder().encodeToString(data)), CryptoHmacSigned.class);
+    if (s == null || s.mac() == null || s.kid() == null) {
+      throw unavailable("hmac.sign", null);
+    }
+    return new Mac(s.mac(), s.kid());
+  }
+
+  /** Whether {@code mac} is the HMAC of {@code data} under {@code keyRef} (a keyId or a kid), constant time at mw-crypto. */
+  public boolean verifyHmac(String keyRef, byte[] data, String mac) {
+    CryptoHmacVerified v = call("hmac.verify", "/internal/v1/hmac/verify",
+        new CryptoHmacVerifyRequest(keyRef, Base64.getEncoder().encodeToString(data), mac), CryptoHmacVerified.class);
+    if (v == null) {
+      throw unavailable("hmac.verify", null);
+    }
+    return v.valid();
   }
 
   /** A compact JWS over {@code claims} by the ACTIVE key of {@code purpose}, with extra header members. */

@@ -1,8 +1,10 @@
 "use server";
-// Org portal (/portal/org/v1, realm portals): a maker uploads a bulk disbursement CSV, a checker
-// of the same org approves it (maker-checker), mw-portal-api executes the rows as throttled
+// Org portal (/portal/org/v1, realm portals): a maker uploads a bulk disbursement CSV, checks its
+// preview (valid and invalid rows, ticket 129b) and submits it, a checker of the same org approves
+// it (maker-checker), mw-portal-api executes the rows as throttled
 // child transactions, the result file lists each row; a service provider queries its txns.
 
+import { type BatchAnswer, previewHeadline, previewRows } from "@/lib/bulk-preview";
 import { bulkCsv, unique } from "@/lib/format";
 import type { Outcome } from "@/lib/types";
 import { Trace } from "@/lib/server/edge";
@@ -34,8 +36,22 @@ export async function bulk(_prev: BulkState, form: FormData): Promise<BulkState>
         const csv = String(form.get("csv") ?? "");
         if (!csv.trim()) return out("paste or generate a CSV first");
         const r = await t.call(`${user}: upload the batch (text/csv)`, "POST", B, { headers: h, raw: csv, contentType: "text/csv" }, [201, 202]);
-        const b = (r.body ?? {}) as { batchId?: string; id?: string; status?: string };
-        return out(`batch ${b.batchId ?? b.id ?? "?"}: ${b.status ?? r.status}`, { batchId: b.batchId ?? b.id });
+        const b = (r.body ?? {}) as BatchAnswer;
+        const preview = b.batchId
+          ? ((await t.call(`${user}: preview of batch ${b.batchId}`, "GET", `${B}/${b.batchId}/preview?limit=200`, { headers: h })).body as BatchAnswer)
+          : null;
+        return out(previewHeadline(b), { batchId: b.batchId, previewRows: previewRows(preview) });
+      }
+      case "preview": {
+        needId();
+        const r = await t.call(`${user}: preview of batch ${id}`, "GET", `${B}/${id}/preview?limit=200`, { headers: h });
+        const p = (r.body ?? {}) as BatchAnswer;
+        return out(previewHeadline(p), { previewRows: previewRows(p) });
+      }
+      case "submit": {
+        needId();
+        const r = await t.call(`${user}: submit batch ${id} for approval`, "POST", `${B}/${id}/submit`, { headers: h, raw: "" });
+        return out(`${previewHeadline(r.body as BatchAnswer)} (only the maker who uploaded it can submit; only valid rows are paid)`);
       }
       case "list":
         await t.call(`${user}: list the org's batches`, "GET", B + (str(form, "status") ? `?status=${encodeURIComponent(str(form, "status"))}` : ""), { headers: h });

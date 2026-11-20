@@ -10,6 +10,7 @@ import { Input, NativeSelect } from "@/components/ui/input";
 import type { Outcome } from "@/lib/types";
 import { BEHAVIOURS, MOCK_PARTIES, SWITCH_STATES } from "@/lib/mock-parties";
 import { addScenario, coreFault, partyState, replayCallback, setSwitch, smpp, walletLookup } from "../actions/sim";
+import { remit } from "../actions/remit";
 import { Result } from "../components/result";
 
 type Act = (prev: Outcome | null, f: FormData) => Promise<Outcome | null>;
@@ -167,5 +168,33 @@ export function CoreForms() {
         </ActForm>
       </Panel>
     </div>
+  );
+}
+
+/** The console plays the remittance partner ucb-imt (tickets 119b/119c): look up, then send. */
+export function RemitForm() {
+  const [state, run, pending] = useActionState(remit, null);
+  return (
+    <Panel title="Send remittance (partner ucb-imt)" icon={Building2}>
+      <form action={run} className="flex flex-col gap-3" aria-busy={pending} data-testid="remit-form">
+        <fieldset disabled={pending} className="contents">
+          <Row>
+            <Field label="Beneficiary wallet"><Input name="beneficiary" defaultValue="01711000001" className="font-mono" data-testid="remit-beneficiary" /></Field>
+            <Field label="Amount (Tk)"><Input name="amount" defaultValue="250" className="tabular-nums" data-testid="remit-amount" /></Field>
+          </Row>
+          <Row>
+            <Field label="Sender name"><Input name="sender" defaultValue="Test Sender" /></Field>
+            <Field label="Sender country"><Input name="country" defaultValue="AE" /></Field>
+          </Row>
+          <Row>
+            <Button type="submit" name="op" value="lookup" variant="outline" data-testid="remit-lookup">Look up beneficiary</Button>
+            <Button type="submit" name="op" value="send" data-testid="remit-send">Send remittance</Button>
+          </Row>
+          <Hint>Signed as the partner (HMAC, UCB_IMT_HMAC_SECRET). The lookup shows only the masked name and number. Over Tk 2,00,000 the core rejects it (REJECTED); a credit comes from SETTLEMENT_UCB_IMT.</Hint>
+        </fieldset>
+        {pending ? <Busy>working…</Busy> : null}
+        <Result state={state} />
+      </form>
+    </Panel>
   );
 }

@@ -13,7 +13,7 @@ import mfs.mw.portal.api.util.MaskingPolicy;
 
 /**
  * An action on a bulk batch to {@code mw.audit.event.v1} (spec 14.3, M3 gate decision): action
- * {@code bulk.batch.<uploaded|approved|rejected|expired|paused|resumed>}, resource {@code
+ * {@code bulk.batch.<uploaded|submitted|approved|rejected|expired|paused|resumed>}, resource {@code
  * bulk-batch/<batchId>}, actor the operator ({@code user}, the token's {@code preferred_username},
  * staff data and not masked) or {@code system}/{@code mw-portal-api} for the expiry. {@code
  * before}/{@code after} carry the batch status; {@code after} also the org, row count and total,

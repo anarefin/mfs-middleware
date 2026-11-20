@@ -411,6 +411,7 @@ services:
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
       KC_MW_DATA_EXPORT_SECRET: ${KC_MW_DATA_EXPORT_SECRET:?cp dev.env.defaults .env}
+      KC_MW_ADAPTER_INTEROP_SECRET: ${KC_MW_ADAPTER_INTEROP_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
       KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       KC_MW_USSD_SECRET: ${KC_MW_USSD_SECRET:?cp dev.env.defaults .env}
@@ -418,6 +419,8 @@ services:
       # realm services: mw-orchestrator's client of the core wallet API (audience mw-core-mock, ticket 95a)
       KC_MW_ORCHESTRATOR_SECRET: ${KC_MW_ORCHESTRATOR_SECRET:?cp dev.env.defaults .env}
       KC_MW_RECON_SECRET: ${KC_MW_RECON_SECRET:?cp dev.env.defaults .env}
+      # mw-adapter-remit's beneficiary lookup reads GET /core/v1/accounts/{msisdn} (ticket 119c)
+      KC_MW_ADAPTER_REMIT_SECRET: ${KC_MW_ADAPTER_REMIT_SECRET:?cp dev.env.defaults .env}
       # mw-simulators' trust bank mock reads mw-core-mock's /core/v1/statements (ticket 123)
       KC_MW_SIMULATORS_SECRET: ${KC_MW_SIMULATORS_SECRET:?cp dev.env.defaults .env}
       JAVA_OPTS_KC_HEAP: -Xms128m -Xmx384m
@@ -736,12 +739,14 @@ services:
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUDIT_DW_SECRET: ${KC_MW_AUDIT_DW_SECRET:?cp dev.env.defaults .env}
       KC_MW_DATA_EXPORT_SECRET: ${KC_MW_DATA_EXPORT_SECRET:?cp dev.env.defaults .env}
+      KC_MW_ADAPTER_INTEROP_SECRET: ${KC_MW_ADAPTER_INTEROP_SECRET:?cp dev.env.defaults .env}
       KC_MW_AUTH_SECRET: ${KC_MW_AUTH_SECRET:?cp dev.env.defaults .env}
       KC_MW_APP_GATEWAY_SECRET: ${KC_MW_APP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       KC_MW_USSD_SECRET: ${KC_MW_USSD_SECRET:?cp dev.env.defaults .env}
       KC_MW_CHECKOUT_SECRET: ${KC_MW_CHECKOUT_SECRET:?cp dev.env.defaults .env}
       KC_MW_ORCHESTRATOR_SECRET: ${KC_MW_ORCHESTRATOR_SECRET:?cp dev.env.defaults .env}
       KC_MW_RECON_SECRET: ${KC_MW_RECON_SECRET:?cp dev.env.defaults .env}
+      KC_MW_ADAPTER_REMIT_SECRET: ${KC_MW_ADAPTER_REMIT_SECRET:?cp dev.env.defaults .env}
       KC_MW_PORTAL_API_SECRET: ${KC_MW_PORTAL_API_SECRET:?cp dev.env.defaults .env}
       KC_MW_SIMULATORS_SECRET: ${KC_MW_SIMULATORS_SECRET:?cp dev.env.defaults .env}
       SFTP_DEV_PASSWORD: ${SFTP_DEV_PASSWORD:?cp dev.env.defaults .env}
@@ -1448,6 +1453,12 @@ services:
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "2"
       # NPSB switch endpoint; the MVP stack targets mw-simulators (NpsbMock, /npsb/v1/*).
       NPSB_BASE_URL: ${NPSB_BASE_URL:-http://mw-simulators:8080}
+      # XML-DSig through mw-crypto (ticket 121b): mTLS client certificate pki_int/issue/mw-adapter-interop
+      # (SSL bundle mw-service) and the realm services client mw-adapter-interop; mw-crypto's bootstrap
+      # creates the XMLDSIG key (its default bootstrap-purposes, not overridden here).
+      MW_TLS_ENABLED: "true"
+      MW_INTEROP_CRYPTO_ENABLED: "true"
+      MW_INTEROP_CRYPTO_SSL_BUNDLE: mw-service
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
       MW_PARTNER_INSECURE_HTTP_HOSTS: ${MW_PARTNER_INSECURE_HTTP_HOSTS:-mw-simulators}
       MW_PARTNER_RECON_MAX_LINES: ${MW_PARTNER_RECON_MAX_LINES:-1000000}
@@ -1594,6 +1605,8 @@ services:
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?cp dev.env.defaults .env}
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
       BANK_GATEWAY_HMAC_SECRET: ${BANK_GATEWAY_HMAC_SECRET:?cp dev.env.defaults .env}
+      # Simulators page "Send remittance" signs as the partner ucb-imt (ticket 119c)
+      UCB_IMT_HMAC_SECRET: ${UCB_IMT_HMAC_SECRET:?cp dev.env.defaults .env}
       USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?cp dev.env.defaults .env}

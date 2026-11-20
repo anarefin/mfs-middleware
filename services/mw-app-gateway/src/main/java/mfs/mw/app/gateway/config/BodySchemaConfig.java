@@ -57,6 +57,7 @@ public class BodySchemaConfig implements WebMvcConfigurer {
     add(registry, BodySchema.SAVE_FAVOURITE, false, "/app/v1/favourites");
     add(registry, BodySchema.LINK_BANK_ACCOUNT, false, "/app/v1/bank-accounts");
     add(registry, BodySchema.CARD_SESSION, false, "/app/v1/add-money/card/sessions");
+    add(registry, BodySchema.ATM_TOKEN, false, "/app/v1/atm/tokens");
   }
 
   private void add(InterceptorRegistry registry, String schema, boolean optional, String path) {

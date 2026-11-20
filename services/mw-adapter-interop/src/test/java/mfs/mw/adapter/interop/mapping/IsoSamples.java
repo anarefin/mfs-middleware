@@ -14,7 +14,7 @@ import mfs.mw.adapter.interop.dto.iso.NpsbTransfer;
 public final class IsoSamples {
 
   static final OffsetDateTime AT = OffsetDateTime.of(2026, 11, 20, 9, 15, 30, 0, ZoneOffset.UTC);
-  static final String E2E = "NPSB0123456789ABCDEF0123456789ABC";
+  static final String E2E = "0123456789ABCDEF0123456789ABCDEF";
 
   public static NpsbTransfer transfer() {
     return new NpsbTransfer(

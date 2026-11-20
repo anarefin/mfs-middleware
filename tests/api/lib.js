@@ -662,6 +662,8 @@
     async upload(user, csv) { return http('POST', B, { headers: await portals(user), raw: csv, contentType: 'text/csv' }); },
     async get(user, id) { return http('GET', B + '/' + id, { headers: await portals(user) }); },
     async list(user, status) { return http('GET', B + (status ? '?status=' + status : ''), { headers: await portals(user) }); },
+    async preview(user, id, query) { return http('GET', B + '/' + id + '/preview' + (query ? '?' + query : ''), { headers: await portals(user) }); },
+    async submit(user, id) { return http('POST', B + '/' + id + '/submit', { headers: await portals(user), raw: '' }); },
     async approve(user, id) { return http('POST', B + '/' + id + '/approve', { headers: await portals(user), raw: '' }); },
     async reject(user, id, reason) { return http('POST', B + '/' + id + '/reject', { headers: await portals(user), json: { reason } }); },
     async pause(user, id) { return http('POST', B + '/' + id + '/pause', { headers: await portals(user), raw: '' }); },
@@ -771,6 +773,24 @@
       callbackUrl: 'http://apisix:9080/partner/billagg/callback/payments', callbackDelayMs: delayMs || 0 }),
     bankCallbacks: (mode, delayMs) => sim.scenario('c2wbank', { latencyMs: 0, errorRate: 0.0, outage: false, callbackMode: mode,
       callbackUrl: 'http://apisix:9080/partner/c2wbank/callback/debits', callbackDelayMs: delayMs || 0 }),
+  };
+
+  // ---------- Inbound remittance partner ucb-imt (/remit/v1/*, mw-adapter-remit, tickets 119b/119c) ----------
+  const remit = {
+    /** A request signed as UCB IMT: Base64 HMAC-SHA256 over method, path, X-Timestamp, X-Nonce and the body's hex SHA-256. */
+    send(method, path, json, opts) {
+      const o = opts || {};
+      const body = json == null ? '' : JSON.stringify(json);
+      const ts = String(o.tsSeconds || Math.floor(Date.now() / 1000));
+      const n = o.nonce || uuid();
+      const sig = hmacB64(o.secret || v('ucbImtSecret'), method + '\n' + path + '\n' + ts + '\n' + n + '\n' + sha256Hex(body));
+      const headers = { 'X-Partner-Id': 'ucb-imt', 'X-Signature': sig, 'X-Timestamp': ts, 'X-Nonce': n };
+      return json == null ? http(method, path, { headers }) : http(method, path, { headers, raw: body });
+    },
+    lookup: (msisdn, opts) => remit.send('POST', '/remit/v1/beneficiary-lookup', { beneficiaryMsisdn: msisdn }, opts),
+    credit: (partnerRef, msisdn, amount, opts) => remit.send('POST', '/remit/v1/credits',
+      { partnerRef, beneficiaryMsisdn: msisdn, amount, currency: 'BDT', senderName: 'Api Sender', senderCountry: 'AE' }, opts),
+    status: partnerRef => remit.send('GET', '/remit/v1/credits/' + encodeURIComponent(partnerRef), null),
   };
 
   // ---------- Test-only APIs of mw-orchestrator and mw-audit-dw (ticket 58) ----------
@@ -1123,7 +1143,7 @@
 
   const MW = {
     http, must, poll, sleep, uuid, unique, short, totp, claims, hmacHex, hmacB64, sha256Hex, encryptPin, encryptAppPin, token, bearer,
-    core, sim, mock, app, auth, admin, portal, checkout, callbacks, testApi, run, FINAL, IPN_URL, v, CV,
+    core, sim, mock, app, auth, admin, portal, checkout, callbacks, remit, testApi, run, FINAL, IPN_URL, v, CV,
     mockScenario, mockSwitch, mockReset, mockJournal, coreBalance, waitForState,
     fixture: n => JSON.parse(CV.get('fixtures'))[n],
     /** The seeded PIN of every app wallet (MW_SEED_APP_PIN); mw-auth checks it for every channel (ticket 72). */

@@ -1,14 +1,17 @@
 package mfs.mw.portal.api.repository;
 
+import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import mfs.mw.portal.api.dto.Amount;
 import mfs.mw.portal.api.dto.BatchProgress;
+import mfs.mw.portal.api.dto.BulkFile;
 import mfs.mw.portal.api.dto.BulkRow;
 import mfs.mw.portal.api.entity.Batch;
 import mfs.mw.portal.api.entity.BatchItem;
@@ -27,7 +30,8 @@ public class BatchRepository {
 
   private static final String COLUMNS =
       "batch_id, org_id, status, row_count, total_minor, currency, file_sha256, maker_sub, maker_name,"
-          + " checker_sub, checker_name, reason, created_at, decided_at, parent_txn_id, org_wallet, completed_at";
+          + " checker_sub, checker_name, reason, created_at, decided_at, parent_txn_id, org_wallet, completed_at,"
+          + " invalid_count";
 
   private final JdbcTemplate jdbc;
 
@@ -35,13 +39,23 @@ public class BatchRepository {
     this.jdbc = jdbc;
   }
 
-  /** Stores the batch and its rows; call inside one transaction. Item status starts PENDING. */
+  /** Stores the batch and its (valid) rows; call inside one transaction. */
   public void insert(Batch b, List<BulkRow> rows) {
+    insert(b, new BulkFile(rows, List.of()));
+  }
+
+  /**
+   * Stores the batch and every row of its file; call inside one transaction. Valid rows start
+   * PENDING, invalid rows are INVALID with their error codes (ticket 129b) and are never sent.
+   */
+  public void insert(Batch b, BulkFile file) {
     jdbc.update(
-        "INSERT INTO batch (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO batch (" + COLUMNS + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         b.batchId(), b.orgId(), b.status().name(), b.rowCount(), b.totalMinor(), b.currency(),
         b.fileSha256(), b.makerSub(), b.makerName(), b.checkerSub(), b.checkerName(), b.reason(),
-        ts(b.createdAt()), ts(b.decidedAt()), b.parentTxnId(), b.orgWallet(), ts(b.completedAt()));
+        ts(b.createdAt()), ts(b.decidedAt()), b.parentTxnId(), b.orgWallet(), ts(b.completedAt()),
+        b.invalidCount());
+    List<BulkRow> rows = file.rows();
     jdbc.batchUpdate(
         "INSERT INTO batch_item (batch_id, line_no, msisdn, amount_minor, reference, status)"
             + " VALUES (?, ?, ?, ?, ?, 'PENDING')",
@@ -54,6 +68,38 @@ public class BatchRepository {
           ps.setLong(4, r.amountMinor());
           ps.setString(5, r.reference());
         });
+    jdbc.batchUpdate(
+        "INSERT INTO batch_item (batch_id, line_no, amount_minor, reference, status, row_errors)"
+            + " VALUES (?, ?, ?, ?, 'INVALID', ?)",
+        file.invalid(),
+        INSERT_CHUNK,
+        (ps, r) -> {
+          ps.setObject(1, b.batchId());
+          ps.setInt(2, r.line());
+          ps.setObject(3, r.amountMinor(), Types.BIGINT);
+          ps.setString(4, r.reference());
+          ps.setArray(5, ps.getConnection().createArrayOf("text", r.errors().toArray()));
+        });
+  }
+
+  /** Submits a PREVIEW batch for approval (ticket 129b); false when it is no longer a PREVIEW. */
+  public boolean submit(UUID batchId, String orgId) {
+    return jdbc.update(
+            "UPDATE batch SET status = 'PENDING_APPROVAL' WHERE batch_id = ? AND org_id = ? AND status = 'PREVIEW'",
+            batchId, orgId)
+        == 1;
+  }
+
+  /**
+   * One page of the batch's rows in file order (ticket 129b): every row, or only the valid ones
+   * ({@code valid} true) or only the invalid ones ({@code valid} false).
+   */
+  public List<BatchItem> page(UUID batchId, Boolean valid, int offset, int limit) {
+    String filter = valid == null ? "" : valid ? " AND status <> 'INVALID'" : " AND status = 'INVALID'";
+    return jdbc.query(
+        "SELECT " + ITEM_COLUMNS + " FROM batch_item WHERE batch_id = ?" + filter
+            + " ORDER BY line_no OFFSET ? LIMIT ?",
+        BatchRepository::item, batchId, offset, limit);
   }
 
   /** The batch when it belongs to this org; another org's batch is not found. */
@@ -124,7 +170,8 @@ public class BatchRepository {
         instant(rs, "decided_at"),
         rs.getObject("parent_txn_id", UUID.class),
         rs.getString("org_wallet"),
-        instant(rs, "completed_at"));
+        instant(rs, "completed_at"),
+        rs.getInt("invalid_count"));
   }
 
   // --- execution (ticket 34) -------------------------------------------------------------------
@@ -246,22 +293,23 @@ public class BatchRepository {
   // --- expiry and reconcile (M3 gate) ----------------------------------------------------------
 
   /**
-   * Expires up to {@code limit} batches still PENDING_APPROVAL that were uploaded before {@code
-   * cutoff} (status EXPIRED, decided_at {@code at}); returns them as they are now. Call inside the
-   * transaction that audits them; rows a concurrent checker holds are skipped.
+   * Expires up to {@code limit} batches still in {@code from} (PREVIEW or PENDING_APPROVAL) that
+   * were uploaded before {@code cutoff} (status EXPIRED, decided_at {@code at}); returns them as
+   * they are now. Call inside the transaction that audits them; rows a concurrent checker or maker
+   * holds are skipped.
    */
-  public List<Batch> expirePending(Instant cutoff, Instant at, int limit) {
+  public List<Batch> expirePending(BatchStatus from, Instant cutoff, Instant at, int limit) {
     return jdbc.query(
         """
         UPDATE batch SET status = 'EXPIRED', decided_at = ?
         WHERE batch_id IN (SELECT batch_id FROM batch
-                           WHERE status = 'PENDING_APPROVAL' AND created_at < ?
+                           WHERE status = ? AND created_at < ?
                            ORDER BY created_at LIMIT ? FOR UPDATE SKIP LOCKED)
-          AND status = 'PENDING_APPROVAL'
+          AND status = ?
         RETURNING\s"""
             + COLUMNS,
         BatchRepository::map,
-        ts(at), ts(cutoff), limit);
+        ts(at), from.name(), ts(cutoff), limit, from.name());
   }
 
   /**
@@ -325,18 +373,25 @@ public class BatchRepository {
   /** Every row of the batch in file order. */
   public List<BatchItem> items(UUID batchId) {
     return jdbc.query(
-        "SELECT batch_id, line_no, msisdn, amount_minor, reference, status, txn_id, error_code"
-            + " FROM batch_item WHERE batch_id = ? ORDER BY line_no",
-        (rs, n) ->
-            new BatchItem(
-                rs.getObject("batch_id", UUID.class),
-                rs.getInt("line_no"),
-                rs.getString("msisdn"),
-                rs.getLong("amount_minor"),
-                rs.getString("reference"),
-                ItemStatus.valueOf(rs.getString("status")),
-                rs.getObject("txn_id", UUID.class),
-                rs.getString("error_code")),
+        "SELECT " + ITEM_COLUMNS + " FROM batch_item WHERE batch_id = ? ORDER BY line_no",
+        BatchRepository::item,
         batchId);
+  }
+
+  private static final String ITEM_COLUMNS =
+      "batch_id, line_no, msisdn, amount_minor, reference, status, txn_id, error_code, row_errors";
+
+  private static BatchItem item(ResultSet rs, int n) throws SQLException {
+    Array errors = rs.getArray("row_errors");
+    return new BatchItem(
+        rs.getObject("batch_id", UUID.class),
+        rs.getInt("line_no"),
+        rs.getString("msisdn"),
+        rs.getObject("amount_minor", Long.class),
+        rs.getString("reference"),
+        ItemStatus.valueOf(rs.getString("status")),
+        rs.getObject("txn_id", UUID.class),
+        rs.getString("error_code"),
+        errors == null ? null : List.of((String[]) errors.getArray()));
   }
 }

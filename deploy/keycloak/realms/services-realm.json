@@ -172,6 +172,32 @@
       ]
     },
     {
+      "clientId": "mw-adapter-interop",
+      "name": "mw-adapter-interop (mw-crypto: XML-DSig of the NPSB ISO 20022 wire)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_MW_ADAPTER_INTEROP_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-mw-crypto",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-crypto",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "mw-auth",
       "name": "mw-auth (mw-crypto: MSISDN tokens, envelope encryption; later PIN verify and JWS)",
       "enabled": true,
@@ -388,6 +414,32 @@
       ]
     },
     {
+      "clientId": "mw-adapter-remit",
+      "name": "mw-adapter-remit (the core wallet REST API: the account read of the beneficiary lookup, ticket 119c)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_MW_ADAPTER_REMIT_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-mw-core-mock",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-core-mock",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "mw-simulators",
       "name": "mw-simulators (dev/test only: the trust bank mock reads mw-core-mock's statements, ticket 123)",
       "enabled": true,
@@ -435,6 +487,14 @@
       "username": "service-account-mw-data-export",
       "enabled": true,
       "serviceAccountClientId": "mw-data-export",
+      "realmRoles": [
+        "internal-api"
+      ]
+    },
+    {
+      "username": "service-account-mw-adapter-interop",
+      "enabled": true,
+      "serviceAccountClientId": "mw-adapter-interop",
       "realmRoles": [
         "internal-api"
       ]

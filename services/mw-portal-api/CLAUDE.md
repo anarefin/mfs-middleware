@@ -56,11 +56,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   `MW-VAL-031` field `file`. Rules (both formats): header
   `msisdn,amount,reference`, MSISDN in any accepted form (`util/Msisdn`, stored canonical), amount in
   taka > 0 with at most 2 decimals (stored in poisha), reference `[A-Za-z0-9._-]{1,32}` unique in
-  the file. All or nothing: more than `bulk.max-rows` (10,000) data rows or `bulk.max-bytes` (2 MB)
-  `400 MW-VAL-030`; any bad row `400 MW-VAL-031` with a `details[]` entry per problem (`line <n>:
-  <column>`, header = line 1, first 100 listed), values never echoed, nothing stored. A valid file
-  is one `bulk.batch` row (`PENDING_APPROVAL`, row count, total, file SHA-256, maker) plus one
-  `bulk.batch_item` per row (`PENDING`), in one transaction; `201` + `Location`.
+  the file. Whole-file refusals: more than `bulk.max-rows` (10,000) data rows or `bulk.max-bytes` (2 MB)
+  `400 MW-VAL-030`; a bad header or no rows `400 MW-VAL-031`; nothing stored. Otherwise (ticket
+  129b, preview) the file is one `bulk.batch` row (`PREVIEW`, `row_count` = every data row,
+  `invalid_count`, `total_minor` = the valid rows, file SHA-256, maker) plus one `bulk.batch_item`
+  per row in one transaction: valid rows `PENDING`, invalid rows `INVALID` with `row_errors`
+  (`MSISDN_INVALID`, `AMOUNT_INVALID`, `REFERENCE_INVALID`, `REFERENCE_DUPLICATE`, `FIELD_COUNT`;
+  `dto/InvalidRow`), no MSISDN and only the amount / reference that passed their rule (values never
+  kept or echoed; CHECKs in `V7__bulk_preview.sql`); reference uniqueness holds among non-INVALID rows.
+  `201` + `Location`, the view with `validCount`, `invalidCount` and `rowErrors` (first 100). An
+  INVALID row is never sent (the dispatcher takes `PENDING` only) and never blocks completion.
+  `GET .../{batchId}/preview?offset&limit(1..200, default 50)&valid` pages through the rows in file
+  order (MSISDN masked; maker or checker, any status; bad paging `400 MW-VAL-001`).
+  `POST .../{batchId}/submit`: the maker who uploaded it (else `403 MW-AUTH-002`) sends a `PREVIEW`
+  to `PENDING_APPROVAL` (one conditional UPDATE); not a preview `409 MW-VAL-036`, no valid row `409
+  MW-VAL-037`; audited `bulk.batch.submitted`. `BulkPreviewTest`, `BulkBatchApiIT`.
 - Decide `POST .../{batchId}/approve` and `.../reject {reason}`: the maker of a batch can never
   decide it, even holding both roles (`403 MW-AUTH-030`; also a CHECK constraint in the schema);
   not pending `409 MW-VAL-032`; one conditional UPDATE, so of racing checkers exactly one wins.
@@ -68,13 +78,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   the service (`BatchStatus.parse`; unknown `400 MW-VAL-001`); the controller binds no entity type.
 - Expiry (M3 gate decision; `service/BatchExpiryService`, `scheduler/BulkExpiryJob`, ShedLock
   `bulk-expiry`, every `bulk.expiry.period` 5 min, `MW_BULK_EXPIRY_ENABLED`): a batch still
-  `PENDING_APPROVAL` `bulk.expiry.after` (72 h) after its upload becomes `EXPIRED` (`decided_at` =
+  `PREVIEW` (never submitted) or `PENDING_APPROVAL` `bulk.expiry.after` (72 h) after its upload becomes `EXPIRED` (`decided_at` =
   expiry time, one conditional UPDATE `FOR UPDATE SKIP LOCKED`, at most `batch-size` per run); then
   approve/reject `409 MW-VAL-032`, result `409 MW-VAL-035`.
 - Audit (M3 gate decision; `service/BatchAudit` -> `mapper/BatchAuditMapper`, own type `dto/AuditEvent`):
   upload, approve, reject, expire, pause and resume each write one `mw.audit.event.v1` record to the
   outbox in the action's transaction (a refused action writes none): action `bulk.batch.<uploaded|
-  approved|rejected|expired|paused|resumed>`, resource `bulk-batch/<batchId>`, actor `user`/<operator's
+  submitted|approved|rejected|expired|paused|resumed>`, resource `bulk-batch/<batchId>`, actor `user`/<operator's
   `preferred_username`> (staff id, **not masked**) or `system`/`mw-portal-api` for the expiry, `before`
   `{status}` (absent on upload), `after` `{status, orgId, rowCount, totalMinor, currency, reason?}`
   (a rejection's reason through `MaskingPolicy.scrub`), `txnId` the parent txn once approved, key the batch's parent txnId (`util/BulkIds`, from the upload on, so one batch's trail keeps its order on one partition) rather than the

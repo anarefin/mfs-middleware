@@ -102,6 +102,9 @@ class TransferRules {
    * check, only the per-transaction limits of its rule.
    */
   Optional<Reason> checkPayee(String txnId, TransferPayload p, Wallet credit, long amount) {
+    if (TransferPayload.REMIT_IN.equals(p.txnType()) && !"CUSTOMER".equals(credit.type())) {
+      return Optional.of(Reason.INVALID_COUNTERPARTY);
+    }
     if (credit.locked()) {
       return Optional.of(Reason.ACCOUNT_LOCKED);
     }
@@ -124,6 +127,11 @@ class TransferRules {
       return Optional.of(Reason.LIMIT_EXCEEDED_PER_TXN);
     }
     return Optional.empty();
+  }
+
+  /** A settlement wallet (SYSTEM, id {@code SETTLEMENT*}: ticket 119b pays REMIT_IN from {@code SETTLEMENT_UCB_IMT}). */
+  static boolean isRemittanceSettlement(Wallet w) {
+    return "SYSTEM".equals(w.type()) && w.id().startsWith(WalletSeeder.SETTLEMENT_PREFIX);
   }
 
   /** Why a payer in this status may not pay, if it may not (ticket 94: DORMANT, CLOSED). */
@@ -152,6 +160,12 @@ class TransferRules {
     CoreMockProperties.WalletTypes types = props.walletTypes().get(p.txnType());
     if (types != null
         && (!types.debit().equals(debit.type()) || (credit != null && !types.credit().equals(credit.type())))) {
+      return Optional.of(Reason.INVALID_COUNTERPARTY);
+    }
+    // REMIT_IN carries no assertion, so only a remittance settlement wallet may be its payer (never a
+    // customer's wallet, whatever the wallet-types config says) and only a customer its payee
+    if (TransferPayload.REMIT_IN.equals(p.txnType())
+        && (!isRemittanceSettlement(debit) || (credit != null && !"CUSTOMER".equals(credit.type())))) {
       return Optional.of(Reason.INVALID_COUNTERPARTY);
     }
     Optional<Reason> status = payerStatus(debit);

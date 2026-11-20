@@ -22,6 +22,10 @@ public final class ErrorCodes {
   public static final String SYS_EVENT_NOT_WRITTEN = "MW-SYS-EVENT_NOT_WRITTEN";
   /** A re-sent remittance whose partner reference was used for another beneficiary or amount (ticket 119). */
   public static final String IDEM_CONFLICT = "MW-IDEM-002";
+  /** A partner used up its beneficiary lookup quota (ticket 119c; the edge's 429 code). */
+  public static final String SYS_RATE_LIMITED = "MW-SYS-RATE_LIMITED";
+  /** The core wallet API could not answer a lookup (ticket 119c). */
+  public static final String SYS_CORE_UNAVAILABLE = "MW-SYS-CORE_UNAVAILABLE";
 
   private ErrorCodes() {}
 }

@@ -19,6 +19,39 @@ servers:
 security:
   - partnerHmac: []
 paths:
+  /remit/v1/beneficiary-lookup:
+    post:
+      operationId: lookupBeneficiary
+      summary: The beneficiary's masked name and whether the wallet can receive, before sending
+      description: >-
+        Ticket 119c (FRS UC-16, 5.3 step 3). Signed like a credit. The answer tells only the holder's
+        first initial padded with `*` to the name's length, the number masked (`0171****789`) and
+        whether the wallet can receive a remittance now (an ACTIVE customer wallet). At most
+        `mw.remit.lookup.max-per-window` lookups per partner and window (default 60 a minute), counted
+        after the signature verified. Errors: 400 MW-VAL-001 (not a Bangladeshi mobile number) or
+        MW-VAL-002; 401 MW-AUTH-001; 404 MW-VAL-003 (no customer wallet for this number); 429
+        MW-SYS-RATE_LIMITED (retryable); 503 MW-SYS-CORE_UNAVAILABLE (retryable).
+      parameters:
+        - $ref: "#/components/parameters/PartnerId"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LookupRequest" }
+      responses:
+        "200":
+          description: The masked beneficiary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LookupResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /remit/v1/credits:
     post:
       operationId: pushRemittanceCredit
@@ -122,6 +155,23 @@ components:
         currency: { type: string, enum: [BDT] }
         senderName: { type: string, minLength: 1, maxLength: 140 }
         senderCountry: { type: string, pattern: "^[A-Z]{2}$", description: ISO 3166-1 alpha-2 }
+    LookupRequest:
+      type: object
+      required: [beneficiaryMsisdn]
+      properties:
+        beneficiaryMsisdn:
+          type: string
+          pattern: "^(\\+?8800?|0)1[3-9][0-9]{8}$"
+    LookupResult:
+      type: object
+      required: [maskedName, maskedMsisdn, eligible]
+      properties:
+        maskedName:
+          type: [string, "null"]
+          description: First initial, then one `*` per further character; null when the core has no name
+          examples: ["R**********"]
+        maskedMsisdn: { type: string, examples: ["0171****001"] }
+        eligible: { type: boolean, description: The wallet can receive a remittance now }
     CreditAck:
       type: object
       required: [partnerRef, upayRef, status, duplicate]

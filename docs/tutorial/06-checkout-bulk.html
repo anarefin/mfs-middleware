@@ -110,7 +110,9 @@
   <figure class="seq wide"><div class="canvas"><script type="text/x-seq">
     actors: Org maker | Org checker | mw-portal-api | mw-orchestrator
     Org maker -> mw-portal-api : POST /portal/org/v1/bulk/batches (CSV: msisdn,amount,reference)
-    mw-portal-api -> mw-portal-api : parse: every row valid, or the whole file is refused
+    mw-portal-api -> mw-portal-api : parse: valid rows, invalid rows with their codes
+    mw-portal-api --> Org maker : batch PREVIEW (totals, row errors)
+    Org maker -> mw-portal-api : GET .../{id}/preview, then POST .../{id}/submit
     mw-portal-api --> Org maker : batch PENDING_APPROVAL
     Org checker -> mw-portal-api : POST .../{id}/approve (must not be the maker)
     mw-portal-api -> mw-portal-api : dispatch job: rows at a fixed rate per second
@@ -122,8 +124,9 @@
   </script></div>
   <figcaption>Figure 6.2: a bulk batch from upload to result file.</figcaption></figure>
   <ul>
-    <li><strong>All or nothing on upload:</strong> one bad row (bad number, more than 2 decimals, a repeated reference) refuses the
-      whole file with <code>MW-VAL-031</code>. Too many rows is <code>MW-VAL-030</code>. A half-uploaded payroll is worse than none.</li>
+    <li><strong>Preview before approval (ticket 129b):</strong> a bad row (bad number, more than 2 decimals, a repeated reference) no
+      longer refuses the file: the upload is a <code>PREVIEW</code> listing each invalid row with its codes, those rows are never paid and
+      never "fixed". The maker checks the preview and submits it. A bad header is still <code>MW-VAL-031</code>, too many rows <code>MW-VAL-030</code>.</li>
     <li><strong>Maker-checker:</strong> the checker must be a different user of the same organisation. A batch nobody decides on within 72 hours
       expires.</li>
     <li><strong>Pacing:</strong> rows are sent at <code>bulk.dispatch.rate-per-second</code> (a token bucket), so a big file does not
@@ -131,7 +134,7 @@
     <li><strong>No double pay:</strong> each row's txnId is derived from the row itself, so sending a row twice (after a crash, say) hits
       the orchestrator's idempotency check.</li>
   </ul>
-  <p>Batch states: <span class="st wait">PENDING_APPROVAL</span> → <span class="st step">APPROVED</span> →
+  <p>Batch states: <span class="st wait">PREVIEW</span> → <span class="st wait">PENDING_APPROVAL</span> → <span class="st step">APPROVED</span> →
     <span class="st wait">EXECUTING</span> (↔ <span class="st step">PAUSED</span>) → <span class="st ok">COMPLETED</span> or
     <span class="st manual">COMPLETED_WITH_EXCEPTIONS</span>; or REJECTED / EXPIRED before it starts.</p>
 

@@ -101,8 +101,14 @@ class BulkExecutionIT {
     return b.toString();
   }
 
+  /** A batch uploaded and submitted by its maker, awaiting approval (ticket 129b). */
+  private BatchView awaitingApproval(PortalUser maker, int n) {
+    BatchView v = batches.upload(maker, rows(n).getBytes(StandardCharsets.UTF_8));
+    return batches.submit(maker, v.batchId());
+  }
+
   private String approved(int n) {
-    BatchView v = batches.upload(MAKER, rows(n).getBytes(StandardCharsets.UTF_8));
+    BatchView v = awaitingApproval(MAKER, n);
     batches.approve(CHECKER, v.batchId());
     return v.batchId();
   }
@@ -150,6 +156,34 @@ class BulkExecutionIT {
   // --- children ------------------------------------------------------------------------------
 
   @Test
+  void onlyTheValidRowsOfASubmittedPreviewAreSentAndTheInvalidOnesNeverBlockCompletion() {
+    String csv =
+        "msisdn,amount,reference\n01711000001,1.25,OK-1\n0171,1.25,BAD\n01711000003,0,ZERO\n01711000004,2.00,OK-2\n";
+    BatchView up = batches.upload(MAKER, csv.getBytes(StandardCharsets.UTF_8));
+    assertThat(up.status()).isEqualTo("PREVIEW");
+    assertThat(up.rowCount()).isEqualTo(4);
+    assertThat(up.validCount()).isEqualTo(2);
+    assertThat(up.invalidCount()).isEqualTo(2);
+    assertThat(up.totalAmount().valueMinor()).isEqualTo(325);
+    batches.submit(MAKER, up.batchId());
+    batches.approve(CHECKER, up.batchId());
+    drain(up.batchId());
+
+    List<JsonNode> reqs = requests();
+    assertThat(reqs).extracting(r -> r.path("creditParty").path("id").asString())
+        .containsExactly("01711000001", "01711000004");
+    for (JsonNode r : reqs) {
+      execution.apply(status(r, "COMPLETED", null));
+    }
+    BatchView done = batches.get(CHECKER, up.batchId());
+    assertThat(done.status()).isEqualTo("COMPLETED");
+    assertThat(done.progress().completed()).isEqualTo(2);
+    assertThat(jdbc.queryForList(
+            "select status from batch_item where batch_id = ?::uuid order by line_no", String.class, up.batchId()))
+        .containsExactly("COMPLETED", "INVALID", "INVALID", "COMPLETED");
+  }
+
+  @Test
   void approvalGivesTheBatchAParentTxnAndEveryRowBecomesAValidChildRequest() {
     String id = approved(3);
     BatchView v = batches.get(CHECKER, id);
@@ -189,7 +223,7 @@ class BulkExecutionIT {
 
   @Test
   void anOrgWithoutAPayoutWalletCannotHaveABatchApproved() {
-    BatchView v = batches.upload(NO_WALLET_MAKER, rows(1).getBytes(StandardCharsets.UTF_8));
+    BatchView v = awaitingApproval(NO_WALLET_MAKER, 1);
     assertThatThrownBy(() -> batches.approve(NO_WALLET_CHECKER, v.batchId()))
         .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-034"));
     assertThat(batches.get(NO_WALLET_CHECKER, v.batchId()).status()).isEqualTo("PENDING_APPROVAL");
