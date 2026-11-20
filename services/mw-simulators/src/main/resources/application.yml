@@ -173,6 +173,43 @@ sim:
   core-mock:
     base-url: http://mw-core-mock:8080
     timeout: 30s
+  # File mocks (ticket 123, FRS EXT-05, EXT-06, EXT-17, MCT-05; mock-control profile only) on the partner SFTP
+  # host: the AML vendor (aml/in -> aml/out), the trust bank's MT940 / MT942 (trustbank/out, from mw-core-mock's
+  # ledger of wallet-id) and the Data Warehouse drop check (dw/in). The jobs run when enabled (the stack sets
+  # SIM_FILES_ENABLED); POST /mock-control/{party}/run always works. Secrets from Vault secret/mw-simulators:
+  # sim.files.sftp.password (SFTP_DEV_PASSWORD), sim.files.trustbank.core.client-secret (KC_MW_SIMULATORS_SECRET).
+  files:
+    enabled: false
+    sftp:
+      host: partner-sftp
+      port: 22
+      username: bits
+      # host key fingerprint to verify (SHA256:...); empty = any (partner-sftp makes new keys per container)
+      host-key: ""
+      timeout: 10s
+    aml:
+      inbox: aml/in
+      outbox: aml/out
+      rules-version: v1
+      poll: 15s
+    trustbank:
+      outbox: trustbank/out
+      wallet-id: SETTLEMENT
+      account: "0011223344556"
+      sender-bic: TRSTBDDHXXXX
+      receiver-bic: BITSBDDHXXXX
+      # the MT940 of the previous day at 00:05 Asia/Dhaka; an MT942 of today every intraday
+      cutoff-cron: "0 5 0 * * *"
+      intraday: 15m
+      core:
+        base-url: http://mw-core-mock:8080
+        # realm services client credentials for GET /core/v1/statements; empty = no token sent
+        token-uri: ""
+        client-id: mw-simulators
+        timeout: 10s
+    dw:
+      inbox: dw/in
+      poll: 30s
   # SMSC simulator (ticket 24): SMPP 3.4 server for mw-notify on the internal network only.
   smsc:
     enabled: true

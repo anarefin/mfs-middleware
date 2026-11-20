@@ -1,4 +1,4 @@
-import { Cpu, Database, FlaskConical, House, Inbox, KeyRound, KeySquare, Layers, ScrollText, ShoppingCart, Smartphone, Zap, type LucideIcon } from "lucide-react";
+import { Cpu, Database, FileText, FlaskConical, House, Inbox, KeyRound, KeySquare, Layers, ScrollText, ShoppingCart, Smartphone, Zap, type LucideIcon } from "lucide-react";
 
 export type NavItem = { href: string; label: string; icon: LucideIcon };
 
@@ -10,6 +10,7 @@ export const NAV: NavItem[] = [
   { href: "/auth", label: "Wallet auth", icon: KeyRound },
   { href: "/ussd", label: "USSD phone", icon: Smartphone },
   { href: "/simulators", label: "Simulators & faults", icon: Zap },
+  { href: "/files", label: "Files (AML, MT940, DW)", icon: FileText },
   { href: "/inbox", label: "SMS & email", icon: Inbox },
   { href: "/checkout", label: "Web checkout", icon: ShoppingCart },
   { href: "/bulk", label: "Bulk portal", icon: Layers },

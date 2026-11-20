@@ -68,6 +68,9 @@ provision_mw_simulators() {
   sync_env sim.ussd-gateway.credentials.teletalk USSD_TELETALK_GATEWAY_SECRET
   # the payShield simulator logs in to the softhsm paysim token with it (ticket 64)
   sync_env sim.payshield.pkcs11.user-pin SOFTHSM_PAYSIM_USER_PIN
+  # the file mocks (ticket 123): partner-sftp login, realm services client for mw-core-mock's statements
+  sync_env sim.files.sftp.password SFTP_DEV_PASSWORD
+  sync_env sim.files.trustbank.core.client-secret KC_MW_SIMULATORS_SECRET
   # the simulated partner's private_key_jwt key at Keycloak realm partners (ticket 73)
   partner_sim_client_key
   db_role simulators_rw simulators

@@ -114,6 +114,14 @@ public class ScenarioEngine implements MockControl {
     return new Decision(Decision.Gate.OPEN, mode, code, status, hold, latency + extra, cb, cbDelay, source);
   }
 
+  @Override
+  public synchronized Optional<MockScenario> fileFault(String party, String operation, Map<String, String> keys) {
+    MockParties.require(party);
+    Optional<MockScenario> fault = pick(party, operation, keys, Dimension.FILE);
+    fault.ifPresent(s -> consume(party, s));
+    return fault;
+  }
+
   private Optional<MockScenario> pick(String party, String operation, Map<String, String> keys, Dimension dimension) {
     List<MockScenario> list = scenarios.getOrDefault(party, List.of());
     MockScenario best = null;

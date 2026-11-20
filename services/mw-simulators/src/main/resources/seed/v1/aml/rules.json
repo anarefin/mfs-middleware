@@ -1,0 +1,6 @@
+{
+  "_comment": "AML vendor mock rules (ticket 123, FRS EXT-05, MCK-03). A transaction above alertAboveMinor poisha is an ALERT on the payer; a wallet or MSISDN party on the watch-list is a HOLD on it; one ending blockSuffix is a BLOCK on it. One response line per flagged transaction, the strongest action wins (BLOCK, then HOLD, then ALERT). Test data only.",
+  "alertAboveMinor": 5000000,
+  "watchList": ["01711000777", "01811000777", "01911000777"],
+  "blockSuffix": "6666"
+}

@@ -262,8 +262,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-02 | done | SMSC simulator in mw-simulators with inbox and delivery receipts |
 | EXT-03 | done | GreenMail SMTP with its web inbox instead of Mailpit (same role) |
 | EXT-04 | done | mw-notify `client/PushClient` (FCM / APNs style app-server push API) against mw-simulators' stateful push mock, mock party `push` (ticket 110; `PushSimulatorIT`, `PushDispatchIT`, API suite 43) |
-| EXT-05 | tickets 123, 125 | AML SFTP mock and feed |
-| EXT-06 | tickets 123, 126 | MT940/942 generator and recon pull |
+| EXT-05 | ticket 125 | mock side done (ticket 123): mw-simulators party `aml` answers each file of `aml/in` with ALERT / HOLD / BLOCK lines in `aml/out` (rules `seed/v1/aml/rules.json`, draft format `contracts/files/aml/README.md`; `AmlResponderTest`, `SftpMocksIT`, API folder 44); the feed and response handling in 125 |
+| EXT-06 | ticket 126 | generator done (ticket 123): party `trustbank` writes the daily MT940 and intraday MT942 of the trust account (wallet SETTLEMENT) from mw-core-mock's `/core/v1/statements`, built with Prowide Core, mismatches MISSING_IN_PARTNER, MISSING_IN_UPAY, AMOUNT_MISMATCH, DC_FLIP (`TrustStatementGeneratorTest`, `SftpMocksIT`); the recon pull in 126 |
 | EXT-07 | ticket 124 | EC NID mock |
 | EXT-08 | ticket 112 | one OCS simulator built; four operator profiles in 112 |
 | EXT-09 | ticket 114 | utility aggregator simulator (billagg) built; stateful bills and callbacks in 114 |
@@ -274,7 +274,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-14 | ticket 118 | CyberSource mock |
 | EXT-15 | ticket 119 | UCB IMT mock |
 | EXT-16 | ticket 120 | UCB ATM mock |
-| EXT-17 | tickets 123, 128 | DW Kafka and SFTP drop |
+| EXT-17 | ticket 128 | mock side done (ticket 123): party `dw` checks each `control_<date>.json` drop of `dw/in` (row count, sha256, header per file type, `seed/v1/dw/schemas.json`), verdict in the journal (`DwDropValidatorTest`, `SftpMocksIT`); the export in 128 |
 | EXT-18 | ticket 95 | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93) and the orchestrator calls it (`client/CoreWalletClient`, ticket 95a); mw-auth and mw-admin-api still send Kafka commands until 95b |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
 | MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
@@ -369,7 +369,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | MCT-02 | done | global, per key (MSISDN, account, biller, bill number, txn id), next N (ticket 102, `ScenarioEngineTest`) |
 | MCT-03 | done | `PUT /mock-control/{party}/switch` DOWN (connection closed), MAINTENANCE (503 5030), SLOW (ticket 102) |
 | MCT-04 | done | SMPP faults on the mock-control engine (ticket 102b): parties `smsc` (bind refusal, ESME_RTHROTTLED and any command_status, missing / late / duplicate / out-of-order DLR, DOWN closes the connection) and `ussdgw` (bind refusal, ESME_RTHROTTLED, generic_nack, dropped enquire_link, dial), `payshield` (error codes per command, cut-short answer, reset); `SmppMockControlIT`, API folder 39 |
-| MCT-05 | ticket 123 | file faults |
+| MCT-05 | done | file faults on the mock-control engine (ticket 123): FILE dimension MISSING_FILE, LATE_FILE(delayMs), DUPLICATE_FILE, CORRUPT_FILE, INJECTED_MISMATCH(code, count), scoped by next N files or a key (date, file name), journal READ / WRITE / SKIP / LATE with sha256 (`FileFaultScenarioTest`, `SftpMocksIT`, API folder 44) |
 | MCT-06 | done | `GET` and `DELETE /mock-control/{party}/journal`, DELETE resets the party's state (ticket 102) |
 | MCT-07 | done | `POST /mock-control/reset` on mw-simulators: every local party plus mw-core-mock's ledger back to the seed, one line per party; test route `/test/mock-control/*` (ticket 103, `GlobalResetIT`, `MockControlResetIT`) |
 | MCT-08 | ticket 135 | profile `mock-control` only on the test doubles: start guard with `MW_ENV=prod` (`ProdGuardTest`), `scripts/check-mock-control-prod.sh` under the root `check` (ticket 103); the UI part in 135 |

@@ -60,7 +60,10 @@ D9 amendment), can unlock and reset accounts, and has no sign-in.
   open on the MNO, number and code in the form: End (`op=end`, local hang-up) or changing one of them drops it
   and the button goes back to Dial; a refused or non-200 step counts as ended, so no reload is ever needed), `/simulators` (presets in `lib/presets.ts`, the mock-control forms over `lib/mock-parties.ts` (pure: every mock party, scenario / switch bodies; `/test/mock-control/*`: scenario, switch and settings, state and journal, normal / reset per
   party), callback replay, core-mock faults, wallet lookup, SMPP binds /
-  drop / throttle), `/inbox` (SMSC and GreenMail), `/checkout` (merchant picked from `lib/seed-catalogue.ts` `CHECKOUT_MERCHANTS`, kept with the session; create, page, OTP, pay, signed
+  drop / throttle), `/files` (ticket 123, the file mocks over `lib/file-mocks.ts` (pure: parties, fault and run
+  bodies, the AML sample file with its trailer) and `actions/files.ts`: run aml / trustbank / dw now, upload the
+  AML sample and answer it, add a file fault, read or reset a party's journal; needs partner-sftp, profile
+  tester), `/inbox` (SMSC and GreenMail), `/checkout` (merchant picked from `lib/seed-catalogue.ts` `CHECKOUT_MERCHANTS`, kept with the session; create, page, OTP, pay, signed
   redirect, IPNs), `/bulk` (sample CSV, upload, approve / reject / pause / resume, status, result,
   transactions, SP query), `/auth` (ticket 76, wallet authentication at mw-auth on fresh wallets of its
   own: `lib/auth.ts` (pure: OTP texts, fresh candidates 01711000500..999, the new-device window),

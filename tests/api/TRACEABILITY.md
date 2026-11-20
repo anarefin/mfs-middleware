@@ -245,5 +245,9 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 43 | [p2p notify mock] a push server that answers 5xx is retried and stores nothing; the SMS for the same transaction still goes | - |  |
 | 43 | [p2p notify mock] a token the push server does not know gets no push and the SMS still goes | - |  |
 | 43 | [notify] a push token with an unknown platform is refused 400 MW-VAL-001 | - |  |
+| 44 | [mock] the trust bank writes an MT940 on request and the journal lists it with its checksum | - |  |
+| 44 | [mock] a MISSING_FILE scenario skips the next statement only and an injected mismatch reaches the one after | - |  |
+| 44 | [mock] the AML mock answers an uploaded transaction file with HOLD and BLOCK lines | - |  |
+| 44 | [mock] the DW drop check rejects a control file with a wrong row count | - |  |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

@@ -1,0 +1,4 @@
+{
+  "name": "44 File mocks (AML responder, trust bank MT940/942, DW drop check)",
+  "description": "Ticket 123, FRS EXT-05, EXT-06, EXT-17, MCT-05, MCK-07: mw-simulators' file mocks on partner-sftp (profile tester), driven through the test-only route /test/mock-control/*: POST /{party}/files drops a file into the aml or dw inbox, POST /{party}/run runs a mock now, the journal lists every file read, written or skipped with its sha256. The trust bank reads mw-core-mock's ledger with the realm services client mw-simulators."
+}
