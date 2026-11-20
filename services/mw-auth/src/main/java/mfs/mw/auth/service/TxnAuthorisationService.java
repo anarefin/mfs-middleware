@@ -80,8 +80,10 @@ public class TxnAuthorisationService {
     TxnAmountRule.check(req.txn());
     AuthWallet w = wallet(req);
     wallets.check(w);
-    Optional<AuthDevice> bound = devices.findBound(w.walletId());
-    if (req.deviceId() != null && bound.map(d -> !d.deviceId().equals(req.deviceId())).orElse(true)) {
+    Optional<AuthDevice> bound = req.deviceId() == null
+        ? devices.findBound(w.walletId())
+        : devices.findBoundDevice(w.walletId(), req.deviceId());
+    if (req.deviceId() != null && bound.isEmpty()) {
       throw new MwException(ErrorCodes.AUTH_DEVICE_MISMATCH, "Device not bound to this wallet")
           .withStatus(HttpStatus.UNAUTHORIZED);
     }

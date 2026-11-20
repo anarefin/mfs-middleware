@@ -31,7 +31,7 @@ class BalanceFlowTest {
 
   @Test
   void noOtherFlowInquiresBalance() {
-    for (Flow other : List.of(new P2pFlow(), new TopupFlow(), new AddMoneyBankFlow(), new BillPayFlow())) {
+    for (Flow other : List.of(new P2pFlow(), new TopupFlow(), new AddMoneyBankFlow(), new BillPayFlow(), new B2bTransferFlow())) {
       assertThat(other.allows(Step.BALANCE_INQUIRY)).as(other.txnType()).isFalse();
     }
   }

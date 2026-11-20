@@ -61,9 +61,16 @@ public class RefreshTokenRepository {
     return jdbc.update("update refresh_token set revoked = true where family = ? and not revoked", family);
   }
 
-  /** Revokes every session of the wallet (a new device bound). */
+  /** Revokes every session of the wallet (a PIN reset, an ops unbind). */
   public int revokeWallet(String walletId) {
     return jdbc.update("update refresh_token set revoked = true where wallet_id = ? and not revoked", walletId);
+  }
+
+  /** Revokes the refresh tokens of one device, leaving the wallet's other sessions. */
+  public int revokeDevice(String walletId, String deviceId) {
+    return jdbc.update(
+        "update refresh_token set revoked = true where wallet_id = ? and device_id = ? and not revoked",
+        walletId, deviceId);
   }
 
   /** Whether the family still has a current token (the session was not logged out or revoked). */

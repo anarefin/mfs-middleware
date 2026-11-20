@@ -295,9 +295,9 @@ class SagaServiceIT {
     assertAllValid(txn);
   }
 
-  /** FRS 2.2 types added to the contract by ticket 92: valid on the wire, refused until their flows exist. */
+  /** NPSB types (ticket 92): valid on the wire, refused until their flows exist. B2B_TRANSFER has its flow (ticket 106). */
   @org.junit.jupiter.params.ParameterizedTest
-  @org.junit.jupiter.params.provider.ValueSource(strings = {"NPSB_OUT", "NPSB_IN", "B2B_TRANSFER"})
+  @org.junit.jupiter.params.provider.ValueSource(strings = {"NPSB_OUT", "NPSB_IN"})
   void anFrsTypeWithoutItsFlowYetIsRejectedAsUnsupported(String txnType) {
     TxnRequest p2p = TestData.p2p(TestData.txnId(), "k-" + txnType, 5_000);
     TxnRequest frs =

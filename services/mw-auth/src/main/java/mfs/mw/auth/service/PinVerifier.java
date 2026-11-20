@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import mfs.mw.auth.client.CryptoClient;
+import mfs.mw.auth.config.AppTypePolicy;
 import mfs.mw.auth.config.PinProperties;
 import mfs.mw.auth.dto.CryptoPinVerified;
 import mfs.mw.auth.dto.EncryptedPin;
@@ -16,6 +17,7 @@ import mfs.mw.auth.exception.ErrorCodes;
 import mfs.mw.auth.exception.MwException;
 import mfs.mw.auth.mapper.AuditEventMapper;
 import mfs.mw.auth.repository.CredentialRepository;
+import mfs.mw.auth.repository.WalletRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -53,6 +55,8 @@ public class PinVerifier implements PinVerification {
   private final CredentialRepository credentials;
   private final AuditTrail audit;
   private final PinProperties props;
+  private final WalletRepository wallets;
+  private final AppTypePolicy appTypes;
   private final TransactionTemplate tx;
   private final Clock clock;
 
@@ -61,12 +65,16 @@ public class PinVerifier implements PinVerification {
       CredentialRepository credentials,
       AuditTrail audit,
       PinProperties props,
+      WalletRepository wallets,
+      AppTypePolicy appTypes,
       TransactionTemplate tx,
       Clock clock) {
     this.crypto = crypto;
     this.credentials = credentials;
     this.audit = audit;
     this.props = props;
+    this.wallets = wallets;
+    this.appTypes = appTypes;
     this.tx = tx;
     this.clock = clock;
   }
@@ -121,7 +129,7 @@ public class PinVerifier implements PinVerification {
 
   /** Counts a wrong PIN and escalates; the error to answer. */
   private MwException failed(String walletId) {
-    PinProperties.Lock cfg = props.lock();
+    PinProperties.Lock cfg = lockFor(walletId);
     MwException answer = tx.execute(status -> {
       Instant now = clock.instant();
       credentials.lockWallet(walletId);
@@ -154,6 +162,17 @@ public class PinVerifier implements PinVerification {
       return pinLocked(new CredentialRepository.Lock(PIN, level, until, now), now);
     });
     return answer;
+  }
+
+  /** The first lock follows the wallet's app type; level 2 and the decay stay on the global ladder. */
+  private PinProperties.Lock lockFor(String walletId) {
+    PinProperties.Lock base = props.lock();
+    return wallets.find(walletId)
+        .map(w -> {
+          AppTypePolicy.Settings s = appTypes.of(w.type());
+          return new PinProperties.Lock(s.pinTries(), s.pinLock(), base.level2(), base.decay());
+        })
+        .orElse(base);
   }
 
   /**

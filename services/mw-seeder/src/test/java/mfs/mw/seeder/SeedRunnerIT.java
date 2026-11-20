@@ -58,7 +58,8 @@ class SeedRunnerIT {
 
   /** The app users: listed in the manifest for an mw-auth login, never created in Keycloak (ticket 73). */
   private static final List<String> APP_USERS =
-      new ArrayList<>(List.of("seed-customer01", "seed-customer02", "seed-agent01", "seed-merchant01", "seed-distributor01"));
+      new ArrayList<>(List.of("seed-customer01", "seed-customer02", "seed-agent01", "seed-merchant01",
+          "seed-distributor01", "seed-dso01", "seed-partner01"));
 
   /** The API suite's run customers (tests/api/run_customer.mjs): seed-run-customer01..24, 01714NN0001. */
   private static final int RUN_CUSTOMERS = 24;
@@ -68,7 +69,8 @@ class SeedRunnerIT {
       new java.util.LinkedHashMap<>(
           Map.of(
               "01712000001", "CUSTOMER", "01712000002", "CUSTOMER", "01812000001", "AGENT", "01912000001", "MERCHANT",
-              "01312000001", "ORG", "01612000001", "DISTRIBUTOR", "01312000002", "ORG"));
+              "01312000001", "ORG", "01612000001", "DISTRIBUTOR", "01512000001", "DSO", "01412000001", "PARTNER",
+              "01312000002", "ORG"));
 
   static {
     for (int i = 1; i <= RUN_CUSTOMERS; i++) {

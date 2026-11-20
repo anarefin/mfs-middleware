@@ -303,7 +303,7 @@ components:
       additionalProperties: false
       properties:
         walletId: { type: string, pattern: "^01[3-9][0-9]{8}$", description: "The payer's wallet (canonical MSISDN)" }
-        walletType: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, ORGANISATION] }
+        walletType: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, DSO, PARTNER, ORGANISATION] }
         txnType: { type: string, pattern: "^[A-Z][A-Z0-9_]{0,31}$" }
         channel: { type: string, pattern: "^[A-Z][A-Z0-9_]{0,31}$" }
         amount: { $ref: "#/components/schemas/Amount" }

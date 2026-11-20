@@ -55,7 +55,7 @@
         "type": { "enum": ["WALLET", "BANK_ACCOUNT", "CARD_TOKEN", "BILLER_ACCOUNT", "MSISDN", "MERCHANT", "ORG"] },
         "id": { "type": "string", "minLength": 1 },
         "name": { "type": "string" },
-        "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO"] }
+        "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO", "PARTNER"] }
       }
     },
     "PartnerRef": {
@@ -88,7 +88,7 @@
     },
     "TxnType": {
       "enum": ["P2P", "CASH_IN", "CASH_OUT", "ATM_CASH_OUT", "ATM_CASH_IN", "TOPUP", "BILL_PAY", "MERCHANT_PAY", "ADD_MONEY_CARD", "ADD_MONEY_BANK", "C2W", "W2B", "REMIT_IN", "QR_PAY_INTEROP", "BULK_DISBURSE", "REVERSAL", "BALANCE", "NPSB_OUT", "NPSB_IN", "B2B_TRANSFER"],
-      "description": "Spec 5.2, FRS 2.2. BALANCE (balance inquiry, ADR D26) moves no money: amount 0 and creditParty = debitParty (the customer's own wallet). NPSB_OUT (wallet to a bank account over NPSB), NPSB_IN (bank account to wallet over NPSB) and B2B_TRANSFER (business wallet to business wallet) are FRS 2.2 additions (ticket 92): mw-orchestrator refuses them with MW-VAL-010 until their flows exist."
+      "description": "Spec 5.2, FRS 2.2. BALANCE (balance inquiry, ADR D26) moves no money: amount 0 and creditParty = debitParty (the customer's own wallet). B2B_TRANSFER is the float transfer (ticket 106): the caller's wallet pays the counterparty, posted like P2P. NPSB_OUT (wallet to a bank account over NPSB) and NPSB_IN (bank account to wallet over NPSB) are FRS 2.2 additions (ticket 92): mw-orchestrator refuses them with MW-VAL-010 until their flows exist."
     },
     "Locale": { "enum": ["bn", "en"] },
     "StringMap": { "type": "object", "additionalProperties": { "type": "string" } }

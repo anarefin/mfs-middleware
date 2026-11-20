@@ -18,6 +18,8 @@
       <xs:enumeration value="bill-pay"/>
       <xs:enumeration value="top-up"/>
       <xs:enumeration value="add-money"/>
+      <xs:enumeration value="b2b"/>
+      <xs:enumeration value="disburse"/>
     </xs:restriction>
   </xs:simpleType>
 

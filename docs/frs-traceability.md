@@ -93,7 +93,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `NPSB_OUT`, `NPSB_IN` | `NPSB_OUT`, `NPSB_IN` (in `TxnType` since ticket 92; refused `MW-VAL-010` until their flows exist) |
 | `DISBURSEMENT` | `BULK_DISBURSE` |
 | `REVERSAL` | `REVERSAL` |
-| (UC-07 B2B float) | `B2B_TRANSFER` (in `TxnType` since ticket 92; refused `MW-VAL-010` until its flow exists) |
+| (UC-07 B2B float) | `B2B_TRANSFER` (ticket 106: `B2bTransferFlow`, validate then PostTransfer, like P2P) |
 | (none) | `BALANCE` (D26), repo only |
 
 ### 2.4 Channels (FRS 2.2 channel)
@@ -141,7 +141,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-03` balance and statement | balance done (D26); app statement done (107b); USSD mini statement is core WAL-12 (109c) |
 | `UC-04` P2P | done (`P2P`); FRS T1–T12 ticket 104 |
 | `UC-05`, `UC-06` cash-in, cash-out | done |
-| `UC-07` B2B float | ticket 106 |
+| `UC-07` B2B float | done (`B2B_TRANSFER`, `B2bTransferFlow`, folder 63) |
 | `UC-08` top-up | prepaid done (one OCS); ticket 112 |
 | `UC-09`, `UC-10` bills | one aggregator done; tickets 113, 114 |
 | `UC-11` merchant payment | app done (folder 04); USSD menu MERCHANT_PAY (109c); ticket 115 remains |
@@ -199,12 +199,12 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
 | CH-APP-01 | done | REST and the SOAP facade on mw-app-gateway (`contracts/api/mw-app-gateway/app-soap.v1.xsd`, `deploy/apisix/routes/app-ws-v1.json`, `tests/api/src/48-app-soap`) |
-| CH-APP-02 | ticket 106 | MSISDN + PIN + device login in mw-auth built (D21, the PIN checked by the middleware, D20); 15 min access token in 106 |
-| CH-APP-03 | ticket 106 | OTP device binding built; per-app-type device count in 106 |
-| CH-APP-04 | ticket 106 | sessions and forced logout in mw-auth; per-app-type limits in 106 |
+| CH-APP-02 | done | Access token 15 min for every app type (`mw.auth.app-types`, `AppTypePolicyTest`, `MW_AUTH_ACCESS_TTL`) |
+| CH-APP-03 | done | OTP device binding; the per-type device cap replaces the one-device index (`V11__app_types.sql`, `DeviceBindingService`) |
+| CH-APP-04 | done | Sessions in Redis; the (n+1)th login ends the oldest (`ConcurrentSessionIT`, `sessidx:{wallet}`) |
 | CH-APP-05 | done | `POST /app/v1/{group}/preview` then `/confirm`; `POST /app/v1/transactions` runs both (ticket 105) |
-| CH-APP-06 | ticket 106 | channel roles for customer, agent, merchant apps built (spec 9.1); distributor, DSO, partner in 106 |
-| CH-APP-07 | ticket 106 | PIN lockout built (D20: 3 tries, then 1 h, 24 h); per-app-type throttles in 106 |
+| CH-APP-06 | done | Distributor, DSO and partner resolve at the gateway; B2B_TRANSFER for distributor, DSO and agent; BULK_DISBURSE for the partner app (`RoleScopingTest`, `AppUserResolver`) |
+| CH-APP-07 | done | Customer PIN ladder stays 3 tries then 1 h; other app types 5 tries then 24 h (`AppTypePolicy`, `PinVerifier`) |
 | CH-APP-08 | done | saved billers, favourites and the inbox (107a); profile, limits and the statement (107b: WAL-01, WAL-05, WAL-12, max 90 days) |
 | CH-APP-09 | done | `GET /app/v1/transactions/{txnId}` (mw-app-gateway) |
 | CH-USSD-01 | done | four MNO SMPP binds: gp and bl transceiver, robi and teletalk transmitter plus receiver (`UssdSmppMnoIT`, `UssdSmppClientTest`); dev keeps robi, bl and teletalk on HTTP |

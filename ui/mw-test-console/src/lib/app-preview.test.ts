@@ -20,6 +20,8 @@ describe("preview and confirm bodies", () => {
       "/app/v1/top-up/preview",
       "/app/v1/bill-pay/preview",
       "/app/v1/add-money/preview",
+      "/app/v1/b2b/preview",
+      "/app/v1/disburse/preview",
     ]);
     expect(confirmPath("P2P")).toBe("/app/v1/send-money/confirm");
     expect(confirmPath("ADD_MONEY_BANK")).toBe("/app/v1/add-money/confirm");

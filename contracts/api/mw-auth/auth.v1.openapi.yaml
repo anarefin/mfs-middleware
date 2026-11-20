@@ -75,7 +75,7 @@ info:
     OTP); the reset id is the capability of the device that opened it (other devices: 404).
 
     Access token claims: `iss` (the discovery `issuer`), `aud` `mw-app`, `sub` walletId, `msisdn`,
-    `role` (customer, agent, merchant, distributor, dso: from the wallet type), `deviceId`, `amr`,
+    `role` (customer, agent, merchant, distributor, dso, partner: from the wallet type), `deviceId`, `amr`,
     `sid` (the session: its refresh token family), `jti`, `iat`, `exp`. Header `typ` `at+jwt`, `kid`
     `<keyId>.v<n>` of the mw-crypto key `JWT_SIGN` (RSA 3072, RS256; D21 amendment).
 servers:

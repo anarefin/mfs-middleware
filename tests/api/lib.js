@@ -369,7 +369,8 @@
   const APP_USERS = {
     customer01: '01711000001', customer02: '01711000002', agent01: '01811000001', merchant01: '01911000001',
     merchant02: '01911000002', 'seed-customer01': '01712000001', 'seed-customer02': '01712000002',
-    'seed-agent01': '01812000001', 'seed-merchant01': '01912000001',
+    'seed-agent01': '01812000001', 'seed-merchant01': '01912000001', 'seed-distributor01': '01612000001',
+    'seed-dso01': '01512000001', 'seed-partner01': '01412000001',
   };
   function msisdnOf(user) {
     const c = runCustomer();

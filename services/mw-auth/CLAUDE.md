@@ -13,7 +13,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 - Schema `auth` (role `auth_rw`, `V4__auth_model.sql`): `wallet` (projection, below), `credential`
   (PIN HMAC under the mw-crypto `PIN_HMAC` key + its kid, policy version, set at, `last_hmacs` for the
   reuse rule), `attempt` (wrong-PIN counter of the window), `lock` (`PIN` levels with `until`, null =
-  permanent; `ADMIN` locks), `device` (one bound device per wallet: partial unique index), `refresh_token`
+  permanent; `ADMIN` locks), `device` (bound devices; the per-type cap is `mw.auth.app-types`, ticket 106), `refresh_token`
   (hash, family, device, expiry, rotation, revoked), `pin_reset` (`SELF` / `CARE`, one open per wallet),
   plus the chassis `outbox`, `inbox`, `shedlock`; `device_otp` (V5, ticket 68; V6 adds its `purpose`
   BIND/LOGIN and `refresh_token.amr`; V7, ticket 70: purpose RESET, `pin_reset` status VERIFIED and its
@@ -111,8 +111,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
     timeout. 200 `{accessToken, tokenType, expiresIn, refreshToken, refreshExpiresIn, sessionId,
     idleTimeoutSeconds, pinSet}`.
   - Access JWT: RS256 by mw-crypto `JWT_SIGN` (D21 amendment; header `typ at+jwt`, `kid <keyId>.v<n>`),
-    5 min (`MW_AUTH_ACCESS_TTL`); claims `iss` (`mw.auth.tokens.issuer`, `mw-auth`), `aud` `mw-app`,
-    `sub` walletId, `msisdn`, `role` (wallet type: customer, agent, merchant, distributor, dso; an ORG
+    15 min (`MW_AUTH_ACCESS_TTL`, `config/AppTypePolicy`); claims `iss` (`mw.auth.tokens.issuer`, `mw-auth`), `aud` `mw-app`,
+    `sub` walletId, `msisdn`, `role` (wallet type: customer, agent, merchant, distributor, dso, partner; an ORG
     wallet `403 MW-AUTH-002`), `deviceId`, `amr`, `sid` (= the refresh family), `jti`, `iat`, `exp`.
   - Refresh token: 32 random bytes base64url, only its SHA-256 (hex) stored with family, wallet, device,
     30 days and the session's `amr`. `POST /auth/v1/tokens/refresh {refreshToken}` signed by the bound
@@ -149,8 +149,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   forgotten); each answers the account afterwards; unknown wallet 404 `MW-VAL-003`. No token (chain 0, with
   the seed path); off, nothing answers `/test/**` (404).
 - Redis (`repository/DeviceSessionStore`, `config/DeviceBindingConfig` fail-fast): sessions
-  `sess:{walletId}:{deviceId}` (value = the idle timeout in seconds, TTL sliding: `idle-timeout` 5 min, per channel
-  `idle-timeout-by-channel`) and nonces `nonce:{deviceId}:{nonce}` (SET NX, 2x skew + 30 s; mw-app-gateway uses the
+  `sess:{walletId}:{deviceId}` (value = the idle timeout in seconds, TTL sliding: the app type's
+  `idle-timeout`, 5 min) and an index `sessidx:{wallet}` so a type with session limit n ends the oldest
+  session on the next login. Nonces `nonce:{deviceId}:{nonce}` (SET NX, 2x skew + 30 s; mw-app-gateway uses the
   same key for its signed submits, so a nonce is used once across both). Redis down `503 MW-SYS-012`; not in the
   health groups. Password `spring.data.redis.password` from `secret/mw-auth`.
 - Internal device lookups for mw-app-gateway's device gate (contract `api/mw-auth/auth-internal.v1.openapi.yaml`,

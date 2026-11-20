@@ -6,9 +6,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 ## Responsibilities
 
 - App Middleware part 1 (spec 9.1, WP08): `POST /app/v1/transactions` (P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, ADD_MONEY_BANK,
-  TOPUP and BILL_PAY, `mw.app-gateway.supported-txn-types`; ticket 105 runs preview then confirm on that body),
+  TOPUP, BILL_PAY, B2B_TRANSFER and BULK_DISBURSE, `mw.app-gateway.supported-txn-types`; ticket 105 runs preview then confirm on that body),
   `POST /app/v1/{group}/preview` and `POST /app/v1/{group}/confirm` (groups send-money, cash-in, cash-out, payment,
-  bill-pay, top-up, add-money; preview moves nothing and needs no PIN), `GET /app/v1/transactions` (wallet history, ADR D25),
+  bill-pay, top-up, add-money, b2b, disburse; preview moves nothing and needs no PIN), `GET /app/v1/transactions` (wallet history, ADR D25),
   `GET /app/v1/transactions/{txnId}`, `POST /app/v1/balance` (ADR D26), `GET /app/v1/pin-key`,
   `GET /app/v1/billers`, `POST /app/v1/billers/{code}/fetch-bill` and `GET /app/v1/merchant/collections` behind the APISIX
   route `/app/v1/*` (`deploy/apisix/routes/app-v1.json`, `openid-connect` bearer-only against mw-auth's
@@ -28,13 +28,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   since Spring Security 7 they accept `typ JWT` only. A Keycloak token is refused (another
   issuer); `security/RealmIssuerValidator` is gone. The payer wallet is the `msisdn` claim, the channel
   follows the `role` claim (from the wallet type at mw-auth): `customer` -> `CUSTOMER_APP`/`CUSTOMER`,
-  `agent` -> `AGENT_APP`/`AGENT`, `merchant` -> `MERCHANT_APP`/`MERCHANT` (WP20, ticket 30); any other role
-  (distributor, dso: no app here yet) is 403 `MW-AUTH-002`; a token whose `amr` lacks `pin` (a first-PIN
+  `agent` -> `AGENT_APP`/`AGENT`, `merchant` -> `MERCHANT_APP`/`MERCHANT`, `distributor` ->
+  `DISTRIBUTOR_APP`/`DISTRIBUTOR`, `dso` -> `DSO_APP`/`DSO`, `partner` -> `PARTNER_APP`/`PARTNER`
+  (ticket 106); any other role is 403 `MW-AUTH-002`; a token whose `amr` lacks `pin` (a first-PIN
   OTP login) is 403 `MW-AUTH-045`; a token whose `deviceId` claim is not the request's `X-Device-Id` is 401
   `MW-AUTH-003` (device gate).
   Role per `txnType` (`mw.app-gateway.txn-type-roles`, checked at submit after the type check):
-  P2P, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY and ADD_MONEY_BANK customer only, CASH_IN agent only; the merchant
-  initiates nothing (`AppGatewayConfigTest` checks no type lists MERCHANT) (switch here, nowhere else). Deny by
+  P2P, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY and ADD_MONEY_BANK customer only, CASH_IN agent only,
+  B2B_TRANSFER distributor, DSO and agent (the caller pays from their own wallet), BULK_DISBURSE partner only;
+  the merchant initiates nothing (`AppGatewayConfigTest` checks no type lists MERCHANT) (switch here, nowhere else). Deny by
   default: a type with no entry is refused for every role; `AppGatewayConfigTest` fails when a
   txnType of the OpenAPI enum has no entry.
   No token / bad token `401 MW-AUTH-001`; no wallet, other role or a type the role may not

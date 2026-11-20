@@ -23,7 +23,8 @@ import tools.jackson.databind.json.JsonMapper;
 public class WalletEventMapper {
 
   private static final Pattern MSISDN = Pattern.compile("^(?:\\+?880)?(01[3-9]\\d{8})$");
-  private static final Set<String> TYPES = Set.of("CUSTOMER", "AGENT", "MERCHANT", "ORG", "DISTRIBUTOR", "DSO");
+  private static final Set<String> TYPES =
+      Set.of("CUSTOMER", "AGENT", "MERCHANT", "ORG", "DISTRIBUTOR", "DSO", "PARTNER");
   // ticket 94 (FRS 7.1): the core's DORMANT and CLOSED; only ACTIVE logs in (WalletAccess)
   private static final Set<String> STATUSES = Set.of("ACTIVE", "BLOCKED", "HOLD", "LOCKED", "DORMANT", "CLOSED");
   /** The core's ORGANISATION (ticket 94) is this service's ORG (no app role either way). */

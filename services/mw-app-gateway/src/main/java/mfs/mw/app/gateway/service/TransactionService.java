@@ -42,7 +42,8 @@ public class TransactionService {
   private static final Logger log = LoggerFactory.getLogger(TransactionService.class);
 
   /** Types whose counterparty is another wallet of this core. */
-  private static final java.util.Set<String> WALLET_TO_WALLET = java.util.Set.of("P2P", "CASH_IN", "CASH_OUT", RequestMapper.MERCHANT_PAY);
+  private static final java.util.Set<String> WALLET_TO_WALLET =
+      java.util.Set.of("P2P", "CASH_IN", "CASH_OUT", RequestMapper.MERCHANT_PAY, "B2B_TRANSFER", "BULK_DISBURSE");
 
   private final TxnReplyExchange exchange;
   private final RequestMapper mapper;

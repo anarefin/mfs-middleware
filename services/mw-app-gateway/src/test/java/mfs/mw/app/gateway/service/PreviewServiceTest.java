@@ -242,7 +242,8 @@ class PreviewServiceTest {
   void eachGroupNamesItsType() {
     assertThat(PreviewService.GROUPS).containsExactlyInAnyOrderEntriesOf(Map.of(
         "send-money", "P2P", "cash-in", "CASH_IN", "cash-out", "CASH_OUT", "payment", "MERCHANT_PAY",
-        "bill-pay", "BILL_PAY", "top-up", "TOPUP", "add-money", "ADD_MONEY_BANK"));
+        "bill-pay", "BILL_PAY", "top-up", "TOPUP", "add-money", "ADD_MONEY_BANK",
+        "b2b", "B2B_TRANSFER", "disburse", "BULK_DISBURSE"));
   }
 
   /** {@code POST /app/v1/transactions} runs the preview, then the confirm, of the same body (PLT-051). */

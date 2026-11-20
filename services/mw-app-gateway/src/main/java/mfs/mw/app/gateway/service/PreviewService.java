@@ -61,7 +61,9 @@ public class PreviewService {
       "payment", RequestMapper.MERCHANT_PAY,
       "bill-pay", RequestMapper.BILL_PAY,
       "top-up", RequestMapper.TOPUP,
-      "add-money", RequestMapper.ADD_MONEY_BANK);
+      "add-money", RequestMapper.ADD_MONEY_BANK,
+      "b2b", "B2B_TRANSFER",
+      "disburse", "BULK_DISBURSE");
 
   /** The core's limit reasons (WAL-05) as the customer reads them: English, Bangla. */
   static final Map<String, String[]> LIMIT_TEXTS = Map.of(

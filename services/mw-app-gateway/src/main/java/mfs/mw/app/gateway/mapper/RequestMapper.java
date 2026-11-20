@@ -89,7 +89,7 @@ public class RequestMapper {
     boolean addMoney = ADD_MONEY_BANK.equals(body.txnType());
     // ADD_MONEY_BANK: the bank account pays, the caller's own wallet (its PIN) receives
     Party debit = addMoney ? new Party("BANK_ACCOUNT", body.debitParty().id(), null, null) : own;
-    Party credit = addMoney ? own : creditParty(body);
+    Party credit = addMoney ? own : creditParty(body, user.walletType());
     return new TxnRequest(
         1,
         txnId,
@@ -140,7 +140,8 @@ public class RequestMapper {
    * The payee type {@code mw.txn.request.v1} publishes, and the one the preview quotes and hashes.
    * The txnType decides it; a client-supplied {@code creditParty.type} is ignored (BILL_PAY a
    * biller account, TOPUP an MSISDN, every wallet payment a WALLET — an agent's for CASH_OUT, a
-   * merchant's for MERCHANT_PAY, a customer's otherwise).
+   * merchant's for MERCHANT_PAY, an agent's for a distributor or DSO float, a distributor's when an
+   * agent returns float, a customer's otherwise).
    */
   public static String creditPartyType(String txnType) {
     if (BILL_PAY.equals(txnType)) {
@@ -155,7 +156,7 @@ public class RequestMapper {
    * core checks the real wallet types per txnType), for TOPUP the bare MSISDN to recharge, for
    * BILL_PAY the bill number as a {@code BILLER_ACCOUNT}.
    */
-  private static Party creditParty(TransactionRequest body) {
+  private static Party creditParty(TransactionRequest body, String payerType) {
     String type = creditPartyType(body.txnType());
     if ("BILLER_ACCOUNT".equals(type)) {
       return new Party(type, body.creditParty().id(), null, null);
@@ -164,10 +165,13 @@ public class RequestMapper {
     if ("MSISDN".equals(type)) {
       return new Party(type, id, null, null);
     }
-    return Party.wallet(id, payeeWalletType(body.txnType()));
+    return Party.wallet(id, payeeWalletType(body.txnType(), payerType));
   }
 
-  private static String payeeWalletType(String txnType) {
+  private static String payeeWalletType(String txnType, String payerType) {
+    if ("B2B_TRANSFER".equals(txnType)) {
+      return "AGENT".equals(payerType) ? "DISTRIBUTOR" : "AGENT";
+    }
     if (CASH_OUT.equals(txnType)) {
       return "AGENT";
     }

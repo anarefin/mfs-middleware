@@ -11,6 +11,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import mfs.mw.auth.config.AppTypePolicy;
 import mfs.mw.auth.config.DeviceBindingProperties;
 import mfs.mw.auth.dto.BoundDevice;
 import mfs.mw.auth.dto.DeviceBound;
@@ -67,6 +68,7 @@ public class DeviceBindingService {
   private final WalletAccess wallets;
   private final DeviceSessionStore sessions;
   private final DeviceBindingProperties props;
+  private final AppTypePolicy appTypes;
   private final SignedRequestCheck signed;
   private final DeviceOtpService otps;
   private final PinVerifier pins;
@@ -82,6 +84,7 @@ public class DeviceBindingService {
       WalletAccess wallets,
       DeviceSessionStore sessions,
       DeviceBindingProperties props,
+      AppTypePolicy appTypes,
       SignedRequestCheck signed,
       DeviceOtpService otps,
       PinVerifier pins,
@@ -95,6 +98,7 @@ public class DeviceBindingService {
     this.wallets = wallets;
     this.sessions = sessions;
     this.props = props;
+    this.appTypes = appTypes;
     this.signed = signed;
     this.otps = otps;
     this.pins = pins;
@@ -121,7 +125,7 @@ public class DeviceBindingService {
           .withStatus(HttpStatus.FORBIDDEN);
     }
     if (DeviceOtpService.RESET.equals(p)
-        && devices.findBound(w.walletId()).filter(d -> d.deviceId().equals(id)).isEmpty()
+        && devices.findBoundDevice(w.walletId(), id).isEmpty()
         && !resets.careWaiting(w.walletId())) {
       // a reset OTP goes to the bound device, or to any device once a care reset was approved
       throw new MwException(ErrorCodes.AUTH_FORBIDDEN, "A PIN reset needs the bound device or an approved care reset")
@@ -159,7 +163,8 @@ public class DeviceBindingService {
       Optional<AuthDevice> before = devices.lock(deviceId);
       before.filter(d -> d.bound() && !d.walletId().equals(wallet))
           .ifPresent(d -> closed.add(new String[] {d.walletId(), d.deviceId()}));
-      for (String other : devices.unbindOthers(wallet, deviceId, now)) {
+      int keep = Math.max(0, appTypes.of(w.type()).maxDevices() - 1);
+      for (String other : devices.unbindBeyond(wallet, deviceId, keep, now)) {
         closed.add(new String[] {wallet, other});
       }
       closed.add(new String[] {wallet, deviceId});
@@ -172,7 +177,7 @@ public class DeviceBindingService {
     });
     for (String[] s : ended == null ? List.<String[]>of() : ended) {
       sessions.close(s[0], s[1]);
-      refresh.revokeWallet(s[0]);
+      refresh.revokeDevice(s[0], s[1]);
     }
     log.atInfo().addKeyValue("event", "device.bound").log("Device {} bound", deviceId);
     return new DeviceBound(deviceId, MaskingPolicy.mask(SensitiveType.MSISDN, msisdn), now);

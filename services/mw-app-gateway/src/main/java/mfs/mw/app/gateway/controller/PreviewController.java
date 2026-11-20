@@ -34,7 +34,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class PreviewController {
 
   static final String GROUP =
-      "{group:send-money|cash-in|cash-out|payment|bill-pay|top-up|add-money}";
+      "{group:send-money|cash-in|cash-out|payment|bill-pay|top-up|add-money|b2b|disburse}";
 
   private final PreviewService previews;
   private final AppUserResolver users;

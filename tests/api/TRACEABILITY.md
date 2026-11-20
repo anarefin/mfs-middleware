@@ -295,6 +295,10 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 43 | [ussd frs] a remittance reference that is not an Upay txn id says there is none | - |  |
 | 30 | [topup reversal frs] a completed top-up is reversed at the operator before the core and every balance is restored | - |  | FR-07 |
 | 30 | [topup reversal frs] a partner refusal to reverse a completed top-up ends in manual review and keeps the posting | - |  | FR-07 |
+| 63 | [b2b] a distributor float transfer to an agent completes | - |  |
+| 63 | [b2b] a customer cannot start a float transfer | - |  |
+| 63 | [b2b] a partner app cannot start a float transfer | - |  |
+| 63 | [b2b] a DSO preview of a float transfer is allowed and moves nothing | - |  |
 
 ## FRS UC x T1-T12
 
@@ -310,7 +314,7 @@ tickets 125 and 127. T10 names the request that checks the ledger identity; the 
 | UC-04 | [p2p frs] T1 a P2P completes with the seed tariff fee, VAT and commission and the SMS is in the SMSC journal | [p2p frs] T2 a core business rejection shows the English and Bangla text and moves nothing | [p2p frs] T3 a core timeout on the next transfer is completed by the status inquiry and debited once | [p2p frs] T4 a lost core refusal is failed by the status inquiry and moves nothing | [p2p frs] T5 a core that never answers ends in MANUAL_REVIEW and alerts operations | [p2p frs] T6 the same Idempotency-Key twice debits once and returns the same txnId | [p2p frs] T7 a duplicate core result event posts the transfer once | [p2p frs] T8 a core that refuses connections fails the preview at once and moves nothing | [p2p frs] T9 a limit is refused before any transfer and an insufficient balance moves nothing | [p2p frs] T10 a P2P keeps the ledger identity; mid-saga restart is scripts/chaos.sh | n/a ticket 125 | n/a ticket 127 |
 | UC-05 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-06 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
-| UC-07 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-07 | [b2b] a distributor float transfer to an agent completes | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-08 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-09 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-10 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |

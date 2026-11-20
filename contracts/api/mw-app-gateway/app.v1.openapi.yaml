@@ -801,8 +801,9 @@ components:
       required: true
       description: >-
         The transaction group: send-money (P2P), cash-in (CASH_IN), cash-out (CASH_OUT), payment
-        (MERCHANT_PAY), bill-pay (BILL_PAY), top-up (TOPUP), add-money (ADD_MONEY_BANK)
-      schema: { type: string, enum: [send-money, cash-in, cash-out, payment, bill-pay, top-up, add-money] }
+        (MERCHANT_PAY), bill-pay (BILL_PAY), top-up (TOPUP), add-money (ADD_MONEY_BANK),
+        b2b (B2B_TRANSFER), disburse (BULK_DISBURSE)
+      schema: { type: string, enum: [send-money, cash-in, cash-out, payment, bill-pay, top-up, add-money, b2b, disburse] }
     DeviceId:
       name: X-Device-Id
       in: header
@@ -914,7 +915,7 @@ components:
       properties:
         txnType:
           type: string
-          enum: [P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY, ADD_MONEY_BANK]
+          enum: [P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY, ADD_MONEY_BANK, B2B_TRANSFER, BULK_DISBURSE]
           description: >-
             P2P, CASH_IN, CASH_OUT and MERCHANT_PAY pay the wallet of `creditParty.id`. TOPUP recharges the
             mobile number `creditParty.id` with operator and product `partner` (required for
@@ -932,7 +933,9 @@ components:
           type: object
           description: >-
             The payee: a customer wallet for P2P and CASH_IN, an agent wallet for CASH_OUT, a
-            merchant wallet for MERCHANT_PAY,
+            merchant wallet for MERCHANT_PAY, an agent wallet for a distributor or DSO float
+            (B2B_TRANSFER), a distributor wallet when an agent returns float, a customer wallet for
+            a partner disbursement (BULK_DISBURSE),
             the mobile number for TOPUP, the bill number for BILL_PAY. Required for every type
             except ADD_MONEY_BANK, which refuses it (400 MW-VAL-001).
           required: [id]

@@ -11,8 +11,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * {@code auth.device} (ticket 68): one row per device id, at most one bound device per wallet
- * (partial unique index {@code device_one_bound_per_wallet_idx}). Binding a device id that was
+ * {@code auth.device} (ticket 68): one row per device id. How many stay bound to a wallet is the
+ * app-type cap ({@code unbindBeyond}, ticket 106). Binding a device id that was
  * bound to another wallet moves it to the new wallet.
  */
 @Repository
@@ -32,12 +32,28 @@ public class DeviceRepository {
         .findFirst();
   }
 
-  /** The wallet's bound device, if it has one (at most one: the partial unique index). */
+  /** The wallet's bound device, if this query finds one. Prefer {@link #findBoundDevice} when the device is known. */
   public Optional<AuthDevice> findBound(String walletId) {
     return jdbc.query("SELECT " + COLUMNS + " FROM device WHERE wallet_id = ? AND unbound_at IS NULL",
             (rs, n) -> row(rs), walletId)
         .stream()
         .findFirst();
+  }
+
+  /** The bound row of this device on this wallet. */
+  public Optional<AuthDevice> findBoundDevice(String walletId, String deviceId) {
+    return jdbc.query(
+            "SELECT " + COLUMNS + " FROM device WHERE wallet_id = ? AND device_id = ? AND unbound_at IS NULL",
+            (rs, n) -> row(rs), walletId, deviceId)
+        .stream()
+        .findFirst();
+  }
+
+  /** Every device still bound to the wallet, newest binding first. */
+  public List<AuthDevice> findBoundAll(String walletId) {
+    return jdbc.query(
+        "SELECT " + COLUMNS + " FROM device WHERE wallet_id = ? AND unbound_at IS NULL ORDER BY bound_at DESC, device_id",
+        (rs, n) -> row(rs), walletId);
   }
 
   /** Every device row of the wallet, bound or not, newest binding first (dev test API). */
@@ -71,6 +87,25 @@ public class DeviceRepository {
         """,
         (rs, n) -> rs.getString(1),
         Timestamp.from(at), walletId, deviceId);
+  }
+
+  /**
+   * Unbinds bound devices of the wallet other than {@code deviceId} beyond the {@code keepOthers} newest
+   * (ticket 106). {@code keepOthers} 0 unbinds every other device.
+   */
+  public List<String> unbindBeyond(String walletId, String deviceId, int keepOthers, Instant at) {
+    return jdbc.query(
+        """
+        WITH ranked AS (
+          SELECT device_id, row_number() OVER (ORDER BY bound_at DESC, device_id) AS n
+          FROM device
+          WHERE wallet_id = ? AND device_id <> ? AND unbound_at IS NULL
+        )
+        UPDATE device SET unbound_at = ?
+         WHERE device_id IN (SELECT device_id FROM ranked WHERE n > ?)
+        RETURNING device_id
+        """,
+        (rs, n) -> rs.getString(1), walletId, deviceId, Timestamp.from(at), keepOthers);
   }
 
   /**

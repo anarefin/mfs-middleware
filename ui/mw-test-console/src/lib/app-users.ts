@@ -9,8 +9,10 @@ import type { SeedManifest } from "./seed-manifest";
 
 export type AppUser = { user: string; msisdn: string; role: AppRole; name?: string };
 
-export const APP_ROLES: readonly AppRole[] = ["customer", "agent", "merchant"];
-export const ROLE_LABEL: Record<AppRole, string> = { customer: "Customer", agent: "Agent", merchant: "Merchant" };
+export const APP_ROLES: readonly AppRole[] = ["customer", "agent", "merchant", "distributor", "dso", "partner"];
+export const ROLE_LABEL: Record<AppRole, string> = {
+  customer: "Customer", agent: "Agent", merchant: "Merchant", distributor: "Distributor", dso: "DSO", partner: "Partner",
+};
 
 const asRole = (v: string | undefined): AppRole | undefined => {
   const r = (v ?? "").toLowerCase();

@@ -28,11 +28,13 @@ export const CUSTOM = "__custom";
 
 export const DEFAULT_AMOUNT: Record<TxnType, string> = {
   P2P: "10", CASH_IN: "20", CASH_OUT: "20", MERCHANT_PAY: "25", TOPUP: "20", BILL_PAY: "100", ADD_MONEY_BANK: "500",
+  B2B_TRANSFER: "10", BULK_DISBURSE: "10",
 };
 
 export const COUNTERPARTY_LABEL: Record<TxnType, string> = {
   P2P: "Send to (customer wallet)", CASH_IN: "Customer wallet (credited)", CASH_OUT: "Agent wallet", MERCHANT_PAY: "Merchant wallet",
   TOPUP: "Number to top up", BILL_PAY: "Bill number", ADD_MONEY_BANK: "Bank account (debited)",
+  B2B_TRANSFER: "Other wallet", BULK_DISBURSE: "Customer wallet (credited)",
 };
 
 const wallets = (users: readonly AppUser[], role: AppUser["role"], me?: string): Option[] =>
@@ -55,6 +57,8 @@ export function counterpartyOptions(type: TxnType, me: string | undefined, users
       { value: "1234567890123", label: "1234567890123: the bank debits and calls back" },
       { value: "1234567890999", label: "1234567890999: ending 999, the bank refuses" },
     ];
+    case "B2B_TRANSFER": return [...wallets(users, "agent", me), ...wallets(users, "distributor", me)];
+    case "BULK_DISBURSE": return wallets(users, "customer", me);
   }
 }
 
@@ -88,5 +92,6 @@ export function scenarios(type: TxnType, cp: string): Chip[] {
     case "ADD_MONEY_BANK": return [at("Happy path", "good", { counterparty: "1234567890123" }), wrongPin,
       at("Bank refuses (…999)", "bad", { counterparty: "1234567890999" }),
       at("Timeout -> status inquiry (.13)", "warn", { counterparty: "1234567890123", amount: "500.13" })];
+    case "B2B_TRANSFER": case "BULK_DISBURSE": return [happy, wrongPin, limit];
   }
 }
