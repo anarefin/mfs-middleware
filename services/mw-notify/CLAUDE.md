@@ -19,7 +19,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
     elsewhere); one older than the stored one is ignored. Re-bind revocation: mw-auth's `DEVICE_BOUND`
     notice (on `mw.notify.request.v1`) carries param `deviceId` (the new device; the SMS shows nothing of
     it); when it is accepted as a new message, `NotificationService` revokes every token of the wallet but
-    that device's. Tokens are not personal data but are logged masked to their last 6 characters
+    that device's, and the device's tokens under any other wallet (a device that moved: the old wallet's
+    pushes never reach the new holder). The binding is kept in `notify.push_device_binding` (`V14`;
+    wallet_id, device_id, bound_at = when the notice was accepted; an older one never replaces a newer one)
+    as a revocation tombstone: a registration that arrives later on its own topic but is stamped at or before
+    a binding of another device to its wallet, or of its device to another wallet, is ignored
+    (`notify.push.token.revoked_late`; ticket 110 security review). Tokens are not personal data but are logged masked to their last 6 characters
     (`SensitiveType.PUSH_TOKEN`).
   - Addressing: a request's `recipient.pushToken`, else the token registered for its `msisdn` (then
     `subjectId`) wallet. Rules with channel PUSH (`RuleEngine.ContactLookup.pushTokenOf`) are skipped when
