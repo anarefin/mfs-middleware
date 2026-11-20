@@ -1330,7 +1330,7 @@ services:
       MW_CHECKOUT_IPN_DEV_HOSTS: ${MW_CHECKOUT_IPN_DEV_HOSTS:-mw-simulators}
       # timer: the IPN retry schedule. The dev stack keeps the compressed one e2e was written
       # against (the packaged default is the spec's 1m,5m,30m,2h,6h; set this to try it).
-      MW_CHECKOUT_IPN_RETRY_DELAYS: ${MW_CHECKOUT_IPN_RETRY_DELAYS:-10s,20s,30s,1m,2m}
+      MW_CHECKOUT_IPN_RETRY_DELAYS: ${MW_CHECKOUT_IPN_RETRY_DELAYS:-1m,5m,30m,2h,6h,12h,24h}
       MW_CHECKOUT_IPN_POLL_PERIOD: ${MW_CHECKOUT_IPN_POLL_PERIOD:-2s}
       # mTLS client certificate (pki_int/issue/mw-checkout) for mw-auth's internal API: the checkout
       # OTP and the transaction assertion (ticket 72, D22, D24)

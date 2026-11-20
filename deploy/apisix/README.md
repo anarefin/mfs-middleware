@@ -237,6 +237,8 @@ Checkout (ticket 31, spec 8.2/9.3, contract `contracts/api/mw-checkout/checkout.
   any client `X-Mw-*` first), `limit-count` 600 / 60 s per consumer (group `checkout-v1-sessions`).
 - `checkout-v1-session-get` (`GET /checkout/v1/sessions/*`): the same without body checks
   (signed headers `@request-target`, `date`), 1200 / 60 s per consumer.
+- `checkout-v1-payments-get` (`GET /checkout/v1/payments`, ticket 116): the merchant's payments by date, as
+  `checkout-v1-session-get`, 600 / 60 s per consumer (group `checkout-v1-payments-get`).
 - `checkout-pay` (`GET|POST /checkout/pay/v1/*`, the hosted page in the browser): no auth plugin
   (the pay token in the path is the bearer), `client-control` 8 KiB (the otp and confirm bodies are
   schema-checked by mw-checkout, not here), 300 / 60 s per

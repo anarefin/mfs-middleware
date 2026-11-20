@@ -281,7 +281,7 @@ mw:
     ipn:
       enabled: true
       poll-period: ${MW_CHECKOUT_IPN_POLL_PERIOD:5s}
-      retry-delays: ${MW_CHECKOUT_IPN_RETRY_DELAYS:1m,5m,30m,2h,6h}
+      retry-delays: ${MW_CHECKOUT_IPN_RETRY_DELAYS:1m,5m,30m,2h,6h,12h,24h}
       batch-size: 50
       connect-timeout: 3s
       # https only and no private/loopback/link-local target, except these hosts (dev/test

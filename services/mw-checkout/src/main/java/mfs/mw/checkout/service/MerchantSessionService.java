@@ -9,6 +9,7 @@ import mfs.mw.checkout.dto.Amount;
 import mfs.mw.checkout.dto.CreateSessionRequest;
 import mfs.mw.checkout.dto.ErrorDetail;
 import mfs.mw.checkout.dto.MerchantSessionView;
+import mfs.mw.checkout.dto.PaymentList;
 import mfs.mw.checkout.dto.SessionCreated;
 import mfs.mw.checkout.dto.SessionStatus;
 import mfs.mw.checkout.entity.CheckoutSession;
@@ -90,8 +91,30 @@ public class MerchantSessionService {
     }
     CheckoutSession s =
         sessions.findById(id).filter(x -> x.merchantId().equals(merchantId)).orElseThrow(MerchantSessionService::notFound);
+    return view(s, clock.instant());
+  }
+
+  /** The longest window one list request may span (FRS CH-WEB-04: a merchant's transactions by date). */
+  static final java.time.Duration MAX_LIST_WINDOW = java.time.Duration.ofDays(31);
+
+  /**
+   * The merchant's own sessions created in {@code [from, to)}, newest first, one page (ticket 116);
+   * {@code to} after {@code from} and at most 31 days later, else 400 MW-VAL-001.
+   */
+  public PaymentList list(String merchantId, Instant from, Instant to, SessionStatus status, int page, int size) {
+    merchant(merchantId);
+    if (!to.isAfter(from) || java.time.Duration.between(from, to).compareTo(MAX_LIST_WINDOW) > 0) {
+      throw new MwException(ErrorCodes.VAL_INVALID, "to must be after from and at most 31 days later");
+    }
+    Instant now = clock.instant();
+    List<CheckoutSession> rows = sessions.findByMerchant(merchantId, from, to, status, now, size + 1, (long) page * size);
+    List<MerchantSessionView> items = rows.stream().limit(size).map(s -> view(s, now)).toList();
+    return new PaymentList(items, page, size, rows.size() > size);
+  }
+
+  private static MerchantSessionView view(CheckoutSession s, Instant now) {
     return new MerchantSessionView(
-        s.sessionId().toString(), s.orderId(), s.statusAt(clock.instant()), new Amount(s.amountMinor(), s.currency()),
+        s.sessionId().toString(), s.orderId(), s.statusAt(now), new Amount(s.amountMinor(), s.currency()),
         s.txnId() == null ? null : s.txnId().toString(),
         s.payerMsisdn() == null ? null : MaskingPolicy.mask(SensitiveType.MSISDN, s.payerMsisdn()),
         s.errorCode(), s.createdAt(), s.expiresAt(), s.updatedAt());

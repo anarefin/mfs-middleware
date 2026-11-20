@@ -99,6 +99,18 @@ public class LedgerRepository {
     return n != null && n > 0;
   }
 
+  /** The total of the partial reversals (refunds) of {@code originalTxnId} so far (ticket 116). */
+  public long refundedMinor(String originalTxnId) {
+    Long n = jdbc.queryForObject(
+        "select coalesce(sum(amount_minor), 0) from partial_reversal where original_txn_id = ?", Long.class, originalTxnId);
+    return n == null ? 0 : n;
+  }
+
+  public void recordPartialReversal(String originalTxnId, String reversalTxnId, long amountMinor) {
+    jdbc.update("insert into partial_reversal (reversal_txn_id, original_txn_id, amount_minor) values (?, ?, ?)",
+        reversalTxnId, originalTxnId, amountMinor);
+  }
+
   public void markReversed(String originalTxnId, String reversalTxnId) {
     jdbc.update("insert into reversal (original_txn_id, reversal_txn_id) values (?, ?)", originalTxnId, reversalTxnId);
   }

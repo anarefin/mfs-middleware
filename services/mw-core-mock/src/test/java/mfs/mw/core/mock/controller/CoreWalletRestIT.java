@@ -259,6 +259,43 @@ class CoreWalletRestIT {
   }
 
   @Test
+  void partialReversalsRefundUpToTheOriginalAndNoFurther() {
+    String txn = CoreCommandsTestSupport.txnId();
+    Signed p2p = signed(txn, "P2P", PAYER, "WALLET", PAYEE, 10000);
+    served(post("/core/v1/transfers", p2p.body(), p2p.assertion()), "/core/v1/transfers", "post", 200);
+    long payer = total(PAYER);
+    long payee = total(PAYEE);
+
+    String first = partial(CoreCommandsTestSupport.txnId(), txn, 4000);
+    JsonNode refunded = served(post("/core/v1/reversals", first, null), "/core/v1/reversals", "post", 200);
+    assertThat(refunded.path("status").asString()).isEqualTo("REVERSED");
+    assertThat(served(post("/core/v1/reversals", first, null), "/core/v1/reversals", "post", 200))
+        .as("the same refund again moves nothing").isEqualTo(refunded);
+    served(post("/core/v1/reversals", partial(CoreCommandsTestSupport.txnId(), txn, 5000), null),
+        "/core/v1/reversals", "post", 200);
+    assertThat(total(PAYER)).as("money back to the original wallet, fee kept").isEqualTo(payer + 9000);
+    assertThat(total(PAYEE)).isEqualTo(payee - 9000);
+
+    JsonNode over = served(post("/core/v1/reversals", partial(CoreCommandsTestSupport.txnId(), txn, 2000), null),
+        "/core/v1/reversals", "post", 422);
+    assertThat(over.path("code").asString()).isEqualTo("MW-CORE-REFUND_EXCEEDS");
+    String full = "{\"txnId\":\"" + CoreCommandsTestSupport.txnId() + "\",\"originalTxnId\":\"" + txn + "\"}";
+    assertThat(served(post("/core/v1/reversals", full, null), "/core/v1/reversals", "post", 422).path("code").asString())
+        .as("no full reversal after a partial one").isEqualTo("MW-CORE-REFUND_EXCEEDS");
+
+    served(post("/core/v1/reversals", partial(CoreCommandsTestSupport.txnId(), txn, 1000), null),
+        "/core/v1/reversals", "post", 200);
+    assertThat(total(PAYER)).isEqualTo(payer + 10000);
+    assertThat(served(post("/core/v1/reversals", partial(CoreCommandsTestSupport.txnId(), txn, 1), null),
+        "/core/v1/reversals", "post", 422).path("code").asString()).isEqualTo("MW-CORE-ALREADY_REVERSED");
+  }
+
+  private static String partial(String txnId, String original, long minor) {
+    return "{\"txnId\":\"" + txnId + "\",\"originalTxnId\":\"" + original + "\",\"amount\":{\"valueMinor\":" + minor
+        + ",\"currency\":\"BDT\"},\"reason\":\"refund\"}";
+  }
+
+  @Test
   void aCreditComesFromSettlementOnce() {
     String txn = CoreCommandsTestSupport.txnId();
     String body = "{\"txnId\":\"" + txn + "\",\"txnType\":\"ADD_MONEY_BANK\",\"creditParty\":{\"type\":\"WALLET\",\"id\":\"" + PAYEE
