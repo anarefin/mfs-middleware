@@ -117,7 +117,8 @@ public class CoreWalletClient {
       case "ReleaseHold" -> () -> holdAction(command, "release");
       case "CreditWallet" -> () -> credit(command);
       case "ReverseTransaction" -> () -> reverse(command);
-      case "QueryTransaction" -> () -> send(HttpMethod.GET, "/core/v1/transactions/" + command.txnId(), command, null, null, null);
+      case "QueryTransaction" ->
+          () -> send(HttpMethod.GET, "/core/v1/transactions/{txnId}", vars(command.txnId()), command, null, null, null);
       case "BalanceInquiry" -> () -> balance(command);
       default -> throw new IllegalArgumentException("no core call for " + command.commandType());
     };
@@ -173,33 +174,33 @@ public class CoreWalletClient {
     TransferPayload p = (TransferPayload) command.payload();
     CoreCallBodies.Transfer body = new CoreCallBodies.Transfer(command.txnId(), p.txnType(), p.debitParty(), p.creditParty(),
         p.amount(), p.idempotencyKey());
-    return send(HttpMethod.POST, path, command, body, p.assertion(), null);
+    return send(HttpMethod.POST, path, vars(), command, body, p.assertion(), null);
   }
 
   private Answer holdAction(CoreCommand command, String action) {
     HoldPayload p = (HoldPayload) command.payload();
     Integer round = round(command.commandId());
-    return send(HttpMethod.POST, "/core/v1/holds/" + p.holdId() + "/" + action, command,
+    return send(HttpMethod.POST, "/core/v1/holds/{holdId}/" + action, vars(p.holdId()), command,
         round == null && p.reason() == null ? null : new CoreCallBodies.HoldAction(p.reason(), round), null, null);
   }
 
   private Answer credit(CoreCommand command) {
     CreditPayload p = (CreditPayload) command.payload();
-    return send(HttpMethod.POST, "/core/v1/credits", command,
+    return send(HttpMethod.POST, "/core/v1/credits", vars(), command,
         new CoreCallBodies.Credit(command.txnId(), p.txnType(), p.creditParty(), p.amount(), round(command.commandId())),
         null, null);
   }
 
   private Answer reverse(CoreCommand command) {
     ReversePayload p = (ReversePayload) command.payload();
-    return send(HttpMethod.POST, "/core/v1/reversals", command,
+    return send(HttpMethod.POST, "/core/v1/reversals", vars(), command,
         new CoreCallBodies.Reversal(command.txnId(), p.originalTxnId(), p.reason()), null, null);
   }
 
   private Answer balance(CoreCommand command) {
     TransferPayload p = (TransferPayload) command.payload();
-    return send(HttpMethod.GET, "/core/v1/balance/" + p.debitParty().id() + "?txnId=" + command.txnId(), command, null,
-        p.assertion(), p.idempotencyKey());
+    return send(HttpMethod.GET, "/core/v1/balance/{walletId}?txnId={txnId}", vars(p.debitParty().id(), command.txnId()),
+        command, null, p.assertion(), p.idempotencyKey());
   }
 
   /** The operator round of a {@code ...:manual-<n>} commandId, else null (the saga's own call). */
@@ -215,12 +216,22 @@ public class CoreWalletClient {
     }
   }
 
-  /** One exchange; a 401 MW-AUTH-001 renews the service token and repeats it once. */
-  private Answer send(HttpMethod method, String uri, CoreCommand command, Object body, String assertion, String key) {
-    Answer a = exchange(method, uri, command, body, assertion, key);
+  /** URI template variables: every id goes in through one, never concatenated (security review of 95a). */
+  private static Object[] vars(Object... values) {
+    return values;
+  }
+
+  /**
+   * One exchange; a 401 MW-AUTH-001 renews the service token and repeats it once. {@code template} is a
+   * fixed URI template whose variables ({@code uriVars}) RestClient encodes strictly: an id is one path
+   * segment or one query value, whatever {@code /}, {@code ?}, {@code &} or {@code ..} it holds.
+   */
+  private Answer send(HttpMethod method, String template, Object[] uriVars, CoreCommand command, Object body,
+      String assertion, String key) {
+    Answer a = exchange(method, template, uriVars, command, body, assertion, key);
     if (a.status() == 401 && a.body() != null && TOKEN_REFUSED.equals(a.body().path("code").asString(null))) {
       tokens.invalidate();
-      a = exchange(method, uri, command, body, assertion, key);
+      a = exchange(method, template, uriVars, command, body, assertion, key);
     }
     if (a.status() >= 500 || a.status() == 408 || a.status() == 429) {
       throw new NoDefiniteAnswer(a);
@@ -228,8 +239,9 @@ public class CoreWalletClient {
     return a;
   }
 
-  private Answer exchange(HttpMethod method, String uri, CoreCommand command, Object body, String assertion, String key) {
-    RestClient.RequestBodySpec req = http.method(method).uri(uri)
+  private Answer exchange(HttpMethod method, String template, Object[] uriVars, CoreCommand command, Object body,
+      String assertion, String key) {
+    RestClient.RequestBodySpec req = http.method(method).uri(template, uriVars)
         .accept(MediaType.APPLICATION_JSON)
         .header("Authorization", "Bearer " + tokens.token());
     if (command.correlationId() != null) {

@@ -172,6 +172,25 @@ class CoreWalletClientTest {
     assertThat(seen.get(0).headers()).containsEntry("x-txn-assertion", "a.b.c").containsEntry("idempotency-key", "key-1");
   }
 
+  /** Security review of 95a: an id is one encoded path segment or query value, never path or query syntax. */
+  @Test
+  void idsAreEncodedAsOnePathSegmentOrQueryValue() {
+    String nasty = "../x?y=1/z";
+    CoreCommand balance = new CoreCommand(1, "BalanceInquiry", TXN + ":balance", TXN + "&a=b", "c", Instant.now(), null,
+        new TransferPayload("BALANCE", new Party("WALLET", nasty, null, null), new Party("WALLET", nasty, null, null),
+            Amount.bdt(0), "a.b.c", "key-1"));
+
+    client.call(balance);
+    client.call(new CoreCommand(1, "CommitHold", TXN + ":commit", TXN, "c", Instant.now(), null, new HoldPayload(nasty, null)));
+    client.call(new CoreCommand(1, "QueryTransaction", TXN + ":query:1", "../holds", "c", Instant.now(), null,
+        new QueryPayload(null)));
+
+    assertThat(seen).extracting(Seen::path).containsExactly(
+        "/core/v1/balance/..%2Fx%3Fy%3D1%2Fz?txnId=" + TXN + "%26a%3Db",
+        "/core/v1/holds/..%2Fx%3Fy%3D1%2Fz/commit",
+        "/core/v1/transactions/..%2Fholds");
+  }
+
   @Test
   void aCoreRefusalIsRefusedWithItsCode() {
     routes.put("POST /core/v1/transfers", ex -> new Response(422, error("MW-CORE-INSUFFICIENT_BALANCE"), 0));
