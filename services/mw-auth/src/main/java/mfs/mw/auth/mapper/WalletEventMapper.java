@@ -3,7 +3,6 @@ package mfs.mw.auth.mapper;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
-import mfs.mw.auth.dto.CustomerFactorsAnswer;
 import mfs.mw.auth.dto.WalletStateChanged;
 import mfs.mw.auth.exception.ErrorCodes;
 import mfs.mw.auth.exception.MwException;
@@ -66,33 +65,6 @@ public class WalletEventMapper {
       throw malformed("WalletStateChanged lacks a required field");
     }
     return Optional.of(e);
-  }
-
-  /**
-   * The core's answer to a PIN reset's VerifyCustomerFactors (ticket 70): {@code
-   * CustomerFactorsVerified} / {@code CustomerFactorsRejected} with a {@code pin-reset:} commandId;
-   * empty for any other core event. Without eventId or commandId it is malformed.
-   */
-  public Optional<CustomerFactorsAnswer> readFactorsAnswer(String body) {
-    JsonNode tree;
-    try {
-      tree = json.readTree(body);
-    } catch (JacksonException e) {
-      throw malformed("core event is not JSON");
-    }
-    String type = tree.path("eventType").asString("");
-    boolean verified = "CustomerFactorsVerified".equals(type);
-    if (!verified && !"CustomerFactorsRejected".equals(type)) {
-      return Optional.empty();
-    }
-    String eventId = tree.path("eventId").asString("");
-    String commandId = tree.path("commandId").asString("");
-    if (eventId.isBlank() || !commandId.startsWith("pin-reset:")) {
-      throw malformed(type + " lacks a required field");
-    }
-    String reason = tree.path("reasonCode").asString("");
-    return Optional.of(new CustomerFactorsAnswer(eventId, commandId, tree.path("payload").path("resetId").asString(""),
-        verified, reason.isBlank() ? null : reason));
   }
 
   /** The national form {@code 01XXXXXXXXX} of a contract MSISDN. */

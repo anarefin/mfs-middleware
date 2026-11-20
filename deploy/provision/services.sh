@@ -156,6 +156,8 @@ provision_mw_admin_api() {
   # the APISIX Admin API key: the channel client registry projects its consumers there (ticket 100a)
   sync_env mw.apisix.admin-key APISIX_ADMIN_KEY
   db_role admin_api_rw admin partner
+  # partner credential upload (ticket 131): staging area + write-only access to the adapters' partner secrets
+  EXTRA_POLICY="$(credential_upload_policy)"
 }
 
 provision_mw_adapter_telco() {

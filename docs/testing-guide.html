@@ -271,7 +271,7 @@ scripts/creds.sh</pre></div>
     <tr><td>number / account / bill ending <code>999</code></td><td>refused by the partner (business failure)</td></tr>
     <tr><td>amount with <code>.13</code> paisa (e.g. <code>20.13</code>)</td><td>partner times out but <b>applied</b> the request</td></tr>
     <tr><td>amount <code>.77</code></td><td>partner answers HTTP 500 after applying (the status inquiry then finds it: COMPLETED)</td></tr>
-    <tr><td>amount <code>.99</code></td><td>partner answers an unknown code, also to every status inquiry: the transaction <b>stays UNKNOWN with the amount held</b> (up to the 24 h cut-off, then MANUAL_REVIEW). Useful for 9.6</td></tr>
+    <tr><td>amount <code>.99</code></td><td>partner answers an unknown code, also to every status inquiry: the transaction <b>stays UNKNOWN with the amount held</b> (until the last status inquiry of the schedule goes unanswered, then MANUAL_REVIEW and the ops alert: SMS to the ops number, email to ops@bits.test in GreenMail). Useful for 9.6</td></tr>
     <tr><td>amount <code>.55</code></td><td>partner answers a broken body (applied)</td></tr>
     <tr><td>bill number ending <code>404</code> / <code>000</code></td><td>bill not found / already paid</td></tr>
     <tr><td>SMS number ending <code>999</code> / <code>998</code> / <code>995</code></td><td>delivery report UNDELIV / EXPIRED / none</td></tr>

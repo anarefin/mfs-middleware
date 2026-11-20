@@ -33,8 +33,7 @@ class PinServiceTest {
 
   static final PinProperties PROPS = new PinProperties(3,
       new PinProperties.Lock(3, Duration.ofHours(1), Duration.ofHours(24), Duration.ofDays(30)),
-      new PinProperties.Reset(Duration.ofMinutes(15), Duration.ofHours(72), "core.wallet.command.v1",
-          Duration.ofMinutes(15)),
+      new PinProperties.Reset(Duration.ofMinutes(15), Duration.ofHours(72)),
       "mw.audit.event.v1");
   static final AuthWallet WALLET =
       new AuthWallet("01711000001", "tok", "tokenise-msisdn.v1", "{}", "CUSTOMER", "ACTIVE", true, 1990, 1);

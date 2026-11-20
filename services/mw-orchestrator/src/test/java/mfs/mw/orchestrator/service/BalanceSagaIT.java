@@ -46,7 +46,6 @@ class BalanceSagaIT {
   }
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
-  private static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
   private static final String AUDIT_SCHEMA = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
   private static final String WALLET = "01711000001";
   /** The reported balance; looked for everywhere the middleware stores something. */
@@ -110,9 +109,6 @@ class BalanceSagaIT {
   private void assertAllValid(String txnId) {
     for (JsonNode n : outbox("mw.txn.status.v1", txnId)) {
       assertThat(ContractSchemas.schema(STATUS_SCHEMA).validate(n)).as(n.toString()).isEmpty();
-    }
-    for (JsonNode n : commands(txnId)) {
-      assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
     for (JsonNode n : outbox("mw.audit.event.v1", txnId)) {
       assertThat(ContractSchemas.schema(AUDIT_SCHEMA).validate(n)).as(n.toString()).isEmpty();

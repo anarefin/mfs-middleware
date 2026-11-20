@@ -2,6 +2,7 @@ package mfs.mw.admin.api.controller;
 
 import jakarta.validation.Valid;
 import mfs.mw.admin.api.dto.ChangeRequestView;
+import mfs.mw.admin.api.dto.ErrorMapChangeBody;
 import mfs.mw.admin.api.dto.PartnerChangeRequestBody;
 import mfs.mw.admin.api.dto.PartnerView;
 import mfs.mw.admin.api.security.OperatorResolver;
@@ -55,5 +56,13 @@ public class PartnerController {
   public ChangeRequestView request(
       @AuthenticationPrincipal Jwt jwt, @PathVariable String partnerId, @Valid @RequestBody PartnerChangeRequestBody body) {
     return service.request(operators.resolve(jwt), partnerId, body);
+  }
+
+  /** The partner-code -> canonical-code map (ticket 131, FRS ADM-08). */
+  @PostMapping("/{partnerId}/error-map/change-requests")
+  @ResponseStatus(HttpStatus.CREATED)
+  public ChangeRequestView requestErrorMap(
+      @AuthenticationPrincipal Jwt jwt, @PathVariable String partnerId, @Valid @RequestBody ErrorMapChangeBody body) {
+    return service.requestErrorMap(operators.resolve(jwt), partnerId, body);
   }
 }

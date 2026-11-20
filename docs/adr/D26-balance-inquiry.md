@@ -59,7 +59,7 @@ asks about a transaction. Every channel feature reaches the core the same way: t
 ## Where in the repo
 
 - spec decision D26, sections 5.2, 6.3, 9.1, 9.2
-- `contracts/common/defs.v1.schema.json` (TxnType), `contracts/events/mw-orchestrator/core.command.v1/BalanceInquiry.payload.schema.json`,
+- `contracts/common/defs.v1.schema.json` (TxnType), `contracts/api/mw-core-mock/core-wallet.v1.openapi.yaml` (balance inquiry; the command payload schema was retired in ticket 95b),
   `contracts/events/mw-core-mock/core.event.v1/BalanceReported.payload.schema.json`,
   `contracts/events/mw-core-mock/core.event.v1/BalanceInquiryRejected.payload.schema.json`,
   `contracts/events/mw-orchestrator/mw.txn.status.v1.schema.json` (`balance`),

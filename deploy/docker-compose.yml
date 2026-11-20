@@ -962,7 +962,7 @@ services:
       MW_ORCHESTRATOR_HOLDINGTIMEOUT: ${MW_ORCHESTRATOR_HOLDING_TIMEOUT:-5s}
       MW_ORCHESTRATOR_POSTINGTIMEOUT: ${MW_ORCHESTRATOR_POSTING_TIMEOUT:-5s}
       MW_ORCHESTRATOR_PARTNERTIMEOUT: ${MW_ORCHESTRATOR_PARTNER_TIMEOUT:-30s}
-      MW_ORCHESTRATOR_INQUIRY_SCHEDULE: ${MW_ORCHESTRATOR_INQUIRY_SCHEDULE:-30s,1m,2m,5m,15m,1h}
+      MW_ORCHESTRATOR_INQUIRY_SCHEDULE: ${MW_ORCHESTRATOR_INQUIRY_SCHEDULE:-30s,2m,10m,1h}
       MW_ORCHESTRATOR_INQUIRY_NOTFOUNDGRACE: ${MW_ORCHESTRATOR_INQUIRY_NOT_FOUND_GRACE:-30s}
       MW_ORCHESTRATOR_REVERSINGTIMEOUT: ${MW_ORCHESTRATOR_REVERSING_TIMEOUT:-60s}
       # business-duplicate window (FRS PLT-013, ticket 99; 0s = off): same payment under a new key
@@ -1060,6 +1060,10 @@ services:
       # DEV ONLY: GreenMail offers no STARTTLS. The service's own default requires it.
       SMTP_STARTTLS_REQUIRED: ${SMTP_STARTTLS_REQUIRED:-false}
       MAIL_FROM: ${MAIL_FROM:-bits <no-reply@bits.test>}
+      # MANUAL_REVIEW ops alert (FRS PLT-024, ticket 96a): operations' mailbox (GreenMail in dev) and
+      # mobile number (the SMSC simulator); unset = no ops alert on that channel.
+      MW_NOTIFY_OPS_EMAIL: ${MW_NOTIFY_OPS_EMAIL:-ops@bits.test}
+      MW_NOTIFY_OPS_MSISDN: ${MW_NOTIFY_OPS_MSISDN:-01700000999}
       # Dev/MVP stack only: also apply db/dev (registered emails of the seeded test users).
       MW_NOTIFY_FLYWAY_LOCATIONS: ${MW_NOTIFY_FLYWAY_LOCATIONS:-classpath:db/migration,classpath:db/dev}
     deploy:

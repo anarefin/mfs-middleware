@@ -10,6 +10,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.ErrorDetail;
+import mfs.mw.admin.api.dto.ErrorMapChangeBody;
 import mfs.mw.admin.api.dto.Operator;
 import mfs.mw.admin.api.dto.PartnerChangeRequestBody;
 import mfs.mw.admin.api.dto.PartnerChangeRequestBody.PartnerAction;
@@ -174,6 +175,51 @@ public class PartnerConfigService {
     }
     payload.put("config", after);
     return changeRequests.open(maker, Partner.RESOURCE_TYPE, id, action.name(), payload, diff, body.reason());
+  }
+
+  /** {@code ChangeRequest.resourceType} of an error-map change (ticket 131, FRS ADM-08). */
+  public static final String ERROR_MAP_RESOURCE_TYPE = "partner_error_map";
+
+  /**
+   * The partner-code -> canonical-code map of an existing partner (ticket 131, FRS ADM-08): its own
+   * change request type ({@link PartnerErrorMapChangeHandler}), with the partner request's payload
+   * shape (family, baseVersion, the full config with the new map), so the approval publishes the
+   * config as the next version exactly as a SET_TIMEOUTS does (no dry-run on a proven route).
+   */
+  public ChangeRequestView requestErrorMap(Operator maker, String partnerId, ErrorMapChangeBody body) {
+    if (!maker.hasAny(AdminRole.PARTNER_MAKER)) {
+      throw new ForbiddenException("Asking for a partner change needs the ops-maker or integration-maker role");
+    }
+    Partner p = partners.find(checkedId(partnerId)).orElseThrow(PartnerConfigService::notFound);
+    PartnerConfigValue base = proven(p) ? p.config().withoutDryRun() : p.config();
+    PartnerConfigValue next = base.withErrorMap(body.errorMap(), body.ambiguousCodes());
+    List<ErrorDetail> problems = new ArrayList<>();
+    common(next, problems);
+    if (next.ambiguousCodes() != null && next.ambiguousCodes().stream().anyMatch(c -> c == null || c.isBlank())) {
+      problems.add(new ErrorDetail("ambiguousCodes", "codes must not be blank"));
+    }
+    refuseIfAny(problems);
+    Map<String, Object> diff = PartnerMapper.diff(errorMapSide(base), errorMapSide(next));
+    if (diff.get("after") instanceof Map<?, ?> a && a.isEmpty() && diff.get("before") instanceof Map<?, ?> b && b.isEmpty()) {
+      throw new MwException(ErrorCodes.VAL_ACTION_NOT_ALLOWED, "The change would change nothing")
+          .withStatus(HttpStatus.CONFLICT);
+    }
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("family", p.family());
+    payload.put("baseVersion", p.version());
+    payload.put("config", asMap(next));
+    return changeRequests.open(maker, ERROR_MAP_RESOURCE_TYPE, p.id(), body.action().name(), payload, diff, body.reason());
+  }
+
+  private Map<String, Object> errorMapSide(PartnerConfigValue c) {
+    Map<String, Object> all = asMap(c);
+    Map<String, Object> side = new LinkedHashMap<>();
+    for (String k : List.of("errorMap", "ambiguousCodes")) {
+      if (all.get(k) != null) {
+        side.put(k, all.get(k));
+      }
+    }
+    return side;
   }
 
   /**

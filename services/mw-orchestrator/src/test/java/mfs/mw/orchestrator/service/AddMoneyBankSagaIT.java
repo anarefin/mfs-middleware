@@ -41,7 +41,6 @@ class AddMoneyBankSagaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
   private static final String PARTNER_SCHEMA = "events/mw-orchestrator/mw.partner.request.v1.schema.json";
-  private static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
   private static final String INBOUND_SCHEMA = "events/mw-orchestrator/mw.partner.inbound.v1.schema.json";
   private static final String PARTNER_TOPIC = "mw.partner.request.bank.v1";
   private static final String ACCOUNT = "1234567890123";
@@ -110,9 +109,6 @@ class AddMoneyBankSagaIT {
     }
     for (JsonNode n : outbox(PARTNER_TOPIC, txnId)) {
       assertThat(ContractSchemas.schema(PARTNER_SCHEMA).validate(n)).as(n.toString()).isEmpty();
-    }
-    for (JsonNode n : coreEvents.commands(txnId)) {
-      assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
   }
 

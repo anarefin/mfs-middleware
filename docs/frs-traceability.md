@@ -175,10 +175,10 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-014 | tickets 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) and signed nonces (ticket 99) built; card, IMT, NPSB in their adapters |
 | PLT-020 | done | saga steps with compensation (`saga_step`, spec 7.1) |
 | PLT-021 | done | step state persisted per step; resume after restart (`scripts/chaos.sh`); a core REST call starts only after its step commits and its answer re-enters the saga in its own transaction (ticket 95a, `CoreCallDispatcher`, `CoreReplyService`) |
-| PLT-022 | ticket 96 | core-side compensation built; the partner leg in reverse order in 96 |
-| PLT-023 | ticket 96 | `UNKNOWN` and the inquiry schedule built (spec 7.4); a core call without a definite answer (timeout, 5xx) goes UNKNOWN on its step deadline and WAL-13 settles it (ticket 95a, `CoreRestFlowIT`); FRS default 30 s / 2 min / 10 min / 1 h in 96 |
-| PLT-024 | ticket 96 | `MANUAL_REVIEW` after the cut-off built; alert event and metric in 96 |
-| PLT-025 | ticket 96 | partner REVERSE, idempotent and retried until acknowledged |
+| PLT-022 | ticket 96 | core-side compensation built; the partner leg (96b after a refused commit, 96c partner first when reversing a completed txn) |
+| PLT-023 | done | `UNKNOWN` and the inquiry schedule (spec 7.4): default 30 s / 2 min / 10 min / 1 h, `mw.orchestrator.inquiry.schedule`, per-partner list of waits (ticket 96a, `InquiryScheduleTest`, `InquirySagaIT`); a core call without a definite answer (timeout, 5xx) goes UNKNOWN on its step deadline and WAL-13 settles it (ticket 95a, `CoreRestFlowIT`) |
+| PLT-024 | done | `MANUAL_REVIEW` once the last inquiry went unanswered (`answer-wait` 30 s, `MW-TMO-004`); entering MANUAL_REVIEW from any state counts `mw_manual_review_entered_total` and logs `txn.manual_review.entered` (`SagaAlerts`), and mw-notify alerts operations by SMS and email from the status (recipient `OPS`, `mw.notify.ops.*`, V16, `FlowNotificationsIT`; ticket 96a) |
+| PLT-025 | ticket 96 | partner REVERSE (96b, and 96c for a completed txn), idempotent and retried until acknowledged |
 | PLT-026 | ticket 105 | core fee returned at validation; preview with fee, VAT and commission in 105 |
 | PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector `client/CoreWalletClient` (connect/read timeouts, breaker `core`, reads retried only; ticket 95a) |
 | PLT-031 | done | no automatic redelivery of a PAY (D28); INQUIRY and STATUS retried |
@@ -275,7 +275,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-15 | ticket 119 | UCB IMT mock |
 | EXT-16 | ticket 120 | UCB ATM mock |
 | EXT-17 | ticket 128 | mock side done (ticket 123): party `dw` checks each `control_<date>.json` drop of `dw/in` (row count, sha256, header per file type, `seed/v1/dw/schemas.json`), verdict in the journal (`DwDropValidatorTest`, `SftpMocksIT`); the export in 128 |
-| EXT-18 | ticket 95 | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93) and the orchestrator calls it (`client/CoreWalletClient`, ticket 95a); mw-auth and mw-admin-api still send Kafka commands until 95b |
+| EXT-18 | done | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93), the orchestrator calls it (`client/CoreWalletClient`, ticket 95a), mw-auth checks a PIN reset's KYC factors (`client/CoreClient`) and mw-admin-api unlocks an account (`client/CoreAccountClient`) over it (ticket 95b); the core command topics and `core.command.v1` are retired, the core events stay on Kafka |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
 | MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
 | MCK-03 | ticket 136 | magic values are the default trigger of the mock-control engine, an explicit scenario wins (ticket 102, `service/mockcontrol/ScenarioEngine`); trigger table per mock in `docs/concepts/simulators.html`; every new mock in 136 |
@@ -344,14 +344,14 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); maintenance window and mock/real switch in 131 |
-| ADM-02 | ticket 131 | partner credentials already live in Vault (`secret/mw-adapter-*/<partner>`, ticket 91); the upload and expiry dashboard are ticket 131 |
+| ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); credential upload and error map API built (131a); maintenance window and mock/real switch in 131b, console tabs in 131c |
+| ADM-02 | ticket 131 | API built (131a): write-only credential upload through maker-checker (`partner_credential`, staged in Vault, approved into a field of `secret/mw-adapter-<family>/<partner>`, mw-admin-api's policy write-only there), metadata `GET /admin/v1/credentials`, dashboard feed `/admin/v1/credentials/expiring`, ops email at 30/7/1 days (`CredentialVaultIT`, `CredentialExpiryJobIT`, API folder 45); console tab and card in 131c |
 | ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
 | ADM-04 | tickets 98, 132 | routing rules |
 | ADM-05 | tickets 113, 132 | billers |
 | ADM-06 | ticket 133 | USSD menu JSON editing built; visual editor and preview in 133 |
 | ADM-07 | tickets 111, 133 | SMS template editing built; rule table and test send |
-| ADM-08 | ticket 131 | response-code map screen |
+| ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the screen in 131c |
 | ADM-09 | done | transaction search and saga timeline (mw-admin-api, `ui/mw-admin-ui`) |
 | ADM-10 | ticket 134 | TSQ, force complete and reversal with maker-checker built; resend notification and release hold in 134 |
 | ADM-11 | ticket 134 | recon workbench |

@@ -21,6 +21,7 @@ import org.springframework.validation.annotation.Validated;
  * @param defaultLocale locale of rule-built messages when the event carries none
  * @param receiptBufferTtl how long an unmatched DLR waits for its segment
  * @param quietHours when PROMO messages are held (spec 10.1)
+ * @param ops where rules with recipient {@code OPS} send (ticket 96a: the MANUAL_REVIEW alert)
  */
 @Validated
 @ConfigurationProperties("mw.notify")
@@ -30,9 +31,11 @@ public record NotifyProperties(
     @NotBlank String defaultSender,
     @NotBlank String defaultLocale,
     Duration receiptBufferTtl,
-    QuietHours quietHours) {
+    QuietHours quietHours,
+    Ops ops) {
 
   public NotifyProperties {
+    ops = ops == null ? new Ops(null, null, null) : ops;
     retryBackoff = List.copyOf(retryBackoff);
     receiptBufferTtl = receiptBufferTtl == null ? Duration.ofDays(1) : receiptBufferTtl;
     quietHours = quietHours == null ? QuietHours.DEFAULT : quietHours;
@@ -64,6 +67,18 @@ public record NotifyProperties(
       return start.isBefore(end)
           ? !t.isBefore(start) && t.isBefore(end)
           : !t.isBefore(start) || t.isBefore(end);
+    }
+  }
+
+  /**
+   * Operations' addresses for {@code OPS} rules (FRS PLT-024): mobile number for SMS, mailbox for
+   * email, locale of the texts (default {@code en}); an unset address skips that channel's rule.
+   */
+  public record Ops(String msisdn, String email, String locale) {
+    public Ops {
+      msisdn = msisdn == null || msisdn.isBlank() ? null : msisdn;
+      email = email == null || email.isBlank() ? null : email;
+      locale = locale == null || locale.isBlank() ? "en" : locale;
     }
   }
 

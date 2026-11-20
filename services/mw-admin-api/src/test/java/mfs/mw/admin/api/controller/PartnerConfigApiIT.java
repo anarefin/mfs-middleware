@@ -407,4 +407,59 @@ class PartnerConfigApiIT {
     assertValid("/admin/v1/change-requests", "get", "200", page);
     assertThat(page.path("items")).hasSize(1);
   }
+
+  // --- error map (ticket 131, FRS ADM-08) ----------------------------------------------------
+
+  private MvcTestResult askErrorMap(RequestPostProcessor who, String partnerId, String body) {
+    return mvc.post().uri("/admin/v1/partners/{id}/error-map/change-requests", partnerId).with(who)
+        .contentType(MediaType.APPLICATION_JSON).content(body).exchange();
+  }
+
+  static final String ERROR_MAP =
+      "{\"action\":\"SET_ERROR_MAP\",\"reason\":\"map OCS codes\",\"errorMap\":{\"E101\":{\"suffix\":\"INVALID_MSISDN\"},"
+          + "\"E503\":{\"suffix\":\"BUSY\",\"retryable\":true}},\"ambiguousCodes\":[\"E999\"]}";
+
+  @Test
+  void anApprovedErrorMapIsPublishedWithTheRestOfTheConfigAsTheNextVersion() {
+    MvcTestResult r = askErrorMap(INTEGRATION_MAKER, "ocs", ERROR_MAP);
+    assertThat(r).hasStatus(201);
+    JsonNode cr = body(r);
+    assertValid("/admin/v1/partners/{partnerId}/error-map/change-requests", "post", "201", cr);
+    assertThat(cr.path("resourceType").asString()).isEqualTo("partner_error_map");
+    assertThat(cr.path("action").asString()).isEqualTo("SET_ERROR_MAP");
+    assertThat(cr.path("diff").path("after").path("errorMap").path("E503").path("suffix").asString()).isEqualTo("BUSY");
+    assertThat(outbox(CONFIG_TOPIC)).isEmpty();
+
+    assertThat(approve(INTEGRATION_MAKER, cr.path("id").asString())).hasStatus(403);
+    assertThat(approve(INTEGRATION_CHECKER, cr.path("id").asString())).hasStatus(200);
+    JsonNode event = outbox(CONFIG_TOPIC).getFirst();
+    assertEvent(CONFIG_SCHEMA, event);
+    assertThat(event.path("version").asLong()).isEqualTo(1);
+    JsonNode value = event.path("value");
+    assertThat(value.path("errorMap").path("E101").path("suffix").asString()).isEqualTo("INVALID_MSISDN");
+    assertThat(value.path("errorMap").path("E503").path("retryable").asBoolean()).isTrue();
+    assertThat(value.path("ambiguousCodes").get(0).asString()).isEqualTo("E999");
+    assertThat(value.path("route").asString()).contains("direct:partner-ocs");
+    assertThat(value.has("dryRun")).isFalse();
+    assertThat(partner("ocs").path("config").path("errorMap").path("E101").path("suffix").asString())
+        .isEqualTo("INVALID_MSISDN");
+    JsonNode audit = outbox("mw.audit.event.v1").getLast();
+    assertEvent(AUDIT_SCHEMA, audit);
+    assertThat(audit.path("resource").asString()).isEqualTo("partner_error_map/ocs");
+  }
+
+  @Test
+  void aBadSuffixAnUnknownPartnerTheWrongRoleOrNoChangeAreRefused() {
+    MvcTestResult bad = askErrorMap(MAKER, "ocs",
+        "{\"action\":\"SET_ERROR_MAP\",\"reason\":\"x\",\"errorMap\":{\"E1\":{\"suffix\":\"lower case\"}}}");
+    assertThat(bad).hasStatus(400);
+    assertThat(body(bad).path("code").asString()).isEqualTo("MW-VAL-001");
+    assertThat(askErrorMap(MAKER, "nope", ERROR_MAP)).hasStatus(404);
+    assertThat(askErrorMap(operator("viewer01", "viewer"), "ocs", ERROR_MAP)).hasStatus(403);
+    assertThat(askErrorMap(CHECKER, "ocs", ERROR_MAP)).hasStatus(403);
+    String held = partner("ocs").path("config").path("errorMap").toString();
+    MvcTestResult same = askErrorMap(MAKER, "ocs",
+        "{\"action\":\"SET_ERROR_MAP\",\"reason\":\"x\",\"errorMap\":" + held + "}");
+    assertThat(same).hasStatus(409);
+  }
 }

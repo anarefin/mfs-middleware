@@ -27,11 +27,14 @@ field (with `"discriminator": { "propertyName": <type field> }`) picks the paylo
 
 | Topic | Envelope | Type field | Message types |
 | --- | --- | --- | --- |
-| `core.wallet.command.v1`, `core.payment.command.v1` | `events/mw-orchestrator/core.command.v1` | `commandType` | 9 commands (spec 6.3) |
 | `core.wallet.event.v1`, `core.payment.event.v1` | `events/mw-core-mock/core.event.v1` | `eventType` | 17 events (spec 6.3) |
 | `mw.partner.request.<family>.v1` | `events/mw-orchestrator/mw.partner.request.v1` | `family` | telco, billpay, bank, interop, compliance |
 | `mw.partner.reply.v1` | `events/mw-orchestrator/mw.partner.reply.v1` | `family` | same 5 families |
 | `mw.partner.inbound.v1` | `events/mw-orchestrator/mw.partner.inbound.v1` | `family` | same 5 families |
+
+The core commands (`core.command.v1` on `core.wallet.command.v1` / `core.payment.command.v1`) are retired
+(ADR D31, ticket 95b): the orchestrator, mw-auth and mw-admin-api call the core over REST
+(`api/mw-core-mock/core-wallet.v1.openapi.yaml`); the core's events stay on Kafka.
 
 The three partner envelopes keep the `family` enum and one `oneOf` branch per family (each with a
 `const` on `family`), but today every family has the same payload, so all 5 branches `$ref` one
@@ -45,7 +48,7 @@ Other topics: `mw.txn.request.v1`, `mw.txn.status.v1` -> `events/mw-orchestrator
 
 Every schema has an absolute `$id` that mirrors its path:
 `https://contracts.bits.mw/<path under contracts/>`. References between files are relative
-and resolve against that id, e.g. from an envelope `"$ref": "core.command.v1/HoldFunds.payload.schema.json"`
+and resolve against that id, e.g. from an envelope `"$ref": "core.event.v1/FundsHeld.payload.schema.json"`
 and `"$ref": "../../common/defs.v1.schema.json#/$defs/TxnId"`, from a payload
 `"$ref": "../../../common/defs.v1.schema.json#/$defs/Amount"`. Nothing is fetched over the
 network: the lint registers every file first, and the service template's test loader
@@ -107,17 +110,17 @@ Versioning policy (PLT-051):
 
 A contract change is its own WP, made by the topic's owner (ground rule "Contract first").
 
-1. Add the value to the envelope's type `enum`, e.g. `commandType` in `core.command.v1.schema.json`.
+1. Add the value to the envelope's type `enum`, e.g. `eventType` in `core.event.v1.schema.json`.
 2. Add a `oneOf` branch:
-   `{ "properties": { "commandType": { "const": "NewThing" }, "payload": { "$ref": "core.command.v1/NewThing.payload.schema.json" } } }`.
+   `{ "properties": { "eventType": { "const": "NewThing" }, "payload": { "$ref": "core.event.v1/NewThing.payload.schema.json" } } }`.
    Branch-level rules that depend on the type (an `outcome` const, a required `reasonCode`) go in
    the branch too.
-3. Create `core.command.v1/NewThing.payload.schema.json` with
-   `"$id": "https://contracts.bits.mw/events/mw-orchestrator/core.command.v1/NewThing.payload.schema.json"`,
+3. Create `core.event.v1/NewThing.payload.schema.json` with
+   `"$id": "https://contracts.bits.mw/events/mw-core-mock/core.event.v1/NewThing.payload.schema.json"`,
    `"type": "object"`, its fields and `required`. Use the `common/defs.v1` types by relative `$ref`.
-4. Add `samples/core.command.v1/NewThing/valid-<case>.json` and `invalid-<reason>.json` (whole
+4. Add `samples/core.event.v1/NewThing/valid-<case>.json` and `invalid-<reason>.json` (whole
    envelope messages), and `expected-errors.json` stating each invalid sample's errors, e.g.
-   `{ "invalid-without-assertion.json": ["/payload must have required property 'assertion'"] }`.
+   `{ "invalid-without-reason.json": ["/ must have required property 'reasonCode'"] }`.
    Run `./gradlew :contractsLint`; on a mismatch it prints the errors the sample actually produced.
 5. No OWNERS.yml entry is needed: the payload belongs to the envelope.
 

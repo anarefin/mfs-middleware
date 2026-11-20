@@ -54,7 +54,10 @@ import org.springframework.test.context.DynamicPropertySource;
       "mw.notify.consumers.enabled=false",
       "mw.notify.smpp.enabled=false",
       "mw.notify.dispatch.enabled=false",
-      "mw.notify.email.enabled=true"
+      "mw.notify.email.enabled=true",
+      "mw.notify.ops.msisdn=" + FlowNotificationsIT.OPS_MSISDN,
+      "mw.notify.ops.email=" + FlowNotificationsIT.OPS_EMAIL,
+      "mw.notify.ops.locale=en"
     })
 @Import({TestInfrastructure.class, FlowNotificationsIT.Fixtures.class})
 class FlowNotificationsIT {
@@ -63,6 +66,8 @@ class FlowNotificationsIT {
   static final String CUSTOMER2 = "01711000002";
   static final String AGENT = "01811000001";
   static final String CUSTOMER_EMAIL = "customer01@example.test";
+  static final String OPS_MSISDN = "01911999000";
+  static final String OPS_EMAIL = "ops@example.test";
 
   static final int SMTP_PORT = EmailFlowIT.freePort();
   static final GreenMail MAIL = new GreenMail(new ServerSetup(SMTP_PORT, "127.0.0.1", ServerSetup.PROTOCOL_SMTP));
@@ -269,11 +274,34 @@ class FlowNotificationsIT {
   }
 
   @Test
+  void enteringManualReviewAlertsOperationsOncePerChannel() throws Exception {
+    // FRS PLT-024 (ticket 96a): the MANUAL_REVIEW status alerts operations by SMS and email (V16),
+    // next to the customer's own "processing" SMS (V7); a redelivered status alerts nobody again
+    TxnStatusEvent e = new TxnStatusEvent(UUID.randomUUID().toString(), "corr-review", "CUSTOMER_APP", "TOPUP",
+        "MANUAL_REVIEW", msisdn(CUSTOMER), wallet(CUSTOMER, "CUSTOMER"), msisdn(CUSTOMER2), new Amount(5000, "BDT"),
+        new Amount(200, "BDT"), null, null, "bn", new PartnerRef("gp", "PREPAID", null), new TxnError("MW-TMO-004"));
+
+    txnStatuses.onStatus(e);
+    txnStatuses.onStatus(e);
+    dispatcher.dispatchDue();
+
+    assertThat(smsTexts()).containsOnlyKeys(CUSTOMER, OPS_MSISDN);
+    assertThat(smsTexts().get(OPS_MSISDN))
+        .isEqualTo("Bits ops: TOPUP of Tk 50.00 needs manual review. Reason MW-TMO-004. TrxID " + e.txnId());
+    MimeMessage[] mails = MAIL.getReceivedMessages();
+    assertThat(mails).hasSize(1);
+    assertThat(mails[0].getAllRecipients()).extracting(Object::toString).containsExactly(OPS_EMAIL);
+    assertThat(mails[0].getSubject()).isEqualTo("Bits ops: manual review needed, TrxID " + e.txnId());
+    assertThat(EmailFlowIT.parts(mails[0]).get("text/plain")).contains("MW-TMO-004").doesNotContain("{{");
+  }
+
+  @Test
   void everySeededRuleHasAnActiveTemplateInBanglaAndEnglish() {
     Instant now = Instant.parse("2026-11-04T08:00:00Z");
     List<RuleRecord> all = rules.enabledFor(TxnStatusService.TOPIC);
     assertThat(all).extracting(RuleRecord::ruleId).contains("p2p-failed", "cashin-sent", "cashout-received",
-        "topup-processing", "billpay-success-email", "addmoney-success-email");
+        "topup-processing", "billpay-success-email", "addmoney-success-email", "ops-manual-review-sms",
+        "ops-manual-review-email");
     for (RuleRecord r : all) {
       for (String locale : List.of("bn", "en")) {
         assertThat(templates.findActive(r.templateCode(), r.channel(), locale, now))

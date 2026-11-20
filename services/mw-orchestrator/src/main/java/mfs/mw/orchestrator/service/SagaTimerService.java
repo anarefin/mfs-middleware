@@ -68,7 +68,7 @@ public class SagaTimerService {
       TransactionRecord rec = found.get();
       try {
         if (rec.status() == Status.UNKNOWN && SagaEngine.INQUIRY_TIMER.equals(timer.step())) {
-          inquiries.due(rec, timer.attempt()); // spec 7.4: inquire, or MANUAL_REVIEW at the cut-off
+          inquiries.due(rec, timer.attempt()); // spec 7.4: inquire, or MANUAL_REVIEW after the last inquiry
           continue;
         }
         if (rec.status() == Status.REVERSING) {
