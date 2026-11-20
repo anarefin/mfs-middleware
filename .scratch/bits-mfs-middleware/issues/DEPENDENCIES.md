@@ -85,7 +85,7 @@
 101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
 102-mock-control-engine                     89                done (102a b8f2d843; 102b 33m 49 files +1774 −467 aacc96ef)
 103-mock-control-core-and-reset             102,94            done     120m     90 files +3425 −249    8c4ed022
-104-frs-e2e-harness                         96a,98,103         open
+104-frs-e2e-harness                         96a,98,103        done     -        10 files +630 −15      524e1bb6  (folder 41-p2p-frs; 40 already taken by mock-reset. Live Newman and the M7 gate were not run)
 # --- M7 gate: P2P T1-T12 via the app API; clean build; fresh-stack API suite
 105-app-preview-confirm                     95                done     -        67 files +3346 −158    d735f224
 106-app-types-b2b                           94,105            open
