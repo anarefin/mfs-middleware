@@ -7,7 +7,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.atm`. Follow 
 
 The one-time ATM token is a secret. This adapter never stores it and never logs it. Verify reads
 the element only so the schema can require it; the check (HMAC, expiry, single use, lockout) is
-ticket 120b. An MSISDN on the SOAP body is not written to the inbound table and is not logged.
+ticket 120b2. An MSISDN on the SOAP body is not logged and is stored only inside the keyed
+request fingerprint (below), never in clear.
+
+## Fail closed (ticket 120b1, M9 review)
+
+`VerifyTokenAndDebit` and `CashIn` move cash. Until the token check, the hold and the credit
+exist (tickets 120b2, 120b3), both answer the server fault `MW-SYS-ATM_CASH_DISABLED` (503) and
+write nothing. `mw.atm.inbound.cash-enabled` (default `false`, `application.yml`) turns them on;
+only tests set it. `ConfirmDispense` and `ReversalAdvice` stay served (they move no cash here and
+find no VERIFY row while cash is off, so they answer `MW-VAL-ATM_UNKNOWN_TXN`).
 
 ## Responsibilities
 
@@ -15,17 +24,28 @@ ticket 120b. An MSISDN on the SOAP body is not written to the inbound table and 
   on Spring WS (CXF is the outbound partner engine's, not this servlet): `VerifyTokenAndDebit`,
   `ConfirmDispense`, `ReversalAdvice`, `CashIn`. The contract is
   `contracts/api/mw-adapter-atm/atm-soap.v1.xsd`; the WSDL is generated at
-  `/partner/ucbatm/ws/v1/atm.wsdl`. Every call needs a WS-Security UsernameToken (PasswordText);
-  TLS is the edge's (ticket 100). A bad token, a bad document or an unknown cash-out is a SOAP
-  fault whose detail is the error envelope (`MW-AUTH-001`, `MW-VAL-001`, `MW-VAL-ATM_UNKNOWN_TXN`).
-- Each call is recorded once per (operation, `atmTxnRef`) in `atm_inbound` (own schema `atm_ref`).
-  A repeat gets the first `txnId` again. VERIFY mints the cash-out `txnId`; CONFIRM and REVERSAL
-  of that `atmTxnRef` reuse it. The answer is `ACCEPTED`.
-- **Contract gap (ticket 120b).** The call is not published. `mw.partner.inbound.v1` (owner
+  `/partner/ucbatm/ws/v1/atm.wsdl`. Every call needs a WS-Security UsernameToken with a
+  `PasswordDigest` (Base64(SHA-1(nonce + created + password))), a `wsse:Nonce` accepted once
+  (table `callback_nonce`, `config/AtmNonceConfig` -> `partner/auth/CallbackNonces`, 600 s) and a
+  `wsu:Created` within 300 s of now (ticket 120b1, FRS PLT-008); `PasswordText` is refused, so the
+  password never crosses the wire. The switch reaches it only through APISIX route
+  `partner-ucbatm-ws` (`deploy/apisix/README.md`). A bad token, a bad document or an unknown
+  cash-out is a SOAP fault whose detail is the error envelope (`MW-AUTH-001`, `MW-VAL-001`,
+  `MW-VAL-ATM_UNKNOWN_TXN`).
+- Each call is recorded once per (operation, `atmTxnRef`) in `atm_inbound` (own schema `atm_ref`,
+  V8, V9) with the `atmId` and a fingerprint: HMAC-SHA256 under the WS-Security password of atmId,
+  MSISDN and amount (a rotated password turns a retry that spans the rotation into a conflict). A
+  repeat with the same fingerprint gets the first `txnId` again; another one is `MW-IDEM-001`
+  (409). VERIFY mints the cash-out `txnId` and its state `VERIFIED`; `ConfirmDispense` moves it to
+  `CONFIRMED`, `ReversalAdvice` to `REVERSED`, once (compare-and-set update). The same advice again
+  gets the first answer; the other advice is `MW-IDEM-ATM_STATE` (409); an advice from another
+  `atmId` is `MW-IDEM-001` (PLT-025). The answer is `ACCEPTED`; the XSD also has `DECLINED` and
+  `PENDING` for 120b2/120b3 (anything but `ACCEPTED` means no cash).
+- **Contract gap (tickets 120b2, 120b3).** The call is not published. `mw.partner.inbound.v1` (owner
   mw-orchestrator) only allows kinds `CALLBACK`, `REMITTANCE` and `NPSB_CREDIT` and has no debit
   party, so these four operations do not fit. `dto/PartnerInbound` is the shape 120b should
-  publish once that contract grows a family `atm` branch. Token issue, `ATM_CASH_OUT` /
-  `ATM_CASH_IN` and the hold live there too.
+  publish once that contract grows a family `atm` branch. Token issue (120b2), `ATM_CASH_OUT` /
+  `ATM_CASH_IN` and the hold (120b3) live there too.
 - Outbound, today, is only `STATUS_QUERY` of a cash-out (`messaging/AtmRequestHandler` on
   `mw.partner.request.atm.v1`, family `atm`, txnType `ATM_CASH_OUT` or `ATM_CASH_IN`). The dev
   seed `ucbatm` signs hmac-sha256 and calls `GET /ucbatm/v1/dispenses/{reference}` on

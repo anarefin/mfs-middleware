@@ -43,6 +43,8 @@ public final class SagaMachine {
             case Validated e when e.callPartner() -> go(from, Status.PARTNER_PENDING, Effect.SEND_PARTNER_REQUEST);
             case Validated e when e.needsHold() -> go(from, Status.HOLDING, Effect.SEND_HOLD);
             case Validated e -> go(from, Status.POSTING, Effect.SEND_POST);
+            // inbound money without a partner leg (REMIT_IN, ticket 119b): credit the wallet now
+            case CreditValidated e -> go(from, Status.COMMITTING, Effect.SEND_COMMIT);
             case ValidationRejected e -> go(from, Status.REJECTED, Effect.NONE);
             case MerchantValidated e -> go(from, Status.VALIDATING, Effect.SEND_VALIDATE);
             case MerchantRejected e -> go(from, Status.FAILED, Effect.NONE);

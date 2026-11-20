@@ -36,8 +36,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   MW-CORE-<reason>` (stored and committed like a success, so a repeat is the same 422), a refused
   assertion `401 MW-AUTH-046`; an unknown hold `422 MW-CORE-HOLD_NOT_FOUND` (no command, no event).
   Holds and transfers need mw-auth's assertion in `X-Txn-Assertion` plus the body's `idempotencyKey`
-  (`security/TxnAssertionHeader`: missing `401 MW-AUTH-046` before anything runs; BULK_DISBURSE needs
-  none), then `AssertionCheck` as on the command; credits need none. Reads write nothing: accounts
+  (`security/TxnAssertionHeader`: missing `401 MW-AUTH-046` before anything runs; BULK_DISBURSE and, ticket
+  119b, REMIT_IN (the partner's money; the payee checks of a credit from outside still run) need none), then `AssertionCheck` as on the command; credits need none. Reads write nothing: accounts
   (type, status, `kycLevel`), balance (available/held/total), charges (the tariff sheet, below: fee, VAT,
   commission and its split; `customerType` default CUSTOMER), limits (the limit sheet: `allowed` +
   `reasonCode`, `remaining` perTxn/daily/monthly/dailyCount/monthlyCount), statements (entries by wallet

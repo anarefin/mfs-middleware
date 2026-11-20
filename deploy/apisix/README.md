@@ -179,7 +179,19 @@ Route `partner-cybersource-callback` (`/partner/cybersource/callback/*`, POST on
 `mw-adapter-card:8080`: the same four rules (own `limit-count` group); the card acquirer's 3-D Secure
 webhook after the hosted page (session id and transient token only, never card data), verified by
 mw-adapter-card (hmac-sha256 + nonce).
+Route `partner-remit-v1` (`GET|POST /remit/v1/*`, ticket 119b, M9 review) -> `mw-adapter-remit:8080`: the
+same four rules (own `limit-count` group); UCB IMT's inbound remittance API (`POST /remit/v1/credits`, `GET
+/remit/v1/credits/{partnerRef}`), verified by mw-adapter-remit (hmac-sha256 over method, path, `X-Timestamp`,
+`X-Nonce` and the body; nonce once only, timestamp within 300 s). Production: the partner's egress addresses
+in `ip-restriction` (mTLS through ticket 100's client registry when UCB IMT moves to it).
 Neither callback route uses `openid-connect`: billagg and c2wbank are HMAC clients.
+Route `partner-ucbatm-ws` (`/partner/ucbatm/ws/v1` and `/partner/ucbatm/ws/v1/*`, GET and POST, ticket
+120b1) -> `mw-adapter-atm:8080`: the UCB ATM switch's inbound SOAP API and its WSDL (GET
+`/partner/ucbatm/ws/v1/atm.wsdl`). The same four rules (own `limit-count` group, 1200 / 60 s per
+`remote_addr`); no bearer: mw-adapter-atm checks the WS-Security UsernameToken itself (PasswordDigest,
+never PasswordText, a once-only `wsse:Nonce` and `wsu:Created` within 300 s; FRS PLT-008) and answers
+the SOAP fault `MW-AUTH-001`. Production lists the switch's egress addresses; mTLS for the switch comes
+with the channel client registry's MTLS clients (ticket 100c).
 
 Route `test-oauth2-cc` (`GET|POST /test/oauth2-cc`, ticket 100b) -> `mw-simulators:8080`
 `/sim/oauth2-cc/ping` (204). An `OAUTH2_CC` client's route, not an HMAC callback:

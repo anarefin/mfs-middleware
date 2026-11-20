@@ -26,7 +26,8 @@ info:
     JWS, D22) in `X-Txn-Assertion`, with the request's `idempotencyKey` (part of the assertion's
     `txnHash`). Missing or refused (signature, `aud` core, `exp`, `sub` the payer, `txnHash`, a
     `jti` another transaction used): `401 MW-AUTH-046`. A `BULK_DISBURSE` row needs none (the org
-    authorised the batch by maker-checker). Credits need none (money in from a settlement wallet).
+    authorised the batch by maker-checker), nor does a `REMIT_IN` validation (ticket 119b: the partner's
+    money for a beneficiary who authorises nothing; the receiving wallet is still checked). Credits need none (money in from a settlement wallet).
     Balance reads (ticket 95a): the orchestrator reads a customer's balance for the customer only, with
     the BALANCE check's `txnId`, its assertion and the `Idempotency-Key` it was signed over; ops callers
     (mw-admin-api, mw-auth) and system wallets read without.
@@ -474,7 +475,7 @@ components:
       name: X-Txn-Assertion
       in: header
       required: false
-      description: mw-auth's transaction assertion (compact JWS, D22); required unless txnType is BULK_DISBURSE
+      description: mw-auth's transaction assertion (compact JWS, D22); required unless txnType is BULK_DISBURSE or REMIT_IN
       schema: { type: string, minLength: 1, maxLength: 4096 }
     HoldId: { name: holdId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
   responses:

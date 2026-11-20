@@ -7,17 +7,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import mfs.mw.adapter.remit.RemitTestTopics;
 import mfs.mw.adapter.remit.TestInfrastructure;
 import mfs.mw.adapter.remit.contracts.ContractSchemas;
-import mfs.mw.adapter.remit.messaging.KafkaTestConsumer;
 import mfs.mw.adapter.remit.partner.auth.HmacSha256AuthScheme;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.junit.jupiter.api.Tag;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -45,10 +42,12 @@ class RemitInboundIT {
 
   private final HttpClient http = HttpClient.newHttpClient();
   private final String base;
+  private final JdbcTemplate jdbc;
 
   @Autowired
-  RemitInboundIT(Environment env) {
+  RemitInboundIT(Environment env, JdbcTemplate jdbc) {
     this.base = "http://localhost:" + env.getProperty("local.server.port");
+    this.jdbc = jdbc;
   }
 
   record Answer(int status, JsonNode body) {}
@@ -90,8 +89,13 @@ class RemitInboundIT {
     return "IMT-" + UUID.randomUUID().toString().substring(0, 13);
   }
 
-  List<ConsumerRecord<String, String>> published(String txnId, int atLeast, Duration wait) {
-    return KafkaTestConsumer.read(TestInfrastructure.kafkaBootstrapServers(), TOPIC, atLeast, wait, r -> txnId.equals(r.key()));
+  /**
+   * The events written for {@code txnId}: the remittance row and its event commit together through the
+   * outbox (M9 review: no dual write), so the outbox is where they are.
+   */
+  List<String> published(String txnId) {
+    return jdbc.queryForList(
+        "select payload::text from outbox where topic = ? and msg_key = ? order by id", String.class, TOPIC, txnId);
   }
 
   @Test
@@ -106,9 +110,9 @@ class RemitInboundIT {
     String upayRef = first.body().path("upayRef").asString();
     assertThat(upayRef).matches("^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$");
 
-    List<ConsumerRecord<String, String>> got = published(upayRef, 1, Duration.ofSeconds(10));
+    List<String> got = published(upayRef);
     assertThat(got).hasSize(1);
-    JsonNode m = JSON.readTree(got.getFirst().value());
+    JsonNode m = JSON.readTree(got.getFirst());
     assertThat(ContractSchemas.schema(SCHEMA).validate(m)).as(m.toString()).isEmpty();
     assertThat(m.path("family").asString()).isEqualTo("remit");
     assertThat(m.path("partnerId").asString()).isEqualTo("ucb-imt");
@@ -141,14 +145,25 @@ class RemitInboundIT {
     assertThat(changed.body().path("code").asString()).isEqualTo("MW-IDEM-002");
   }
 
-  @Tag("slow-wait")
   @Test
   void aReSentCreditIsPublishedOnce() throws Exception {
     String ref = ref();
     Answer first = credit(body(ref, "01711000004", "10"));
     credit(body(ref, "01711000004", "10"));
 
-    assertThat(published(first.body().path("upayRef").asString(), 2, Duration.ofSeconds(5))).hasSize(1);
+    assertThat(published(first.body().path("upayRef").asString())).hasSize(1);
+  }
+
+  @Test
+  void theStoredFingerprintIsKeyedAndNotAPlainHashOfTheMsisdn() throws Exception {
+    String ref = ref();
+    assertThat(credit(body(ref, "01711000006", "10")).status()).isEqualTo(202);
+
+    String stored = jdbc.queryForObject(
+        "select fingerprint from remittance where partner_id = 'ucb-imt' and partner_ref = ?", String.class, ref);
+    String plain = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+        .digest("01711000006|1000|BDT".getBytes(StandardCharsets.UTF_8)));
+    assertThat(stored).isNotEqualTo(plain).hasSize(64);
   }
 
   @Test

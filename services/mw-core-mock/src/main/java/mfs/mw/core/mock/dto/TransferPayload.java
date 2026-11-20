@@ -39,8 +39,14 @@ public record TransferPayload(
    */
   public static final String BULK_DISBURSE = "BULK_DISBURSE";
 
-  /** Whether this transfer needs the customer's authorisation (contract: every type but BULK_DISBURSE). */
+  /**
+   * An inbound remittance (ticket 119b): the partner's money for a beneficiary who authorises nothing;
+   * the core still checks the receiving wallet (status, per-txn limits of its rule).
+   */
+  public static final String REMIT_IN = "REMIT_IN";
+
+  /** Whether this transfer needs the customer's authorisation (contract: every type but BULK_DISBURSE and REMIT_IN). */
   public boolean authorisationRequired() {
-    return !BULK_DISBURSE.equals(txnType);
+    return !BULK_DISBURSE.equals(txnType) && !REMIT_IN.equals(txnType);
   }
 }

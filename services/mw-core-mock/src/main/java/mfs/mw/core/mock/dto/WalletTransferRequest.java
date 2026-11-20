@@ -30,8 +30,8 @@ public record WalletTransferRequest(
   /** A transaction type name (P2P, CASH_OUT, BULK_DISBURSE, ...). */
   public static final String TXN_TYPE = "^[A-Z][A-Z0-9_]{0,31}$";
 
-  /** Whether the customer must authorise it (every type but BULK_DISBURSE, as on the command). */
+  /** Whether the customer must authorise it (every type but BULK_DISBURSE and REMIT_IN, as on the command). */
   public boolean authorisationRequired() {
-    return !TransferPayload.BULK_DISBURSE.equals(txnType);
+    return !TransferPayload.BULK_DISBURSE.equals(txnType) && !TransferPayload.REMIT_IN.equals(txnType);
   }
 }

@@ -19,6 +19,7 @@ import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.MerchantPayFlow;
+import mfs.mw.orchestrator.service.saga.RemitInFlow;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.Outcome;
 import mfs.mw.orchestrator.service.saga.PendingLeg;
@@ -98,6 +99,16 @@ public class PartnerReplyService {
       return;
     }
     recordAnswer(reply);
+    if (RemitInFlow.TXN_TYPE.equals(found.get().request().txnType())) {
+      // ticket 119b: the adapter's answer to an outcome confirmation never moves the remittance
+      log.atInfo()
+          .addKeyValue("event", "remit.outcome.confirmed")
+          .addKeyValue("txnId", reply.txnId())
+          .addKeyValue("partnerId", reply.partnerId())
+          .addKeyValue("outcome", reply.payload().outcome())
+          .log("remittance outcome confirmation answered; the transaction is unchanged");
+      return;
+    }
     if (MerchantPayFlow.TXN_TYPE.equals(found.get().request().txnType())
         && MerchantPayFlow.MERCHANT.family().equals(reply.family())) {
       merchantAnswer(found.get(), reply);

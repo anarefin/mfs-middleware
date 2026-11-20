@@ -16,6 +16,7 @@ import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.service.saga.MerchantPayFlow;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
+import mfs.mw.orchestrator.service.saga.RemitInFlow;
 import org.springframework.stereotype.Component;
 
 /**
@@ -120,6 +121,25 @@ public class PartnerRequestMapper {
   public PartnerRequest merchantNotify(
       TransactionRecord rec, MerchantSystemProperties.Merchant merchant, int attempt, Instant now, Duration deadline) {
     return merchant(rec, merchant, PAY, "NOTIFY:" + attempt, rec.request().amount(), now, deadline);
+  }
+
+  /**
+   * The outcome of a REMIT_IN to mw-adapter-remit (ticket 119b): a PAY, family remit, request id
+   * {@code <txnId>:CONFIRM:<outcome>} (a MANUAL_REVIEW later resolved by an operator is a new
+   * request), {@code partnerTxnRef} the partner's own reference, partner {@code {<partnerId>, REMIT}},
+   * the amount and beneficiary, {@code attributes.outcome}. No sender data.
+   */
+  public PartnerRequest remitConfirmation(TransactionRecord rec, String outcome, Instant now, Duration deadline) {
+    String txnId = rec.txnId().toString();
+    TxnRequest req = rec.request();
+    String partnerRef = req.attributes() == null ? null : req.attributes().get("partnerRef");
+    return new PartnerRequest(
+        1, RemitInFlow.REMIT.family(), requestId(txnId, "CONFIRM:" + outcome), txnId, req.correlationId(), now,
+        now.plus(deadline),
+        new PartnerRequest.Payload(
+            PAY, req.txnType(), new PartnerRef(req.debitParty().id(), "REMIT", null),
+            partnerRef == null ? partnerTxnRef(txnId) : partnerRef, req.amount(), null, req.creditParty(), null,
+            Map.of("outcome", outcome)));
   }
 
   private PartnerRequest merchant(
