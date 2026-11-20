@@ -3,8 +3,13 @@
 #   1. creates a self-signed edge certificate for localhost on first run (dev only; kept in
 #      the apisix-tls volume so it survives restarts; replaced by a real cert later)
 #   2. PUTs it as SSL object "edge-default"
-#   3. PUTs every deploy/apisix/global_rules/<id>.json as global rule <id>, every
-#      deploy/apisix/consumers/<username>.json as consumer <username> (the MNO USSD gateways),
+#   3. PUTs every deploy/apisix/vault/<id>.json as secret manager vault/<id> (ticket 100a:
+#      vault/edge reads the Vault KV v1 mount apisix/ with APISIX's read-only token, so consumers
+#      reference credentials as $secret://vault/edge/<name>/<field>), every
+#      deploy/apisix/global_rules/<id>.json as global rule <id>, every
+#      deploy/apisix/consumers/<username>.json as consumer <username> (the MNO USSD gateways; a
+#      consumer labelled managed-by=mw-admin-api is skipped: the channel client registry of
+#      mw-admin-api owns it from its first projection on, ticket 100a),
 #      then every deploy/apisix/routes/<id>.json as route <id>; then DELETEs every object listed
 #      in deploy/apisix/retired.txt (a file that was removed or renamed)
 #   4. test-only objects for the host API suite (tests/api): with MW_E2E_ROUTES=1 PUTs
@@ -23,7 +28,8 @@
 #
 # Env: APISIX_ADMIN (host:port), APISIX_ADMIN_KEY; MW_E2E_ROUTES (1 = apply the test-only
 # objects), MW_E2E_API_KEY (their consumer key, required with MW_E2E_ROUTES=1);
-# USSD_<MNO>_GATEWAY_SECRET and USSD_<MNO>_ALLOWED_CIDRS (gp, robi, bl, teletalk; required).
+# USSD_<MNO>_GATEWAY_SECRET and USSD_<MNO>_ALLOWED_CIDRS (gp, robi, bl, teletalk; required);
+# APISIX_VAULT_TOKEN (the read-only Vault token of secret manager vault/edge; required).
 # APISIX_DRY_RUN=<dir>: no network, no certificate; writes each body to <dir>/<kind>/<id>.json.
 # APISIX_CONFIG_DIR: the folder holding routes/, consumers/, global_rules/, lua/ (default: here).
 set -euo pipefail
@@ -159,13 +165,32 @@ if [ -z "$dry" ]; then
     "{\"snis\":[\"localhost\"],\"cert\":\"$(json_pem "$tls/edge.crt")\",\"key\":\"$(json_pem "$tls/edge.key")\"}"
 fi
 
-# global rules first: they hold the correlation ID and error envelope every route relies on;
-# consumers before the routes that name them
+# managed PATH: whether the stored object belongs to mw-admin-api's channel client registry (label
+# managed-by=mw-admin-api, ticket 100a); never in a dry run.
+managed() {
+  [ -z "$dry" ] || return 1
+  local resp
+  resp="$(put "$1" "" GET)"
+  [ "${resp%%$'\n'*}" = 200 ] && printf '%s' "$resp" | grep -aq '"managed-by":"mw-admin-api"'
+}
+
+# secret managers first (consumers reference them), then the global rules: they hold the correlation
+# ID and error envelope every route relies on; consumers before the routes that name them
+for f in "$dir"/vault/*.json; do
+  [ -f "$f" ] || continue
+  body="$(render "$f")"
+  apply "/apisix/admin/secrets/vault/$(basename "$f" .json)" "$body"
+done
 for kind in global_rules consumers routes; do
   for f in "$dir/$kind"/*.json; do
     [ -f "$f" ] || continue
+    path="/apisix/admin/$kind/$(basename "$f" .json)"
+    if [ "$kind" = consumers ] && managed "$path"; then
+      echo "apisix-init: $path belongs to the mw-admin-api channel client registry, left as it is"
+      continue
+    fi
     body="$(render "$f")"
-    apply "/apisix/admin/$kind/$(basename "$f" .json)" "$body"
+    apply "$path" "$body"
   done
 done
 

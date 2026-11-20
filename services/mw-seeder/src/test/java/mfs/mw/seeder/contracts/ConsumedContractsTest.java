@@ -71,6 +71,29 @@ class ConsumedContractsTest {
     assertValid(s, PartnerChangeRequest.timeout(20_000, "seed"));
   }
 
+  /** Ticket 100a: the channel client UPSERT the seeder files, and the client it reads back. */
+  @Test
+  void channelClientRequestsAreAdminV1BodiesAndTheClientReads() {
+    Schema s = OpenApiSchemas.request(ADMIN, "/admin/v1/channel-clients/{clientId}/change-requests", "post");
+    mfs.mw.seeder.dto.ChannelClientDefinition gp = new mfs.mw.seeder.dto.ChannelClientDefinition(
+        "MNO", "BASIC", List.of("ussd-http-gp"), List.of(), 100L, null, true);
+    assertValid(s, mfs.mw.seeder.dto.ChannelClientChangeRequest.upsert(gp, "seed"));
+    assertValid(s, mfs.mw.seeder.dto.ChannelClientChangeRequest.upsert(new mfs.mw.seeder.dto.ChannelClientDefinition(
+        "APP", "JWT", List.of("app-v1"), List.of(), null, null, true), "seed"));
+    assertThat(JSON.writeValueAsString(gp)).doesNotContain("dailyQuota");
+
+    String client =
+        """
+        {"clientId":"ussd-gp","type":"MNO","authMethod":"BASIC","allowedRoutes":["ussd-http-gp"],"ipAllowList":[],
+         "ratePerSec":100,"enabled":true,"version":2,"consumer":"ussd_gp","updatedAt":"2026-11-20T00:00:00Z",
+         "updatedBy":"seed-ops-maker","approvedBy":"seed-ops-checker"}
+        """;
+    assertThat(OpenApiSchemas.component(ADMIN, "ChannelClient").validate(JSON.readTree(client))).isEmpty();
+    mfs.mw.seeder.dto.ChannelClientView v = JSON.readValue(client, mfs.mw.seeder.dto.ChannelClientView.class);
+    assertThat(v.definition()).isEqualTo(gp);
+    assertThat(v.version()).isEqualTo(2);
+  }
+
   @Test
   void theSeededMenuIsAnAdminV1MenuProposal() throws Exception {
     ObjectNode tree;

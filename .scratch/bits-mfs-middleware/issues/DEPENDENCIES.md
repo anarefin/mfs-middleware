@@ -76,7 +76,7 @@
 98-routing-module                           96,97             open
 99-idempotency-duplicates-replay            89                done     110m     95 files +2601 −110    e3d9c7c6,45ffe6a3
 100-edge-client-registry                    90,91,99          split (100-split-decisions.md, 2026-11-20)
-100a-client-registry-apisix-sync            90,91,99          open
+100a-client-registry-apisix-sync            90,91,99          done     30m      61 files +2570 −36     cd3d58ea
 100b-oauth2-cc-clients                      100a              open   (run before 118-121)
 100c-inbound-mtls-edge-tests                100a              open   (run by M13)
 101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
@@ -115,12 +115,15 @@
 129-portal-bulk-sp                          95,116            open
 130-audit-frs                               97                open
 # --- M12 gate: UC-01, UC-20..22
-131-admin-partner-credentials               91,97             open
+131-admin-partner-credentials               91,97             split (131-split-decisions.md, 2026-11-20)
+131a-admin-credentials-backend              91,97             open
+131b-maintenance-endpoint-profile           97,131a           open   (run before 115, 118-121; routing part after 98)
+131c-admin-ui-partner-tabs                  131a,131b         open
 132-admin-routing-billers-clients-ui        98,100a,113        open
 133-admin-ussd-editor-templates             109,111           open
 134-admin-actions-compliance-recon-ui       125,127,111       open
 135-admin-monitoring-users-audit-mock       103,130           open
-136-developer-guide-sample-connector        114,131           open
+136-developer-guide-sample-connector        114,131a,131b           open
 137-frs-e2e-completion                      104-129(flows)    open
 138-frs-acceptance-gate                     137               open
 # --- M13 gate: FRS 10.4 acceptance criteria 1-7

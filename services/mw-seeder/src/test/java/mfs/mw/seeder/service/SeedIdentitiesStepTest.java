@@ -191,7 +191,7 @@ class SeedIdentitiesStepTest {
         props.manifestPath(), props.http(), props.endpoints(), props.readiness(), props.keycloakAdmin(), props.realms(),
         List.of(new mfs.mw.seeder.config.SeederProperties.User("x", "nowhere", "x1", List.of(), Map.of(), null, null)),
         props.importedUsers(),
-        props.operators(), props.wallets(), props.partners(), props.content(), props.appPins());
+        props.operators(), props.wallets(), props.partners(), props.channelClients(), props.content(), props.appPins());
 
     assertThatThrownBy(() -> new SeedIdentitiesStep(kc, bad).run(new SeedContext()))
         .isInstanceOf(IllegalStateException.class)

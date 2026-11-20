@@ -3,6 +3,8 @@ package mfs.mw.seeder.client;
 import java.util.List;
 import java.util.Optional;
 import mfs.mw.seeder.dto.ChangeRequestView;
+import mfs.mw.seeder.dto.ChannelClientChangeRequest;
+import mfs.mw.seeder.dto.ChannelClientView;
 import mfs.mw.seeder.dto.ContentVersionView;
 import mfs.mw.seeder.dto.MenuProposal;
 import mfs.mw.seeder.dto.PartnerChangeRequest;
@@ -32,4 +34,9 @@ public interface AdminConsole {
   List<ContentVersionView> templateVersions(String asUser, String code, String channel, String locale);
 
   ChangeRequestView proposeTemplate(String asUser, String code, String channel, String locale, TemplateProposal proposal);
+
+  /** A registered channel client (ticket 100a), empty when unknown (404). */
+  Optional<ChannelClientView> channelClient(String asUser, String clientId);
+
+  ChangeRequestView requestChannelClientChange(String asUser, String clientId, ChannelClientChangeRequest request);
 }

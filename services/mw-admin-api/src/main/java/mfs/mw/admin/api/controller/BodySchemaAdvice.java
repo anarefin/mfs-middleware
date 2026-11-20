@@ -56,7 +56,8 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
             TemplateChangeBody.class, new BodySchema(json, BodySchema.TEMPLATE_CHANGE),
             KeyChangeBody.class, new BodySchema(json, BodySchema.KEY_CHANGE),
             KeyCeremonyBody.class, new BodySchema(json, BodySchema.KEY_CEREMONY),
-            KeyComponentBody.class, new BodySchema(json, BodySchema.KEY_COMPONENT));
+            KeyComponentBody.class, new BodySchema(json, BodySchema.KEY_COMPONENT),
+            mfs.mw.admin.api.dto.ChannelClientChangeBody.class, new BodySchema(json, BodySchema.CHANNEL_CLIENT_CHANGE));
   }
 
   @Override

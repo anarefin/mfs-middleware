@@ -34,7 +34,7 @@ import tools.jackson.databind.node.ObjectNode;
  * left PENDING is approved; one another operator left PENDING fails the step.
  */
 @Service
-@Order(6)
+@Order(7)
 public class SeedAdminContentStep implements SeedStep {
 
   static final String REASON = "seed: first admin version (mw-seeder)";

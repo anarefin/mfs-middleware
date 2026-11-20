@@ -1,0 +1,85 @@
+{
+  "x-mw-derived-from": "api/mw-admin-api/admin.v1.openapi.yaml#/paths/~1admin~1v1~1channel-clients~1{clientId}~1change-requests/post/requestBody/content/application~1json/schema",
+  "type": "object",
+  "required": [
+    "action",
+    "reason",
+    "client"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "UPSERT"
+      ]
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "client": {
+      "type": "object",
+      "required": [
+        "type",
+        "authMethod",
+        "allowedRoutes",
+        "ipAllowList",
+        "enabled"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "APP",
+            "MNO",
+            "PARTNER",
+            "MERCHANT",
+            "PORTAL"
+          ]
+        },
+        "authMethod": {
+          "type": "string",
+          "enum": [
+            "JWT",
+            "OAUTH2_CC",
+            "MTLS",
+            "HMAC",
+            "BASIC"
+          ]
+        },
+        "allowedRoutes": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "ipAllowList": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          }
+        },
+        "ratePerSec": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        },
+        "dailyQuota": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000000000
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
