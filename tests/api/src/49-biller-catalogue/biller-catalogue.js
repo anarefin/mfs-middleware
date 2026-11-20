@@ -14,6 +14,21 @@ export default [
     },
   },
   {
+    name: '[billpay] a FIXED biller refuses an amount other than the bill the app fetched before any hold',
+    run: async (MW, S) => {
+      // Ticket 113b: the gateway keeps the fetched amount (66700 poisha for a bill ending 567) and the
+      // confirm attaches it; the client cannot set it. DESCO is FIXED in the dev seed.
+      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
+      const f = S.record(await MW.app.fetchBill('customer01', 'DESCO', '3234567', '202611'));
+      S.status(200);
+      await S.previewBillPay('customer01', 'DESCO', '3234567', 66000, MW.pin);
+      S.status(400);
+      S.code('MW-VAL-032');
+      await S.noChange();
+      await S.noHold('01711000001');
+    },
+  },
+  {
     name: '[billpay] a MINIMUM biller refuses an amount below its minimum before any hold',
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);

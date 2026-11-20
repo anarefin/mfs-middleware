@@ -53,6 +53,9 @@ public final class ErrorCodes {
   public static final String SYS_UNAVAILABLE = "MW-SYS-010";
   /** mw-adapter-billpay could not be asked (biller list, bill fetch); retryable: 503. */
   public static final String SYS_BILLPAY_UNAVAILABLE = "MW-SYS-011";
+
+  /** A biller the catalogue disabled (ticket 113b, FRS PLT-043): its bn/en maintenance text. */
+  public static final String SYS_BILLER_DISABLED = "MW-SYS-BILLER_DISABLED";
   /** mw-auth (device, session) or Redis (device key cache, nonces) could not be asked; nothing was done, retryable: 503. */
   public static final String SYS_SESSION_STORE_UNAVAILABLE = "MW-SYS-012";
   /** mw-orchestrator's query API (the wallet history, ADR D25) could not be asked; retryable: 503. */

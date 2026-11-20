@@ -83,7 +83,7 @@
       "description": "PARTNER value: the adapters' partner record (spec 12.1, ADR D28), every field optional at this level; the adapter that owns the family checks the whole record and reports LIVE / REJECTED on mw.partner.route.status.v1. Additive fields of ticket 83: route, mappings, allowedHosts, family, dryRun. The old shape (template, operations) is gone since ticket 84 and refused. A record whose changedBy is system/rollback republishes the newest LIVE version after the current one was REJECTED (ticket 84).",
       "not": { "anyOf": [{ "required": ["template"] }, { "required": ["operations"] }] },
       "properties": {
-        "family": { "enum": ["telco", "billpay", "bank", "merchant"], "description": "The adapter that applies the record; the others skip it." },
+        "family": { "enum": ["telco", "billpay", "bank", "merchant", "card"], "description": "The adapter that applies the record; the others skip it." },
         "enabled": { "type": "boolean" },
         "route": { "type": "string", "minLength": 1, "maxLength": 65536, "description": "The partner's Camel YAML DSL route from direct:partner-<id>, built from the mw-* Kamelets." },
         "mappings": {

@@ -45,7 +45,6 @@ public class BillerController {
       @AuthenticationPrincipal Jwt jwt,
       @PathVariable @Pattern(regexp = TransactionRequest.BILLER_CODE) String code,
       @Valid @RequestBody FetchBillRequest body) {
-    users.resolve(jwt);
-    return service.fetch(code, body.billNumber());
+    return service.fetch(users.resolve(jwt), code, body.billNumber(), body.billMonth());
   }
 }

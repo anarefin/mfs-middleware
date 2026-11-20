@@ -3,8 +3,10 @@ package mfs.mw.app.gateway.service;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import mfs.mw.app.gateway.client.BillPayClient;
 import mfs.mw.app.gateway.config.BillPayProperties;
+import mfs.mw.app.gateway.dto.AppUser;
 import mfs.mw.app.gateway.dto.Bill;
 import mfs.mw.app.gateway.dto.Biller;
 import mfs.mw.app.gateway.dto.ErrorDetail;
@@ -14,6 +16,7 @@ import mfs.mw.app.gateway.exception.BillPayUnavailableException;
 import mfs.mw.app.gateway.exception.ErrorCategory;
 import mfs.mw.app.gateway.exception.ErrorCodes;
 import mfs.mw.app.gateway.exception.MwException;
+import mfs.mw.app.gateway.repository.BillFetchStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -24,6 +27,13 @@ import org.springframework.stereotype.Service;
  * over its internal HTTP API (read-only, no money moves; the payment itself goes through Kafka
  * like every other transaction). The catalogue is reused for {@code catalogue-ttl} and kept when
  * the adapter cannot be asked; it also tells a BILL_PAY which aggregator serves its biller.
+ *
+ * <p>Ticket 113b: once mw-admin-api's catalogue has published a BILLER record, the list and the
+ * aggregator come from this gateway's own projection ({@link BillerCatalog}); the adapter's list is
+ * the fallback while the projection is empty. A disabled biller is refused for payment with its
+ * bn/en maintenance text (503 {@code MW-SYS-BILLER_DISABLED}, FRS PLT-043; the adapter answers a
+ * bill fetch the same way). A fetched bill's amount is kept ({@link BillFetchStore}) for the BILL_PAY
+ * preview of the same wallet, biller and bill number.
  */
 @Service
 public class BillerService {
@@ -38,12 +48,17 @@ public class BillerService {
   private final BillPayClient client;
   private final BillPayProperties props;
   private final Clock clock;
+  private final BillerCatalog projection;
+  private final BillFetchStore fetches;
   private volatile Cached cache;
 
-  public BillerService(BillPayClient client, BillPayProperties props, Clock clock) {
+  public BillerService(
+      BillPayClient client, BillPayProperties props, Clock clock, BillerCatalog projection, BillFetchStore fetches) {
     this.client = client;
     this.props = props;
     this.clock = clock;
+    this.projection = projection;
+    this.fetches = fetches;
   }
 
   /** The catalogue as the app sees it (no aggregator). */
@@ -51,22 +66,65 @@ public class BillerService {
     return catalogue().stream().map(Biller::withoutPartner).toList();
   }
 
-  /** The canonical partner of a BILL_PAY to {@code billerCode}; unknown biller MW-VAL-001. */
+  /**
+   * The canonical partner of a BILL_PAY to {@code billerCode}; unknown biller MW-VAL-001, a disabled
+   * one 503 {@code MW-SYS-BILLER_DISABLED} with its bn/en maintenance text.
+   */
   public PartnerRef partnerFor(String billerCode) {
-    return catalogue().stream()
-        .filter(b -> b.code().equals(billerCode) && b.partnerId() != null)
-        .findFirst()
-        .map(b -> new PartnerRef(b.partnerId(), PRODUCT, b.code()))
-        .orElseThrow(
-            () ->
-                new MwException(ErrorCodes.VAL_INVALID, "Request validation failed")
-                    .withDetails(List.of(new ErrorDetail("partner.billerCode", "is not a known biller"))));
+    Biller biller =
+        catalogue().stream()
+            .filter(b -> b.code().equals(billerCode) && b.partnerId() != null)
+            .findFirst()
+            .orElseThrow(
+                () ->
+                    new MwException(ErrorCodes.VAL_INVALID, "Request validation failed")
+                        .withDetails(List.of(new ErrorDetail("partner.billerCode", "is not a known biller"))));
+    if (!biller.isEnabled()) {
+      throw disabled(biller);
+    }
+    return new PartnerRef(biller.partnerId(), PRODUCT, biller.code());
   }
 
   /** The amount due; the adapter's refusals keep their code and status (MW-PTR-*, MW-TMO-*). */
   public Bill fetch(String billerCode, String billNumber) {
+    return fetch(null, billerCode, billNumber, null);
+  }
+
+  /**
+   * The amount due for {@code user} (kept for its BILL_PAY preview, {@link BillFetchStore}); the
+   * adapter's refusals keep their code and status (MW-PTR-*, MW-TMO-*, MW-SYS-BILLER_DISABLED).
+   */
+  public Bill fetch(AppUser user, String billerCode, String billNumber, String billMonth) {
+    Bill bill = ask(billerCode, billNumber, billMonth);
+    if (user != null && bill != null && bill.amount() != null && bill.amount().valueMinor() != null) {
+      try {
+        fetches.save(user.channel(), user.msisdn(), billerCode, billNumber, bill.amount().valueMinor());
+      } catch (RuntimeException e) {
+        log.atWarn()
+            .addKeyValue("event", "billpay.fetch.store_unavailable")
+            .addKeyValue("errorClass", e.getClass().getName())
+            .log("fetched bill not kept; its payment goes without the fetched amount");
+      }
+    }
+    return bill;
+  }
+
+  /** The amount this wallet last fetched for the bill, if still kept (never from a client). */
+  public Optional<Long> fetchedAmount(AppUser user, String billerCode, String billNumber) {
     try {
-      return client.fetch(billerCode, billNumber);
+      return fetches.find(user.channel(), user.msisdn(), billerCode, billNumber);
+    } catch (RuntimeException e) {
+      log.atWarn()
+          .addKeyValue("event", "billpay.fetch.store_unavailable")
+          .addKeyValue("errorClass", e.getClass().getName())
+          .log("fetched bill could not be read");
+      return Optional.empty();
+    }
+  }
+
+  private Bill ask(String billerCode, String billNumber, String billMonth) {
+    try {
+      return client.fetch(billerCode, billNumber, billMonth);
     } catch (BillPayRefusedException e) {
       throw refused(e);
     } catch (BillPayUnavailableException e) {
@@ -78,6 +136,10 @@ public class BillerService {
   }
 
   private List<Biller> catalogue() {
+    List<Biller> projected = projection.list();
+    if (!projected.isEmpty()) {
+      return projected;
+    }
     Cached c = cache;
     Instant now = clock.instant();
     if (c != null && c.at().plus(props.catalogueTtl()).isAfter(now)) {
@@ -97,6 +159,15 @@ public class BillerService {
       }
       throw e instanceof BillPayRefusedException r ? refused(r) : unavailable(e);
     }
+  }
+
+  private static MwException disabled(Biller b) {
+    return new MwException(
+            ErrorCodes.SYS_BILLER_DISABLED,
+            b.maintenanceEn() == null ? "This biller is not available now" : b.maintenanceEn())
+        .withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+        .withRetryable(false)
+        .withMessageBn(b.maintenanceBn() == null ? "এই বিলার এখন পাওয়া যাচ্ছে না" : b.maintenanceBn());
   }
 
   private static MwException refused(BillPayRefusedException e) {

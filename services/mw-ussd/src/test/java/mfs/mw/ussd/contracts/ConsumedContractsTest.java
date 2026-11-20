@@ -46,7 +46,7 @@ class ConsumedContractsTest {
   static void readConfigChange(String json) {
     MenuPublisher publisher = mock(MenuPublisher.class);
     AtomicBoolean acked = new AtomicBoolean();
-    new ConfigChangedListener(publisher, JSON)
+    new ConfigChangedListener(publisher, mock(mfs.mw.ussd.service.BillerCatalog.class), JSON)
         .onConfigChanged(new ConsumerRecord<>(ConfigChangedListener.TOPIC, 0, 0L, "key", json), () -> acked.set(true));
     assertThat(acked).isTrue();
     ArgumentCaptor<ConfigChangedEvent> captor = ArgumentCaptor.forClass(ConfigChangedEvent.class);

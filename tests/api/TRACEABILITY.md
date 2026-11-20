@@ -161,6 +161,7 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 48 | [p2p] a SOAP request that is not the schema is MW-VAL-001 and does not echo the MSISDN | - | |
 | 48 | [docs] the app SOAP WSDL is listed on the dev docs page | - | |
 | 49 | [billpay] the app biller list comes from the catalogue and shows its MINIMUM and OPEN billers | - | |
+| 49 | [billpay] a FIXED biller refuses an amount other than the bill the app fetched before any hold | 1 | BILL_PAY app failure |
 | 49 | [billpay] a MINIMUM biller refuses an amount below its minimum before any hold | 1 | BILL_PAY app failure |
 | 49 | [billpay] an OPEN biller refuses an amount below its range before any hold | 1 | BILL_PAY app failure |
 | 50 | [checkout frs] T1 two partial refunds return the money to the payer and each sends a signed refund IPN | - | |
