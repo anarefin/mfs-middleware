@@ -1597,6 +1597,8 @@ services:
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?cp dev.env.defaults .env}
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
       BANK_GATEWAY_HMAC_SECRET: ${BANK_GATEWAY_HMAC_SECRET:?cp dev.env.defaults .env}
+      # Simulators page "Send remittance" signs as the partner ucb-imt (ticket 119c)
+      UCB_IMT_HMAC_SECRET: ${UCB_IMT_HMAC_SECRET:?cp dev.env.defaults .env}
       USSD_GP_GATEWAY_SECRET: ${USSD_GP_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_ROBI_GATEWAY_SECRET: ${USSD_ROBI_GATEWAY_SECRET:?cp dev.env.defaults .env}
       USSD_BL_GATEWAY_SECRET: ${USSD_BL_GATEWAY_SECRET:?cp dev.env.defaults .env}

@@ -82,6 +82,18 @@ export function checkoutHeaders(
   return h;
 }
 
+/**
+ * A partner's signed request to its inbound API (contracts remit-inbound.v1, mw-adapter-remit): X-Signature
+ * = Base64 HMAC-SHA256 over method, path, X-Timestamp (epoch seconds), X-Nonce and the body's hex SHA-256.
+ */
+export function partnerHeaders(
+  partnerId: string, method: string, path: string, body: string, secret: string,
+  ts: string = String(Math.floor(Date.now() / 1000)), nonce: string = randomUUID(),
+): Record<string, string> {
+  const sig = hmacB64(secret, [method, path, ts, nonce, sha256Hex(body)].join("\n"));
+  return { "X-Partner-Id": partnerId, "X-Signature": sig, "X-Timestamp": ts, "X-Nonce": nonce };
+}
+
 /** The merchant's check of the signed result on its success / fail URL (contract checkout.v1). */
 export function verifyCheckoutResult(q: Record<string, string>, secret: string): boolean {
   const c = ["bits-checkout-result.v1", q.sessionId, q.orderId, q.status, q.txnId, q.amount, q.currency, q.errorCode, q.ts]
