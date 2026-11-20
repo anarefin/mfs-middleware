@@ -5,11 +5,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.UncheckedIOException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import mfs.mw.simulators.dto.BankAccountSeed;
+import mfs.mw.simulators.dto.BankProfile;
 import mfs.mw.simulators.dto.Biller;
 import mfs.mw.simulators.service.files.AmlResponder.AmlRules;
 import tools.jackson.databind.JsonNode;
@@ -31,6 +34,27 @@ public final class SeedFiles {
     List<Biller> out = new ArrayList<>();
     for (String[] c : read(version, "billers.csv")) {
       out.add(new Biller(c[0], c[1], c[2], Biller.Protocol.valueOf(c[3])));
+    }
+    return List.copyOf(out);
+  }
+
+  /**
+   * The banks of the simulated bank gateway (ticket 117d, {@code bank-profiles.csv}, generated from {@code
+   * deploy/partner-routes/bank/bank-profiles.csv} by its {@code generate.mjs}).
+   */
+  public static List<BankProfile> bankProfiles(String version) {
+    List<BankProfile> out = new ArrayList<>();
+    for (String[] c : read(version, "bank-profiles.csv")) {
+      out.add(new BankProfile(c[0], c[1], BankProfile.Protocol.valueOf(c[2]), c[3]));
+    }
+    return List.copyOf(out);
+  }
+
+  /** The seeded accounts of the simulated bank gateway (ticket 117d, {@code bank-accounts.csv}). */
+  public static List<BankAccountSeed> bankAccounts(String version) {
+    List<BankAccountSeed> out = new ArrayList<>();
+    for (String[] c : read(version, "bank-accounts.csv")) {
+      out.add(new BankAccountSeed(c[0], c[1], c[2], c[3], new BigDecimal(c[4])));
     }
     return List.copyOf(out);
   }
