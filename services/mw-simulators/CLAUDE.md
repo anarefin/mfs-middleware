@@ -38,7 +38,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     (ticket 112a; topup, inquiry, postpaid, status, reverse; keys msisdn, txnRef), `billagg` (billers,
     fetch, pay, status, reverse; biller, billNumber, txnRef; REST and SOAP
     front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path), `merchant-soap`
-    (validate, notify, query, refund; merchantId, txnRef; ticket 115b), and the
+    (validate, notify, query, refund; merchantId, txnRef; ticket 115b), `samplebiller` (fetch, pay, status, reverse,
+    health; biller, billNumber, txnRef; ticket 136, below), and the
     SMPP / TCP parties of ticket 102b (FRS MCT-04): `smsc` (bind, submit; systemId, msisdn), `ussdgw` (bind,
     submit, enquire_link, dial; systemId, msisdn, mno), the per-MNO USSD ports `ussd-gp`, `ussd-robi`,
     `ussd-bl`, `ussd-teletalk` (bind, submit, enquire_link; systemId, msisdn), `payshield` (command; command), and `push` (send; token,
@@ -295,6 +296,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   party reset (that bank back to its seed). Callbacks after every applied transfer (not TIMEOUT) to the party's
   `callbackUrl`, body `{transactionId, status, code, message, bankRef}`, signed with `sim.callback-secrets.bank-<code>`
   when set; replay `POST /mock-control/bank-<code>/callbacks/{transactionId}/replay`. Test: `BankGatewaySimulatorIT`.
+- Trigger registry (ticket 136, FRS MCK-03; `service/mockcontrol/MockTriggers`): every party's data triggers
+  (input, match, outcome), grouped per FRS party (`EXT-nn`); `markdown()` renders it with each party's operations,
+  keys, behaviours, switch and journal. `MockTriggerDocsTest`: every party of `MockParties.ALL` in exactly one
+  section, the amount fractions are `MagicAmounts`', and `src/main/resources/mock-triggers.md` is the rendering
+  (on a mismatch it writes `build/mock-triggers.md`: copy it over the resource and into the block of
+  `docs/mocks/README.md`, which `scripts/test/test_connector_docs.sh` compares). A new party or trigger adds a line
+  to `MockTriggers` in the same change.
+- Sample biller `samplebiller` (ticket 136, FRS CON-06): a fifth `AggregatorProfile` on the controller and service
+  below, the biller of the sample connector `deploy/partner-routes/examples/sample-rest-biller.yaml`: REST, plain
+  camelCase (`transactionId`, `receipt`, `billPeriod`), `X-Api-Key` (presence), words DUE / PAID / PENDING / FAILED
+  / REVERSED, codes `SB01`..`SB06`, seed `seed/v1/bills/samplebiller.csv` (biller SAMPLEWATER, `1360000001`..`05`),
+  plus `GET /samplebiller/v1/health` (operation `health`, 200 `{status: UP}`). Test: `SampleBillerMockIT`.
 - Bill aggregator mocks (ticket 114, FRS UC-10, EXT-10, MCK-02/06/08; `controller/BillAggregatorMockController`,
   `service/BillAggregatorMockService`, `AggregatorBillLedger`, `dto/AggregatorProfile`): four profiles, each a mock
   party named after it (operations fetch, pay, status, reverse; keys biller, billNumber, txnRef), in the wire

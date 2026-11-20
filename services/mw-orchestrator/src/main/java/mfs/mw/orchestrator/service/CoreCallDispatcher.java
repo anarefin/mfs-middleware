@@ -29,11 +29,15 @@ public class CoreCallDispatcher {
   private final CoreCallExecutor executor;
   // CoreReplyService -> SagaEngine -> this: resolved at call time, not at construction
   private final ObjectProvider<CoreReplyService> replies;
+  private final CoreCallAuditService audits;
 
-  public CoreCallDispatcher(CoreWalletClient client, CoreCallExecutor executor, ObjectProvider<CoreReplyService> replies) {
+  public CoreCallDispatcher(
+      CoreWalletClient client, CoreCallExecutor executor, ObjectProvider<CoreReplyService> replies,
+      CoreCallAuditService audits) {
     this.client = client;
     this.executor = executor;
     this.replies = replies;
+    this.audits = audits;
   }
 
   /** Calls the core for {@code command} after the current transaction commits (at once outside one). */
@@ -69,7 +73,9 @@ public class CoreCallDispatcher {
     }
     MDC.put("txnId", command.txnId());
     try {
+      long started = System.nanoTime();
       CoreReply reply = client.call(command);
+      audit(command, reply, (System.nanoTime() - started) / 1_000_000);
       replies.getObject().handle(reply);
     } catch (RuntimeException e) {
       log.atError()
@@ -81,6 +87,20 @@ public class CoreCallDispatcher {
     } finally {
       MDC.remove("correlationId");
       MDC.remove("txnId");
+    }
+  }
+
+  /** The CORE_CALL audit hop; a failure to write it never stops the answer reaching the saga. */
+  private void audit(CoreCommand command, CoreReply reply, long durationMs) {
+    try {
+      audits.record(command, reply, durationMs);
+    } catch (RuntimeException e) {
+      log.atWarn()
+          .addKeyValue("event", "core.call.audit_failed")
+          .addKeyValue("txnId", command.txnId())
+          .addKeyValue("commandType", command.commandType())
+          .addKeyValue("errorClass", e.getClass().getSimpleName())
+          .log("core call audit not written");
     }
   }
 }

@@ -58,8 +58,10 @@ class KafkaTransactionFlowTest {
   final PinTransport pins = mock(PinTransport.class);
   final TxnRequestMapper mapper = new TxnRequestMapper();
   final ReplyWaiters waiters = new ReplyWaiters();
+  final ChannelAuditService audits = mock(ChannelAuditService.class);
   final KafkaTransactionFlow flow =
-      new KafkaTransactionFlow(publisher, waiters, mapper, auth, pins, props(), Clock.fixed(NOW, ZoneOffset.UTC));
+      new KafkaTransactionFlow(
+          publisher, waiters, mapper, auth, pins, props(), Clock.fixed(NOW, ZoneOffset.UTC), audits);
 
   static UssdProperties props() {
     return new UssdProperties(
@@ -187,6 +189,25 @@ class KafkaTransactionFlowTest {
     assertThat(req.amount()).isEqualTo(new Amount(0L, Amount.BDT));
     assertThat(req.creditParty()).isEqualTo(req.debitParty());
     assertThat(req.assertion()).isEqualTo(ASSERTION);
+
+    // ticket 130b: the CHANNEL_IN hop names the status only, never the balance
+    ArgumentCaptor<mfs.mw.ussd.mapper.ChannelAuditMapper.Served> served =
+        ArgumentCaptor.forClass(mfs.mw.ussd.mapper.ChannelAuditMapper.Served.class);
+    verify(audits).served(served.capture(), org.mockito.ArgumentMatchers.anyLong());
+    assertThat(served.getValue().txnId()).isEqualTo(req.txnId());
+    assertThat(served.getValue().status()).isEqualTo("COMPLETED");
+    assertThat(served.getValue().request()).isEqualTo(req);
+    assertThat(served.getValue().answer()).isNull();
+  }
+
+  @Test
+  void aWrongPinIsNotAChannelHop() {
+    when(auth.authorise(any()))
+        .thenThrow(refusal(401, ErrorCodes.AUTH_WRONG_PIN, List.of(new ErrorDetail("triesLeft", "2"))));
+
+    flow.submit(p2p());
+
+    verify(audits, never()).served(any(), org.mockito.ArgumentMatchers.anyLong());
   }
 
   @Test

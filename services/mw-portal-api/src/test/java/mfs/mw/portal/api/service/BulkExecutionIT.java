@@ -210,6 +210,15 @@ class BulkExecutionIT {
     assertThat(reqs.get(0).path("attributes").path("reference").asString()).isEqualTo("SAL-1");
     assertThat(reqs.stream().map(r -> r.path("txnId").asString()).distinct()).hasSize(3);
     assertThat(batches.get(CHECKER, id).status()).isEqualTo("EXECUTING");
+
+    // ticket 130b: every child's CHANNEL_IN audit hop, in the same transaction, masked
+    List<JsonNode> hops = jdbc.queryForList(
+            "select payload::text from outbox where topic = 'mw.audit.event.v1'"
+                + " and payload::jsonb ->> 'hop' = 'CHANNEL_IN' order by id", String.class)
+        .stream().map(json::readTree).toList();
+    assertThat(hops).extracting(h -> h.path("txnId").asString())
+        .containsExactlyElementsOf(reqs.stream().map(r -> r.path("txnId").asString()).toList());
+    assertThat(hops).allSatisfy(h -> assertThat(h.toString()).doesNotContain("01710000001"));
   }
 
   @Test

@@ -22,6 +22,7 @@ import mfs.mw.checkout.dto.TxnRequest;
 import mfs.mw.checkout.entity.CheckoutSession;
 import mfs.mw.checkout.exception.ErrorCodes;
 import mfs.mw.checkout.exception.MwException;
+import mfs.mw.checkout.mapper.ChannelAuditMapper;
 import mfs.mw.checkout.mapper.CheckoutMapper;
 import mfs.mw.checkout.messaging.EventMetadata;
 import mfs.mw.checkout.messaging.EventPublisher;
@@ -50,6 +51,7 @@ import org.springframework.stereotype.Service;
 public class CheckoutPayService {
 
   private static final Logger log = LoggerFactory.getLogger(CheckoutPayService.class);
+  private static final String SERVICE = "mw-checkout";
 
   private final SessionRepository sessions;
   private final CheckoutProperties props;
@@ -60,6 +62,7 @@ public class CheckoutPayService {
   private final SessionOutcomes outcomes;
   private final ResultLinks links;
   private final Clock clock;
+  private final ChannelAuditService audits;
 
   public CheckoutPayService(
       SessionRepository sessions,
@@ -70,7 +73,8 @@ public class CheckoutPayService {
       ReplyWaiters waiters,
       SessionOutcomes outcomes,
       ResultLinks links,
-      Clock clock) {
+      Clock clock,
+      ChannelAuditService audits) {
     this.sessions = sessions;
     this.props = props;
     this.mapper = mapper;
@@ -80,6 +84,7 @@ public class CheckoutPayService {
     this.outcomes = outcomes;
     this.links = links;
     this.clock = clock;
+    this.audits = audits;
   }
 
   public PageView page(String token) {
@@ -127,6 +132,7 @@ public class CheckoutPayService {
    * the session OPEN.
    */
   public PayResult confirm(String token, ConfirmRequest req) {
+    long started = System.nanoTime();
     CheckoutSession s = byToken(token);
     Instant now = clock.instant();
     requireOpen(s, now);
@@ -168,6 +174,13 @@ public class CheckoutPayService {
     if (status != null && status.terminal()) {
       outcomes.apply(status);
     }
+    boolean ended = status != null && status.terminal();
+    // the answer is not a payload: its redirect URL is the merchant's
+    audits.served(
+        new ChannelAuditMapper.Served(SERVICE, CheckoutMapper.CHANNEL, txn.txnId(), correlationId,
+            txn.initiator().id(), txn.txnType(), ended ? status.status() : "PROCESSING",
+            ended && status.error() != null ? status.error().code() : null, txn, null),
+        (System.nanoTime() - started) / 1_000_000);
     CheckoutSession after = byToken(token);
     SessionStatus st = after.statusAt(clock.instant());
     ErrorInfo error =

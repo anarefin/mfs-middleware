@@ -231,6 +231,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.ussd`. Follow the roo
 
 - `api/mw-ussd/ussd-http.v1.openapi.yaml` (MNO HTTP USSD API).
 
+- CHANNEL_IN audit hop (ticket 130b, FRS AUD-01/AUD-04): every transaction request `service/KafkaTransactionFlow.submit` served
+  (published and answered or timed out) writes `channel.request.completed` on `mw.audit.event.v1`
+  (`mapper/ChannelAuditMapper`, `service/ChannelAuditService`: outbox, own transaction, a failure logged
+  `channel.audit.failed` and never fails the request): hop CHANNEL_IN, direction IN, `durationMs`, actor
+  `user`/<scrubbed initiator>, `after` {channel, txnType, status, errorCode?}, outcome FAILURE for REJECTED /
+  FAILED; payload request IN the canonical `TxnRequest` (no answer payload: a BALANCE answer carries the balance), rendered by `MaskingPolicy.describe` (assertion blanked), 4 KB. A refusal before
+  publishing (PIN, OTP, validation) is not a hop.
+
 ## Contracts used
 
 - `contracts.yml` (module root) is the machine-readable list of the events and APIs here, checked by

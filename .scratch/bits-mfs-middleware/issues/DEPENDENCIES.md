@@ -169,11 +169,11 @@
 129-portal-bulk-sp                          95,116            split (129-split-decisions.md, 1 h cap)
 129a-bulk-xlsx-upload                       95,116            done     75m      18 files +1013 −114    a1acfbd1,fba3ae6b  (poi-ooxml 6.0.0; bounded zip/shared strings/number reader; path stays /bulk/batches)
 129b-bulk-preview                           129a              done     25m      48 files +1137 −236    dd3083e3,e2de20a5 (merge e7d1d038; portal-api V7; PREVIEW expires 72 h; MW-VAL-036/037; Newman 21/22/23/90 submit after upload, not run live)
-129c-bulk-balance-retry                     129b              open   (check orchestrator replay of a FAILED idempotency key before retry; a row must never pay twice)
+129c-bulk-balance-retry                     129b              done     31m      40 files +1623 −63     bc7f1ff3,b577771c (merge 98290bf7; orchestrator replays FAILED for a reused key -> per-attempt key bulk-<batch>-<line>-a<n> only after proof nothing posted; BLOCKED_FUNDS; core balance-clients: mw-portal-api, ORG wallets only (contract change per ticket "via core REST", like report-clients); portal-org.v1 1.1.0. Open: retry round not balance-checked, pause/resume of APPROVED skips the dispatch check, BLOCKED_FUNDS never expires; test_chaos.sh stop-load test fails on clean upay-main)
 129d-sp-portal                              129a              open
 129e-bulk-suite                             129b,129c,129d    open   (Newman 65)
 130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f
-130b-audit-hops-channels-core-notify        130               open   (CHANNEL_IN in channels, CORE_CALL in orchestrator, NOTIFICATION in mw-notify; closes AUD-01/AUD-04 with 135)
+130b-audit-hops-channels-core-notify        130               done     40m      56 files +1490 −49     3ca26066,9c0f49f8 (merge 4705cde3; AUD-01 done, AUD-04 with 135; no balance answer, checkout redirect or OTP text audited; NOTIFICATION and bulk-child hops carry no latency)
 # --- M12 gate: UC-01, UC-20..22
 131-admin-partner-credentials               91,97             split (131-split-decisions.md, 2026-11-20)
 131a-admin-credentials-backend              91,97             done     135m     59 files +3307 −41     ce25fff7
@@ -184,12 +184,14 @@
 132-admin-routing-billers-clients-ui        98,100a,113        open
 133-admin-ussd-editor-templates             109,111           split (133-split-decisions.md, 2026-11-20)
 133a-ussd-tree-editor-preview               109,111           done     13m      9 files +641 −35       5022566d,3e420fed  (UI only; live Playwright not run)
-133b-ussd-preview-api                       133a              open
+133b-ussd-preview-api                       133a              done     20m      36 files +1254 −19     92295544 (merge 3619db28; short code -> root menu = mw.content.ussd.<mno> config copy in admin-api; operator regex never run in preview; folder 67 started, not run live)
 133c-notify-rules                           133a              open
 133d-template-test-send                     133a              open
 134-admin-actions-compliance-recon-ui       125,127,111       open
 135-admin-monitoring-users-audit-mock       103,130           open
-136-developer-guide-sample-connector        114,131a,131b           open
+136-developer-guide-sample-connector        114,131a,131b     split (136-split-decisions.md)
+136a-guide-sample-trigger-docs              114,131a,131b     done     32m      22 files +1931 −11     cef3880d (merge 906f72e9; docs/connectors, docs/mocks, docs/api-catalogue.md; samplebiller mock; MockTriggers registry + docs drift tests)
+136b-console-walkthrough-suite              136a,132          open   (integration-maker/checker seeded persona, e2e/94-add-biller.spec.ts, Newman 70-sample-connector, CON-06)
 137-frs-e2e-completion                      104-129(flows)    open
 138-frs-acceptance-gate                     137               open
 # --- M13 gate: FRS 10.4 acceptance criteria 1-7

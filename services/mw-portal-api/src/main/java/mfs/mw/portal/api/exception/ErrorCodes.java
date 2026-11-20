@@ -31,6 +31,10 @@ public final class ErrorCodes {
   public static final String VAL_BATCH_NOT_PREVIEW = "MW-VAL-036";
   /** Submit of a PREVIEW batch without a single valid row: HTTP 409 (ticket 129b). */
   public static final String VAL_BATCH_NO_VALID_ROWS = "MW-VAL-037";
+  /** Retry of a batch that is not settled or has no FAILED row: HTTP 409 (ticket 129c). */
+  public static final String VAL_NOTHING_TO_RETRY = "MW-VAL-038";
+  /** Retry request while one is pending, or approval while none is: HTTP 409 (ticket 129c). */
+  public static final String VAL_RETRY_REQUEST = "MW-VAL-039";
   /** No valid bearer token (missing, expired, bad signature, wrong realm): HTTP 401. */
   public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
   /** Valid token, but no org (claim orgId) or not the role this operation needs: HTTP 403. */
@@ -41,6 +45,8 @@ public final class ErrorCodes {
   public static final String SYS_INTERNAL = "MW-SYS-001";
   /** mw-orchestrator's query API is unreachable or answered unusably (ticket 35): 503, retryable. */
   public static final String SYS_ORCHESTRATOR_UNAVAILABLE = "MW-SYS-040";
+  /** The core gave no org wallet balance for a batch's approval: HTTP 503, retryable (ticket 129c). */
+  public static final String SYS_CORE_UNAVAILABLE = "MW-SYS-041";
 
   private ErrorCodes() {}
 }

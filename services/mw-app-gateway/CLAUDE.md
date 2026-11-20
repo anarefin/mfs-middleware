@@ -373,6 +373,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   (`config/WebServiceConfig`); `contracts/ContractDriftTest` checks the operations. Not an OpenAPI file, so it
   is owned in `contracts/OWNERS.yml` and copied into the jar, and it is not a `contracts.yml` `apis` entry.
 
+- CHANNEL_IN audit hop (ticket 130b, FRS AUD-01/AUD-04): every transaction request `service/TransactionService.submit` served
+  (published and answered or timed out) writes `channel.request.completed` on `mw.audit.event.v1`
+  (`mapper/ChannelAuditMapper`, `service/ChannelAuditService`: outbox, own transaction, a failure logged
+  `channel.audit.failed` and never fails the request): hop CHANNEL_IN, direction IN, `durationMs`, actor
+  `user`/<scrubbed initiator>, `after` {channel, txnType, status, errorCode?}, outcome FAILURE for REJECTED /
+  FAILED; payload request IN the canonical `TxnRequest` and answer OUT the `TransactionView`, rendered by `MaskingPolicy.describe` (assertion blanked), 4 KB. A refusal before
+  publishing (PIN, OTP, validation) is not a hop.
+
 ## Contracts used
 
 - `contracts.yml` (module root) is the machine-readable list of the events and APIs below, checked by

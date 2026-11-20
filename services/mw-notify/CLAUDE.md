@@ -161,6 +161,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   `dto/PushTokenEvent`).
 - `api/mw-notify/notify-internal.v1.openapi.yaml` (produced, ticket 107a: the customer inbox).
 
+- `events/mw-audit-dw/mw.audit.event.v1.schema.json` (produced, ticket 130b, own type `dto/AuditEvent`):
+  `StatusEvents` writes a NOTIFICATION hop (`notification.completed`, direction OUT, `after` {messageId,
+  channel, status, attempt, templateCode, errorCode?}, outcome SUCCESS for SENT/DELIVERED/READ) with every
+  final status of a message whose txnId is a UUIDv7, in the same transaction; payload the rendered text
+  (params masked at render, scrubbed again) of a TXN-priority message only, never an OTP text
+  (`StatusEventsAuditTest`, `ProducedContractsTest`).
+
 ## Contracts used
 
 - `events/mw-orchestrator/mw.txn.status.v1.schema.json` (own subset type `dto/TxnStatusEvent`).

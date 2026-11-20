@@ -43,6 +43,7 @@ class TransactionServiceTest {
   final mfs.mw.app.gateway.client.AuthClient auth = mock(mfs.mw.app.gateway.client.AuthClient.class);
   final IdempotentReplay replay = mock(IdempotentReplay.class);
   final LinkedAccountService linked = mock(LinkedAccountService.class);
+  final ChannelAuditService audits = mock(ChannelAuditService.class);
 
   {
     org.mockito.Mockito.when(auth.authorise(any()))
@@ -61,7 +62,7 @@ class TransactionServiceTest {
                   "CASH_OUT", List.of("CUSTOMER"),
                   "MERCHANT_PAY", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth, replay, linked);
+          billers, auth, replay, linked, audits);
 
   static TransactionRequest body(String txnType) {
     return body(txnType, null);
@@ -96,7 +97,7 @@ class TransactionServiceTest {
               List.of("P2P", "TOPUP"), List.of("reference"), new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "TOPUP", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth, replay, linked);
+          billers, auth, replay, linked, audits);
 
   static TransactionRequest flow(String txnType, String creditType, TransactionRequest.Partner partner) {
     return new TransactionRequest(
@@ -136,6 +137,20 @@ class TransactionServiceTest {
     verify(publisher).publish(anyString(), anyString(), any(), any(), anyMap());
   }
 
+  @Test
+  void aServedRequestIsAuditedAsItsChannelInHop() {
+    var r = withTopup.submit(USER, "key", flow("TOPUP", "MSISDN", new TransactionRequest.Partner("gp", "PREPAID")));
+
+    org.mockito.ArgumentCaptor<mfs.mw.app.gateway.mapper.ChannelAuditMapper.Served> served =
+        org.mockito.ArgumentCaptor.forClass(mfs.mw.app.gateway.mapper.ChannelAuditMapper.Served.class);
+    verify(audits).served(served.capture(), org.mockito.ArgumentMatchers.anyLong());
+    assertThat(served.getValue().txnId()).isEqualTo(r.view().txnId());
+    assertThat(served.getValue().service()).isEqualTo("mw-app-gateway");
+    assertThat(served.getValue().txnType()).isEqualTo("TOPUP");
+    assertThat(served.getValue().status()).isEqualTo("PROCESSING");
+    assertThat(served.getValue().request()).isInstanceOf(mfs.mw.app.gateway.dto.TxnRequest.class);
+  }
+
   // --- BILL_PAY (ticket 21) ------------------------------------------------------------------
 
   final TransactionService withBillPay =
@@ -147,7 +162,7 @@ class TransactionServiceTest {
               new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "BILL_PAY", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth, replay, linked);
+          billers, auth, replay, linked, audits);
 
   static TransactionRequest bill(String creditType, String id, TransactionRequest.Partner partner) {
     return new TransactionRequest(
@@ -209,7 +224,7 @@ class TransactionServiceTest {
               new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "ADD_MONEY_BANK", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth, replay, linked);
+          billers, auth, replay, linked, audits);
 
   static TransactionRequest addMoney(
       TransactionRequest.CounterParty credit, TransactionRequest.BankAccount debit, TransactionRequest.Partner partner) {
@@ -266,7 +281,7 @@ class TransactionServiceTest {
                 new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
                 Map.of("TOPUP", List.of("CUSTOMER"))),
             Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-            billers, auth, replay, linked);
+            billers, auth, replay, linked, audits);
     TransactionRequest topup =
         new TransactionRequest(
             "TOPUP", new TransactionRequest.CounterParty("MSISDN", "01711000002"), new Amount(100L, "BDT"),
@@ -566,7 +581,7 @@ class TransactionServiceTest {
               new AppGatewayProperties.Jwt("http://mw-auth/jwks", "mw-auth", "mw-app"),
               Map.of("P2P", List.of("CUSTOMER"), "ADD_MONEY_BANK", List.of("CUSTOMER"), "W2B", List.of("CUSTOMER"))),
           Clock.fixed(Instant.parse("2026-11-04T06:00:00Z"), ZoneOffset.UTC),
-          billers, auth, replay, linked);
+          billers, auth, replay, linked, audits);
 
   static TransactionRequest linkedBody(
       String txnType, String linkedId, TransactionRequest.CounterParty credit, TransactionRequest.Partner partner,

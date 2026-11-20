@@ -1,14 +1,20 @@
 package mfs.mw.orchestrator.mapper;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import mfs.mw.orchestrator.dto.AuditEvent;
+import mfs.mw.orchestrator.dto.CoreCommand;
+import mfs.mw.orchestrator.dto.CoreReply;
 import mfs.mw.orchestrator.dto.TxnAction;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.service.saga.Status;
+import mfs.mw.orchestrator.util.AuditBodies;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A saga state change to {@code mw.audit.event.v1} (spec 14.3): action {@code txn.state.changed},
@@ -113,6 +119,63 @@ public class AuditMapper {
         "DENIED",
         at,
         SERVICE);
+  }
+
+  /** One core REST call of a saga step (ticket 130b, FRS AUD-01, AUD-04). */
+  public static final String CORE_CALL = "core.call.completed";
+
+  /** The timeline hop of a core call (ticket 130b). */
+  public static final String CORE_CALL_HOP = "CORE_CALL";
+
+  private static final JsonMapper BODIES = JsonMapper.builder().build();
+
+  /**
+   * A core call and its answer: hop CORE_CALL, direction OUT, the call's latency, {@code after}
+   * the command type, how definite the answer was, the HTTP status and a refusal's code; outcome
+   * SUCCESS only for an answered call. Payloads: the command OUT and the answer IN (when there is
+   * one, never for a BalanceInquiry), both masked by {@link AuditBodies} (the assertion blanked,
+   * MSISDNs and names masked).
+   */
+  public AuditEvent coreCall(CoreCommand command, CoreReply reply, Instant at, long durationMs) {
+    Map<String, String> after = new HashMap<>();
+    after.put("commandType", command.commandType());
+    after.put("kind", reply.kind().name());
+    after.put("httpStatus", Integer.toString(reply.status()));
+    if (command.commandId() != null) {
+      after.put("commandId", command.commandId());
+    }
+    if (reply.code() != null) {
+      after.put("code", reply.code());
+    }
+    List<AuditEvent.Payload> payload = new ArrayList<>();
+    String request = AuditBodies.mask(BODIES.valueToTree(command));
+    if (request != null) {
+      payload.add(new AuditEvent.Payload("OUT", "application/json", request));
+    }
+    // a balance never leaves the COMPLETED status (ADR D26)
+    String answer = "BalanceInquiry".equals(command.commandType()) ? null : AuditBodies.mask(reply.body());
+    if (answer != null) {
+      payload.add(new AuditEvent.Payload("IN", "application/json", answer));
+    }
+    String txnId = command.txnId();
+    String correlationId = command.correlationId();
+    return new AuditEvent(
+        1,
+        UUID.randomUUID().toString(),
+        txnId,
+        correlationId == null || correlationId.isBlank() ? txnId : correlationId,
+        new AuditEvent.Actor("system", SERVICE),
+        CORE_CALL,
+        "txn/" + txnId,
+        null,
+        after,
+        reply.kind() == CoreReply.Kind.ANSWERED ? "SUCCESS" : "FAILURE",
+        at,
+        SERVICE,
+        CORE_CALL_HOP,
+        "OUT",
+        Math.max(0, durationMs),
+        payload.isEmpty() ? null : payload);
   }
 
   public AuditEvent stateChanged(TransactionRecord rec, Status from, Instant at) {
