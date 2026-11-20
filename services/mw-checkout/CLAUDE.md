@@ -42,8 +42,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.checkout`. Follow the
   `{MERCHANT, merchantId}`, debit the merchant wallet MERCHANT, credit the payer wallet CUSTOMER, `originalTxnId`
   = the payment's txnId, no assertion; the orchestrator's RefundFlow checks it again), with `mw-reply-to`, waited
   for within `reply-budget`: COMPLETED `201`, no final answer `202` PENDING, REJECTED the refusal's code as the
-  envelope (`MW-CORE-REFUND_EXCEEDS` 422, `MW-AUTH-*` 403, `MW-VAL-*` 400). Kafka down: the row is deleted
-  (the key can be used again) and `503 MW-SYS-010`. Outcomes (`RefundOutcomes`, from the request or from
+  envelope (`MW-CORE-REFUND_EXCEEDS` 422, `MW-AUTH-*` 403, `MW-VAL-*` 400). Send failed (Kafka down, or the
+  send timed out after Kafka stored it): the row stays PENDING and `503 MW-SYS-010` (M9 review, FL-06); a retry
+  with the same key sends the PENDING refund again under the same refundId and key (the orchestrator
+  deduplicates on the key), and a final status, a duplicate answer included (by its txnId, else
+  `attributes.requestTxnId`), settles the row. A PENDING row counts against the refundable amount. Outcomes (`RefundOutcomes`, from the request or from
   `StatusProjectionListener`, which sends a WEB_CHECKOUT REVERSAL here instead of `SessionOutcomes`): PENDING ->
   COMPLETED / REJECTED, first wins, and in the same transaction attempt 1 of the signed refund IPN
   (`dto/RefundIpnPayload` `{type REFUND, refundId, sessionId, orderId, status, originalTxnId, amount,

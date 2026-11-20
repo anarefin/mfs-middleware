@@ -45,16 +45,21 @@ public class RefundOutcomes {
     this.clock = clock;
   }
 
-  /** Applies a final status of a refund transaction; anything else is ignored. */
+  /**
+   * Applies a final status of a refund transaction; anything else is ignored. A duplicate answer
+   * (a repeated key) describes the stored refund: it settles the refund of the stored txnId, else the
+   * one of {@code attributes.requestTxnId} (M9 review, FL-06); the first outcome wins either way.
+   */
   @Transactional
   public void apply(StatusMessage status) {
-    if (status.duplicate() || !status.terminal() || status.txnId() == null) {
+    if (!status.terminal() || status.txnId() == null) {
       return;
     }
-    UUID refundId;
-    try {
-      refundId = UUID.fromString(status.txnId());
-    } catch (IllegalArgumentException e) {
+    UUID refundId = uuid(status.txnId());
+    if (status.duplicate() && (refundId == null || refunds.findById(refundId).isEmpty())) {
+      refundId = uuid(status.awaitedTxnId());
+    }
+    if (refundId == null) {
       return;
     }
     Refund.Status outcome =
@@ -78,5 +83,13 @@ public class RefundOutcomes {
         .addKeyValue("errorCode", errorCode)
         .log("checkout refund finished");
     deliveries.insert(mapper.firstIpnAttempt(r, s, schedule.firstAttemptAt()));
+  }
+
+  private static UUID uuid(String id) {
+    try {
+      return id == null ? null : UUID.fromString(id);
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
   }
 }
