@@ -1,0 +1,256 @@
+openapi: 3.1.0
+info:
+  title: Bits compliance API v1 (mw-compliance)
+  version: 1.0.0
+  description: |
+    Customer eKYC (ticket 124, FRS UC-01, EXT-07, FL-01, FL-02, CMP-04, CMP-05) on the internal network
+    (`https://mw-compliance:8080`, not routed by APISIX). mTLS with a Vault `pki_int` client certificate
+    (spec 18.2, D24) and a Keycloak realm `services` client-credentials JWT whose `aud` contains
+    `mw-compliance` and whose `azp` is allowed (mw-app-gateway for the Customer, DSO and Agent apps,
+    mw-admin-api for the console). No or bad token 401 MW-AUTH-001; another client 403 MW-AUTH-002. Every
+    error is the 5.3 envelope.
+
+    Scope (security review): a channel client names the end user its app token authenticated in
+    `X-Mw-Subject-Type` (`WALLET`: the customer; `AGENT`: the assisting DSO or agent) and `X-Mw-Subject-Id`;
+    without them 403 MW-AUTH-002. It then sees only the applications of that wallet, or the ones that agent
+    assisted: any other id is 404 MW-VAL-003, as if it did not exist. A customer applies for their own wallet on
+    channel APP only; an agent applies as itself (its id replaces `agentId`); otherwise 403 MW-AUTH-002. Only
+    the clients of `mw.compliance.unscoped-clients` (mw-admin-api) read (GET) any application without a
+    subject; every write (create, documents, submit) needs the subject whoever the client is (403
+    MW-AUTH-002 otherwise): there is no operator write path.
+
+    NID reuse: when another wallet already holds the same NID (an application MATCHED, APPROVED or being
+    checked), submit makes no EC call and issues no level: the application is MANUAL_REVIEW with reason
+    NID_IN_USE, for an operator (ticket 134).
+
+    Flow: create the application (the consent row commits with it, CMP-04), upload the three images
+    (NID_FRONT, NID_BACK, SELFIE: JPEG or PNG, at most 2 MB each, the type checked against the bytes),
+    then submit. Submit calls the Election Commission NID service with the consent id and compares the
+    date of birth (exact) and the name (normalised Bangla or English similarity, threshold in config):
+    MATCHED with kycLevel FULL (both) or BASIC (date of birth only), else MISMATCHED (reason DOB_MISMATCH or
+    NID_NOT_FOUND; manual review in the console, ticket 134). A match publishes `mw.kyc.completed.v1`
+    once. An EC timeout is 504 MW-TMO-EC_NID, an open EC circuit breaker 503
+    MW-SYS-PARTNER_CIRCUIT_OPEN, another EC or mw-crypto failure 503 MW-SYS-002 / MW-SYS-050: the
+    application is FAILED and `retryable`; submit it again.
+
+    Personal data is never returned: the NID only as its last three digits, no names, no date of birth,
+    no image. At rest every one of them is an mw-crypto envelope (KEK_COLUMN) and the NID is searched by
+    its TOKENISE_NID token.
+
+    Errors: 400 MW-VAL-001 (bad body, name missing, assisted channel without agentId), 400 MW-VAL-021
+    (image too large, not base64, type not accepted or not what the bytes are), 404 MW-VAL-003 (no
+    such application), 409 MW-VAL-020 (not in a state for this), 409 MW-VAL-022 (images missing), 409
+    MW-VAL-023 (no committed consent: the EC is never called).
+servers:
+  - url: https://mw-compliance:8080
+security:
+  - internalClientCredentials: []
+paths:
+  /internal/v1/kyc/applications:
+    post:
+      operationId: createKycApplication
+      summary: Record the consent and open an eKYC application
+      parameters:
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/SubjectType"
+        - $ref: "#/components/parameters/SubjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateApplication" }
+      responses:
+        "201":
+          description: The application, SUBMITTED
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Application" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/kyc/applications/{id}/documents:
+    post:
+      operationId: addKycDocument
+      summary: Upload (or replace) one image of the application
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/SubjectType"
+        - $ref: "#/components/parameters/SubjectId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DocumentUpload" }
+      responses:
+        "201":
+          description: Stored, envelope-encrypted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Document" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/kyc/applications/{id}/submit:
+    post:
+      operationId: submitKycApplication
+      summary: Verify against the EC NID service and decide
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/SubjectType"
+        - $ref: "#/components/parameters/SubjectId"
+      responses:
+        "200":
+          description: MATCHED (with kycLevel) or MISMATCHED (with reason)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Application" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+        "504": { $ref: "#/components/responses/Error" }
+  /internal/v1/kyc/applications/{id}:
+    get:
+      operationId: getKycApplication
+      summary: One application, masked
+      parameters:
+        - $ref: "#/components/parameters/ApplicationId"
+        - $ref: "#/components/parameters/CorrelationId"
+        - $ref: "#/components/parameters/SubjectType"
+        - $ref: "#/components/parameters/SubjectId"
+      responses:
+        "200":
+          description: The application
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Application" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    internalClientCredentials:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    ApplicationId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SubjectType:
+      name: X-Mw-Subject-Type
+      in: header
+      required: false
+      description: Required for every client but mw-admin-api
+      schema: { type: string, enum: [WALLET, AGENT] }
+    SubjectId:
+      name: X-Mw-Subject-Id
+      in: header
+      required: false
+      description: The wallet id (WALLET) or the DSO/agent id (AGENT) from the app token
+      schema: { type: string, maxLength: 64 }
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      schema: { type: string, maxLength: 128 }
+  responses:
+    Error:
+      description: The 5.3 error envelope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    Channel:
+      type: string
+      enum: [APP, DSO, AGENT]
+      description: APP the customer themselves; DSO, AGENT assisted (the caller passes agentId from the app token)
+    DocumentType:
+      type: string
+      enum: [NID_FRONT, NID_BACK, SELFIE]
+    CreateApplication:
+      type: object
+      required: [walletId, channel, nid, dob, consent]
+      additionalProperties: false
+      properties:
+        walletId: { type: string, pattern: "^01[3-9][0-9]{8}$" }
+        channel: { $ref: "#/components/schemas/Channel" }
+        agentId: { type: string, maxLength: 64, description: Required for DSO and AGENT, ignored for APP }
+        nid: { type: string, pattern: "^([0-9]{10}|[0-9]{13}|[0-9]{17})$", description: Personal data }
+        dob: { type: string, format: date, description: Personal data }
+        nameEn: { type: string, maxLength: 120, description: "Personal data; nameEn or nameBn is required" }
+        nameBn: { type: string, maxLength: 120, description: Personal data }
+        consent:
+          type: object
+          required: [purpose]
+          additionalProperties: false
+          properties:
+            purpose: { type: string, minLength: 1, maxLength: 64, examples: [EKYC_ONBOARDING] }
+            grantedAt: { type: string, format: date-time, description: When the customer agreed; now when absent }
+    DocumentUpload:
+      type: object
+      required: [type, contentType, content]
+      additionalProperties: false
+      properties:
+        type: { $ref: "#/components/schemas/DocumentType" }
+        contentType: { type: string, enum: [image/jpeg, image/png] }
+        content: { type: string, contentEncoding: base64, description: "The image, at most 2 MB decoded" }
+    Document:
+      type: object
+      required: [documentId, applicationId, type, sizeBytes, sha256]
+      additionalProperties: false
+      properties:
+        documentId: { type: string, format: uuid }
+        applicationId: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/DocumentType" }
+        sizeBytes: { type: integer, minimum: 1 }
+        sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+    Application:
+      type: object
+      required: [applicationId, walletId, channel, consentId, status, nidMasked, retryable, documents, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        applicationId: { type: string, format: uuid }
+        walletId: { type: string }
+        channel: { $ref: "#/components/schemas/Channel" }
+        agentId: { type: string }
+        consentId: { type: string, format: uuid }
+        status: { type: string, enum: [SUBMITTED, EC_CALLED, MATCHED, MISMATCHED, FAILED, MANUAL_REVIEW, APPROVED] }
+        nidMasked: { type: string, description: "Last three digits only (****789)" }
+        matchScore: { type: number, minimum: 0, maximum: 1 }
+        kycLevel: { type: string, enum: [BASIC, FULL] }
+        reason: { type: string, enum: [DOB_MISMATCH, NID_NOT_FOUND, NID_IN_USE] }
+        errorCode: { type: string, description: "FAILED: the error of the last submit" }
+        retryable: { type: boolean, description: "FAILED: submit again" }
+        documents:
+          type: array
+          items: { $ref: "#/components/schemas/DocumentType" }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        timestamp: { type: string, format: date-time }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

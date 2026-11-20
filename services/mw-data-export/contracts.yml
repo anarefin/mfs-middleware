@@ -1,6 +1,7 @@
 # Contracts this module produces and consumes (ticket 128). Paths relative to contracts/.
-# Source topics mw.recon.exception.v1 and mw.kyc.completed.v1 have no schema yet (tickets 127 and
-# 124). The listeners read a local shape; those schemas are not listed here.
+# The listeners read a local shape of mw.recon.exception.v1; mw.kyc.completed.v1 (ticket 124,
+# owner mw-compliance) is listed: service/DwEvents.fromKyc reads its walletId, kycLevel,
+# completedAt and correlationId.
 produces:
   events:
     - events/mw-data-export/dw.txn.created.v1.schema.json
@@ -19,5 +20,6 @@ consumes:
     - events/mw-orchestrator/mw.txn.status.v1.schema.json
     - events/mw-notify/mw.notify.status.v1.schema.json
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
+    - events/mw-compliance/mw.kyc.completed.v1.schema.json
   apis:
     - api/mw-crypto/crypto-internal.v1.openapi.yaml

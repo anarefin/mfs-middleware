@@ -207,6 +207,7 @@ volumes:
   audit-dw-approle:
   data-export-approle:
   recon-approle:
+  compliance-approle:
   app-gateway-approle:
   notify-approle:
   ussd-approle:
@@ -766,6 +767,7 @@ services:
       - audit-dw-approle:/out/audit-dw
       - data-export-approle:/out/data-export
       - recon-approle:/out/recon
+      - compliance-approle:/out/compliance
       - app-gateway-approle:/out/app-gateway
       - notify-approle:/out/notify
       - ussd-approle:/out/ussd
@@ -1079,6 +1081,24 @@ services:
       MW_RECON_TRUST_PASSWORD: ${SFTP_DEV_PASSWORD:?cp dev.env.defaults .env}
       # Dev/test only: POST /test/v1/pull, reached through the test-only APISIX route.
       MW_RECON_TEST_API_ENABLED: "true"
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
+
+  # Customer eKYC (ticket 124a, profile core): internal API only, not published, not on the edge. Ticket
+  # 124b adds its Keycloak client, mw-crypto binding, mTLS, the EC mock and the app-gateway routes.
+  mw-compliance:
+    <<: *app
+    profiles: *core
+    image: mfs-mw/mw-compliance:local
+    build: { context: ../services/mw-compliance, args: *jvm-build-args }
+    depends_on:
+      <<: *infra-deps
+    volumes:
+      - compliance-approle:/run/mw/approle:ro
+    environment:
+      <<: *jvm-env
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
     deploy:
       resources:
         limits: { cpus: "1.0", memory: "${APP_MEM_LIMIT:-384M}" }
@@ -1663,6 +1683,7 @@ services:
       mw-audit-dw: { condition: service_healthy }
       mw-data-export: { condition: service_healthy }
       mw-recon: { condition: service_healthy }
+      mw-compliance: { condition: service_healthy }
       mw-ussd: { condition: service_healthy }
       mw-adapter-telco: { condition: service_healthy }
       mw-adapter-billpay: { condition: service_healthy }

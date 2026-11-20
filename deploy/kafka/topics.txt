@@ -16,7 +16,7 @@
 # compliance partner family and mw.compliance.instruction.v1 (interop: ticket 121, mw-adapter-interop).
 # dw.* topics are produced by mw-data-export (ticket 128). mw.recon.result.v1 is produced by
 # mw-recon (ticket 126); mw.recon.exception.v1 too (ticket 127b, consumed by mw-audit-dw and the export).
-# mw.kyc.completed.v1 is created here so the export can subscribe; its schema arrives with ticket 124.
+# mw.kyc.completed.v1 is produced by mw-compliance (ticket 124; consumers mw-notify and mw-audit-dw join in 124b).
 
 mw.txn.request.v1              48 7d retry=mw-orchestrator
 mw.txn.action.v1                6 7d retry=mw-orchestrator

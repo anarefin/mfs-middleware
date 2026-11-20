@@ -96,3 +96,6 @@ files:
   api/mw-recon/recon-test.v1.openapi.yaml: mw-recon
   # customer inbox (ticket 107a); caller mw-app-gateway. Not the admin notification log.
   api/mw-notify/notify-internal.v1.openapi.yaml: mw-notify
+  # eKYC (ticket 124); callers mw-app-gateway, mw-admin-api.
+  events/mw-compliance/mw.kyc.completed.v1.schema.json: mw-compliance
+  api/mw-compliance/compliance.v1.openapi.yaml: mw-compliance

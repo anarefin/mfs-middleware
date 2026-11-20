@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-compliance/mw.kyc.completed.v1.schema.json",
+  "title": "mw.kyc.completed.v1",
+  "description": "A customer's eKYC matched the Election Commission record (ticket 124, FRS UC-01, DAT-01 kyc.completed): the wallet's KYC level is kycLevel (FULL: exact date of birth and name similarity at or above the threshold; BASIC: date of birth only). Key: walletId. Published once per application through the outbox. Carries no NID, name or date of birth. Consumers: mw-data-export (DW, ticket 128); mw-notify (SMS) and mw-audit-dw (audit) with ticket 124b.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "eventId", "applicationId", "walletId", "kycLevel", "channel", "matchScorePct", "completedAt", "correlationId"],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "eventId": { "type": "string", "format": "uuid" },
+    "applicationId": { "type": "string", "format": "uuid" },
+    "walletId": { "$ref": "../../common/defs.v1.schema.json#/$defs/Msisdn" },
+    "kycLevel": { "enum": ["BASIC", "FULL"] },
+    "channel": { "enum": ["APP", "DSO", "AGENT"], "description": "APP: the customer onboarded themselves; DSO, AGENT: assisted" },
+    "agentId": { "type": "string", "minLength": 1, "maxLength": 64, "description": "DSO and AGENT: who assisted" },
+    "matchScorePct": { "type": "integer", "minimum": 0, "maximum": 100, "description": "Best normalised name similarity (English or Bangla), percent rounded" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "type": "string", "minLength": 1, "maxLength": 128 }
+  }
+}
