@@ -125,6 +125,12 @@ class ApiContractsTest {
         .validate(body(new mfs.mw.orchestrator.dto.TxnRequestHandled("k", false)))).isNotEmpty();
     assertThat(OpenApiSchemas.component(TEST_API, "DuplicateGuardWindow")
         .validate(body(new mfs.mw.orchestrator.dto.DuplicateGuardWindow(60)))).isEmpty();
+    assertThat(OpenApiSchemas.component(TEST_API, "InquiryAccepted")
+        .validate(body(new mfs.mw.orchestrator.dto.InquiryAccepted(TestData.txnId())))).isEmpty();
+    assertThat(OpenApiSchemas.component(TEST_API, "PartnerHealth")
+        .validate(body(new mfs.mw.orchestrator.dto.PartnerHealthView("gp-ocs", "DOWN")))).isEmpty();
+    assertThat(OpenApiSchemas.component(TEST_API, "PartnerHealth")
+        .validate(body(new mfs.mw.orchestrator.dto.PartnerHealthView("gp-ocs", null)))).isEmpty();
   }
 
   /** The quote (1.4.0, ticket 105): QuoteService's answer to a full and a minimal core reply. */

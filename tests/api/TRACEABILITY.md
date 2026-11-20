@@ -300,12 +300,26 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 63 | [b2b] a customer cannot start a float transfer | - |  |
 | 63 | [b2b] a partner app cannot start a float transfer | - |  |
 | 63 | [b2b] a DSO preview of a float transfer is allowed and moves nothing | - |  |
+| 46 | [topup frs] T1 a GP top-up on gp-ocs completes with the seed tariff fee, VAT and commission and the SMS is sent | 1 | TOPUP app success |
+| 46 | [topup frs] T1 a Robi top-up on robi-ocs completes and debits the payer once | 1 | TOPUP app success |
+| 46 | [topup frs] T2 a GP subscriber-barred refusal shows the English and Bangla text and moves nothing | 1 | TOPUP app failure |
+| 46 | [topup frs] T2 a Robi barred refusal shows the English and Bangla text and moves nothing | 1 | TOPUP app failure |
+| 46 | [topup tsq frs] T3 a GP top-up that the OCS answers unknown is completed by a driven status inquiry and debited once | 1 | TOPUP app tsq-commit |
+| 46 | [topup tsq frs] T4 a GP top-up the status inquiry says failed is released and moves nothing | 1 | TOPUP app tsq-release |
+| 46 | [topup frs] T6 the same Idempotency-Key twice tops up once and returns the same txnId | 2 | TOPUP app idempotent |
+| 46 | [topup frs] T7 a duplicate core commit of a top-up posts the money once | 1 | TOPUP app success |
+| 46 | [topup frs] T8 a GP top-up uses the ocs fallback when gp-ocs is DOWN | 1 | TOPUP app success |
+| 46 | [topup frs] T9 a limit is refused before any recharge and an insufficient balance moves nothing | 1 | TOPUP app failure |
+| 46 | [topup frs] T10 a top-up keeps the ledger identity; mid-saga restart is scripts/chaos.sh | - |  |
+| 46 | [topup reversal frs] a second reverse of a completed gp-ocs recharge returns the first outcome | - |  | FR-07 |
 
 ## FRS UC x T1-T12
 
-Ticket 104. P2P (UC-04) is filled in; T5 is the folder 90 request. T11 and T12 stay `n/a` until
-tickets 125 and 127. T10 names the request that checks the ledger identity; the mid-saga kill is
-`scripts/chaos.sh` with `CHAOS_TARGETS=mw-orchestrator`. Every other use case is `n/a` until its ticket.
+Ticket 104. P2P (UC-04) is filled in; T5 is the folder 90 request. UC-08 top-up (ticket 112c) is
+folder `46-topup-operators`; its T5 waits out the inquiry schedule, so that cell stays `n/a`.
+T11 and T12 stay `n/a` until tickets 125 and 127. T10 names the request that checks the ledger
+identity; the mid-saga kill is `scripts/chaos.sh` with `CHAOS_TARGETS=mw-orchestrator`. A use
+case still waiting on its ticket stays `n/a`.
 
 | UC | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 | T9 | T10 | T11 | T12 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -316,7 +330,7 @@ tickets 125 and 127. T10 names the request that checks the ledger identity; the 
 | UC-05 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-06 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-07 | [b2b] a distributor float transfer to an agent completes | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
-| UC-08 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-08 | [topup frs] T1 a GP top-up on gp-ocs completes with the seed tariff fee, VAT and commission and the SMS is sent | [topup frs] T2 a GP subscriber-barred refusal shows the English and Bangla text and moves nothing | [topup tsq frs] T3 a GP top-up that the OCS answers unknown is completed by a driven status inquiry and debited once | [topup tsq frs] T4 a GP top-up the status inquiry says failed is released and moves nothing | n/a waits out the inquiry schedule | [topup frs] T6 the same Idempotency-Key twice tops up once and returns the same txnId | [topup frs] T7 a duplicate core commit of a top-up posts the money once | [topup frs] T8 a GP top-up uses the ocs fallback when gp-ocs is DOWN | [topup frs] T9 a limit is refused before any recharge and an insufficient balance moves nothing | [topup frs] T10 a top-up keeps the ledger identity; mid-saga restart is scripts/chaos.sh | n/a ticket 125 | n/a ticket 127 |
 | UC-09 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-10 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
 | UC-11 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |

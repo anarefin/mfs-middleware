@@ -9,11 +9,15 @@ import java.util.UUID;
 import mfs.mw.orchestrator.client.DlqClient;
 import mfs.mw.orchestrator.config.MwServiceProperties;
 import mfs.mw.orchestrator.dto.DlqRecord;
+import mfs.mw.orchestrator.dto.InquiryAccepted;
+import mfs.mw.orchestrator.dto.PartnerHealthView;
 import mfs.mw.orchestrator.dto.Party;
 import mfs.mw.orchestrator.dto.PoisonAccepted;
 import mfs.mw.orchestrator.dto.TestReversalAccepted;
+import mfs.mw.orchestrator.dto.TxnAction;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.dto.TxnRequestHandled;
+import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.exception.MwException;
@@ -52,6 +56,8 @@ public class TestApiService {
   private final DlqClient dlq;
   private final String dlqTopic;
   private final Clock clock;
+  private final OperatorActionService actions;
+  private final RoutingCatalog routing;
 
   public TestApiService(
       TransactionRepository transactions,
@@ -59,7 +65,9 @@ public class TestApiService {
       EventPublisher publisher,
       DlqClient dlq,
       MwServiceProperties service,
-      Clock clock) {
+      Clock clock,
+      OperatorActionService actions,
+      RoutingCatalog routing) {
     this.transactions = transactions;
     this.idempotency = idempotency;
     this.publisher = publisher;
@@ -67,6 +75,29 @@ public class TestApiService {
     // the consumer group is the service name (application.yml spring.kafka.consumer.group-id)
     this.dlqTopic = MwTopics.dlqTopic(MwTopics.TXN_REQUEST, service.name());
     this.clock = clock;
+    this.actions = actions;
+    this.routing = routing;
+  }
+
+  /**
+   * One status inquiry now (ticket 112c): the same INQUIRE an operator approves, so T3 and T4 do
+   * not wait out the inquiry schedule. 404 {@code MW-VAL-003} when the transaction is unknown.
+   */
+  public InquiryAccepted inquire(UUID txnId) {
+    transactions
+        .find(txnId)
+        .orElseThrow(
+            () -> new MwException(ErrorCodes.VAL_NOT_FOUND, "Transaction not found").withStatus(HttpStatus.NOT_FOUND));
+    Instant now = clock.instant();
+    String id = UUID.randomUUID().toString();
+    actions.handle(
+        new TxnAction(1, id, txnId.toString(), TxnAction.INQUIRE, id, "test", "test", "test", "driven status inquiry", now));
+    return new InquiryAccepted(txnId.toString());
+  }
+
+  /** The health routing last noted for {@code partnerId}; absent until a route-status report arrives. */
+  public PartnerHealthView partnerHealth(String partnerId) {
+    return new PartnerHealthView(partnerId, routing.health(partnerId));
   }
 
   /** Publishes a REVERSAL of {@code originalTxnId}; 404 {@code MW-VAL-003} when no such transaction. */

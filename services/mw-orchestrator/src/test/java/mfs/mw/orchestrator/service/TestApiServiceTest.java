@@ -22,6 +22,8 @@ import mfs.mw.orchestrator.dto.Amount;
 import mfs.mw.orchestrator.dto.DlqRecord;
 import mfs.mw.orchestrator.dto.PoisonAccepted;
 import mfs.mw.orchestrator.dto.Party;
+import mfs.mw.orchestrator.dto.TxnAction;
+import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import mfs.mw.orchestrator.dto.TestReversalAccepted;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.dto.TxnRequestHandled;
@@ -45,10 +47,12 @@ class TestApiServiceTest {
   private final IdempotencyRepository idempotency = mock(IdempotencyRepository.class);
   private final EventPublisher publisher = mock(EventPublisher.class);
   private final DlqClient dlq = mock(DlqClient.class);
+  private final OperatorActionService actions = mock(OperatorActionService.class);
+  private final RoutingCatalog routing = mock(RoutingCatalog.class);
   private final TestApiService service =
       new TestApiService(
           transactions, idempotency, publisher, dlq, new MwServiceProperties("mw-orchestrator", "t", "test"),
-          Clock.fixed(NOW, ZoneOffset.UTC));
+          Clock.fixed(NOW, ZoneOffset.UTC), actions, routing);
 
   private static TransactionRecord p2p() {
     TxnRequest req =
@@ -102,6 +106,35 @@ class TestApiServiceTest {
     ArgumentCaptor<TxnRequest> sent = ArgumentCaptor.forClass(TxnRequest.class);
     verify(publisher, org.mockito.Mockito.times(2)).publish(anyString(), anyString(), any(), sent.capture());
     assertThat(sent.getAllValues()).allSatisfy(r -> assertThat(r.attributes()).containsEntry("reason", "test reversal"));
+  }
+
+  @Test
+  void anInquiryOfAStoredTransactionDrivesOneStatusInquiry() {
+    when(transactions.find(ORIGINAL)).thenReturn(Optional.of(p2p()));
+
+    assertThat(service.inquire(ORIGINAL).txnId()).isEqualTo(ORIGINAL.toString());
+
+    ArgumentCaptor<TxnAction> sent = ArgumentCaptor.forClass(TxnAction.class);
+    verify(actions).handle(sent.capture());
+    assertThat(sent.getValue().action()).isEqualTo(TxnAction.INQUIRE);
+    assertThat(sent.getValue().txnId()).isEqualTo(ORIGINAL.toString());
+  }
+
+  @Test
+  void anInquiryOfAnUnknownTransactionIs404() {
+    when(transactions.find(ORIGINAL)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.inquire(ORIGINAL))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.status().value()).isEqualTo(404));
+    verify(actions, never()).handle(any());
+  }
+
+  @Test
+  void partnerHealthIsWhateverRoutingLastNoted() {
+    when(routing.health("gp-ocs")).thenReturn("DOWN");
+
+    assertThat(service.partnerHealth("gp-ocs").health()).isEqualTo("DOWN");
+    assertThat(service.partnerHealth("gp-ocs").partnerId()).isEqualTo("gp-ocs");
   }
 
   @Test

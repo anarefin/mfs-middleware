@@ -1,6 +1,7 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
 produces:
-  events: []
+  # ticket 112c: a mock-control switch on an OCS party is partner health for routing
+  events: [events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json]
   # ticket 102 (ADR D33): the test-only mock-control API (profile mock-control)
   apis:   [api/mw-simulators/mock-control.v1.openapi.yaml]
 consumes:

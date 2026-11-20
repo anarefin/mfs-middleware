@@ -1,0 +1,4 @@
+{
+  "name": "46 Topup operators",
+  "description": "Ticket 112c (FRS 10.2, UC-08): prepaid top-up on gp-ocs and robi-ocs. T3 and T4 drive POST /test/orchestrator/v1/inquiries once the OCS has answered unknown; they do not wait out the inquiry schedule. T5 does, so it is skipped. T8 sets the ocs-gp switch DOWN and waits until routing has noted gp-ocs DOWN, then the legacy ocs fallback takes the recharge. T11 and T12 stay n/a until tickets 125 and 127. T10's mid-saga kill is scripts/chaos.sh. Tariff v1: top-up fee 200 poisha VAT-included, VAT 26, commission 0, FEE_INCOME 174, on a 2000 poisha recharge."
+}

@@ -32,6 +32,16 @@ class ReplyWaitersTest {
   }
 
   @Test
+  void anUnknownOutcomeReleasesTheWaiterSoTheCallerCanDriveTheInquiry() {
+    CompletableFuture<StatusMessage> f = waiters.register("T-UNK", KEY, PAYER);
+    assertThat(waiters.offer(status("T-UNK", "PARTNER_PENDING", null))).isFalse();
+    assertThat(f).isNotDone();
+    assertThat(waiters.offer(status("T-UNK", "UNKNOWN", null))).isTrue();
+    assertThat(f.join().status()).isEqualTo("UNKNOWN");
+    assertThat(waiters.size()).isZero();
+  }
+
+  @Test
   void intermediateStatusesDoNotCompleteTerminalOnesDo() {
     CompletableFuture<StatusMessage> f = waiters.register("T1", KEY, PAYER);
     assertThat(waiters.offer(status("T1", "VALIDATING", null))).isFalse();

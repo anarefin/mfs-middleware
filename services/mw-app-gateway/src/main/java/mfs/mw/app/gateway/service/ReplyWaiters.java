@@ -45,13 +45,15 @@ public class ReplyWaiters {
   }
 
   /**
-   * Hands a status record to its waiter, if any: a terminal status, or the answer to a repeated
-   * idempotency key (whatever its status, since no further record will name this txnId).
+   * Hands a status record to its waiter, if any: a terminal status, UNKNOWN (the caller answers
+   * 202 and a driven status inquiry resolves it, instead of sitting out the reply budget), or the
+   * answer to a repeated idempotency key (whatever its status, since no further record will name
+   * this txnId).
    *
    * @return whether a waiter was completed
    */
   public boolean offer(StatusMessage status) {
-    if (!status.terminal() && !status.duplicate()) {
+    if (!status.terminal() && !status.duplicate() && !"UNKNOWN".equals(status.status())) {
       return false;
     }
     String txnId = status.awaitedTxnId();
