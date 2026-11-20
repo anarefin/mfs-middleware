@@ -108,9 +108,10 @@ public class SagaTimerService {
   }
 
   /**
-   * A partner REVERSE that the partner has not confirmed (ticket 96b, PLT-025). Resend the same
-   * key every {@code retry-timeout} until {@code reversing-timeout}, then MANUAL_REVIEW. Unlike a
-   * core reversal there is no later query: the partner either confirmed or it did not.
+   * A partner REVERSE that the partner has not confirmed (tickets 96b and 96c, PLT-025). Resend the
+   * same key every {@code retry-timeout} until {@code reversing-timeout}, then MANUAL_REVIEW. Unlike a
+   * core reversal there is no later query: the partner either confirmed or it did not. The core is
+   * not asked while this leg is pending.
    */
   private void partnerReverseDeadline(TransactionRecord rec) {
     Instant began = transactions.enteredAt(rec.txnId(), Status.REVERSING).orElse(rec.updatedAt());

@@ -288,6 +288,10 @@ public class SagaEngine {
       case REVERSE -> {
         if (effect == Effect.SEND_REVERSAL_QUERY) {
           send(rec, commandMapper.reversalQuery(rec, now, ttl));
+        } else if (effect == Effect.SEND_CORE_REVERSE) {
+          // ticket 96c: the partner already confirmed, so this is the core reversal even if the
+          // leg was still PARTNER_REVERSE on the way in (fire clears it before perform)
+          send(rec, commandMapper.reverse(rec, now, ttl));
         } else if (effect == Effect.SEND_PARTNER_REVERSE || rec.pendingLeg() == PendingLeg.PARTNER_REVERSE) {
           sendPartnerReverse(rec, now);
         } else {
@@ -298,20 +302,25 @@ public class SagaEngine {
   }
 
   /**
-   * The leg the transition waits on. A core reversal of a completed transaction ({@code
-   * SEND_REVERSE} with no partner leg) keeps a null leg, so its deadline still asks the core.
+   * The leg the transition waits on. A core reversal with no partner leg ({@code SEND_REVERSE})
+   * keeps a null leg. {@code SEND_CORE_REVERSE} clears the partner leg of a completed top-up or
+   * bill payment so the deadline from then on asks the core (ticket 96c).
    */
   private static PendingLeg nextLeg(Transition t, PendingLeg current) {
     return switch (t.effect()) {
       case SEND_PARTNER_REVERSE -> PendingLeg.PARTNER_REVERSE;
       case SEND_HOLD_QUERY -> PendingLeg.HOLD_QUERY;
       case SEND_COMPENSATING_RELEASE -> PendingLeg.HOLD_RELEASE;
+      case SEND_CORE_REVERSE -> null;
       case NONE -> t.to().terminal() || t.to() == Status.MANUAL_REVIEW ? null : current;
       default -> current;
     };
   }
 
-  /** Partner REVERSE of a refused commit. The request id is the name UUID of {@code reverse:<txnId>}. */
+  /**
+   * Partner REVERSE. The request id is the name UUID of {@code reverse:<txnId>}: a refused commit
+   * (ticket 96b) and the reversal of a completed top-up or bill payment (ticket 96c).
+   */
   private void sendPartnerReverse(TransactionRecord rec, Instant now) {
     PartnerCall call = flows.find(rec.request().txnType()).flatMap(Flow::partnerCall).orElseThrow();
     sendToPartner(rec, call, partnerMapper.reverse(rec, call, now, properties.partnerTimeout()), now);
