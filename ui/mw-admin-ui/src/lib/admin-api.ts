@@ -5,7 +5,7 @@
 import type { TemplateKey } from "./templates";
 import type { Menu } from "./ussd-menu";
 import type {
-  ApiResult, ChangeRequest, ChangeRequestPage, ContentVersion, ContentVersionPage, ErrorEnvelope, KeyCeremony, KeyPage, Partner,
+  ApiResult, ChangeRequest, ChangeRequestPage, ContentVersion, ContentVersionPage, CredentialPage, ErrorEnvelope, KeyCeremony, KeyPage, Partner,
   PartnerAction, PartnerConfig, PartnerFamily, PartnerPage, PartnerTimeouts, TxnAction, TxnDetail, TxnPage, WalletAction,
 } from "./types";
 
@@ -13,6 +13,25 @@ export type AdminApiOptions = { baseUrl: string; fetch?: typeof fetch; timeoutMs
 
 export type PartnerChangeBody = {
   action: PartnerAction; reason: string; family?: PartnerFamily; timeouts?: PartnerTimeouts; config?: PartnerConfig;
+};
+/** POST /admin/v1/partners/{partnerId}/credentials/{name}/change-requests (ticket 131). Write-only. */
+export type CredentialUploadBody = {
+  action: "UPLOAD";
+  reason: string;
+  type: "API_KEY" | "HMAC_SECRET" | "CLIENT_CERT";
+  secret?: string;
+  certificatePem?: string;
+  privateKeyPem?: string;
+  pkcs12?: string;
+  pkcs12Password?: string;
+  notAfter?: string;
+};
+/** POST /admin/v1/partners/{partnerId}/error-map/change-requests (ticket 131). */
+export type ErrorMapBody = {
+  action: "SET_ERROR_MAP";
+  reason: string;
+  errorMap: NonNullable<PartnerConfig["errorMap"]>;
+  ambiguousCodes: string[];
 };
 export type MenuProposal = { menu: Menu; activations: { mno: string; goLiveAt?: string }[]; reason: string };
 export type TemplateProposal = {
@@ -141,6 +160,20 @@ export function createAdminApi(opts: AdminApiOptions) {
     },
     requestPartnerChange(token: string, partnerId: string, body: PartnerChangeBody): Promise<ApiResult<ChangeRequest>> {
       return post<ChangeRequest>(token, `/admin/v1/partners/${encodeURIComponent(partnerId)}/change-requests`, body);
+    },
+    listCredentials(token: string, partnerId?: string): Promise<ApiResult<CredentialPage>> {
+      const q = partnerId ? `?partnerId=${encodeURIComponent(partnerId)}` : "";
+      return get<CredentialPage>(token, `/admin/v1/credentials${q}`);
+    },
+    listExpiringCredentials(token: string, days = 30): Promise<ApiResult<CredentialPage>> {
+      return get<CredentialPage>(token, `/admin/v1/credentials/expiring?days=${days}`);
+    },
+    uploadCredential(token: string, partnerId: string, name: string, body: CredentialUploadBody): Promise<ApiResult<ChangeRequest>> {
+      const path = `/admin/v1/partners/${encodeURIComponent(partnerId)}/credentials/${encodeURIComponent(name)}/change-requests`;
+      return post<ChangeRequest>(token, path, body);
+    },
+    requestErrorMapChange(token: string, partnerId: string, body: ErrorMapBody): Promise<ApiResult<ChangeRequest>> {
+      return post<ChangeRequest>(token, `/admin/v1/partners/${encodeURIComponent(partnerId)}/error-map/change-requests`, body);
     },
     // USSD menus (ticket 39)
     listMenuVersions(token: string, menuId: string, limit = 20): Promise<ApiResult<ContentVersionPage>> {

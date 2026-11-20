@@ -9,15 +9,17 @@ import { Button } from "@/components/ui/button";
 import { CardContent, CardDescription, CardHeader, CardSection, CardTitle } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { canMakePartner } from "@/lib/approvals";
+import { canMakePartner, canUploadCredential } from "@/lib/approvals";
 import { formatTime } from "@/lib/format";
+import { partnerTab } from "@/lib/partner-tabs";
 import { routeStatusLabel } from "@/lib/partner-route";
 import { adminApi, operatorToken } from "@/lib/server/admin";
 import { ActionForm } from "../../action-form";
-import { requestPartnerChange } from "../../actions";
+import { requestPartnerChange, requestPartnerCredential, requestPartnerEndpoint, requestPartnerErrorMap, requestPartnerMaintenance } from "../../actions";
 import { ApiError } from "../../api-error";
 import { openRequest, PendingNotice } from "../../pending-notice";
 import { RouteForm } from "./route-form";
+import { CredentialsPanel, EndpointPanel, ErrorCodesPanel, MaintenancePanel, PartnerTabNav } from "./tabs";
 
 // One partner (tickets 38 / 42): the published config (no secrets: credential refs only) and, for
 // ops-maker / integration-maker, enable / disable and timeouts as change requests. Ticket 83: the
@@ -26,7 +28,11 @@ import { RouteForm } from "./route-form";
 
 const PARTNER_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-type Props = { params: Promise<{ partnerId: string }> };
+type Props = { params: Promise<{ partnerId: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
+
+function one(v: string | string[] | undefined): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
 
 function BackLink() {
   return (
@@ -48,8 +54,9 @@ function Fact({ label, children, className }: { label: string; children: ReactNo
   );
 }
 
-export default async function PartnerPage({ params }: Props) {
+export default async function PartnerPage({ params, searchParams }: Props) {
   const { partnerId } = await params;
+  const tab = partnerTab(one((await searchParams).tab));
   if (!PARTNER_ID.test(partnerId)) notFound();
   const session = await auth();
   const token = await operatorToken();
@@ -80,13 +87,39 @@ export default async function PartnerPage({ params }: Props) {
   const p = result.data;
   const c = p.config;
   const enabled = c.enabled !== false;
-  const open = await openRequest(token, "partner", partnerId);
   const maker = canMakePartner(session?.roles ?? []);
-
-  return (
+  const shell = (
     <>
       <BackLink />
       <PageHeader title={<>Partner <span className="font-mono">{p.partnerId}</span></>} />
+      <PartnerTabNav partnerId={p.partnerId} tab={tab} />
+    </>
+  );
+  if (tab === "maintenance" || tab === "endpoint") {
+    const open = await openRequest(token, "partner", p.partnerId);
+    return tab === "maintenance" ? (
+      <>{shell}<MaintenancePanel config={c} maker={maker} pending={open} action={requestPartnerMaintenance.bind(null, p.partnerId)} /></>
+    ) : (
+      <>{shell}<EndpointPanel config={c} maker={maker} pending={open} action={requestPartnerEndpoint.bind(null, p.partnerId)} /></>
+    );
+  }
+  if (tab === "credentials") {
+    const credentials = await adminApi().listCredentials(token, p.partnerId);
+    return (
+      <>{shell}<CredentialsPanel result={credentials} canUpload={canUploadCredential(session?.roles ?? [])} action={requestPartnerCredential.bind(null, p.partnerId)} /></>
+    );
+  }
+  if (tab === "error-codes") {
+    const open = await openRequest(token, "partner_error_map", p.partnerId);
+    return (
+      <>{shell}<ErrorCodesPanel config={c} maker={maker} pending={open} action={requestPartnerErrorMap.bind(null, p.partnerId)} /></>
+    );
+  }
+  const open = await openRequest(token, "partner", p.partnerId);
+
+  return (
+    <>
+      {shell}
 
       <CardSection aria-label="Config">
         <CardHeader><CardTitle><Settings2 />Published config</CardTitle></CardHeader>

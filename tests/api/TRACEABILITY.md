@@ -224,6 +224,10 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 29 | [balance] the app balance check answers the core's available balance and moves no money | - |  |
 | 29 | [balance assertion] a wrong PIN on the app balance check is refused by mw-auth with MW-AUTH-040 | - |  | SEC-09 |
 | 29 | [balance] a core refusal of the balance check is 422 MW-CORE-WALLET_NOT_ACTIVE | - |  |
+| 35 | [topup] a top-up with no partnerId is routed from the 017 prefix and completes | - |  |
+| 35 | [topup admin] an MNP override to an unknown operator refuses the number with MW-PTR-UNKNOWN | - |  |
+| 35 | [topup mock] ocs switched DOWN fails the top-up at once and is switched back UP | - |  |
+| 35 | [billpay admin] a maintenance message disables DESCO with the Bangla and English text | - |  |
 | 29 | [balance history] a balance check is not in the wallet history | - |  | SEC-10 |
 | 36 | [p2p] the same payment under a new key within the window asks to confirm (MW-VAL-024); the confirmed resend completes | - |  | FR-05 |
 | 36 | [p2p] another amount within the window is no duplicate | - |  | FR-05 |
@@ -256,6 +260,8 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 45 | [admin partner-config credentials] an uploaded partner credential is approved by another checker into Vault and only its metadata is ever shown | - |  | FR-19, SEC-04 |
 | 45 | [admin credentials] the expiry dashboard lists a credential expiring within 30 days, soonest first | - |  |
 | 45 | [admin partner-config] an approved response-code map is published as the partner's next version | - |  | FR-19 |
+| 47 | [notify] an opted-out customer still gets the P2P SMS | - |  |
+| 47 | [admin notify] an approved campaign change request is APPROVED | - |  |
 | 62 | [mock] today's data warehouse export is accepted by the drop check | - |  |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |

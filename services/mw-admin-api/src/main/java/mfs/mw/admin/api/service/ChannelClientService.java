@@ -84,6 +84,7 @@ public class ChannelClientService {
         problems.add(new ErrorDetail("client.authMethod", "the auth method of a client cannot change (register a new client)"));
       }
     });
+    rejectAuthRouteClash(id, next, clients.list(), problems);
     if (!problems.isEmpty()) {
       throw new MwException(ErrorCodes.VAL_INVALID, "The channel client is not valid").withDetails(List.copyOf(problems));
     }
@@ -120,6 +121,27 @@ public class ChannelClientService {
     if (s.allowedRoutes().stream().distinct().count() != s.allowedRoutes().size()
         || s.ipAllowList().stream().distinct().count() != s.ipAllowList().size()) {
       problems.add(new ErrorDetail("client", "list entries must be unique"));
+    }
+  }
+
+  /**
+   * Two auth methods never share a route (ticket 100b). An OAUTH2_CC client on {@code
+   * partner-billagg-callback} would make that HMAC callback require a bearer token.
+   */
+  static void rejectAuthRouteClash(
+      String clientId, ChannelClientSpec next, List<ChannelClient> existing, List<ErrorDetail> problems) {
+    for (ChannelClient other : existing) {
+      if (other.clientId().equals(clientId) || other.spec().authMethod() == next.authMethod()) {
+        continue;
+      }
+      for (String route : next.allowedRoutes()) {
+        if (other.spec().allowedRoutes().contains(route)) {
+          problems.add(new ErrorDetail(
+              "client.allowedRoutes",
+              "route " + route + " is already used by " + other.clientId() + " (" + other.spec().authMethod() + ")"));
+          return;
+        }
+      }
     }
   }
 

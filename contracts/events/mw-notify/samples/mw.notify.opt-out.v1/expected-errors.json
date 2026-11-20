@@ -1,0 +1,5 @@
+{
+  "invalid-without-wallet.json": [
+    "/ must have required property 'walletId'"
+  ]
+}

@@ -232,6 +232,15 @@ mock of mw-simulators (mock party `push`, API key `PUSH_API_KEY` of `deploy/.env
 the `provision` one-shot); what it received is `GET /test/sim/push/messages?token=` through APISIX
 (test-only route); API suite folder `43-notify-push`.
 
+Promotional campaigns and opt-out (ticket 111): an ops-maker proposes a campaign at
+`POST /admin/v1/notify-campaigns` and a different ops-checker approves it. mw-notify then sends it
+on the PROMO bind, at most the campaign's per-second rate (`mw.notify.campaign.period` is how often
+the scheduler looks, and it does not sleep, so an OTP is never held behind a campaign). A customer
+opts out with `POST /app/v1/notifications/opt-out` or by replying STOP; that skips promotional SMS
+only. OTP and transactional messages still go. The notification log is
+`GET /internal/v1/notifications` (masked; an OTP body is always masked). API suite folder
+`tests/api/src/47-notify-campaign`.
+
 ## Build and test
 
 There is no CI/CD in the MVP and no Makefile: the root Gradle build is the gate. The root is one

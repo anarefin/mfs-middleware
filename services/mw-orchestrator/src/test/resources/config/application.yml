@@ -10,6 +10,9 @@ mw:
       enabled: false
     timer:
       enabled: false
+    routing:
+      # The safety reload is exercised by calling RoutingCatalog.reload; a live one would race a test.
+      reload-interval: 1h
     # No core by default (ticket 95a): a call fails fast as an unknown outcome. Saga tests record the
     # calls (CoreCalls) or point this at their HTTP stand-in (CoreRestStub).
     core:

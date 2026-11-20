@@ -40,7 +40,8 @@ class ProducedContractsTest {
   /** Fixtures per manifest entry: the messages the publisher sends on that topic. */
   static final Map<String, Supplier<List<Object>>> FIXTURES =
       Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests,
-          "events/mw-notify/mw.notify.push-token.v1.schema.json", ProducedContractsTest::pushTokens);
+          "events/mw-notify/mw.notify.push-token.v1.schema.json", ProducedContractsTest::pushTokens,
+          "events/mw-notify/mw.notify.opt-out.v1.schema.json", ProducedContractsTest::optOuts);
 
   /** {@code PushTokenService.register} (ticket 110): what it hands the publisher, Android and iOS. */
   static List<Object> pushTokens() {
@@ -59,6 +60,18 @@ class ProducedContractsTest {
       out.add(payload.getValue());
     }
     return out;
+  }
+
+  /** {@code OptOutService.optOut} (ticket 111): the app promotional opt-out. */
+  static List<Object> optOuts() {
+    mfs.mw.app.gateway.messaging.EventPublisher publisher =
+        org.mockito.Mockito.mock(mfs.mw.app.gateway.messaging.EventPublisher.class);
+    new mfs.mw.app.gateway.service.OptOutService(publisher, java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC))
+        .optOut(CUSTOMER, "dev-0001");
+    org.mockito.ArgumentCaptor<Object> payload = org.mockito.ArgumentCaptor.forClass(Object.class);
+    org.mockito.Mockito.verify(publisher).publish(org.mockito.ArgumentMatchers.eq("mw.notify.opt-out.v1"),
+        org.mockito.ArgumentMatchers.eq("01711000001"), org.mockito.ArgumentMatchers.any(), payload.capture());
+    return List.of(payload.getValue());
   }
 
   /** mw-auth's assertion (a compact JWS) as {@code TransactionService.submit} adds it (ticket 72). */

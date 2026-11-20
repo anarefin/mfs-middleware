@@ -12,6 +12,7 @@ import mfs.mw.notify.dto.Channel;
 import mfs.mw.notify.dto.NotificationRequest;
 import mfs.mw.notify.dto.Priority;
 import mfs.mw.notify.dto.TxnStatusEvent;
+import mfs.mw.notify.dto.WalletLockEvent;
 import mfs.mw.notify.dto.TxnStatusEvent.Amount;
 import mfs.mw.notify.dto.TxnStatusEvent.Party;
 import mfs.mw.notify.entity.RuleRecord;
@@ -25,7 +26,11 @@ import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.SimpleEvaluationContext;
 
 /**
- * Evaluates {@code notify.rule} rows against a {@code mw.txn.status.v1} event (spec 10.3). A
+ * Evaluates {@code notify.rule} rows against a {@code mw.txn.status.v1} event (spec 10.3, FRS
+ * NOT-01). A match is the event (the condition, which names the txn type), the outcome (the
+ * condition's status) and the customer type: {@code notify.rule.customer_type} against
+ * {@code debitParty.walletType} (CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, DSO). {@code *} matches
+ * every type, including a missing one; ORG is a stored type current events do not emit. A
  * condition is a SpEL expression run in a {@link SimpleEvaluationContext} with read-only access to
  * the event's facts ({@link TxnFacts}): no type references, constructors, bean references or
  * method calls on arbitrary types, so a rule cannot reach outside the event. A condition that does
@@ -68,6 +73,8 @@ public class RuleEngine {
   }
 
   static final String OPS = "OPS";
+  /** The wallet the system event is about (ticket 111: lock and unlock notices). */
+  static final String SUBJECT = "SUBJECT";
 
   /**
    * Who to email: a party's registered address (spec 10.2), or none; and where to push: the device
@@ -97,8 +104,9 @@ public class RuleEngine {
     TxnFacts facts = new TxnFacts(event);
     EvaluationContext ctx = SimpleEvaluationContext.forReadOnlyDataBinding().withRootObject(facts).build();
     List<NotificationRequest> out = new ArrayList<>();
+    String customerType = facts.getCustomerType();
     for (RuleRecord rule : rules) {
-      if (!matches(rule, ctx)) {
+      if (!matches(rule, ctx, customerType)) {
         continue;
       }
       if (OPS.equals(rule.recipient())) {
@@ -169,7 +177,34 @@ public class RuleEngine {
     };
   }
 
-  private boolean matches(RuleRecord rule, EvaluationContext ctx) {
+  /**
+   * Lock and unlock notices from {@code auth.wallet-lock.v1} (ticket 111). The event has no
+   * customer type, so only a {@code *} rule matches; LOCK and UNLOCK are the condition. Recipient
+   * {@code SUBJECT} is the wallet id when it is an MSISDN. Other actions match nothing.
+   */
+  public List<NotificationRequest> requestsFor(WalletLockEvent event, List<RuleRecord> rules) {
+    WalletFacts facts = new WalletFacts(event);
+    EvaluationContext ctx = SimpleEvaluationContext.forReadOnlyDataBinding().withRootObject(facts).build();
+    List<NotificationRequest> out = new ArrayList<>();
+    for (RuleRecord rule : rules) {
+      if (!matches(rule, ctx, null)) {
+        continue;
+      }
+      if (!SUBJECT.equals(rule.recipient()) || event.walletId() == null || !MSISDN.matcher(event.walletId()).matches()) {
+        continue;
+      }
+      if (!Channel.SMS.name().equals(rule.channel())) {
+        continue;
+      }
+      out.add(request(event, rule, new NotificationRequest.Recipient(event.walletId(), null, null, null)));
+    }
+    return out;
+  }
+
+  private boolean matches(RuleRecord rule, EvaluationContext ctx, String customerType) {
+    if (!customerMatches(rule.customerType(), customerType)) {
+      return false;
+    }
     Optional<Expression> expr = parsed.computeIfAbsent(rule.condition(), this::parse);
     if (expr.isEmpty()) {
       return false;
@@ -181,6 +216,11 @@ public class RuleEngine {
           .addKeyValue("errorClass", e.getClass().getName()).log("rule condition could not be evaluated");
       return false;
     }
+  }
+
+  /** {@code *} and a blank type match any party; a named type matches only that wallet type. */
+  static boolean customerMatches(String want, String actual) {
+    return want == null || want.isBlank() || "*".equals(want) || want.equals(actual);
   }
 
   private Optional<Expression> parse(String condition) {
@@ -223,6 +263,15 @@ public class RuleEngine {
     return new NotificationRequest(1, e.txnId() + ":" + channel.name().toLowerCase(Locale.ROOT) + ":" + rule.ruleId(),
         e.txnId(), e.correlationId(), recipient,
         rule.templateCode(), locale != null ? locale : e.locale() == null ? defaultLocale : e.locale(), params, List.of(channel),
+        Priority.valueOf(rule.priority()), null, null);
+  }
+
+  private NotificationRequest request(WalletLockEvent e, RuleRecord rule, NotificationRequest.Recipient recipient) {
+    Map<String, String> params = new LinkedHashMap<>();
+    Channel channel = Channel.valueOf(rule.channel());
+    return new NotificationRequest(1,
+        e.commandId() + ":" + channel.name().toLowerCase(Locale.ROOT) + ":" + rule.ruleId(),
+        e.commandId(), e.correlationId(), recipient, rule.templateCode(), defaultLocale, params, List.of(channel),
         Priority.valueOf(rule.priority()), null, null);
   }
 
@@ -284,6 +333,25 @@ public class RuleEngine {
 
     public String getCreditPartyType() {
       return e.creditParty() == null ? null : e.creditParty().type();
+    }
+
+    /** {@code debitParty.walletType}: the customer type a rule's {@code customer_type} is matched to. */
+    public String getCustomerType() {
+      return e.debitParty() == null ? null : e.debitParty().walletType();
+    }
+  }
+
+  /** What a wallet-lock rule condition can read: the command's action. */
+  public static final class WalletFacts {
+
+    private final WalletLockEvent e;
+
+    WalletFacts(WalletLockEvent e) {
+      this.e = e;
+    }
+
+    public String getAction() {
+      return e.action();
     }
   }
 }

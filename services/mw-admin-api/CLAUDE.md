@@ -60,7 +60,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   approval (moved on: `409 MW-VAL-030`, request stays PENDING); expired: marked EXPIRED + audited,
   `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
   `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]` (`resourceType`
-  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|key|channel_client|partner_credential|partner_error_map; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
+  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|notify-campaign|key|channel_client|partner_credential|partner_error_map; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
   (`READ_CHANGE_REQUESTS`: the transaction readers and integration-maker/checker, ticket 38; an
   operator without `READ_TRANSACTIONS` sees partner requests only: transaction and wallet ones are
   left out of the list, `?resourceType=transaction|wallet` and their detail are 403).
@@ -353,8 +353,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   projects it with `service/ApisixConsumerSync` through `client/ApisixAdminClient` (APISIX Admin API,
   `mw.apisix.*` / `config/ApisixProperties`: `enabled` (`MW_APISIX_SYNC_ENABLED`, true in the stack, off
   in tests), `admin-url`, `admin-key` from Vault `secret/mw-admin-api` (synced from `APISIX_ADMIN_KEY`),
-  `secret-ref` `$secret://vault/edge`, Redis of the quota). Projection (BASIC only; JWT / HMAC are rows
-  only, OAUTH2_CC 100b, MTLS 100c): consumer `<clientId - as _>` (labels `managed-by=mw-admin-api`,
+  `secret-ref` `$secret://vault/edge`, Redis of the quota). Projection: BASIC is a consumer; JWT and HMAC
+  stay rows; OAUTH2_CC (ticket 100b) has no consumer and no secret — `enforceOauthRoutes` puts
+  `openid-connect` bearer-only (realm `partners`) and a `mw_client_id` limit on each of its routes that
+  no other auth method uses (billagg / c2wbank stay HMAC); MTLS is 100c. BASIC consumer
+  `<clientId - as _>` (labels `managed-by=mw-admin-api`,
   `channel-client`, `registry-version`; basic-auth user clientId, password
   `$secret://vault/edge/<clientId>/password` from the Vault KV v1 mount `apisix/`), consumer group
   `client_<name>` (`limit-req`, `limit-count` per 86400 s, `ip-restriction`) only when it has a limit;

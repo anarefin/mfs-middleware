@@ -406,6 +406,24 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /app/v1/notifications/opt-out:
+    post:
+      operationId: optOutOfPromotions
+      summary: Opt this wallet out of promotional messages
+      description: >-
+        Ticket 111 (FRS NOT-09). No body. The token's wallet is recorded by mw-notify
+        (`mw.notify.opt-out.v1`) and promotional SMS are skipped. OTP and transactional messages
+        are never opted out. Session level: `X-Device-Id` and a live session, no signature.
+        204 once handed over; 503 MW-SYS-010 (retryable) when it cannot be handed over.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      responses:
+        "204":
+          description: Recorded (handed to mw-notify)
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /app/v1/pin-key:
     get:
       operationId: getPinKey
@@ -692,15 +710,17 @@ components:
           type: object
           additionalProperties: false
           description: >-
-            TOPUP: the mobile operator and its product (partnerId and productCode). BILL_PAY: the
-            biller only (billerCode). ADD_MONEY_BANK: the partner bank only (partnerId c2wbank).
-            Refused for every other type.
+            TOPUP: productCode, and optionally the operator (partnerId). When partnerId is absent,
+            routing chooses the operator from the MSISDN (ticket 98). When it is present it is
+            honoured only if a routing rule allows it; an unknown partner is 502 MW-PTR-UNKNOWN.
+            BILL_PAY: the biller only (billerCode). ADD_MONEY_BANK: the partner bank only
+            (partnerId c2wbank). Refused for every other type.
           anyOf:
-            - required: [partnerId, productCode]
+            - required: [productCode]
             - required: [billerCode]
             - required: [partnerId]
           properties:
-            partnerId: { type: string, enum: [gp, robi, banglalink, teletalk, c2wbank] }
+            partnerId: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,63}$" }
             productCode: { type: string, enum: [PREPAID, POSTPAID] }
             billerCode: { $ref: "#/components/schemas/BillerCode" }
         amount: { $ref: "#/components/schemas/Amount" }
@@ -897,7 +917,7 @@ components:
       type: object
       required: [code, message, correlationId, retryable, details]
       properties:
-        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" }
+        code: { type: string, pattern: "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR(-[A-Z0-9_]+)?)(-[A-Z0-9_]+)$" }
         message: { type: string }
         messageBn: { type: string }
         txnId: { type: string }

@@ -1,6 +1,7 @@
 package mfs.mw.notify.messaging;
 
 import mfs.mw.notify.dto.ConfigChangedEvent;
+import mfs.mw.notify.service.CampaignService;
 import mfs.mw.notify.service.TemplatePublisher;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -23,10 +24,12 @@ public class ConfigChangedListener {
   public static final String TOPIC = "mw.config.changed.v1";
 
   private final TemplatePublisher templates;
+  private final CampaignService campaigns;
   private final JsonMapper json;
 
-  public ConfigChangedListener(TemplatePublisher templates, JsonMapper json) {
+  public ConfigChangedListener(TemplatePublisher templates, CampaignService campaigns, JsonMapper json) {
     this.templates = templates;
+    this.campaigns = campaigns;
     this.json = json;
   }
 
@@ -43,6 +46,7 @@ public class ConfigChangedListener {
         throw new IllegalArgumentException("config change without configKey, configType or change");
       }
       templates.onConfigChanged(e);
+      campaigns.onConfigChanged(e);
     }
     ack.acknowledge();
   }

@@ -115,14 +115,15 @@
     <strong>idempotent</strong>). The README explains why we chose plain Admin API JSON over APISIX's ADC YAML tool.</p>
 
   <h2 id="routes">Routes and plugins</h2>
-  <p>There are nineteen route files. These are the ones you will meet first:</p>
+  <p>There are twenty route files. These are the ones you will meet first:</p>
   <div class="table-wrap"><table>
     <tr><th>Route</th><th>Path</th><th>Who is let in, and how</th><th>Rate limit</th></tr>
     <tr><td><code>app-v1</code></td><td><code>/app/v1/*</code></td><td>Mobile apps. <code>openid-connect</code> checks an access token issued by <strong>mw-auth</strong> (not Keycloak, see <a href="keycloak.html#notapp">Keycloak</a>).</td><td>120 / 60 s per token subject</td></tr>
     <tr><td><code>auth-v1</code></td><td><code>/auth/v1/*</code></td><td>Login, device binding, OTP, PIN. No auth plugin: these requests prove themselves (device signature, OTP, PIN) and mw-auth checks them.</td><td>20 / 60 s per hashed phone number, plus 5 / s per address</td></tr>
     <tr><td><code>ussd-http-gp</code> (and <code>-robi</code>, <code>-bl</code>, <code>-teletalk</code>)</td><td><code>/ussd/gp</code></td><td>One MNO's USSD gateway: <code>ip-restriction</code> + <code>basic-auth</code> + <code>consumer-restriction</code> (GP's password is useless on Robi's route).</td><td>120 / 60 s per hashed phone number</td></tr>
     <tr><td><code>checkout-v1-sessions</code></td><td><code>/checkout/v1/sessions</code></td><td>Merchant web shops: <code>hmac-auth</code>, then <code>proxy-rewrite</code> adds the merchant id as an <code>X-Mw-Merchant-Id</code> header.</td><td>per merchant</td></tr>
-    <tr><td><code>partner-billagg-callback</code></td><td><code>/partner/billagg/callback/*</code></td><td>A partner calling us back: <code>ip-restriction</code> only. The adapter verifies the signature.</td><td>per route</td></tr>
+    <tr><td><code>partner-billagg-callback</code></td><td><code>/partner/billagg/callback/*</code></td><td>A partner calling us back: <code>ip-restriction</code> only. The adapter verifies the HMAC signature. No bearer token.</td><td>per source address</td></tr>
+    <tr><td><code>test-oauth2-cc</code></td><td><code>/test/oauth2-cc</code></td><td>An <code>OAUTH2_CC</code> partner. <code>openid-connect</code> checks a Keycloak <code>partners</code> token (<code>private_key_jwt</code>, no client secret).</td><td>per token client id</td></tr>
     <tr><td><code>admin-v1</code></td><td><code>/admin/v1/*</code></td><td>Ops console API: <code>openid-connect</code> against the Keycloak realm <code>ops</code>.</td><td>per operator</td></tr>
     <tr><td><code>portal-org-v1</code></td><td><code>/portal/org/v1/*</code></td><td>Organisation portal: <code>openid-connect</code>, realm <code>portals</code>.</td><td>per user</td></tr>
   </table></div>

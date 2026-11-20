@@ -151,7 +151,103 @@ class ApisixConsumerSyncTest {
         .isEqualTo(ApisixConsumerSync.Outcome.NONE);
     assertThat(sync.apply(client("billagg", AuthMethod.HMAC, null, null, List.of(), true)))
         .isEqualTo(ApisixConsumerSync.Outcome.NONE);
+    assertThat(sync.apply(client("bank-mtls", AuthMethod.MTLS, null, null, List.of(), true)))
+        .isEqualTo(ApisixConsumerSync.Outcome.NONE);
     assertThat(apisix.writes).isEmpty();
+  }
+
+  /**
+   * Ticket 100b: an OAUTH2_CC row is consumer-less. It is enforced on the routes it lists: bearer-only
+   * {@code openid-connect} against the Keycloak {@code partners} realm, and a route-level limit whose
+   * counter key is the token's client id ({@code azp}), not an APISIX consumer. No client secret is written.
+   */
+  @Test
+  void anOauth2ClientCredentialsRowProjectsTheOpenIdConnectRouteAndALimitKeyedByTheTokenClientId() {
+    apisix.put(ApisixAdmin.Kind.ROUTES, "test-oauth2-cc", route("test-oauth2-cc", "/test/oauth2-cc"));
+    apisix.put(ApisixAdmin.Kind.ROUTES, "partner-billagg-callback", route("partner-billagg-callback", "/partner/billagg/callback/*"));
+    apisix.put(ApisixAdmin.Kind.ROUTES, "partner-c2wbank-callback", route("partner-c2wbank-callback", "/partner/c2wbank/callback/*"));
+    apisix.writes.clear();
+
+    ChannelClient partner = new ChannelClient(
+        "partner-sim",
+        new ChannelClientSpec(ClientType.PARTNER, AuthMethod.OAUTH2_CC, List.of("test-oauth2-cc"), List.of(), 20L, 5000L, true),
+        1, AT, "ops-maker01", "ops-checker01");
+
+    assertThat(sync.apply(partner)).isEqualTo(ApisixConsumerSync.Outcome.WRITTEN);
+
+    assertThat(apisix.objects).doesNotContainKey("consumers/partner_sim");
+    assertThat(apisix.writes).containsExactly("PUT routes/test-oauth2-cc");
+    Map<String, Object> plugins = apisix.plugins("routes/test-oauth2-cc");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> oidc = (Map<String, Object>) plugins.get("openid-connect");
+    assertThat(oidc)
+        .containsEntry("discovery", "http://keycloak:8080/realms/partners/.well-known/openid-configuration")
+        .containsEntry("client_id", "mw-partner-edge")
+        .containsEntry("bearer_only", true)
+        .containsEntry("use_jwks", true)
+        .containsEntry("realm", "partners")
+        .containsEntry("iat_slack", 10)
+        .doesNotContainKey("client_secret");
+    assertThat(oidc.get("claim_validator").toString()).contains("http://keycloak:8080/realms/partners");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> quota = (Map<String, Object>) plugins.get("limit-count");
+    assertThat(quota)
+        .containsEntry("count", 5000L)
+        .containsEntry("time_window", 86400)
+        .containsEntry("key_type", "var")
+        .containsEntry("key", "mw_client_id")
+        .containsEntry("group", "test-oauth2-cc")
+        .containsEntry("rejected_code", 429)
+        .containsEntry("policy", "redis")
+        .containsEntry("redis_password", "$env://REDIS_PASSWORD");
+    assertThat(plugins.get("limit-req"))
+        .isEqualTo(Map.of("rate", 20L, "burst", 20L, "key_type", "var", "key", "mw_client_id", "rejected_code", 429));
+    String fn = plugins.get("serverless-pre-function").toString();
+    assertThat(fn).contains("azp", "mw_client_id", "partner-sim");
+    assertThat(apisix.objects.toString()).doesNotContain("client_secret", "clientSecret");
+    // the route's own uri stays; HMAC callback routes are not given a bearer check
+    assertThat(apisix.objects.get("routes/test-oauth2-cc")).containsEntry("uri", "/test/oauth2-cc");
+    assertThat(apisix.plugins("routes/partner-billagg-callback")).doesNotContainKey("openid-connect");
+    assertThat(apisix.plugins("routes/partner-c2wbank-callback").get("limit-count").toString()).contains("remote_addr");
+
+    apisix.writes.clear();
+    assertThat(sync.apply(partner)).isEqualTo(ApisixConsumerSync.Outcome.UNCHANGED);
+    assertThat(apisix.writes).isEmpty();
+  }
+
+  @Test
+  void anOauth2ClientDoesNotPutABearerCheckOnARouteAnHmacClientUses() {
+    apisix.put(ApisixAdmin.Kind.ROUTES, "partner-billagg-callback", route("partner-billagg-callback", "/partner/billagg/callback/*"));
+    apisix.writes.clear();
+    ChannelClient hmac = new ChannelClient(
+        "billagg",
+        new ChannelClientSpec(
+            ClientType.PARTNER, AuthMethod.HMAC, List.of("partner-billagg-callback"), List.of(), null, null, true),
+        1, AT, "ops-maker01", "ops-checker01");
+    ChannelClient oauth = new ChannelClient(
+        "partner-sim",
+        new ChannelClientSpec(
+            ClientType.PARTNER, AuthMethod.OAUTH2_CC, List.of("partner-billagg-callback"), List.of(), 20L, 5000L, true),
+        1, AT, "ops-maker01", "ops-checker01");
+
+    sync.enforceOauthRoutes(List.of(hmac, oauth));
+
+    assertThat(apisix.plugins("routes/partner-billagg-callback")).doesNotContainKey("openid-connect");
+    assertThat(apisix.writes).isEmpty();
+  }
+
+  private static Map<String, Object> route(String name, String uri) {
+    Map<String, Object> limit = new LinkedHashMap<>();
+    limit.put("count", 600);
+    limit.put("time_window", 60);
+    limit.put("key_type", "var");
+    limit.put("key", "remote_addr");
+    limit.put("group", name);
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("name", name);
+    body.put("uri", uri);
+    body.put("plugins", new LinkedHashMap<>(Map.of("limit-count", limit)));
+    return body;
   }
 
   @Test

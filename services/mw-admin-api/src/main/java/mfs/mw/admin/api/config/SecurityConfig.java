@@ -100,7 +100,8 @@ public class SecurityConfig {
                     // USSD menus and notify templates (ticket 39); the service checks again
                     .requestMatchers(
                         HttpMethod.POST, "/admin/v1/ussd-menus/*/change-requests",
-                        "/admin/v1/notify-templates/*/*/*/change-requests")
+                        "/admin/v1/notify-templates/*/*/*/change-requests",
+                        "/admin/v1/notify-campaigns")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.CONTENT_MAKER::contains)))
                     .requestMatchers("/admin/**")
                     .access(roles(r -> !r.isEmpty()))

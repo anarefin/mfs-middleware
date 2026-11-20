@@ -1,7 +1,7 @@
 // Fake admin API answers for the Vitest component tests (never imported by the app; fake values only).
 // src/lib/contract.test.ts validates each against contracts/api/mw-admin-api/admin.v1, so a green
 // component test reads answers the real mw-admin-api may send.
-import type { ChangeRequest, ChangeRequestPage, ErrorEnvelope, Key, KeyCeremony, KeyPage, TxnDetail } from "../types";
+import type { ChangeRequest, ChangeRequestPage, Credential, ErrorEnvelope, Key, KeyCeremony, KeyPage, TxnDetail } from "../types";
 
 export const TXN_ID = "3f1c2b9e-7a4d-4c1e-9b8a-2d6f0e5a1c33";
 
@@ -79,4 +79,22 @@ export const ceremonyCombined: KeyCeremony = {
   ...ceremonyOneShare,
   shares: [...ceremonyOneShare.shares, { share: 2, custodian: "seed-ops-secadmin2", enteredAt: "2026-11-15T10:02:00Z" }],
   checkValue: "A1B2C3",
+};
+
+/** A credential inside the 30-day window (ticket 131). Metadata only: there is no secret field. */
+export const expiringCredential: Credential = {
+  credentialId: "ocs/hmac-secret",
+  partnerId: "ocs",
+  name: "hmac-secret",
+  adapter: "mw-adapter-telco",
+  type: "HMAC_SECRET",
+  vaultFields: ["hmac-secret"],
+  kid: "hmac-secret-v1",
+  fingerprint: `sha256:${"ab".repeat(32)}`,
+  notAfter: "2026-12-02T00:00:00.000Z",
+  daysLeft: 12,
+  version: 1,
+  uploadedBy: "ops-e2e-maker01",
+  approvedBy: "ops-e2e-checker01",
+  uploadedAt: "2026-11-01T00:00:00.000Z",
 };

@@ -11,6 +11,7 @@ import mfs.mw.admin.api.dto.KeyChangeBody;
 import mfs.mw.admin.api.dto.KeyComponentBody;
 import mfs.mw.admin.api.dto.PartnerChangeRequestBody;
 import mfs.mw.admin.api.dto.RejectBody;
+import mfs.mw.admin.api.dto.NotifyCampaignBody;
 import mfs.mw.admin.api.dto.TemplateChangeBody;
 import mfs.mw.admin.api.dto.UssdMenuChangeBody;
 import mfs.mw.admin.api.dto.WalletChangeRequestBody;
@@ -54,6 +55,7 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
             Map.entry(PartnerChangeRequestBody.class, new BodySchema(json, BodySchema.PARTNER_CHANGE_REQUEST)),
             Map.entry(UssdMenuChangeBody.class, new BodySchema(json, BodySchema.USSD_MENU_CHANGE)),
             Map.entry(TemplateChangeBody.class, new BodySchema(json, BodySchema.TEMPLATE_CHANGE)),
+            Map.entry(NotifyCampaignBody.class, new BodySchema(json, BodySchema.NOTIFY_CAMPAIGN)),
             Map.entry(KeyChangeBody.class, new BodySchema(json, BodySchema.KEY_CHANGE)),
             Map.entry(KeyCeremonyBody.class, new BodySchema(json, BodySchema.KEY_CEREMONY)),
             Map.entry(KeyComponentBody.class, new BodySchema(json, BodySchema.KEY_COMPONENT)),

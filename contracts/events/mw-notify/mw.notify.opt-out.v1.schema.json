@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.bits.mw/events/mw-notify/mw.notify.opt-out.v1.schema.json",
+  "title": "mw.notify.opt-out.v1",
+  "description": "A promotional opt-out (ticket 111, FRS NOT-09). mw-app-gateway publishes it for POST /app/v1/notifications/opt-out; mw-notify (the consumer, so the owner) records the MSISDN hash and honours it for PROMO only. OTP and transactional messages are never opted out. Key: walletId. Consumers ignore unknown fields; only additive changes within v1.",
+  "type": "object",
+  "required": ["schemaVersion", "walletId", "optedOutAt"],
+  "properties": {
+    "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
+    "walletId": { "type": "string", "minLength": 1, "maxLength": 64, "description": "The core's wallet id (the MSISDN for app wallets), from the caller's token." },
+    "channel": { "enum": ["APP", "SMS"], "description": "Where the opt-out was asked. Absent is APP." },
+    "optedOutAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CorrelationId" }
+  }
+}

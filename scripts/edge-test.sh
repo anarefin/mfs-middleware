@@ -412,6 +412,21 @@ bank_policies() {
 }
 check "bank callback route: ip allow-list, quota per source address in Redis, upstream mw-adapter-bank" bank_policies
 
+# ---- OAuth2 client credentials (ticket 100b): partners realm private_key_jwt on test-oauth2-cc ----
+# The simulator's token client signs a client assertion with the Vault key. No token is 401 at the
+# edge; a partner-sim token reaches mw-simulators (204). billagg / c2wbank stay HMAC, above.
+oauth_cc_no_token() { call GET /test/oauth2-cc && envelope 401 MW-AUTH-001; }
+check "OAuth2 client-credentials route without a bearer token -> 401 MW-AUTH-001" oauth_cc_no_token
+oauth_cc_with_token() {
+  local token
+  token="$(curl -sf --max-time 10 "http://127.0.0.1:${sim_port}/sim/partner-token" | jq -r '.accessToken // empty')" \
+    || { echo "simulator token client unavailable"; return 1; }
+  [ -n "$token" ] || { echo "simulator token client returned no access token"; return 1; }
+  call GET /test/oauth2-cc -H "Authorization: Bearer $token"
+  [ "$status" = 204 ] || { echo "HTTP $status: $(head -c 200 "$tmp/b")"; return 1; }
+}
+check "OAuth2 client-credentials route with a partner-sim token -> 204" oauth_cc_with_token
+
 # ---- checkout merchant API (ticket 31): hmac-auth at the edge; hosted page API without login ----
 co_body='{"orderId":"EDGE-1","amount":{"valueMinor":1000,"currency":"BDT"},"successUrl":"https://shop.example.test/ok","failUrl":"https://shop.example.test/fail","cancelUrl":"https://shop.example.test/cancel","ipnUrl":"https://shop.example.test/ipn"}'
 co_unsigned() { call POST /checkout/v1/sessions -H 'Content-Type: application/json' -d "$co_body" && envelope 401 MW-AUTH-001; }

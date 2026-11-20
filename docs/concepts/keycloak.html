@@ -122,7 +122,7 @@
       <code>mw-app-gateway</code>, <code>mw-ussd</code>, <code>mw-checkout</code></td>
       <td>Client credentials: client id + client secret, no user at all</td></tr>
     <tr><td><code>partners</code></td><td>Partner systems</td><td><code>partner-sim</code> (the simulated partner)</td>
-      <td><code>private_key_jwt</code>: the partner signs a short JWT with its own private key; there is no shared secret</td></tr>
+      <td><code>private_key_jwt</code>: the partner signs a short JWT with its own private key; there is no shared secret. APISIX route <code>test-oauth2-cc</code> checks that access token.</td></tr>
   </table></div>
   <p>Roles in <code>ops</code> follow the jobs in the spec: <code>viewer</code>, <code>ops-maker</code>, <code>ops-checker</code>, <code>ops-emergency</code>,
     <code>integration-maker</code>, <code>integration-checker</code>, <code>recon-maker</code>, <code>recon-checker</code>, <code>compliance-officer</code>,

@@ -56,8 +56,9 @@ public record ChannelClientSpec(
 
     /**
      * Whether a client of this method is an APISIX consumer (projected by {@code
-     * ApisixConsumerSync}). BASIC only in ticket 100a: JWT tokens are checked per route, HMAC by the
-     * service (merchants, partner callbacks); OAUTH2_CC (100b) and MTLS (100c) follow.
+     * ApisixConsumerSync}). BASIC only: JWT tokens are checked per route, HMAC by the service
+     * (merchants, partner callbacks). OAUTH2_CC has no consumer (ticket 100b): its routes get
+     * {@code openid-connect} and a limit keyed by the token client id. MTLS is ticket 100c.
      */
     public boolean hasConsumer() {
       return this == BASIC;

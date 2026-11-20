@@ -15,6 +15,10 @@ public final class ErrorCodes {
   public static final String VAL_MEDIA_TYPE = "MW-VAL-005";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
+  /** No or bad internal JWT. */
+  public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
+  /** The internal caller is not allowed. */
+  public static final String AUTH_FORBIDDEN = "MW-AUTH-002";
 
   // mw-notify (spec 10): codes carried on mw.notify.status.v1 errorCode.
   /** A requested channel without its address (SMS: MSISDN, EMAIL: email, PUSH: a registered device token). */

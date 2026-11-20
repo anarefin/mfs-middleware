@@ -16,6 +16,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   state change on `mw.txn.status.v1` and partner requests on `mw.partner.request.<family>.v1`, through the
   transactional outbox in the same transaction as the state change, and calls the core over REST once that
   transaction has committed (ADR D31, ticket 95a: "Core over REST" below; no core command topic any more).
+- Routing (ticket 98, FRS PLT-032, PLT-040..043): `service/routing` chooses the connector before any money
+  moves. The most specific enabled rule wins (product, biller, bank, operator, channel, and an amount
+  range each count; a higher priority breaks a tie). A top-up with no `partnerId` takes the operator from
+  the credit MSISDN: the longest enabled prefix, unless an MNP override names that number. Prefixes shipped
+  in V14 are 017/013 gp, 018 robi, 015 teletalk, 019/014 banglalink. A `partnerId` the channel did send is
+  used only when the winning rule allows it (it is the connector, a fallback, or the operator, biller or
+  bank the rule is about); otherwise the request is `MW-PTR-UNKNOWN`. A connector reported DOWN,
+  MAINTENANCE, DISABLED or DELETED on `mw.partner.route.status.v1`, or covered by an active maintenance
+  message, is skipped. The next connector is tried only after a definite pre-send refusal (open circuit,
+  busy, unavailable, disabled, misconfigured, maintenance, unknown partner). An ambiguous PAY timeout stays
+  UNKNOWN and is never failed over. No connector left, with a maintenance message, is `MW-SYS-PARTNER_DISABLED`
+  (bn and en); with none, `MW-SYS-PARTNER_CIRCUIT_OPEN`. The snapshot reloads from the tables every 30 seconds
+  (`mw.orchestrator.routing.reload-interval`) and on `mw.config.changed.v1`. Health is remembered across a reload.
+  Approved changes are maker-checker resources of mw-admin-api (`ROUTING_RULE`, `MSISDN_PREFIX`, `MNP_OVERRIDE`,
+  `MAINTENANCE_MESSAGE`).
 - Core over REST (ADR D31, ticket 95a; FRS EXT-18, WAL-13, PLT-021/023/030/033; contract
   `api/mw-core-mock/core-wallet.v1.openapi.yaml`, consumed): `SagaEngine.send` records the call on `core_call`
   and hands the `CoreCommand` (now an internal step description, no longer a Kafka message) to
@@ -348,7 +363,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - `mw-reply-to` (7.5): copied from the request record to every status record (and to the answer
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.
 - Schema `txn` (role `orchestrator_rw`): `transaction`, `saga_step`, `saga_timer`, `idempotency`
-  (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`, `wallet_txn`); migrations V1..V13 (V12 `wallet_txn`,
+  (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`, `wallet_txn`, `routing_rule`, `msisdn_prefix`,
+  `mnp_override`, `maintenance_message`); migrations V1..V14 (V14 routing tables and the prefix and partner
+  seeds, ticket 98; V12 `wallet_txn`,
   V13 = Java migration `repository/WalletPartyMigration` filling it for older rows, ADR D25, `WalletPartyMigrationIT`;
   V11 drops `transaction.encrypted_pin`, ticket 72; V6 `reversal_txn_id`, V7 drops
   `idempotency.response`, V8 `initiator_hash` + `partner_call`, ticket 35; V9 `initiator_type`,

@@ -16,7 +16,15 @@
     "debitParty": { "$ref": "../../common/defs.v1.schema.json#/$defs/Party" },
     "creditParty": { "$ref": "../../common/defs.v1.schema.json#/$defs/Party" },
     "amount": { "$ref": "../../common/defs.v1.schema.json#/$defs/Amount" },
-    "partner": { "$ref": "../../common/defs.v1.schema.json#/$defs/PartnerRef" },
+    "partner": {
+      "description": "Ticket 98: partnerId is optional. Absent, routing chooses the connector from the MSISDN, biller or bank. Present, it is honoured only when a matching rule allows it.",
+      "type": "object",
+      "properties": {
+        "partnerId": { "type": "string", "minLength": 1 },
+        "productCode": { "type": "string", "minLength": 1 },
+        "billerCode": { "type": "string" }
+      }
+    },
     "originalTxnId": {
       "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId",
       "description": "Set for REVERSAL: the transaction being compensated."

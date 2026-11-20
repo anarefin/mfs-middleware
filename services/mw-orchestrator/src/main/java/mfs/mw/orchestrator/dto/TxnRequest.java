@@ -66,6 +66,14 @@ public record TxnRequest(
     return Boolean.TRUE.equals(confirmDuplicate);
   }
 
+  /** The same request with the partner routing chose (ticket 98). The idempotency hash stays the original. */
+  public TxnRequest withPartner(PartnerRef chosen) {
+    return new TxnRequest(
+        schemaVersion, txnId, idempotencyKey, correlationId, channel, txnType, initiator, debitParty,
+        creditParty, amount, chosen, originalTxnId, assertion, locale, metadata, attributes, requestedAt,
+        confirmDuplicate);
+  }
+
   /** A request without an assertion (bulk children, reversals). */
   public TxnRequest(
       int schemaVersion,

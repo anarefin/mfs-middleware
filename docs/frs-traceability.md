@@ -161,9 +161,9 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
 | PLT-001 | done | APISIX is the only port beyond loopback (D3 amendment); production is edge-only |
-| PLT-002 | ticket 100 | app JWTs (mw-auth) and merchant API key + HMAC built; the client registry records each client's auth method (ticket 100a); partner client credentials (100b) and inbound mTLS (100c) follow |
+| PLT-002 | ticket 100 | app JWTs (mw-auth) and merchant API key + HMAC built; the client registry records each client's auth method (ticket 100a); partner client credentials for `OAUTH2_CC` (ticket 100b: Keycloak `partners` `private_key_jwt`, APISIX `openid-connect` and a limit keyed by the token client id on `test-oauth2-cc`, simulator `GET /sim/partner-token`); inbound mTLS (100c) follows |
 | PLT-003 | ticket 132 | client registry built (ticket 100a): mw-admin-api `admin.channel_client` (V12), `/admin/v1/channel-clients` maker-checker (`ChannelClientChangeRequestIT`), projected to APISIX consumers + consumer groups after the approval commits and on a ShedLock reconcile (`service/ApisixConsumerSync`, `ApisixConsumerSyncTest`), secrets as `$secret://vault/edge/...` on the Vault KV v1 mount `apisix/`; today's clients seeded by mw-seeder (`seed-channel-clients`); console in 132 |
-| PLT-004 | ticket 100 | 429 with `Retry-After` on every route, one bucket per route group keyed per client (ticket 99, `lua/edge-error-headers.lua`, `test_apisix_edge.sh`, `scripts/edge-test.sh`); counters in Redis (ticket 90, D29); per registered client with an APISIX consumer: `limit-req` rate and `limit-count` daily quota in its consumer group (ticket 100a, `ApisixConsumerSyncTest`); consumer-less clients keyed by token client id in 100b |
+| PLT-004 | ticket 100 | 429 with `Retry-After` on every route, one bucket per route group keyed per client (ticket 99, `lua/edge-error-headers.lua`, `test_apisix_edge.sh`, `scripts/edge-test.sh`); counters in Redis (ticket 90, D29); per registered client with an APISIX consumer: `limit-req` rate and `limit-count` daily quota in its consumer group (ticket 100a, `ApisixConsumerSyncTest`); an `OAUTH2_CC` client has no consumer and is limited on its route by `mw_client_id` (ticket 100b); mTLS clients in 100c |
 | PLT-005 | done | `CorrelationIdFilter` in every service, `MwHeaders` on Kafka, propagated on outbound calls (root `CLAUDE.md`) |
 | PLT-006 | ticket 108 | Bean Validation and body JSON Schema (`MW-VAL-001`) built; XSD with the SOAP facade |
 | PLT-007 | done | `MaskingPolicy` and `@Sensitive` in every service, `scripts/log-scan.sh`; mask shape `0171****789` (repo rule) |
@@ -182,14 +182,14 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-026 | done | preview returns the core fee, VAT and commission (`PreviewService`, `POST /app/v1/{group}/preview`, ticket 105) |
 | PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector `client/CoreWalletClient` (connect/read timeouts, breaker `core`, reads retried only; ticket 95a) |
 | PLT-031 | done | no automatic redelivery of a PAY (D28); INQUIRY and STATUS retried |
-| PLT-032 | ticket 98 | fast failure `MW-SYS-PARTNER_CIRCUIT_OPEN` built; failover routing in 98 |
+| PLT-032 | done | failover only before money leaves (`service/routing`, `RoutingFailoverIT`): an open circuit, DOWN, MAINTENANCE or a definite pre-send refusal tries the next connector; with none, `MW-SYS-PARTNER_CIRCUIT_OPEN` before a hold; an ambiguous PAY timeout stays UNKNOWN |
 | PLT-033 | done | bulkhead per partner (`MW-SYS-PARTNER_BUSY`), one adapter per family (D32); bulkhead `core` on the core calls, each on its own virtual thread (ticket 95a) |
 | PLT-034 | done | Kafka retry topics and DLQ (D2, D27); the AML and DW feeds use them (tickets 125, 128) |
 | PLT-035 | done | transactional outbox in every producing service (spec 6.4) |
-| PLT-040 | ticket 98 | routing rules in the mw-orchestrator routing module |
-| PLT-041 | ticket 98 | rules in the database, maker-checker, 30 s cache refresh |
-| PLT-042 | ticket 98 | prefix to MNO with MNP override |
-| PLT-043 | ticket 98 | partner disable built (admin console); the adapter refuses a call inside the window or with the flag as `MW-SYS-PARTNER_MAINTENANCE` with the bn/en message (131b); routing that treats the partner as MAINTENANCE is 98; biller disable 113 |
+| PLT-040 | done | most specific enabled rule wins in mw-orchestrator `service/routing` (`RoutingServiceTest`); a named partner is honoured only when that rule allows it, otherwise `MW-PTR-UNKNOWN` |
+| PLT-041 | done | rules in `txn.routing_rule` (V14), maker-checker in mw-admin-api (V15, `RoutingRuleChangeRequestIT`), applied from `mw.config.changed.v1` and re-read every 30 s (`RoutingRuleReloadIT`) |
+| PLT-042 | done | prefix to MNO (017/013 gp, 018 robi, 015 teletalk, 019/014 banglalink) with an MNP override winning (`MsisdnRoutingTest`) |
+| PLT-043 | done | a maintenance message for a partner or biller is `MW-SYS-PARTNER_DISABLED` with the bn and en text (`MaintenanceMessageIT`, API folder 35); the adapter's own window stays 131b; biller-catalogue disable stays 113 |
 | PLT-050 | ticket 108 | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); no SOAP service is served yet, the app SOAP facade of 108 publishes the first WSDL |
 | PLT-051 | done | versioning policy in `contracts/README.md` ("Versioning", ticket 101): breaking change = new `/v2` file and path, `/v1` kept for one release |
 | PLT-052 | done | Swagger UI and `/v3/api-docs` only in profiles `dev`/`test` (off in production, `ApiDocsProductionTest`); test-only APISIX page `/docs/` lists them and the WSDLs (none until ticket 108) (ticket 101) |
@@ -308,15 +308,15 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| NOT-01 | tickets 111, 133 | transaction notifications on SMS, email and push (ticket 110) built; rule table and system events 111, editor 133 |
+| NOT-01 | tickets 111, 133 | transaction notifications on SMS, email and push (ticket 110) built; customer type on `notify.rule` matched to `debitParty.walletType`, and LOCK/UNLOCK notices from `auth.wallet-lock.v1` (ticket 111); the rule-table editor is 133 |
 | NOT-02 | done | SMS, email and push templates (title + body, `PUSH_TXN_COMPLETED` / `PUSH_TXN_FAILED`, ticket 110) in Bangla and English in `notify.template` |
 | NOT-03 | done | mw-notify SMPP: GSM-7 / UCS2, concatenation, sender id (`SmsEncoder`) |
 | NOT-04 | done | delivery receipts update the message status (`DeliveryReport`) |
 | NOT-05 | done | priority queues, OTP first (`Priority`) |
 | NOT-06 | ticket 134 | retry and DLQ for SMS, email and push built (push: client retry with backoff and breaker, then 2/10/30 s, ticket 110); console view 134 |
-| NOT-07 | ticket 111 | campaigns with throttle |
-| NOT-08 | tickets 111, 134 | notification log search |
-| NOT-09 | ticket 111 | opt-out |
+| NOT-07 | done | campaigns with a per-second throttle on the PROMO bind (ticket 111): `POST /admin/v1/notify-campaigns` through maker-checker, `CampaignRunnerIT` |
+| NOT-08 | tickets 111, 134 | notification log search API built (ticket 111): `GET /internal/v1/notifications`, paged and masked, OTP body always masked; the console view is 134 |
+| NOT-09 | done | promotional opt-out (ticket 111): `POST /app/v1/notifications/opt-out` and SMS keyword STOP, honoured for PROMO only |
 | REC-01 | ticket 126 | MT940/942 pull and parse |
 | REC-02 | ticket 126 | adapters' SFTP ingest to `mw.partner.recon.v1` built (D28); consumer in 126 |
 | REC-03 | ticket 126 | matching with tolerance |
@@ -344,14 +344,14 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); credential upload and error map API built (131a); the partner engine honours the maintenance window and the mock/real endpoint profile (131b); console tabs in 131c |
-| ADM-02 | ticket 131 | API built (131a): write-only credential upload through maker-checker (`partner_credential`, staged in Vault, approved into a field of `secret/mw-adapter-<family>/<partner>`, mw-admin-api's policy write-only there), metadata `GET /admin/v1/credentials`, dashboard feed `/admin/v1/credentials/expiring`, ops email at 30/7/1 days (`CredentialVaultIT`, `CredentialExpiryJobIT`, API folder 45); console tab and card in 131c |
+| ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); credential upload and error map API built (131a); the partner engine honours the maintenance window and the mock/real endpoint profile (131b); console tabs built (131c, `ui/mw-admin-ui`: Maintenance, Endpoint (mock/real), Credentials, Error codes) |
+| ADM-02 | ticket 131 | API built (131a): write-only credential upload through maker-checker (`partner_credential`, staged in Vault, approved into a field of `secret/mw-adapter-<family>/<partner>`, mw-admin-api's policy write-only there), metadata `GET /admin/v1/credentials`, dashboard feed `/admin/v1/credentials/expiring`, ops email at 30/7/1 days (`CredentialVaultIT`, `CredentialExpiryJobIT`, API folder 45); console credentials tab and the Credentials expiring card (131c) |
 | ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
-| ADM-04 | tickets 98, 132 | routing rules |
+| ADM-04 | tickets 98, 132 | API maker-checker for `ROUTING_RULE`, `MSISDN_PREFIX`, `MNP_OVERRIDE` and `MAINTENANCE_MESSAGE` (ticket 98, `RoutingRuleChangeRequestIT`, API folder 35); the console and testing a rule against a sample request stay 132 |
 | ADM-05 | tickets 113, 132 | billers |
 | ADM-06 | ticket 133 | USSD menu JSON editing built; visual editor and preview in 133 |
-| ADM-07 | tickets 111, 133 | SMS template editing built; rule table and test send |
-| ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the screen in 131c |
+| ADM-07 | tickets 111, 133 | SMS template editing built; campaigns through maker-checker (`POST /admin/v1/notify-campaigns`, ticket 111); the rule-table editor and test send are 133 |
+| ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the Error codes tab (131c, `ui/mw-admin-ui`) |
 | ADM-09 | done | transaction search and saga timeline (mw-admin-api, `ui/mw-admin-ui`) |
 | ADM-10 | ticket 134 | TSQ, force complete and reversal with maker-checker built; resend notification and release hold in 134 |
 | ADM-11 | ticket 134 | recon workbench |

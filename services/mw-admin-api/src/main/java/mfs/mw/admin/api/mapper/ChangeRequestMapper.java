@@ -202,9 +202,11 @@ public final class ChangeRequestMapper {
     return String.valueOf(cr.payload().get(UNLOCK_TXN_ID));
   }
 
-  /** The resource id as views and audits show it: a wallet id (an MSISDN) masked. */
+  /** The resource id as views and audits show it: a wallet id or a ported number masked. */
   public static String shownId(ChangeRequest cr) {
-    return wallet(cr) ? MaskingPolicy.mask(SensitiveType.MSISDN, cr.resourceId()) : cr.resourceId();
+    return wallet(cr) || "MNP_OVERRIDE".equals(cr.resourceType())
+        ? MaskingPolicy.mask(SensitiveType.MSISDN, cr.resourceId())
+        : cr.resourceId();
   }
 
   private static boolean wallet(ChangeRequest cr) {

@@ -18,11 +18,11 @@ public class RuleRepository {
   /** Enabled rules for events of {@code topic}, in evaluation order. */
   public List<RuleRecord> enabledFor(String topic) {
     return jdbc.query(
-        "select rule_id, source_topic, condition, template_code, recipient, channel, priority from rule"
-            + " where enabled and source_topic = ? order by sort_order, rule_id",
+        "select rule_id, source_topic, condition, template_code, recipient, channel, priority, customer_type"
+            + " from rule where enabled and source_topic = ? order by sort_order, rule_id",
         (rs, i) -> new RuleRecord(rs.getString("rule_id"), rs.getString("source_topic"), rs.getString("condition"),
             rs.getString("template_code"), rs.getString("recipient"), rs.getString("channel"),
-            rs.getString("priority")),
+            rs.getString("priority"), rs.getString("customer_type")),
         topic);
   }
 }

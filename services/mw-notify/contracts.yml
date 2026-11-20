@@ -6,5 +6,9 @@ consumes:
   events: [events/mw-notify/mw.notify.request.v1.schema.json, events/mw-orchestrator/mw.txn.status.v1.schema.json,
            events/mw-admin-api/mw.config.changed.v1.schema.json,
            # ticket 110: the app's push device tokens, from mw-app-gateway
-           events/mw-notify/mw.notify.push-token.v1.schema.json]
+           events/mw-notify/mw.notify.push-token.v1.schema.json,
+           # ticket 111: lock/unlock notices (MANUAL_REVIEW ops alert stays on mw.txn.status.v1)
+           events/mw-auth/auth.wallet-lock.v1.schema.json,
+           # ticket 111: promotional opt-out from the app
+           events/mw-notify/mw.notify.opt-out.v1.schema.json]
   apis:   []

@@ -25,7 +25,8 @@ class ConsumerTopicsIT {
 
   static final String GROUP = "mw-notify";
   static final List<String> TOPICS =
-      List.of("mw.notify.request.v1", "mw.txn.status.v1", "mw.config.changed.v1", "mw.notify.push-token.v1");
+      List.of("mw.notify.request.v1", "mw.txn.status.v1", "mw.config.changed.v1", "mw.notify.push-token.v1",
+          "auth.wallet-lock.v1", "mw.notify.opt-out.v1");
 
   private final KafkaListenerEndpointRegistry registry;
 
