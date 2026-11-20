@@ -185,6 +185,41 @@
       await mock.settings(party, {});
     },
   };
+
+  // Ticket 104: the names later use cases call. scope is a key (MSISDN, account, biller) or
+  // {code, key, nextN, delayMs, httpStatus}. mockReset(party) clears scenarios and the switch and
+  // keeps the ledger; mockReset() with no party is POST /mock-control/reset (ledger back to seed).
+  async function mockScenario(party, op, behaviour, scope) {
+    const s = { behaviour: behaviour };
+    if (op) s.operation = op;
+    if (scope && typeof scope === 'object') {
+      ['code', 'key', 'nextN', 'delayMs', 'httpStatus'].forEach(k => { if (scope[k] != null) s[k] = scope[k]; });
+    } else if (scope != null && scope !== '') {
+      s.key = String(scope);
+    }
+    return mock.scenario(party, s);
+  }
+  async function mockSwitch(party, sw) {
+    return mock.switchTo(party, typeof sw === 'string' ? { state: sw } : sw);
+  }
+  async function mockReset(party) {
+    if (party) { await mock.normal(party); return null; }
+    return (await must('POST', MC + 'reset', { apikey: true })).body;
+  }
+  const mockJournal = (party, q) => mock.journal(party, q);
+  /** The core wallet balance record: balanceMinor, heldMinor, availableMinor. */
+  const coreBalance = id => core.wallet(id);
+  /** The app user of the latest submit or confirm, so waitForState can poll without a user argument. */
+  let lastAppUser = null;
+  async function waitForState(txnId, states, timeoutMs) {
+    if (!lastAppUser) throw new Error('waitForState: no app user yet');
+    const want = Array.isArray(states) ? states.slice() : String(states).split(',').map(s => s.trim()).filter(Boolean);
+    const r = await poll(() => app.status(lastAppUser, txnId), x => x.body && want.indexOf(x.body.status) >= 0, timeoutMs || 20000, 400);
+    if (!r.body || want.indexOf(r.body.status) < 0) {
+      throw new Error('waitForState ' + want.join('|') + ' timed out: ' + short(r));
+    }
+    return r;
+  }
   // the old control body {forceMode, latencyMs, errorRate, outage, callbackMode, callbackDelayMs, callbackUrl,
   // callbackOnly, timeoutDelayMs} on mock control, as mw-simulators' LegacyScenarios translates it
   const PAYING = { ocs: 'topup', billagg: 'pay', c2wbank: 'debit' };
@@ -827,6 +862,7 @@
     // app channel
     S.submit = async (user, body, idem) => {
       S.user = user;
+      lastAppUser = user;
       S.confirmPath = null;
       S.idem = idem || 'api-' + uuid();
       S.lastBody = body;
@@ -837,6 +873,7 @@
     /** Preview, then confirm, the same body (ticket 105). A preview refusal is the outcome; the quote is S.quote. */
     S.previewConfirm = async (user, body, idem) => {
       S.user = user;
+      lastAppUser = user;
       S.confirmPath = null;
       const group = PREVIEW_GROUP[body.txnType];
       if (!group) throw new Error('no preview group for ' + body.txnType);
@@ -1055,6 +1092,7 @@
   const MW = {
     http, must, poll, sleep, uuid, unique, short, totp, claims, hmacHex, hmacB64, sha256Hex, encryptPin, encryptAppPin, token, bearer,
     core, sim, mock, app, auth, admin, portal, checkout, callbacks, testApi, run, FINAL, IPN_URL, v, CV,
+    mockScenario, mockSwitch, mockReset, mockJournal, coreBalance, waitForState,
     fixture: n => JSON.parse(CV.get('fixtures'))[n],
     /** The seeded PIN of every app wallet (MW_SEED_APP_PIN); mw-auth checks it for every channel (ticket 72). */
     get pin() { return v('appPin'); },

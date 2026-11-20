@@ -9,11 +9,14 @@ missing here, a row names no request, a request name lacks its requirement tags,
 claimed by a request without the tag its flow or outcome needs (`P2P app tsq-commit` needs `p2p`
 and `tsq`; `ops *` needs `operator` or `admin`; `<FLOW> ussd *` and `ussd http` need `ussd`,
 `ussd smpp` needs `smpp`), or a coverage item the criteria demand is claimed by no request.
+The FRS matrix at the bottom (ticket 104) has one row per use case UC-01..UC-22 and a column per
+mandatory scenario T1..T12; a cell is a request name from this collection, or `n/a` plus a reason.
+A name the collection does not have fails the check.
 
 Requirement tags are the Cucumber flow tags without `@` (`p2p`, `cash`, `topup`, `billpay`,
 `callback`, `addmoney`, `c2w`, `merchant`, `checkout`, `ipn`, `notify`, `tsq`, `device`, `reversal`,
 `admin`, `operator`, `partner-config`, `wallet-unlock`, `ussd`, `smpp`, `bulk`, `sp-query`, `dlq` (retry topics to the DLQ, ticket 58, no Cucumber flow), plus
-`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto), `history` (the wallet transaction history GET /app/v1/transactions, ADR D25), `balance` (the balance check over USSD and POST /app/v1/balance, ADR D26) and `docs` (the generated API documents of the dev stack under /docs/, ticket 101), `mock` (the mock-control API of mw-simulators, /test/mock-control/*, ADR D33, tickets 102a/102b, and its global reset, ticket 103), `audit` (mw-audit-dw's search, per-hop timeline and audited CSV export, ticket 130), `credentials` (partner credential upload into Vault and the expiry dashboard of the admin API, ticket 131a)); the module tags (`@mw-*`) were run filters, not requirements, and
+`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), `frs` (a mandatory FRS 10.2 scenario, ticket 104), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto), `history` (the wallet transaction history GET /app/v1/transactions, ADR D25), `balance` (the balance check over USSD and POST /app/v1/balance, ADR D26) and `docs` (the generated API documents of the dev stack under /docs/, ticket 101), `mock` (the mock-control API of mw-simulators, /test/mock-control/*, ADR D33, tickets 102a/102b, and its global reset, ticket 103), `audit` (mw-audit-dw's search, per-hop timeline and audited CSV export, ticket 130), `credentials` (partner credential upload into Vault and the expiry dashboard of the admin API, ticket 131a)); the module tags (`@mw-*`) were run filters, not requirements, and
 are not carried over (`make api-test FOLDER=` selects folders).
 
 | # | Criterion | Where it is proved |
@@ -246,6 +249,15 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 40 | [mock] one call resets every mock party and brings the core ledger back to its seed | - |  |
 | 40 | [mock] a fault set through the old core fault API is a core scenario the reset clears | - |  |
 | 40 | [mock] an unknown core seed version is reported FAILED and changes nothing else | - |  |
+| 41 | [p2p frs] T1 a P2P completes with the seed tariff fee, VAT and commission and the SMS is in the SMSC journal | - |  |
+| 41 | [p2p frs] T2 a core business rejection shows the English and Bangla text and moves nothing | - |  |
+| 41 | [p2p frs] T3 a core timeout on the next transfer is completed by the status inquiry and debited once | - |  |
+| 41 | [p2p frs] T4 a lost core refusal is failed by the status inquiry and moves nothing | - |  |
+| 41 | [p2p frs] T6 the same Idempotency-Key twice debits once and returns the same txnId | - |  |
+| 41 | [p2p frs] T7 a duplicate core result event posts the transfer once | - |  |
+| 41 | [p2p frs] T8 a core that refuses connections fails the preview at once and moves nothing | - |  |
+| 41 | [p2p frs] T9 a limit is refused before any transfer and an insufficient balance moves nothing | - |  |
+| 41 | [p2p frs] T10 a P2P keeps the ledger identity; mid-saga restart is scripts/chaos.sh | - |  |
 | 42 | [audit topup] a search by partner and amount range finds the top-up and its partner call | - |  | FR-18 |
 | 42 | [audit p2p] the timeline of a P2P lists its hops in order with latencies and no clear MSISDN | - |  | FR-18, SEC-10 |
 | 42 | [audit] a CSV export of a transaction returns its rows and records one operator action | - |  | FR-18 |
@@ -265,3 +277,35 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 62 | [mock] today's data warehouse export is accepted by the drop check | - |  |
 | 90 | [auth pin lock] the lockout escalates: level 1, level 2 after it ran out, then a permanent lock that only a reset ends | - |  | SEC-09 |
 | 90 | [assertion p2p] after the assertion life (60 s) a resend with the same key checks the PIN again; the right PIN gets the same txnId | - |  | SEC-09, FR-05 |
+| 90 | [p2p frs] T5 a core that never answers ends in MANUAL_REVIEW and alerts operations | - |  |
+
+## FRS UC x T1-T12
+
+Ticket 104. P2P (UC-04) is filled in; T5 is the folder 90 request. T11 and T12 stay `n/a` until
+tickets 125 and 127. T10 names the request that checks the ledger identity; the mid-saga kill is
+`scripts/chaos.sh` with `CHAOS_TARGETS=mw-orchestrator`. Every other use case is `n/a` until its ticket.
+
+| UC | T1 | T2 | T3 | T4 | T5 | T6 | T7 | T8 | T9 | T10 | T11 | T12 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| UC-01 | n/a ticket 124 | n/a ticket 124 | n/a ticket 124 | n/a ticket 124 | n/a ticket 124 | n/a ticket 124 | n/a ticket 124 | n/a ticket 124 | n/a ticket 124 | n/a ticket 124 | n/a ticket 125 | n/a ticket 127 |
+| UC-02 | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a ticket 125 | n/a ticket 127 |
+| UC-03 | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a not a financial transfer | n/a ticket 125 | n/a ticket 127 |
+| UC-04 | [p2p frs] T1 a P2P completes with the seed tariff fee, VAT and commission and the SMS is in the SMSC journal | [p2p frs] T2 a core business rejection shows the English and Bangla text and moves nothing | [p2p frs] T3 a core timeout on the next transfer is completed by the status inquiry and debited once | [p2p frs] T4 a lost core refusal is failed by the status inquiry and moves nothing | [p2p frs] T5 a core that never answers ends in MANUAL_REVIEW and alerts operations | [p2p frs] T6 the same Idempotency-Key twice debits once and returns the same txnId | [p2p frs] T7 a duplicate core result event posts the transfer once | [p2p frs] T8 a core that refuses connections fails the preview at once and moves nothing | [p2p frs] T9 a limit is refused before any transfer and an insufficient balance moves nothing | [p2p frs] T10 a P2P keeps the ledger identity; mid-saga restart is scripts/chaos.sh | n/a ticket 125 | n/a ticket 127 |
+| UC-05 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-06 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-07 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-08 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-09 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-10 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-11 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-12 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-13 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-14 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-15 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-16 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-17 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-18 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-19 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-20 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 137 | n/a ticket 125 | n/a ticket 127 |
+| UC-21 | n/a ticket 125 | n/a ticket 125 | n/a ticket 125 | n/a ticket 125 | n/a ticket 125 | n/a ticket 125 | n/a ticket 125 | n/a ticket 125 | n/a ticket 125 | n/a ticket 125 | n/a ticket 125 | n/a ticket 127 |
+| UC-22 | n/a ticket 127 | n/a ticket 127 | n/a ticket 127 | n/a ticket 127 | n/a ticket 127 | n/a ticket 127 | n/a ticket 127 | n/a ticket 127 | n/a ticket 127 | n/a ticket 127 | n/a ticket 125 | n/a ticket 127 |
