@@ -110,6 +110,149 @@ export function tree(menu: Menu): { id: string; depth: number; unreachable?: tru
   return out;
 }
 
+// --- tree editing (ticket 133a): pure, the input menu is never changed --------------------------
+
+const NODE_ID = /^[A-Za-z0-9._-]{1,64}$/;
+const EMPTY_TEXT = (): Text => ({ bn: "", en: "" });
+
+function freeKey(options: MenuOption[]): string {
+  let k = options.length + 1;
+  while (options.some((o) => o.key === String(k))) k++;
+  return String(k);
+}
+
+/** Links `child` under `parent`: a new option of a MENU / CONFIRM, the `next` of an INPUT / DYNAMIC. */
+function link(menu: Menu, parent: string, child: string, label: Text): Menu | null {
+  const p = menu.nodes[parent];
+  if (!p) return null;
+  if (p.type === "MENU" || p.type === "CONFIRM") {
+    const options = p.options ?? [];
+    return { ...menu, nodes: { ...menu.nodes, [parent]: { ...p, options: [...options, { key: freeKey(options), label, next: child }] } } };
+  }
+  if (p.type === "INPUT" || p.type === "DYNAMIC") return { ...menu, nodes: { ...menu.nodes, [parent]: { ...p, next: child } } };
+  return null;
+}
+
+/** Drops every reference to `id` (options leading to it, next / onSuccess / onFailure). */
+function unlink(menu: Menu, id: string): Menu {
+  const nodes: Record<string, MenuNode> = {};
+  for (const [k, n] of Object.entries(menu.nodes)) {
+    const c: MenuNode = { ...n };
+    if (n.options) c.options = n.options.filter((o) => o.next !== id);
+    for (const f of ["next", "onSuccess", "onFailure"] as const) if (c[f] === id) delete c[f];
+    nodes[k] = c;
+  }
+  return { ...menu, nodes };
+}
+
+/** A new node `id` of `type` under `parent`; the menu as it was when the id is bad or taken. */
+export function addChild(menu: Menu, parent: string, id: string, type: NodeType): Menu {
+  if (!NODE_ID.test(id) || menu.nodes[id]) return menu;
+  const node: MenuNode = type === "ACTION" ? { type } : { type, text: EMPTY_TEXT() };
+  return link({ ...menu, nodes: { ...menu.nodes, [id]: node } }, parent, id, EMPTY_TEXT()) ?? menu;
+}
+
+/** Moves `id` under `parent` (re-parent): its old option label goes with it. Never the start node. */
+export function moveNode(menu: Menu, id: string, parent: string): Menu {
+  if (id === menu.start || id === parent || !menu.nodes[id] || !menu.nodes[parent]) return menu;
+  let label: Text = EMPTY_TEXT();
+  for (const n of Object.values(menu.nodes)) {
+    const o = n.options?.find((x) => x.next === id);
+    if (o?.label) {
+      label = o.label;
+      break;
+    }
+  }
+  return link(unlink(menu, id), parent, id, label) ?? menu;
+}
+
+/** Swaps option `index` of `nodeId` with its neighbour (`by` -1 up, +1 down). */
+export function moveOption(menu: Menu, nodeId: string, index: number, by: -1 | 1): Menu {
+  const n = menu.nodes[nodeId];
+  const options = n?.options;
+  const to = index + by;
+  if (!n || !options || to < 0 || to >= options.length || index < 0 || index >= options.length) return menu;
+  const copy = [...options];
+  [copy[index], copy[to]] = [copy[to]!, copy[index]!];
+  return { ...menu, nodes: { ...menu.nodes, [nodeId]: { ...n, options: copy } } };
+}
+
+/** Removes `id` and every reference to it. Never the start node. */
+export function deleteNode(menu: Menu, id: string): Menu {
+  if (id === menu.start || !menu.nodes[id]) return menu;
+  const { [id]: _gone, ...rest } = unlink(menu, id).nodes;
+  return { ...menu, nodes: rest };
+}
+
+// --- screen size (mw-ussd ScreenFormatter, spec 9.2) ----------------------------------------------
+
+/** The GSM 03.38 basic character set mw-ussd checks (no extension table). */
+const GSM7 = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
+const isGsm7 = (s: string) => [...s].every((c) => GSM7.includes(c));
+
+export type ScreenLimits = { gsm: number; ucs2: number; overflow: "PAGE" | "TRUNCATE" };
+export type Mno = (typeof MNOS)[number];
+/** mw-ussd `mw.ussd.mno.*` (dev config): limits, overflow and the short code dialled. */
+export const MNO_SCREENS: Record<Mno, ScreenLimits & { shortCode: string }> = {
+  gp: { gsm: 182, ucs2: 70, overflow: "PAGE", shortCode: "*268#" },
+  robi: { gsm: 182, ucs2: 70, overflow: "PAGE", shortCode: "*269#" },
+  bl: { gsm: 182, ucs2: 70, overflow: "PAGE", shortCode: "*270#" },
+  teletalk: { gsm: 182, ucs2: 70, overflow: "TRUNCATE", shortCode: "*271#" },
+};
+export const DEFAULT_MORE: Text = { bn: "0. পরবর্তী", en: "0. Next" };
+export const DEFAULT_BACK: Text = { bn: "00. পেছনে", en: "00. Back" }; // mw-ussd UssdEngine BACK_TEXT
+
+const limitOf = (s: string, l: ScreenLimits) => (isGsm7(s) ? l.gsm : l.ucs2);
+
+/** One text's size against an MNO screen (GSM-7 182 / UCS-2 70 by default). */
+export function textCounter(text: string, l: ScreenLimits = MNO_SCREENS.gp) {
+  const gsm = isGsm7(text);
+  const limit = gsm ? l.gsm : l.ucs2;
+  return { length: text.length, encoding: gsm ? "GSM-7" : "UCS-2", limit, over: text.length > limit } as const;
+}
+
+function breakAt(text: string, room: number): number {
+  const nl = text.lastIndexOf("\n", room);
+  if (nl > 0) return nl;
+  const sp = text.lastIndexOf(" ", room);
+  return sp > 0 ? sp : room;
+}
+
+/** mw-ussd `ScreenFormatter.pages`: a screen cut to the limit, or pages ending with `more` and `back`. */
+export function screenPages(text: string, l: ScreenLimits, more: string, back: string): string[] {
+  const limit = limitOf(text, l);
+  if (text.length <= limit) return [text];
+  if (l.overflow === "TRUNCATE") return [text.substring(0, limit)];
+  const nextSuffix = `\n${more}`;
+  const backSuffix = back.trim() ? `\n${back}` : "";
+  const fullSuffix = nextSuffix + backSuffix;
+  const pageLimit = Math.min(limit, limitOf(text + more + backSuffix, l));
+  const room = pageLimit - fullSuffix.length;
+  if (room < 1) return [text.substring(0, limit)];
+  const pages: string[] = [];
+  let rest = text;
+  while (rest.length + backSuffix.length > pageLimit) {
+    const cut = breakAt(rest, room);
+    pages.push(rest.substring(0, cut) + fullSuffix);
+    rest = rest.substring(cut);
+    if (rest.startsWith("\n") || rest.startsWith(" ")) rest = rest.substring(1);
+    if (!rest) break;
+  }
+  pages.push(rest + backSuffix);
+  return pages;
+}
+
+/** A node's screen in one language as the editor sizes it (text and options, placeholders as typed). */
+export function nodeScreen(menu: Menu, id: string, lang: Lang, l: ScreenLimits = MNO_SCREENS.gp) {
+  const n = menu.nodes[id];
+  const pick = (x: Text | undefined) => (lang === "en" ? x?.en : x?.bn) ?? "";
+  let text = pick(n?.text);
+  for (const o of n?.options ?? []) text += `\n${o.key} ${pick(o.label)}`;
+  const more = pick(menu.messages.more) || pick(DEFAULT_MORE);
+  const back = pick(menu.messages.back) || pick(DEFAULT_BACK);
+  return { ...textCounter(text, l), pages: screenPages(text, l, more, back).length };
+}
+
 /** Activations of a proposal: MNOs chosen once each (known ones only), go-live as UTC. */
 export function parseActivations(mnos: readonly string[], goLive: Record<string, string>): { mno: string; goLiveAt?: string }[] | null {
   if (mnos.length === 0 || new Set(mnos).size !== mnos.length) return null;
@@ -139,6 +282,15 @@ export type Preview = {
   nodeId: string;
   inputs: Record<string, string>;
   attempts: number;
+  /** The MNO whose screen limits page the text (mw-ussd `mw.ussd.mno.*`). */
+  mno: Mno;
+  /** The current screen's pages (one when it fits) and the one showing. */
+  pages: string[];
+  page: number;
+  /** The nodes `00` returns to (mw-ussd's back stack; a PIN input is never on it). */
+  back: string[];
+  /** A paged end screen: the session ends on its last page. */
+  endAfterPages: boolean;
   screen: string;
   ended: boolean;
   /** What the subscriber saw and typed (a PIN shown as ****). */
@@ -210,25 +362,51 @@ function enter(p: Preview, nodeId: string, vars: Record<string, string>, outcome
     return enter({ ...p, nodeId: next ?? "" }, next ?? "", v, outcome, input);
   }
   const at = { ...p, nodeId, attempts: 0 };
-  const screen = render(p.menu, at, vars);
-  return { ...at, screen, ended: n.type === "END", trail: [...p.trail, { input, screen }] };
+  return show(at, render(p.menu, at, vars), input, n.type === "END");
+}
+
+/** Shows a screen as mw-ussd would: paged at the MNO's limit with the more / back lines. */
+function show(p: Preview, text: string, input: string | null, end: boolean): Preview {
+  const more = say(p.menu.messages.more, p.lang) || say(DEFAULT_MORE, p.lang);
+  const back = say(p.menu.messages.back, p.lang) || say(DEFAULT_BACK, p.lang);
+  const pages = screenPages(text, MNO_SCREENS[p.mno], more, back);
+  const paged = pages.length > 1;
+  const screen = pages[0]!;
+  return { ...p, pages, page: 0, screen, ended: end && !paged, endAfterPages: end && paged, trail: [...p.trail, { input, screen }] };
 }
 
 function end(p: Preview, screen: string, input: string | null): Preview {
-  return { ...p, screen, ended: true, trail: [...p.trail, { input, screen }] };
+  return show(p, screen, input, true);
 }
 
 function invalid(p: Preview, n: MenuNode, input: string): Preview {
   const attempts = p.attempts + 1;
   if (attempts >= MAX_INVALID_ATTEMPTS) return end(p, message(p.menu, "tooManyAttempts", p.lang), input);
   const prefix = n.validator?.error ? say(n.validator.error, p.lang) : message(p.menu, "invalid", p.lang);
-  const screen = `${prefix}\n${render(p.menu, p, {})}`;
-  return { ...p, attempts, screen, trail: [...p.trail, { input, screen }] };
+  return show({ ...p, attempts }, `${prefix}\n${render(p.menu, p, {})}`, input, false);
 }
 
-/** A new session dialled by `msisdn`, in Bangla (mw-ussd's default language). */
-export function startPreview(menu: Menu, { msisdn, lang = "bn" }: { msisdn: string; lang?: Lang }): Preview {
-  const p: Preview = { menu, msisdn, lang, nodeId: menu.start, inputs: {}, attempts: 0, screen: "", ended: false, trail: [] };
+/** The key that shows the next page: the first word of the `more` line, without a trailing dot. */
+function moreKey(p: Preview): string {
+  const more = (say(p.menu.messages.more, p.lang) || say(DEFAULT_MORE, p.lang)).trim();
+  const key = more.split(" ")[0] ?? "";
+  return key.endsWith(".") ? key.slice(0, -1) : key;
+}
+
+const BACK_INPUT = "00";
+
+function atPage(p: Preview, page: number, input: string): Preview {
+  const screen = p.pages[page]!;
+  const ended = p.endAfterPages && page === p.pages.length - 1;
+  return { ...p, page, screen, ended, trail: [...p.trail, { input, screen }] };
+}
+
+/** A new session dialled by `msisdn` on `mno` (default gp), in Bangla (mw-ussd's default language). */
+export function startPreview(menu: Menu, { msisdn, lang = "bn", mno = "gp" }: { msisdn: string; lang?: Lang; mno?: Mno }): Preview {
+  const p: Preview = {
+    menu, msisdn, lang, mno, nodeId: menu.start, inputs: {}, attempts: 0, pages: [], page: 0, back: [], endAfterPages: false,
+    screen: "", ended: false, trail: [],
+  };
   return enter(p, menu.start, {}, "COMPLETED", null);
 }
 
@@ -236,7 +414,18 @@ export function startPreview(menu: Menu, { msisdn, lang = "bn" }: { msisdn: stri
 export function stepPreview(p: Preview, raw: string, outcome: ActionOutcome = "COMPLETED"): Preview {
   if (p.ended) return p;
   const input = raw.trim();
+  if (input === BACK_INPUT) {
+    if (p.page > 0) return atPage(p, p.page - 1, input);
+    if (p.back.length > 0) {
+      const prev = { ...p, nodeId: p.back.at(-1)!, back: p.back.slice(0, -1), attempts: 0 };
+      return show(prev, render(p.menu, prev, {}), input, false);
+    }
+  }
+  if (p.page + 1 < p.pages.length && (p.endAfterPages || input === moreKey(p))) return atPage(p, p.page + 1, input);
   const n = p.menu.nodes[p.nodeId]!;
+  // mw-ussd pushes the node it leaves, except a PIN input (00 from the next screen skips it)
+  const pin = n.type === "INPUT" && n.validator?.type === "pin";
+  const left: Preview = pin ? p : { ...p, back: [...p.back, p.nodeId] };
   switch (n.type) {
     case "MENU":
     case "CONFIRM": {
@@ -246,19 +435,19 @@ export function stepPreview(p: Preview, raw: string, outcome: ActionOutcome = "C
       const own = { msisdn: p.msisdn, mno: "gp" };
       const inputs = { ...p.inputs };
       for (const [k, v] of Object.entries(o.set ?? {})) inputs[k] = interpolate(v, p.inputs, own);
-      return enter({ ...p, lang, inputs }, o.next ?? "", {}, outcome, input);
+      return enter({ ...left, lang, inputs }, o.next ?? "", {}, outcome, input);
     }
     case "DYNAMIC": {
       const items = sampleItems(n.source);
       const i = Number.parseInt(input, 10) - 1;
       if (!(i >= 0 && i < items.length)) return invalid(p, n, input);
-      return enter({ ...p, inputs: { ...p.inputs, [n.store ?? ""]: items[i]!.value } }, n.next ?? "", {}, outcome, input);
+      return enter({ ...left, inputs: { ...p.inputs, [n.store ?? ""]: items[i]!.value } }, n.next ?? "", {}, outcome, input);
     }
     case "INPUT": {
       const valid = validate(n.validator, input, p.msisdn);
       if (valid === null) return invalid(p, n, n.validator?.type === "pin" ? "****" : input);
-      if (n.validator?.type === "pin") return enter(p, n.next ?? "", {}, outcome, "****"); // never stored
-      return enter({ ...p, inputs: { ...p.inputs, [n.store ?? ""]: valid } }, n.next ?? "", {}, outcome, input);
+      if (n.validator?.type === "pin") return enter(left, n.next ?? "", {}, outcome, "****"); // never stored
+      return enter({ ...left, inputs: { ...p.inputs, [n.store ?? ""]: valid } }, n.next ?? "", {}, outcome, input);
     }
     default:
       return end(p, message(p.menu, "expired", p.lang), input);

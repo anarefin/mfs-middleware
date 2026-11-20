@@ -111,6 +111,20 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     / bl / teletalk (all ticked by default), optional go-live per MNO (datetime-local read as UTC,
     `parseActivations`), reason. With no version made in the console the editor starts from an empty
     starter (the seeded tree lives in mw-ussd; paste it as JSON).
+    Visual tree editing (ticket 133a, FRS ADM-06; pure functions in `lib/ussd-menu.ts`, the input menu is
+    never changed): "Add child" (`addChild`: an option of the selected MENU / CONFIRM with an empty bn / en
+    label, the `next` of an INPUT / DYNAMIC, else a loose node), "Move under" a parent (`moveNode`: the node's
+    old links are dropped, its option label moves with it; never the start node), option up / down
+    (`moveOption`), "Delete node" (`deleteNode`: also every option and next / onSuccess / onFailure leading to
+    it). Every bn / en text shows a counter `n/limit GSM-7|UCS-2` (`textCounter`, `data-testid=char-count`,
+    `data-over` past the limit) and the node header its whole screen per language with the page count
+    (`nodeScreen`, `node-screen`). The preview picks the MNO (`MNO_SCREENS`: mw-ussd's dev limits GSM-7 182 /
+    UCS-2 70, overflow PAGE, teletalk TRUNCATE, and the short code dialled) and pages like mw-ussd's
+    `ScreenFormatter` (`screenPages`: break at a line break or space, the menu's `more` line, default
+    `0. Next`, and `back`, default `00. Back`; `ussd-page` shows `page n/m`); `0` (the more key) shows the
+    next page, `00` the previous page, else the node before (a PIN input is never returned to), as
+    UssdEngine's back stack. Server-side preview, short code -> root menu from the API, notify rules and
+    the template test send: tickets 133b-d (`.scratch/bits-mfs-middleware/issues/133-split-decisions.md`).
   - `/console/templates?code&channel&locale`: picker (codes mw-notify seeds as suggestions,
     `lib/templates.ts` `KNOWN_CODES`; any contract-valid code accepted), versions, the live text of the
     newest PUBLISHED version, and the editor (`templates/template-editor.tsx`, client; body with
@@ -226,7 +240,8 @@ html, junit `test-results/junit.xml`). `e2e/support/`:
   what an interrupted run left PENDING), `ussd.ts` (a real P2P: seeded customer `01712000001` ->
   `01712000002`, Tk 10, over robi's HTTP USSD route, English so the end screen carries the TxnID).
 - Specs: `00-smoke` (`@smoke`), `10-console` (`@console`), `20-approvals` (`@approvals`),
-  `30-partners` (`@partners`), `31-partner-route` (`@partners`), `40-ussd` (`@ussd`), `50-templates`
+  `30-partners` (`@partners`), `31-partner-route` (`@partners`), `40-ussd` (`@ussd`), `41-ussd-editor`
+  (`@ussd`: add a child, counters, robi paging with 0 / 00 in the preview, delete, file, approve; ticket 133a), `50-templates`
   (`@templates`), `60-keys` (`@keys`: a ceremony with two custodians and the KCV computed in the test
   from the two components, then a rotation; a key id of its own per run), `70-partner-credentials`
   (`@partners` `@credentials`: maintenance window, mock/real endpoint, error map, credential metadata
