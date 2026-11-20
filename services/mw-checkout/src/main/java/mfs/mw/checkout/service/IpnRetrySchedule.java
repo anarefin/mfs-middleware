@@ -9,7 +9,8 @@ import java.util.Optional;
 /**
  * When a merchant's IPN is (re)tried (spec 9.3 step 3): the first attempt at once, then after
  * each failed attempt the next delay ({@code mw.checkout.ipn.retry-delays}, 1 min, 5 min, 30 min,
- * 2 h, 6 h), counted from that attempt. One attempt more than there are delays, then none.
+ * 2 h, 6 h, 12 h, 24 h: FRS CH-WEB-04, ticket 116), counted from that attempt. One attempt more than
+ * there are delays, then none.
  */
 public class IpnRetrySchedule {
 
@@ -31,6 +32,11 @@ public class IpnRetrySchedule {
       return Optional.empty();
     }
     return Optional.of(clock.instant().plus(delays.get(attemptJustMade - 1)));
+  }
+
+  /** How long after the first attempt the last one is made, at the earliest (the sum of the delays). */
+  public Duration coverage() {
+    return delays.stream().reduce(Duration.ZERO, Duration::plus);
   }
 
   public int maxAttempts() {

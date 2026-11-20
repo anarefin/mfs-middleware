@@ -1,0 +1,56 @@
+{
+  "name": "checkout-v1-payments-get",
+  "desc": "Checkout merchant API: the merchant's payments by date (FRS CH-WEB-04, ticket 116) to mw-checkout. hmac-auth (merchant consumer; method, path with query and Date signed; no body), the consumer name forwarded as X-Mw-Merchant-Id, quota per merchant",
+  "uri": "/checkout/v1/payments",
+  "methods": [
+    "GET"
+  ],
+  "plugins": {
+    "hmac-auth": {
+      "allowed_algorithms": [
+        "hmac-sha256"
+      ],
+      "clock_skew": 300,
+      "signed_headers": [
+        "@request-target",
+        "date"
+      ],
+      "hide_credentials": true
+    },
+    "proxy-rewrite": {
+      "headers": {
+        "set": {
+          "X-Mw-Merchant-Id": "$consumer_name"
+        }
+      }
+    },
+    "limit-count": {
+      "count": 600,
+      "time_window": 60,
+      "key_type": "var",
+      "key": "consumer_name",
+      "group": "checkout-v1-payments-get",
+      "rejected_code": 429,
+      "show_limit_quota_header": true,
+      "policy": "redis",
+      "redis_host": "redis",
+      "redis_port": 6379,
+      "redis_password": "$env://REDIS_PASSWORD",
+      "redis_database": 0,
+      "redis_timeout": 1000,
+      "allow_degradation": true
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": {
+      "connect": 5,
+      "send": 10,
+      "read": 10
+    },
+    "nodes": {
+      "mw-checkout:8080": 1
+    }
+  }
+}

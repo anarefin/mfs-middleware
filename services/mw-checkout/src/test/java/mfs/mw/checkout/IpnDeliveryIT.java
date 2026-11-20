@@ -193,21 +193,21 @@ class IpnDeliveryIT {
   }
 
   @Test
-  void aMerchantThatNeverAcceptsGetsSixAttemptsThenNoMore() {
+  void aMerchantThatNeverAcceptsIsTriedForADayInEightAttemptsThenNoMore() {
     CheckoutSession s = paying(ipnUrl("down"));
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 30; i++) { // leftovers of other tests take some too
       answers.add(500);
     }
     finish(s, "FAILED", "MW-CORE-INSUFFICIENT_BALANCE");
 
     for (Duration step : List.of(Duration.ZERO, Duration.ofMinutes(1), Duration.ofMinutes(5), Duration.ofMinutes(30),
-        Duration.ofHours(2), Duration.ofHours(6), Duration.ofHours(24))) {
+        Duration.ofHours(2), Duration.ofHours(6), Duration.ofHours(12), Duration.ofHours(24), Duration.ofHours(48))) {
       clock.advance(step);
       ipn.deliverDue();
     }
 
-    assertThat(mine(s)).hasSize(6);
-    assertThat(deliveries.findBySession(s.sessionId())).hasSize(6)
+    assertThat(mine(s)).as("ticket 116: 1m,5m,30m,2h,6h,12h,24h").hasSize(8);
+    assertThat(deliveries.findBySession(s.sessionId())).hasSize(8)
         .allSatisfy(r -> assertThat(r.status()).isEqualTo(IpnDelivery.Status.FAILED));
     JsonNode body = JSON.readTree(mine(s).getFirst().body());
     assertThat(body.path("status").asString()).isEqualTo("FAILED");

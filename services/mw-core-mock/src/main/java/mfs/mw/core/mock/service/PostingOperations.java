@@ -82,6 +82,7 @@ class PostingOperations {
 
   CoreEvent reverse(CoreCommand cmd, String coreRef) {
     ReversePayload p = commands.reverse(cmd);
+    ledger.lockReversalsOf(p.originalTxnId());
     List<LedgerEntry> original = ledger.entriesOf(p.originalTxnId());
     if (original.isEmpty()) {
       return rejected(cmd, "ReversalRejected", coreRef, Reason.ORIGINAL_NOT_FOUND);
@@ -94,8 +95,18 @@ class PostingOperations {
     }
     long transferred =
         original.stream().filter(e -> e.debit() && "TRANSFER".equals(e.kind())).mapToLong(LedgerEntry::amountMinor).sum();
-    if (p.amount().valueMinor() != transferred || !Amount.BDT.equals(p.amount().currency())) {
+    if (!Amount.BDT.equals(p.amount().currency())) {
       return rejected(cmd, "ReversalRejected", coreRef, Reason.AMOUNT_MISMATCH);
+    }
+    long refunded = ledger.refundedMinor(p.originalTxnId());
+    if (p.amount().valueMinor() <= 0) {
+      return rejected(cmd, "ReversalRejected", coreRef, Reason.INVALID_AMOUNT);
+    }
+    if (p.amount().valueMinor() > transferred - refunded) {
+      return rejected(cmd, "ReversalRejected", coreRef, Reason.REFUND_EXCEEDS);
+    }
+    if (p.amount().valueMinor() < transferred || refunded > 0) {
+      return partial(cmd, coreRef, p, original, transferred, refunded);
     }
 
     // What each wallet gets back (+) or gives up (-). Locked in id order, like every multi-wallet change.
@@ -120,6 +131,43 @@ class PostingOperations {
       }
     }
     ledger.markReversed(p.originalTxnId(), cmd.txnId());
+    return events.succeeded(cmd, "TransactionReversed", coreRef, balances, Map.of());
+  }
+
+  /**
+   * A partial reversal (a refund, ticket 116): {@code amount} back from the original's credited wallet to
+   * its debited wallet under the refund's own txnId; the fee stays charged. The refunded total is kept
+   * per original; when it reaches the transfer amount the original counts as reversed.
+   */
+  private CoreEvent partial(CoreCommand cmd, String coreRef, ReversePayload p, List<LedgerEntry> original,
+      long transferred, long refunded) {
+    List<LedgerEntry> transfer = original.stream().filter(e -> "TRANSFER".equals(e.kind())).toList();
+    List<String> payers = transfer.stream().filter(LedgerEntry::debit).map(LedgerEntry::walletId).distinct().toList();
+    List<String> payees = transfer.stream().filter(e -> !e.debit()).map(LedgerEntry::walletId).distinct().toList();
+    if (payers.size() != 1 || payees.size() != 1) {
+      return rejected(cmd, "ReversalRejected", coreRef, Reason.ORIGINAL_NOT_REVERSIBLE);
+    }
+    String payer = payers.get(0);
+    String payee = payees.get(0);
+    long amount = p.amount().valueMinor();
+    Map<String, Wallet> locked = new TreeMap<>();
+    new TreeMap<>(Map.of(payer, 0, payee, 0)).keySet().forEach(id -> locked.put(id, wallets.lock(id)));
+    if (locked.get(payee).availableMinor() < amount) {
+      return rejected(cmd, "ReversalRejected", coreRef, Reason.INSUFFICIENT_BALANCE);
+    }
+    ledger.post(cmd.commandId(), cmd.txnId(), "REVERSAL", List.of(
+        new LedgerEntry(payee, "DEBIT", "REVERSAL", amount),
+        new LedgerEntry(payer, "CREDIT", "REVERSAL", amount)), clock.instant());
+    ledger.recordPartialReversal(p.originalTxnId(), cmd.txnId(), amount);
+    if (refunded + amount == transferred) {
+      ledger.markReversed(p.originalTxnId(), cmd.txnId());
+    }
+    List<CoreEvent.BalanceAfter> balances = new ArrayList<>();
+    for (Wallet w : locked.values()) {
+      if (!"SYSTEM".equals(w.type())) {
+        balances.add(balanceOf(w.id()));
+      }
+    }
     return events.succeeded(cmd, "TransactionReversed", coreRef, balances, Map.of());
   }
 

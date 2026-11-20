@@ -32,6 +32,8 @@ enum Reason {
   ORIGINAL_NOT_REVERSIBLE("A reversal cannot be reversed"),
   ALREADY_REVERSED("Transaction was already reversed"),
   AMOUNT_MISMATCH("Amount differs from the original transfer"),
+  // a partial reversal (refund) over what is left of the original (ticket 116, FRS FL-06)
+  REFUND_EXCEEDS("Refund exceeds the amount left to refund"),
   WALLET_NOT_LOCKED("Wallet is not locked"),
   // VerifyCustomerFactors (ticket 70)
   FACTORS_MISMATCH("KYC factors do not match"),

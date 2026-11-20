@@ -119,7 +119,10 @@
 115a-merchant-adapter                       97,102            in progress
 115b-merchant-pay-flow                      115a,113          open
 139-dry-run-oauth2-isolation                115a              open   (security follow-up: dry-run keeps live tokenUrl; all adapter copies)
-116-checkout-refund-list                    95,96             open
+116-checkout-refund-list                    95,96             split (116-split-decisions.md, 2026-11-20)
+116a-core-partial-reversal-list             95,96             done     32m      ~32 files +500 −35     d42c5172,2bc20979
+116b-orchestrator-refund-flow               116a              in progress
+116c-checkout-refund-api                    116b              open
 # --- M9 gate: UC-08..12
 117-bank-avl-w2b                            97,98,102         split (117-split-decisions.md, 2026-11-20)
 117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069

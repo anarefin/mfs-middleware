@@ -86,7 +86,7 @@ public class WalletSeeder {
   /** Wipes the ledger (wallets, entries, holds, command log, REST request hashes) and seeds it again. */
   @Transactional
   public void reset() {
-    jdbc.execute("truncate entry, hold, command_log, rest_request, reversal, wallet");
+    jdbc.execute("truncate entry, hold, command_log, rest_request, reversal, partial_reversal, wallet");
     seed();
     log.atInfo().addKeyValue("event", "coremock.seed.reset").log("ledger reset to the seed");
   }
@@ -120,7 +120,7 @@ public class WalletSeeder {
     }
     jdbc.update("update wallet w set held_minor = 0, balance_minor = w.balance_minor - coalesce((select sum(case when "
         + "e.direction = 'CREDIT' then e.amount_minor else -e.amount_minor end) from entry e where e.wallet_id = w.id), 0)");
-    jdbc.execute("truncate entry, hold, command_log, rest_request, reversal, used_assertion");
+    jdbc.execute("truncate entry, hold, command_log, rest_request, reversal, partial_reversal, used_assertion");
     for (SeedFiles.WalletRange r : ranges) {
       jdbc.update("delete from wallet where id in (select ? || lpad(n::text, 4, '0') from generate_series(?, ?) n)",
           r.prefix(), r.first(), r.last());
