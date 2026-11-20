@@ -395,7 +395,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   the smallest threshold of `mw.credentials.expiry.thresholds-days` (30, 7, 1) a credential is under
   raises one alert per credential version (ledger `credential_alert`; skipped larger thresholds marked
   too): WARN `credential.expiring` and an ops email on `mw.notify.request.v1` (mw-notify's contract, own
-  type `dto/NotifyRequest`, template `OPS_CREDENTIAL_EXPIRING` seeded bn/en in mw-notify V13, recipient
+  type `dto/NotifyRequest`, template `OPS_CREDENTIAL_EXPIRING` seeded bn/en in mw-notify V15, recipient
   `mw.credentials.expiry.ops-email`, messageId `credential-expiry:<id>:v<n>:<t>d`) through the outbox.
   Decisions (no product owner): integration staff only (the ticket's roles); no fingerprint of a secret
   (a hash of a secret is a guessing oracle); the template code is `OPS_CREDENTIAL_EXPIRING` (the

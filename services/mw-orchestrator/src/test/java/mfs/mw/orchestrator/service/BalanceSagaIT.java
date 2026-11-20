@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.List;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreEvent;
@@ -32,7 +33,7 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {"mw.orchestrator.consumers.enabled=false", "mw.orchestrator.timer.enabled=false"})
-@Import({TestInfrastructure.class, BalanceSagaIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, BalanceSagaIT.TestClock.class})
 class BalanceSagaIT {
 
   @TestConfiguration(proxyBeanMethods = false)
@@ -52,7 +53,7 @@ class BalanceSagaIT {
   private static final long AVAILABLE = 1_234_567;
 
   private final TransactionService transactions;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
   private final SagaTimerService timers;
   private final MutableClock clock;
   private final JdbcTemplate jdbc;
@@ -61,7 +62,7 @@ class BalanceSagaIT {
   @Autowired
   BalanceSagaIT(
       TransactionService transactions,
-      CoreEventService coreEvents,
+      CoreCalls coreEvents,
       SagaTimerService timers,
       Clock clock,
       JdbcTemplate jdbc,
@@ -103,12 +104,7 @@ class BalanceSagaIT {
 
   /** Commands of both core topics. */
   private List<JsonNode> commands(String txnId) {
-    return jdbc.queryForList(
-            "select payload::text from outbox where topic like 'core.%.command.v1' and msg_key = ? order by id",
-            String.class, txnId)
-        .stream()
-        .map(json::readTree)
-        .toList();
+    return coreEvents.commands(txnId);
   }
 
   private void assertAllValid(String txnId) {
@@ -176,9 +172,9 @@ class BalanceSagaIT {
       assertThat(c.path("commandType").asString()).isEqualTo("BalanceInquiry");
       assertThat(c.path("commandId").asString()).isEqualTo(txn + ":balance");
     });
-    assertThat(outbox("core.wallet.command.v1", txn)).hasSize(1);
+    assertThat(coreEvents.commands(txn)).hasSize(1);
 
-    coreEvents.handle(reported(txn));
+    coreEvents.answer(reported(txn));
 
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "COMPLETED");
     JsonNode done = lastStatus(txn);
@@ -195,7 +191,7 @@ class BalanceSagaIT {
   @Test
   void theBalanceIsNeverStored() {
     String txn = start();
-    coreEvents.handle(reported(txn));
+    coreEvents.answer(reported(txn));
     assertThat(status(txn)).isEqualTo("COMPLETED");
 
     String trace = storedTrace(txn);
@@ -212,7 +208,7 @@ class BalanceSagaIT {
   void aRepeatedBalanceCheckIsAnsweredWithoutTheBalanceItNeverKept() {
     TxnRequest req = TestData.balance(TestData.txnId(), "key-rep", WALLET);
     transactions.accept(req, null);
-    coreEvents.handle(reported(req.txnId()));
+    coreEvents.answer(reported(req.txnId()));
     TxnRequest again = TestData.balance(TestData.txnId(), "key-rep", WALLET);
 
     transactions.accept(again, null);
@@ -227,7 +223,7 @@ class BalanceSagaIT {
   @Test
   void aCoreRejectionFailsWithTheMappedError() {
     String txn = start();
-    coreEvents.handle(event("BalanceInquiryRejected", txn, "WALLET_NOT_FOUND", "{}"));
+    coreEvents.answer(event("BalanceInquiryRejected", txn, "WALLET_NOT_FOUND", "{}"));
 
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "FAILED");
     JsonNode failed = lastStatus(txn);
@@ -240,7 +236,7 @@ class BalanceSagaIT {
   @Test
   void aRefusedAssertionPassesThroughAsItIs() {
     String txn = start();
-    coreEvents.handle(event("BalanceInquiryRejected", txn, "MW-AUTH-046", "{}"));
+    coreEvents.answer(event("BalanceInquiryRejected", txn, "MW-AUTH-046", "{}"));
 
     assertThat(status(txn)).isEqualTo("FAILED");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-AUTH-046");
@@ -265,7 +261,7 @@ class BalanceSagaIT {
     assertAllValid(txn);
 
     // a late answer changes nothing
-    coreEvents.handle(reported(txn));
+    coreEvents.answer(reported(txn));
     assertThat(status(txn)).isEqualTo("FAILED");
     assertThat(statuses(txn)).hasSize(3);
   }
@@ -273,7 +269,7 @@ class BalanceSagaIT {
   @Test
   void answersOfOtherCommandsAreIgnored() {
     String txn = start();
-    coreEvents.handle(json.readValue(
+    coreEvents.answer(json.readValue(
         "{\"schemaVersion\":1,\"eventType\":\"TransactionValidated\",\"eventId\":\"evt-v-" + txn
             + "\",\"commandId\":\"" + txn + ":validate\",\"txnId\":\"" + txn
             + "\",\"occurredAt\":\"2026-11-03T08:15:31Z\",\"outcome\":\"SUCCESS\",\"payload\":{}}",
@@ -288,7 +284,7 @@ class BalanceSagaIT {
     TxnRequest p2p = TestData.p2p(TestData.txnId(), "key-p2p", 5_000);
     transactions.accept(p2p, null);
 
-    coreEvents.handle(reported(p2p.txnId()));
+    coreEvents.answer(reported(p2p.txnId()));
 
     assertThat(status(p2p.txnId())).isEqualTo("VALIDATING");
   }
@@ -346,7 +342,7 @@ class BalanceSagaIT {
   @Test
   void aCompletedBalanceCheckCannotBeReversed() {
     String txn = start();
-    coreEvents.handle(reported(txn));
+    coreEvents.answer(reported(txn));
     TxnRequest rev = TestData.reversal(TestData.txnId(), "key-rev", txn, 0);
 
     transactions.accept(rev, null);

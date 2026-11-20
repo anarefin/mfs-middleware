@@ -4,15 +4,6 @@
 produces:
   events:
     - events/mw-orchestrator/mw.txn.status.v1.schema.json
-    - events/mw-orchestrator/core.command.v1.schema.json#ValidateTransaction
-    - events/mw-orchestrator/core.command.v1.schema.json#PostTransfer
-    - events/mw-orchestrator/core.command.v1.schema.json#HoldFunds
-    - events/mw-orchestrator/core.command.v1.schema.json#CommitHold
-    - events/mw-orchestrator/core.command.v1.schema.json#ReleaseHold
-    - events/mw-orchestrator/core.command.v1.schema.json#CreditWallet
-    - events/mw-orchestrator/core.command.v1.schema.json#ReverseTransaction
-    - events/mw-orchestrator/core.command.v1.schema.json#QueryTransaction
-    - events/mw-orchestrator/core.command.v1.schema.json#BalanceInquiry
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#telco
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#billpay
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#bank
@@ -26,27 +17,14 @@ consumes:
   events:
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
     - events/mw-admin-api/mw.txn.action.v1.schema.json
-    - events/mw-core-mock/core.event.v1.schema.json#TransactionValidated
-    - events/mw-core-mock/core.event.v1.schema.json#TransactionRejected
-    - events/mw-core-mock/core.event.v1.schema.json#TransferPosted
-    - events/mw-core-mock/core.event.v1.schema.json#TransferRejected
-    - events/mw-core-mock/core.event.v1.schema.json#FundsHeld
-    - events/mw-core-mock/core.event.v1.schema.json#HoldRejected
-    - events/mw-core-mock/core.event.v1.schema.json#HoldCommitted
-    - events/mw-core-mock/core.event.v1.schema.json#CommitFailed
-    - events/mw-core-mock/core.event.v1.schema.json#HoldReleased
-    - events/mw-core-mock/core.event.v1.schema.json#ReleaseFailed
-    - events/mw-core-mock/core.event.v1.schema.json#WalletCredited
-    - events/mw-core-mock/core.event.v1.schema.json#CreditRejected
-    - events/mw-core-mock/core.event.v1.schema.json#TransactionReversed
-    - events/mw-core-mock/core.event.v1.schema.json#ReversalRejected
-    - events/mw-core-mock/core.event.v1.schema.json#TransactionStatus
-    - events/mw-core-mock/core.event.v1.schema.json#BalanceReported
-    - events/mw-core-mock/core.event.v1.schema.json#BalanceInquiryRejected
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#telco
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#billpay
     - events/mw-orchestrator/mw.partner.reply.v1.schema.json#bank
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#telco
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#billpay
     - events/mw-orchestrator/mw.partner.inbound.v1.schema.json#bank
-  apis: []
+  # The core wallet over REST (ADR D31, ticket 95a; client/CoreWalletClient). The core's events on Kafka
+  # are not consumed: the core-event listener ignores the result events of its REST calls (95c adds
+  # HoldExpired and wallet-state changes).
+  apis:
+    - api/mw-core-mock/core-wallet.v1.openapi.yaml

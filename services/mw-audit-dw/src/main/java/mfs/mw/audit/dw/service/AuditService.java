@@ -1,18 +1,24 @@
 package mfs.mw.audit.dw.service;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import mfs.mw.audit.dw.dto.AuditEvent;
 import mfs.mw.audit.dw.entity.AuditRow;
 import mfs.mw.audit.dw.entity.ChainHead;
+import mfs.mw.audit.dw.entity.PayloadRow;
 import mfs.mw.audit.dw.util.MaskingPolicy;
+import mfs.mw.audit.dw.util.PayloadScrub;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -144,20 +150,34 @@ public class AuditService {
                 (String) normalised.get("before"),
                 (String) normalised.get("after"),
                 null,
-                null),
+                null,
+                e.hop(),
+                e.direction(),
+                e.durationMs(),
+                payloadRows(e.payload())),
             head.hash());
 
     jdbc.update(
         """
         insert into event (month, seq, audit_id, recorded_at, at, txn_id, correlation_id,
                            actor_type, actor_id, action, resource, outcome, service, source_ip,
-                           payload_ref, before, after, prev_hash, hash)
-        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?)
+                           payload_ref, before, after, prev_hash, hash, hop, direction, duration_ms)
+        values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?)
         """,
         row.month(), row.seq(), row.auditId(), utc(row.recordedAt()), utc(row.at()), row.txnId(),
         row.correlationId(), row.actorType(), row.actorId(), row.action(), row.resource(),
         row.outcome(), row.service(), row.sourceIp(), row.payloadRef(), row.before(), row.after(),
-        row.prevHash(), row.hash());
+        row.prevHash(), row.hash(), row.hop(), row.direction(), row.durationMs());
+    for (PayloadRow p : row.payloads()) {
+      jdbc.update(
+          """
+          insert into payload (month, audit_id, ordinal, recorded_at, direction, content_type, body,
+                               payload_ref, size, sha256)
+          values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          """,
+          row.month(), row.auditId(), p.ordinal(), utc(row.recordedAt()), p.direction(), p.contentType(),
+          p.body(), p.payloadRef(), p.size(), p.sha256());
+    }
     jdbc.update(
         "update chain_head set seq = ?, hash = ?, updated_at = ? where month = ?",
         row.seq(), row.hash(), utc(recordedAt), month);
@@ -212,6 +232,31 @@ public class AuditService {
     return candidate;
   }
 
+  /**
+   * The event's hop bodies as {@code audit.payload} rows (ticket 130): each body scrubbed again
+   * ({@link PayloadScrub}: secrets, PANs, MSISDNs, long numbers), its size and SHA-256 taken from
+   * the scrubbed text, which is what is stored and chained.
+   */
+  private static List<PayloadRow> payloadRows(List<AuditEvent.Payload> payloads) {
+    if (payloads == null) {
+      return List.of();
+    }
+    List<PayloadRow> rows = new ArrayList<>();
+    for (AuditEvent.Payload p : payloads) {
+      String body = PayloadScrub.scrub(p.contentType(), p.body());
+      rows.add(
+          new PayloadRow(
+              rows.size() + 1,
+              p.direction(),
+              p.contentType(),
+              body,
+              MaskingPolicy.scrub(p.payloadRef()),
+              body == null ? null : body.getBytes(StandardCharsets.UTF_8).length,
+              HashChain.sha256(body)));
+    }
+    return rows;
+  }
+
   private static OffsetDateTime utc(Instant i) {
     return i.atOffset(ZoneOffset.UTC);
   }
@@ -233,7 +278,36 @@ public class AuditService {
     if (e.at() == null) {
       throw new IllegalArgumentException("audit event lacks at");
     }
+    if (e.hop() != null && !HOPS.contains(e.hop())) {
+      throw new IllegalArgumentException("audit event has an unknown hop");
+    }
+    if (e.direction() != null && !DIRECTIONS.contains(e.direction())) {
+      throw new IllegalArgumentException("audit event has an unknown direction");
+    }
+    if (e.durationMs() != null && e.durationMs() < 0) {
+      throw new IllegalArgumentException("audit event has a negative durationMs");
+    }
+    if (e.payload() != null) {
+      if (e.payload().size() > MAX_PAYLOADS) {
+        throw new IllegalArgumentException("audit event has too many payloads");
+      }
+      for (AuditEvent.Payload p : e.payload()) {
+        if (p == null || !DIRECTIONS.contains(p.direction()) || p.contentType() == null
+            || p.contentType().isBlank() || (p.body() == null && p.payloadRef() == null)
+            || (p.body() != null && p.body().length() > MAX_BODY)) {
+          throw new IllegalArgumentException("audit event has an invalid payload");
+        }
+      }
+    }
   }
+
+  /** Hops of the per-hop timeline (contract {@code mw.audit.event.v1}, ticket 130). */
+  public static final Set<String> HOPS =
+      Set.of("CHANNEL_IN", "ORCHESTRATOR", "CORE_CALL", "PARTNER_CALL", "PARTNER_CALLBACK", "NOTIFICATION");
+
+  private static final Set<String> DIRECTIONS = Set.of("IN", "OUT");
+  private static final int MAX_PAYLOADS = 4;
+  private static final int MAX_BODY = 65_536;
 
   private static void require(String value, String name) {
     if (value == null || value.isBlank()) {

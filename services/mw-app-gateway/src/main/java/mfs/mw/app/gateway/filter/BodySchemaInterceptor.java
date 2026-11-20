@@ -25,12 +25,12 @@ public class BodySchemaInterceptor implements HandlerInterceptor {
 
   @Override
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-    if (!"POST".equals(request.getMethod())) {
+    if (!"POST".equals(request.getMethod()) && !"PUT".equals(request.getMethod())) {
       return true;
     }
     CachedBodyRequest cached = WebUtils.getNativeRequest(request, CachedBodyRequest.class);
     if (cached == null) {
-      throw new IllegalStateException("POST /app/** body not cached: CachedBodyFilter is not registered");
+      throw new IllegalStateException("POST/PUT /app/** body not cached: CachedBodyFilter is not registered");
     }
     byte[] body = cached.body();
     if (optional && body.length == 0) {

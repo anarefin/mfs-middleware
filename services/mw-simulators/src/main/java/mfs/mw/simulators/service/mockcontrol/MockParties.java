@@ -31,6 +31,12 @@ public final class MockParties {
       List.of(MockBehaviour.SUCCESS, MockBehaviour.BUSINESS_ERROR, MockBehaviour.TIMEOUT, MockBehaviour.DELAY,
           MockBehaviour.MALFORMED_RESPONSE, MockBehaviour.CONNECTION_RESET);
 
+  /** The push server (ticket 110): no callbacks. */
+  private static final List<MockBehaviour> PUSH_BEHAVIOURS =
+      List.of(MockBehaviour.SUCCESS, MockBehaviour.BUSINESS_ERROR, MockBehaviour.TIMEOUT, MockBehaviour.DELAY,
+          MockBehaviour.HTTP_5XX, MockBehaviour.MALFORMED_RESPONSE, MockBehaviour.CONNECTION_RESET,
+          MockBehaviour.PARTIAL_SUCCESS);
+
   public static final List<MockParty> ALL =
       List.of(
           new MockParty("ocs", "prepaid top-up OCS", List.of("topup", "status", "reverse"), List.of("msisdn", "txnRef")),
@@ -46,7 +52,9 @@ public final class MockParties {
           new MockParty("ussdgw", "USSD gateway: SMPP server mw-ussd binds to; dial plays a session (SMPP or HTTP)",
               List.of("bind", "submit", "enquire_link", "dial"), List.of("systemId", "msisdn", "mno"), WIRE_BEHAVIOURS),
           new MockParty("payshield", "payShield 10K HSM, TCP host commands of mw-crypto",
-              List.of("command"), List.of("command"), WIRE_BEHAVIOURS));
+              List.of("command"), List.of("command"), WIRE_BEHAVIOURS),
+          new MockParty("push", "app-server push API (FCM / APNs style) of mw-notify; keeps every push",
+              List.of("send"), List.of("token", "topic"), PUSH_BEHAVIOURS));
 
   /** Parties whose callback goes back on the caller's own connection (the SMSC's DLR): always on, no URL. */
   private static final Set<String> IN_BAND_CALLBACKS = Set.of("smsc");

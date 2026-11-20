@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.UUID;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.TxnAction;
@@ -30,7 +31,7 @@ import tools.jackson.databind.json.JsonMapper;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {"mw.orchestrator.consumers.enabled=false", "mw.orchestrator.timer.enabled=false"})
-@Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, SagaServiceIT.TestClock.class})
 class OperatorActionIT {
 
   private final TransactionService intake;
@@ -38,10 +39,13 @@ class OperatorActionIT {
   private final MutableClock clock;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
+  private final CoreCalls core;
 
   @Autowired
   OperatorActionIT(
-      TransactionService intake, OperatorActionService actions, Clock clock, JdbcTemplate jdbc, JsonMapper json) {
+      TransactionService intake, OperatorActionService actions, Clock clock, JdbcTemplate jdbc, JsonMapper json,
+      CoreCalls core) {
+    this.core = core;
     this.intake = intake;
     this.actions = actions;
     this.clock = (MutableClock) clock;
@@ -52,6 +56,7 @@ class OperatorActionIT {
   @BeforeEach
   void clean() {
     clock.set(TestData.NOW);
+    core.clear();
     for (String t : List.of("outbox", "inbox", "saga_timer", "saga_step", "idempotency", "core_call", "partner_call", "transaction")) {
       jdbc.update("delete from " + t);
     }
@@ -63,6 +68,7 @@ class OperatorActionIT {
     jdbc.update("update transaction set status = ?, hold_id = ? where txn_id = ?", status, holdId, txnId);
     jdbc.update("delete from saga_timer");
     jdbc.update("delete from outbox");
+    core.clear();
     return txnId;
   }
 
@@ -97,7 +103,7 @@ class OperatorActionIT {
     actions.handle(force); // redelivered: applied once
 
     assertThat(status(txnId)).isEqualTo("COMMITTING");
-    List<JsonNode> commands = outbox("core.payment.command.v1");
+    List<JsonNode> commands = core.commands();
     assertThat(commands).hasSize(1);
     assertThat(commands.get(0).path("commandType").asString()).isEqualTo("CommitHold");
     assertThat(commands.get(0).path("commandId").asString()).isEqualTo(id + ":commit:manual-1");
@@ -122,10 +128,11 @@ class OperatorActionIT {
     actions.handle(action(txnId, "FORCE_COMMIT"));
     jdbc.update("update transaction set status = 'MANUAL_REVIEW' where txn_id = ?", txnId);
     jdbc.update("delete from outbox");
+    core.clear();
 
     actions.handle(action(txnId, "FORCE_COMMIT"));
 
-    assertThat(outbox("core.payment.command.v1").get(0).path("commandId").asString()).isEqualTo(id + ":commit:manual-2");
+    assertThat(core.commands().get(0).path("commandId").asString()).isEqualTo(id + ":commit:manual-2");
   }
 
   @Test
@@ -136,7 +143,7 @@ class OperatorActionIT {
     actions.handle(action(txnId, "FORCE_RELEASE"));
 
     assertThat(status(txnId)).isEqualTo("RELEASING");
-    JsonNode c = outbox("core.payment.command.v1").get(0);
+    JsonNode c = core.commands().get(0);
     assertThat(c.path("commandType").asString()).isEqualTo("ReleaseHold");
     assertThat(c.path("commandId").asString()).isEqualTo(id + ":release:manual-1");
   }
@@ -169,8 +176,8 @@ class OperatorActionIT {
 
     assertThat(status(p2pTxn)).isEqualTo("MANUAL_REVIEW");
     assertThat(status(completed)).isEqualTo("COMPLETED");
-    assertThat(outbox("core.payment.command.v1")).isEmpty();
-    assertThat(outbox("core.wallet.command.v1")).isEmpty();
+    assertThat(core.commands()).isEmpty();
+    assertThat(core.commands()).isEmpty();
     assertThat(outbox("mw.partner.request.telco.v1")).isEmpty();
     List<JsonNode> audits = operatorAudits();
     assertThat(audits).hasSize(3).allSatisfy(a -> {

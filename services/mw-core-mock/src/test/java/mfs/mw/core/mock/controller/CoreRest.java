@@ -51,7 +51,10 @@ final class CoreRest {
   }
 
   long available(String walletId) {
-    return body(coreGet("/core/v1/balance/" + walletId)).path("available").path("valueMinor").asLong();
+    // an ops read (mw-admin-api): the orchestrator reads a customer's balance only with the customer's
+    // assertion (ticket 95a)
+    return body(mvc.get().uri("/core/v1/balance/" + walletId).header("Authorization", InternalTokens.bearer("mw-admin-api"))
+        .exchange()).path("available").path("valueMinor").asLong();
   }
 
   MvcTestResult control(String method, String uri, String body) {

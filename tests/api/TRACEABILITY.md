@@ -13,7 +13,7 @@ and `tsq`; `ops *` needs `operator` or `admin`; `<FLOW> ussd *` and `ussd http` 
 Requirement tags are the Cucumber flow tags without `@` (`p2p`, `cash`, `topup`, `billpay`,
 `callback`, `addmoney`, `c2w`, `merchant`, `checkout`, `ipn`, `notify`, `tsq`, `device`, `reversal`,
 `admin`, `operator`, `partner-config`, `wallet-unlock`, `ussd`, `smpp`, `bulk`, `sp-query`, `dlq` (retry topics to the DLQ, ticket 58, no Cucumber flow), plus
-`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto), `history` (the wallet transaction history GET /app/v1/transactions, ADR D25), `balance` (the balance check over USSD and POST /app/v1/balance, ADR D26) and `docs` (the generated API documents of the dev stack under /docs/, ticket 101), `mock` (the mock-control API of mw-simulators, /test/mock-control/*, ADR D33, tickets 102a/102b, and its global reset, ticket 103), `credentials` (partner credential upload into Vault and the expiry dashboard of the admin API, ticket 131a)); the module tags (`@mw-*`) were run filters, not requirements, and
+`health` and `seed` for folder 00, `auth` (mw-auth's login and tokens, ticket 69), `edge` (an APISIX edge policy proved through the edge), and since ticket 76 `pin` (the PIN lifecycle: policy, change, resets), `lock` (the PIN lockout and its unlock), `assertion` (the transaction authorisation assertion of every channel) and `crypto` (the HSM gateway mw-crypto), `history` (the wallet transaction history GET /app/v1/transactions, ADR D25), `balance` (the balance check over USSD and POST /app/v1/balance, ADR D26) and `docs` (the generated API documents of the dev stack under /docs/, ticket 101), `mock` (the mock-control API of mw-simulators, /test/mock-control/*, ADR D33, tickets 102a/102b, and its global reset, ticket 103), `audit` (mw-audit-dw's search, per-hop timeline and audited CSV export, ticket 130), `credentials` (partner credential upload into Vault and the expiry dashboard of the admin API, ticket 131a)); the module tags (`@mw-*`) were run filters, not requirements, and
 are not carried over (`make api-test FOLDER=` selects folders).
 
 | # | Criterion | Where it is proved |
@@ -238,6 +238,13 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 40 | [mock] one call resets every mock party and brings the core ledger back to its seed | - |  |
 | 40 | [mock] a fault set through the old core fault API is a core scenario the reset clears | - |  |
 | 40 | [mock] an unknown core seed version is reported FAILED and changes nothing else | - |  |
+| 42 | [audit topup] a search by partner and amount range finds the top-up and its partner call | - |  | FR-18 |
+| 42 | [audit p2p] the timeline of a P2P lists its hops in order with latencies and no clear MSISDN | - |  | FR-18, SEC-10 |
+| 42 | [audit] a CSV export of a transaction returns its rows and records one operator action | - |  | FR-18 |
+| 43 | [p2p notify] the sender gets a push with the transaction text next to the SMS | - |  |
+| 43 | [p2p notify mock] a push server that answers 5xx is retried and stores nothing; the SMS for the same transaction still goes | - |  |
+| 43 | [p2p notify mock] a token the push server does not know gets no push and the SMS still goes | - |  |
+| 43 | [notify] a push token with an unknown platform is refused 400 MW-VAL-001 | - |  |
 | 45 | [admin partner-config credentials] an uploaded partner credential is approved by another checker into Vault and only its metadata is ever shown | - |  | FR-19, SEC-04 |
 | 45 | [admin credentials] the expiry dashboard lists a credential expiring within 30 days, soonest first | - |  |
 | 45 | [admin partner-config] an approved response-code map is published as the partner's next version | - |  | FR-19 |

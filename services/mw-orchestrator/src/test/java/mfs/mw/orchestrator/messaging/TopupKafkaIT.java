@@ -17,13 +17,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * TOPUP over real Kafka and PostgreSQL (ticket 17) against the orchestrator's own core and partner
- * stubs: the partner reply route closes the loop, a success commits and a refusal releases. The
+ * TOPUP over real Kafka and PostgreSQL (ticket 17) against the orchestrator's own core (REST,
+ * {@link CoreRestStub}, ticket 95a) and partner stubs: the partner reply route closes the loop, a success commits and a refusal releases. The
  * partner timeout and the first inquiry slot are shortened to seconds (ticket 18).
  */
 @SpringBootTest(
@@ -44,8 +46,13 @@ class TopupKafkaIT {
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
   private static final String PARTNER_SCHEMA = "events/mw-orchestrator/mw.partner.request.v1.schema.json";
 
-  private static CoreStub core;
+  private static final CoreRestStub core = CoreRestStub.start();
   private static PartnerStub partner;
+
+  @DynamicPropertySource
+  static void coreApi(DynamicPropertyRegistry registry) {
+    core.register(registry);
+  }
 
   private final EventPublisher publisher;
   private final KafkaContainer kafka;
@@ -60,7 +67,6 @@ class TopupKafkaIT {
 
   @BeforeAll
   static void startStubs(@Autowired KafkaContainer kafka) {
-    core = new CoreStub(kafka.getBootstrapServers());
     partner = new PartnerStub(kafka.getBootstrapServers());
   }
 
@@ -90,10 +96,7 @@ class TopupKafkaIT {
   }
 
   private List<String> commandTypes(String txnId) {
-    return core.commands().stream()
-        .filter(c -> txnId.equals(c.path("txnId").asString()))
-        .map(c -> c.path("commandType").asString())
-        .toList();
+    return core.calls(txnId);
   }
 
   @Test

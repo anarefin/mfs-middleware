@@ -12,6 +12,8 @@
 produces:
   events:
     - events/mw-orchestrator/mw.txn.request.v1.schema.json
+    # ticket 110: PUT /app/v1/notifications/push-token hands the device token to mw-notify (ProducedContractsTest)
+    - events/mw-notify/mw.notify.push-token.v1.schema.json
   apis: [api/mw-app-gateway/app.v1.openapi.yaml]
 consumes:
   events: [events/mw-orchestrator/mw.txn.status.v1.schema.json]

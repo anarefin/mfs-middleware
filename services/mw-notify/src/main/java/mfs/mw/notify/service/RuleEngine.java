@@ -49,12 +49,19 @@ public class RuleEngine {
     this.defaultLocale = defaultLocale;
   }
 
-  /** Who to email: a party's registered address (spec 10.2), or none. */
+  /**
+   * Who to email: a party's registered address (spec 10.2), or none; and where to push: the device
+   * token the party's app registered (ticket 110), or none.
+   */
   @FunctionalInterface
   public interface ContactLookup {
     ContactLookup NONE = id -> Optional.empty();
 
     Optional<String> emailOf(String partyId);
+
+    default Optional<String> pushTokenOf(String partyId) {
+      return Optional.empty();
+    }
   }
 
   public List<NotificationRequest> requestsFor(TxnStatusEvent event, List<RuleRecord> rules) {
@@ -63,8 +70,8 @@ public class RuleEngine {
 
   /**
    * The requests of every matching rule. An SMS rule needs an MSISDN-shaped recipient id; an EMAIL
-   * rule needs a registered address for the recipient ({@code contacts}); otherwise the rule is
-   * skipped.
+   * rule needs a registered address for the recipient ({@code contacts}); a PUSH rule a registered
+   * device token of the recipient's wallet; otherwise the rule is skipped.
    */
   public List<NotificationRequest> requestsFor(TxnStatusEvent event, List<RuleRecord> rules, ContactLookup contacts) {
     TxnFacts facts = new TxnFacts(event);
@@ -85,6 +92,12 @@ public class RuleEngine {
           continue;
         }
         address = new NotificationRequest.Recipient(null, email.get(), null, null);
+      } else if (Channel.PUSH.name().equals(rule.channel())) {
+        Optional<String> token = contacts.pushTokenOf(recipient.id());
+        if (token.isEmpty()) {
+          continue;
+        }
+        address = new NotificationRequest.Recipient(recipient.id(), null, token.get(), null);
       } else if (MSISDN.matcher(recipient.id()).matches()) {
         address = new NotificationRequest.Recipient(recipient.id(), null, null, null);
       } else {

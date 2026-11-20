@@ -68,12 +68,15 @@
 93-core-mock-rest-api                       92                done     31m      43 files +2354 −36     cbfb273a
 94-core-mock-model                          93                done     120m     115 files +2556 −614   7fb7429f
 95-orchestrator-core-rest-client            93                split (95-split-decisions.md, 2026-11-20)
-95a-orchestrator-core-rest                  93                open
+95a-orchestrator-core-rest                  93                done     60m      70 files +2856 −1135   b43b392f,53c83472
 95b-auth-admin-core-rest-retire-topics      95a               open
 95c-hold-expired-wallet-state               95a,94            open
 97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
-96-orchestrator-saga-frs                    95,97             open
-98-routing-module                           96,97             open
+96-orchestrator-saga-frs                    95,97             split (96-split-decisions.md, 2026-11-20)
+96a-inquiry-schedule-ops-alert              95a,97            open
+96b-partner-reverse-refused-commit          96a               open
+96c-partner-leg-reversal-folder30           96b               open
+98-routing-module                           96a,97             open
 99-idempotency-duplicates-replay            89                done     110m     95 files +2601 −110    e3d9c7c6,45ffe6a3
 100-edge-client-registry                    90,91,99          split (100-split-decisions.md, 2026-11-20)
 100a-client-registry-apisix-sync            90,91,99          done     30m      61 files +2570 −36     cd3d58ea
@@ -82,14 +85,15 @@
 101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
 102-mock-control-engine                     89                done (102a b8f2d843; 102b 33m 49 files +1774 −467 aacc96ef)
 103-mock-control-core-and-reset             102,94            done     120m     90 files +3425 −249    8c4ed022
-104-frs-e2e-harness                         96,98,103         open
+104-frs-e2e-harness                         96a,98,103         open
 # --- M7 gate: P2P T1-T12 via the app API; clean build; fresh-stack API suite
 105-app-preview-confirm                     95                open
 106-app-types-b2b                           94,105            open
 107-app-nonfinancial                        94,105            open
 108-app-soap-facade                         105               open
 109-ussd-frs                                94,105            open
-110-notify-push                             102               open
+110-notify-push                             102               done     37m      86 files +2628 −75     76ab0c4c,4757e709
+110b-push-binding-epoch                     110               open   (security review: mw-notify stamps re-binds with its own clock; carry mw-auth's authoritative boundAt or a binding epoch in DEVICE_BOUND + token registration, compare versions or with skew margin; test)
 111-notify-campaign-optout-log              110               open
 # --- M8 gate: UC-02..07 on app and USSD
 112-telco-four-ocs                          97,98,102         open
@@ -113,7 +117,8 @@
 127-mw-recon-reports                        126               open
 128-mw-data-export                          123               open
 129-portal-bulk-sp                          95,116            open
-130-audit-frs                               97                open
+130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f
+130b-audit-hops-channels-core-notify        130               open   (CHANNEL_IN in channels, CORE_CALL in orchestrator, NOTIFICATION in mw-notify; closes AUD-01/AUD-04 with 135)
 # --- M12 gate: UC-01, UC-20..22
 131-admin-partner-credentials               91,97             split (131-split-decisions.md, 2026-11-20)
 131a-admin-credentials-backend              91,97             open

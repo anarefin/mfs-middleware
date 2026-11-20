@@ -33,7 +33,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     txnRef), `billagg` (billers, fetch, pay, status, reverse; biller, billNumber, txnRef; REST and SOAP
     front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path), and the
     SMPP / TCP parties of ticket 102b (FRS MCT-04): `smsc` (bind, submit; systemId, msisdn), `ussdgw` (bind,
-    submit, enquire_link, dial; systemId, msisdn, mno), `payshield` (command; command). Each party lists the
+    submit, enquire_link, dial; systemId, msisdn, mno), `payshield` (command; command), and `push` (send; token,
+    topic; ticket 110). Each party lists the
     behaviours it carries out (`MockParty.behaviours`; the SMPP / TCP ones a subset) and `MockParties.check`
     refuses a scenario with another behaviour, an operation it lacks or a `code` not in its form (SMPP
     command_status `0x58` / `88` for smsc and ussdgw, two characters for payshield): 400 MW-VAL-001. An HTTP
@@ -292,6 +293,23 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     depends on `bootJar`, against a SoftHSM built from `src/test/resources/softhsm/`, a checked copy of
     `deploy/softhsm` (`scripts/test/test_softhsm.sh`): commands with the LMK in the token, and a second
     simulator on the same token keeps the LMK).
+- Push server mock (ticket 110, FRS EXT-04; `controller/PushController`, `service/PushService`,
+  `config/PushProperties` `sim.push.api-key`, stack: `PUSH_API_KEY` in Vault `secret/mw-simulators`, no value in
+  the main config; unset = every push refused): the app-server push API mw-notify calls, FCM / APNs style.
+  `POST /push/v1/messages {messageId?, token | topic, platform?, notification {title, body}, data?}` with
+  `Authorization: key=<api-key>` (else 401 `UNAUTHENTICATED`; no target or notification 400
+  `INVALID_ARGUMENT`) -> 200 `{messageId: push-<n>, status: DELIVERED}`, the push stored. `GET
+  /push/v1/messages[?token=&topic=]` (and `GET /sim/push/messages`, the same list on the control path the
+  test-only route `/test/sim/*` reaches) -> `[{seq, messageId, senderMessageId, token, topic, platform, title,
+  body, data, status, receivedAt}]`. Mock party `push`, operation `send` (keys token, topic), behaviours
+  SUCCESS, BUSINESS_ERROR, TIMEOUT, DELAY, HTTP_5XX, MALFORMED_RESPONSE, CONNECTION_RESET, PARTIAL_SUCCESS:
+  BUSINESS_ERROR (magic value: a token containing `invalid`) 404 `{error: <code, default UNREGISTERED>}`, not
+  stored; HTTP_5XX its `httpStatus` (default 500), NOT stored (unlike the partners: a failed push server
+  delivered nothing, so a retried push never shows twice); TIMEOUT stores then holds the answer;
+  MALFORMED_RESPONSE stores and cuts the body short; CONNECTION_RESET stores and closes the connection;
+  PARTIAL_SUCCESS stores with status `ACCEPTED` (mw-notify: SENT, not DELIVERED); DOWN closes, MAINTENANCE 503,
+  nothing stored. The journal records each call (Authorization dropped); the party reset forgets the pushes.
+  Test: `PushSimulatorIT`.
 - Generic programmable partner stub (ticket 83, `controller/PartnerStubController`,
   `service/PartnerStubStore`, `dto/PartnerStub`): for partner route dry-runs (the adapters'
   `mw.partners.dry-run.base-url` in dev, `http://mw-simulators:8080/sim/partners/{partnerId}`) and manual
@@ -305,7 +323,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   `Decision` out with `MockCalls`, implement `PartyState` for what it keeps, reuse the callback service.
 - Dev provisioning (`provision_mw_simulators` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `simulators_rw` and schema `simulators` (the chassis still migrates one on start-up),
-  `secret/mw-simulators` (DB password, never overwritten) and the AppRole `mw-simulators`
+  `secret/mw-simulators` (DB password, never overwritten; `sim.push.api-key` synced from `PUSH_API_KEY`) and the AppRole `mw-simulators`
   (configtree volume at `/run/mw/approle`).
 
 ## Contracts owned

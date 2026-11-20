@@ -1,4 +1,8 @@
 {
   "invalid-bad-source-ip.json": ["/sourceIp must match format \"ipv4\"", "/sourceIp must match format \"ipv6\""],
-  "invalid-unknown-actor-type.json": ["/actor/type must be equal to one of the allowed values"]
+  "invalid-unknown-actor-type.json": ["/actor/type must be equal to one of the allowed values"],
+  "invalid-payload-without-body.json": [
+    "/payload/0 must have required property 'body'",
+    "/payload/0 must have required property 'payloadRef'"
+  ]
 }

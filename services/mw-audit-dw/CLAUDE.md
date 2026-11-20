@@ -5,7 +5,50 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 
 ## Responsibilities
 
-- Audit trail in the MVP (spec 14.3, WP10; no DW stream, SFTP export or `audit.payload` yet).
+- Audit trail in the MVP (spec 14.3, WP10; no DW stream or SFTP export yet).
+- Ticket 130 (FRS AUD-01, AUD-03, AUD-04, AUD-05; CON-04 audit side; Flyway V7):
+  - **Hop facts and payloads**: `mw.audit.event.v1` gained optional `hop` (CHANNEL_IN, ORCHESTRATOR,
+    CORE_CALL, PARTNER_CALL, PARTNER_CALLBACK, NOTIFICATION), `direction` (IN/OUT seen from the
+    middleware), `durationMs` and `payload[]` (`{direction, contentType, body?, payloadRef?}`, at most 4,
+    body <= 64 KiB). `AuditService` stores the facts on `audit.event` (`hop`, `direction`, `duration_ms`)
+    and each body in `audit.payload` (append-only, monthly partitions `payload_yyyy_MM` created by
+    `ensure_month_partition` with the event's, linked by `audit_id` + `ordinal`, `size` and `sha256` of
+    the stored body). Every body is scrubbed again on write (`util/PayloadScrub`: a key holding a secret word (camelCase, `_`, `-` split: pin, mpin, otp, passw*, cvv, cvc, secret, ...), also inside one word after known prefixes and before known suffixes (`newpin`, `encryptedpin`, `pinciphertext`, `otpcode`), or matching the pre-ticket whole-key regex, has its whole value or subtree blanked (`spinner`, `shipping` kept); XML by a linear fail-closed tokenizer (no regex or recursion): comments, CDATA, declarations and processing instructions other than the XML declaration are blanked whole, a stray `<` or unmatched quote is copied as text and the scan goes on, a secret element is blanked up to its own close tag (nested elements tracked by name, mismatched closes ignored), anything unterminated blanks the rest; a body over 1 MiB is stored as `****`;
+    in JSON, XML and `key=value` text alike; a Luhn-valid PAN cut to its last 4,
+    then `MaskingPolicy.scrub`; `PayloadScrubTest`). Chain: a row with hop facts or payloads appends
+    `{hop, direction, durationMs, payloads[{ordinal, direction, contentType, payloadRef, size, sha256}]}` to
+    its canonical array (`service/HashChain`); rows without them hash as before (golden vector kept), and
+    the verifier recomputes each body's SHA-256 ("payload does not match its digest"); a changed body,
+    digest, hop fact or a deleted payload row breaks the chain (`HashChainWithPayloadIT`). Producers: the
+    three adapters' `PartnerAuditPublisher` (PARTNER_CALL, OUT, latency, request OUT / answer IN excerpts
+    with the `partner_payload` ref). The hop of an event without one is inferred from its action
+    (`util/Hops`: `txn.*` ORCHESTRATOR, `partner.call.completed` PARTNER_CALL, `partner.callback.*`
+    PARTNER_CALLBACK, `core.*` CORE_CALL, `notification.*`/`notify.*` NOTIFICATION).
+  - **Search projection** `audit.txn_index` (txnId, channel, txnType, latest status by `updatedAt`,
+    amount, partner, `msisdn_tokens`, requestedAt): `messaging/TxnStatusListener` consumes
+    `mw.txn.status.v1` (retry group `mw-audit-dw`) -> `service/TxnIndexService` ->
+    `repository/TxnIndexRepository` (writer: SELECT/INSERT/UPDATE on it only; reader SELECT). The parties'
+    MSISDNs (normalised by `util/Msisdns`) are tokenised once per transaction at mw-crypto
+    (`client/CryptoClient` as `client/MsisdnTokeniser`, `/internal/v1/tokens` TOKENISE_MSISDN, already
+    bound to this service) and never stored or logged; `mw.audit-dw.query.tokenise-msisdn` (off in tests).
+  - **Search filters**: `partner`, `channel`, `status`, `amountMin`/`amountMax` (minor units), `msisdn`
+    (tokenised, 400 when not a mobile number, 503 `MW-SYS-002` when tokenising is off) join the projection.
+    `AuditSearchFiltersIT`; the 3 s target over 30 days (60,000 txns, 240,000 events) is
+    `AuditSearchPerfIT` (`slow-wait`, `-PwithSlow`; every combination answered in well under 0.5 s).
+  - **Timeline** `GET /internal/v1/audit/transactions/{txnId}/timeline` (`TimelineHop.Timeline`: hops in
+    order of `at` with `durationMs`, `sinceStartMs`, `gapMs` and their payloads, `totalMs`, `anchor`; an
+    unknown txn has no hops; `TimelineIT`). Not yet used by mw-admin-api (open item, see below).
+  - **Export** `GET /internal/v1/audit/search/export.csv` (same filters, `X-Mw-Operator-Id` required,
+    at most `mw.audit-dw.query.export-max-rows` rows (10,000), header `X-Mw-Export-Truncated`; RFC 4180,
+    formula cells prefixed `'`): `service/AuditExportService` first writes one operator-action record
+    into the chain (action `audit.search.exported`, actor `user`/<operator>, resource `audit/search`,
+    `after` = operation, filters (an MSISDN only as "given"), rowCount, truncated); `ExportAuditedIT`.
+  - Test-only mirrors `/test/v1/audit/transactions/{txnId}/timeline` and `/test/v1/audit/search/export.csv`
+    (API suite folder 42).
+  - Open items: the channels' request logging does not send CHANNEL_IN events yet, mw-orchestrator sends
+    no CORE_CALL hop and mw-notify no NOTIFICATION hop (the timeline shows what producers send); mw-admin-api's
+    transaction detail does not call the timeline yet (left out while ticket 100a changes mw-admin-api;
+    UI in ticket 135).
 - Internal audit search (ticket 35, contract `api/mw-audit-dw/audit-query.v1.openapi.yaml`;
   `controller/AuditSearchController` -> `service/AuditSearchService` -> `repository/AuditSearchRepository`):
   `GET /internal/v1/audit/events` (txnId, actorType, actorId, action, resource, outcome, `[from, to)` on
@@ -17,8 +60,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
   `401 MW-AUTH-001`, other client `403 MW-AUTH-002`; `InternalApiAuthIT`. Reads as `audit_reader` (`config/AuditSearchConfig`: its own lazy
   read-only pool `audit-search`, max 4, same reader credentials `mw.audit-dw.chain-verify.reader-*`;
   not a `DataSource` bean). Values come back as stored (already masked); operator usernames are not
-  masked. No MSISDN filter: events carry no keyed hash, so an operator finds the txn by MSISDN on
-  mw-orchestrator's query API, then its audit by txnId. `AuditSearchApiIT`. Consumes `mw.audit.event.v1` (`@KafkaListener` `messaging/AuditEventListener` ->
+  masked. The transaction filters and the MSISDN filter of ticket 130 are above. `AuditSearchApiIT`. Consumes `mw.audit.event.v1` (`@KafkaListener` `messaging/AuditEventListener` ->
   `service/AuditService.record`, off with `mw.audit-dw.consumers.enabled=false`) with retry topics and DLQ
   (`mw.audit.event.v1.mw-audit-dw.retry.1..3`, `.dlq`); an unreadable event or one missing a required field
   throws and ends on the DLQ (`AuditEventKafkaIT`).
@@ -146,8 +188,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.audit.dw`. Follow the
 
 ## Contracts used
 
-- Its own `mw.audit.event.v1`, and `api/mw-crypto/crypto-internal.v1.openapi.yaml` (`/jws/sign`,
-  `/jwks/AUDIT_ANCHOR_SIGN`, ticket 74).
+- Its own `mw.audit.event.v1`, `events/mw-orchestrator/mw.txn.status.v1` (search projection, ticket
+  130; own type `dto/TxnStatusEvent`), and `api/mw-crypto/crypto-internal.v1.openapi.yaml` (`/jws/sign`,
+  `/jwks/AUDIT_ANCHOR_SIGN`, ticket 74; `/tokens` TOKENISE_MSISDN, ticket 130).
 - `contracts.yml`: the machine-readable list of what this module produces and consumes (checked
   by `./gradlew :contractsLint`, tested by `contracts/ConsumedContractsTest` (every valid sample reads
   into `dto/AuditEvent`) and `contracts/ApiContractsTest` (search responses against

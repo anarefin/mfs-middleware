@@ -129,12 +129,32 @@ class CoreWalletControllerTest {
 
   @Test
   void aBalanceIsAvailableHeldAndTotal() {
-    given(service.balance("01711000001"))
-        .willReturn(new BalanceView("01711000001", Amount.bdt(990000), Amount.bdt(10000), Amount.bdt(1000000)));
+    given(service.balance(eq("01711000001"), any()))
+        .willReturn(new BalanceView("01711000001", Amount.bdt(990000), Amount.bdt(10000), Amount.bdt(1000000),
+            Instant.parse("2026-11-20T08:00:00Z")));
 
     assertThat(get("/core/v1/balance/01711000001")).hasStatusOk().bodyJson().isLenientlyEqualTo(
         "{\"available\":{\"valueMinor\":990000,\"currency\":\"BDT\"},\"held\":{\"valueMinor\":10000},"
-            + "\"total\":{\"valueMinor\":1000000}}");
+            + "\"total\":{\"valueMinor\":1000000},\"asOf\":\"2026-11-20T08:00:00Z\"}");
+  }
+
+  @Test
+  void aCustomersBalanceReadPassesTheCallerTxnAssertionAndKey() {
+    given(service.balance(eq("01711000001"), any()))
+        .willReturn(new BalanceView("01711000001", Amount.bdt(1), Amount.bdt(0), Amount.bdt(1), Instant.EPOCH));
+
+    assertThat(mvc.get().uri("/core/v1/balance/01711000001?txnId=" + TXN).header("Authorization", InternalTokens.bearer(CALLER))
+        .header("X-Txn-Assertion", "a.b.c").header("Idempotency-Key", "k-1")).hasStatusOk();
+
+    verify(service).balance("01711000001", new CoreWalletService.BalanceRead(CALLER, TXN, "a.b.c", "k-1"));
+  }
+
+  @Test
+  void validateNeedsTheAssertionHeader() {
+    String body = HOLD_BODY.replace("TOPUP", "P2P").replace("\"MSISDN\"", "\"WALLET\"").replace("01711000001\"},\"amount", "01711000002\"},\"amount");
+
+    assertThat(post("/core/v1/transactions/validate", body)).hasStatus(401).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-046");
+    verifyNoInteractions(service);
   }
 
   // --- WAL-04, WAL-05 ---

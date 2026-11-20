@@ -526,7 +526,8 @@ class DeviceBindingIT {
         msisdn);
     assertThat(rows).hasSize(1);
     assertThat(rows.getFirst().get("msg_key")).isEqualTo(msisdn);
-    assertThat((String) rows.getFirst().get("payload")).contains("\"priority\": \"TXN\"").contains("\"locale\": \"en\"");
+    assertThat((String) rows.getFirst().get("payload")).contains("\"priority\": \"TXN\"").contains("\"locale\": \"en\"")
+        .contains("\"deviceId\": \"" + d.id() + "\"");
   }
 
   @Test

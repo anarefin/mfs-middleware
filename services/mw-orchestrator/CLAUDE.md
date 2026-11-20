@@ -6,16 +6,51 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 ## Responsibilities
 
 - Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, BULK_DISBURSE (child), TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, the BALANCE check (ADR D26) and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
-  Consumes `mw.txn.request.v1` (`messaging/TxnRequestListener`), the core results on
-  `core.wallet.event.v1` and `core.payment.event.v1` (one listener, `messaging/CoreEventListener`) and partner adapter answers on
+  Consumes `mw.txn.request.v1` (`messaging/TxnRequestListener`), the core's events on
+  `core.wallet.event.v1` and `core.payment.event.v1` (one listener, `messaging/CoreEventListener`; since ticket 95a it
+  ignores the result events of the REST calls, see "Core over REST") and partner adapter answers on
   `mw.partner.reply.v1` (`messaging/PartnerReplyListener`) and partner callbacks on `mw.partner.inbound.v1`
   (`messaging/PartnerInboundListener`) and operator actions on `mw.txn.action.v1` (`messaging/TxnActionListener`,
   ticket 37): Spring Kafka `@KafkaListener`s (ADR D27), all with retry topics and DLQ, all stopped by
   `mw.orchestrator.consumers.enabled=false` (the test default). Publishes every
-  state change on `mw.txn.status.v1`, core commands on `core.payment.command.v1` (HoldFunds, CommitHold,
-  ReleaseHold) or `core.wallet.command.v1` (every other command; `service/CoreTopics`, ticket 50) and partner
-  requests on `mw.partner.request.<family>.v1`, all through the transactional outbox, in the same
-  transaction as the state change.
+  state change on `mw.txn.status.v1` and partner requests on `mw.partner.request.<family>.v1`, through the
+  transactional outbox in the same transaction as the state change, and calls the core over REST once that
+  transaction has committed (ADR D31, ticket 95a: "Core over REST" below; no core command topic any more).
+- Core over REST (ADR D31, ticket 95a; FRS EXT-18, WAL-13, PLT-021/023/030/033; contract
+  `api/mw-core-mock/core-wallet.v1.openapi.yaml`, consumed): `SagaEngine.send` records the call on `core_call`
+  and hands the `CoreCommand` (now an internal step description, no longer a Kafka message) to
+  `service/CoreCallDispatcher`, which submits it **after commit** to `service/CoreCallExecutor` (bean in
+  `config/CoreClientConfig`: one virtual thread per call, named `core-call-<n>`; never a Kafka listener, timer or
+  request thread). `client/CoreWalletClient` makes the call: ValidateTransaction `POST /core/v1/transactions/validate`,
+  PostTransfer `POST /transfers`, HoldFunds `POST /holds` (mw-auth's assertion in `X-Txn-Assertion`, the request's
+  `idempotencyKey` in the body; none for a bulk child), CommitHold / ReleaseHold `POST /holds/{holdId}/commit|release`,
+  CreditWallet `POST /credits` (an operator round `:manual-<n>` sends `round` n, so the core decides it afresh),
+  ReverseTransaction `POST /reversals` (the reversal's txnId, no amount: the whole original), every QueryTransaction
+  (HOLDING query, inquiry, reversal query, credit check) `GET /transactions/{txnId}` (WAL-13), BalanceInquiry
+  `GET /balance/{walletId}?txnId=` with the assertion and `Idempotency-Key`. Service JWT: `client/ServiceTokenClient`,
+  Keycloak realm `services` client `mw-orchestrator` (audience mapper `aud-mw-core-mock`, secret
+  `mw.orchestrator.core.client-secret` from Vault, `KC_MW_ORCHESTRATOR_SECRET` in dev); a 401 `MW-AUTH-001` renews it
+  once. Plain HTTP (mw-core-mock serves no mTLS). Config `mw.orchestrator.core` (`OrchestratorProperties.Core`:
+  `base-url` `MW_CORE_BASE_URL`, `token-uri`, `connect-timeout` 1 s, `read-timeout` 1500 ms `MW_CORE_READ_TIMEOUT`, below
+  every saga deadline); Resilience4j circuit breaker `core`, bulkhead `core` (100), retry `core-read` for the reads
+  only: a money call is never retried by the client (idempotent by txnId at the core, PLT-031; the step's deadline
+  resends it). `dto/CoreReply` classifies the answer: 2xx ANSWERED, 422 `MW-CORE-*` / 401 `MW-AUTH-046` / other 4xx
+  REFUSED, 5xx / 408 / 429 / timeout / connection / breaker / bulkhead / 403 / 409 / refused token AMBIGUOUS.
+  `mapper/CoreReplyMapper` names it with the core's result name (TransactionValidated, FundsHeld, CommitFailed, ...,
+  recorded on `core_call.result`) and maps it to the step's `SagaEvent`; `service/CoreReplyService` applies it in its
+  own transaction (REQUIRES_NEW, row lock; reversal query, credit check and inquiry answers as before; a late
+  FundsHeld after REJECTED releases the orphan hold). **An ambiguous answer applies nothing**: the step's persisted
+  deadline decides exactly as for a lost answer (VALIDATING -> FAILED, HOLDING -> WAL-13 query, POSTING -> UNKNOWN ->
+  WAL-13 inquiries, COMMITTING / RELEASING / REVERSING resend with the same txnId), so `SagaMachine` is unchanged and a
+  crash between commit and call loses nothing. `service/CoreEventService` ignores every core event (FundsHeld,
+  HoldCommitted, TransferPosted ... that the REST operations also publish), so nothing is applied twice
+  (`SagaServiceIT`); ticket 95c makes it consume HoldExpired and wallet-state changes. Tests:
+  `client/CoreWalletClientTest` (endpoints, headers, classification, retries, token renewal, request bodies against
+  the core contract), `mapper/CoreReplyMapperTest` (2xx, 422, 401 assertion, 5xx / timeout -> no event),
+  `messaging/CoreRestFlowIT` (P2P and TOPUP over `messaging/CoreRestStub`; a lost PostTransfer answer -> UNKNOWN ->
+  WAL-13 -> COMPLETED with one posting; every call on a `core-call-` virtual thread). Service-seam ITs import
+  the test config `CoreCalls` (records each call in line, answers none; `answer(CoreEvent)` feeds the step's
+  answer written in the core's result names through `CoreReplyService`).
 - State machine: plain Java in `service/saga` (`Status` = the 14 states, sealed `SagaEvent`,
   `SagaMachine.apply(status, event)` -> `Transition(from, to, effect)` or
   `exception/InvalidTransitionException`). All transitions of the 7.2 table are modelled and unit-tested;
@@ -57,11 +92,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   with an amount other than 0 (`MW-VAL-011`; 0 is refused `MW-VAL-011` for every other type), debit and
   credit party not the same WALLET (any MSISDN form, `SearchKeys.sameWallet`) or no assertion (`MW-VAL-001`).
   Path: RECEIVED -`BalanceInquiryStarted`-> VALIDATING (`Effect.SEND_BALANCE_INQUIRY`: `BalanceInquiry`
-  on `core.wallet.command.v1`, commandId `<txnId>:balance`, `TransferPayload` with txnType BALANCE, amount
+  over REST `GET /core/v1/balance/{walletId}?txnId=` (ticket 95a), commandId `<txnId>:balance`, `TransferPayload` with txnType BALANCE, amount
   0, the wallet on both sides, assertion + idempotencyKey) -`BalanceReported`-> COMPLETED;
   `BalanceInquiryRejected` -> FAILED `MW-CORE-<reason>` (`MW-AUTH-046` as it is); the VALIDATING deadline ->
   FAILED `MW-TMO-001` (retryable; never UNKNOWN, no inquiry). The balance (`dto/Balance`, from
-  `CoreEventMapper.balance`) is passed transiently `SagaEngine.fire(rec, event, error, balance)` ->
+  `CoreReplyMapper.balance`) is passed transiently `SagaEngine.fire(rec, event, error, balance)` ->
   `StatusMapper.toStatus(rec, balance)` into the COMPLETED status's `balance` only: not on the record, the
   `saga_step`/`core_call` timeline, the audit event or `wallet_txn` (`SearchKeys.walletParties` is empty for
   BALANCE, so a check is no wallet-history entry, ADR D25); `BalanceSagaIT` proves it. A repeated request
@@ -147,7 +182,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   if an earlier CreditWallet was applied but its answer lost, a fresh-round id would credit twice. So
   the commit step of a forced credit first asks the core (`CoreCommandMapper.creditCheck`:
   QueryTransaction, commandId `<txnId>:credit-check:<epoch ms>`, fresh per query) and
-  `CoreEventService` turns the TransactionStatus answer into `SagaEvent.CreditCheckResult` (COMMITTING
+  `CoreReplyService` turns the TransactionStatus answer into `SagaEvent.CreditCheckResult` (COMMITTING
   only; elsewhere stale, ignored): CREDITED / POSTED -> COMPLETED with no new credit; NOT_FOUND /
   VALIDATED / REJECTED -> stays COMMITTING with `Effect.SEND_CREDIT`, which sends
   `<txnId>:credit:manual-<n>`; any other answer -> MANUAL_REVIEW `MW-TMO-005`. Each COMMITTING deadline
@@ -280,14 +315,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   core reply after a timeout is ignored (state machine refuses it).
 - `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release` / `:credit` / `:balance`
   (QueryTransaction: above; ReverseTransaction: `<reversalTxnId>:reverse`). `expiresAt` = issuedAt + `command-ttl` (60 s).
-  Topics (ticket 50, M2 gate): `HoldFunds`, `CommitHold` and `ReleaseHold` (also the orphan-hold release) go to
-  `core.payment.command.v1`, their results come back on `core.payment.event.v1`; every other command
-  (Validate, Post, CreditWallet, Reverse, Query) goes to `core.wallet.command.v1` (`service/CoreTopics`,
-  `CoreTopicsTest`; the old `wallet-command-topic` property is gone). Both event topics feed the same
-  `CoreEventListener`. ITs read the outbox of both command topics (`coreCommands`); `messaging/CoreStub`
-  answers on the event topic paired with the command topic.
+  The commandId is the step id on the saga timeline (`core_call`); the core's own idempotency key is the txnId and
+  the operation (`<txnId>:rest:<op>` at mw-core-mock). `expiresAt` is no longer sent (REST has no expired-command
+  drop); `command-ttl` still times the not-found grace and the reversal schedule. Calls go over REST since
+  ticket 95a (no core command topics; `service/CoreTopics` keeps the two event topic names).
 - Core reason -> error: `MW-CORE-<reasonCode>` (same pattern as the status contract), message
-  English + Bengali for the reasons mw-core-mock emits (`mapper/CoreEventMapper`), not retryable.
+  English + Bengali for the reasons mw-core-mock gives (`mapper/CoreReplyMapper`), not retryable.
   Other codes used: `MW-VAL-010` unsupported txn type (a contract type without a flow, e.g. NPSB_OUT, NPSB_IN, B2B_TRANSFER until their tickets; `SagaServiceIT`), `MW-VAL-011` amount <= 0, `MW-VAL-012`
   partner missing for a flow with a partner leg, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`,
   `MW-TMO-003` (not found by inquiry, retryable), `MW-TMO-004` (inquiry exhausted),
@@ -296,10 +329,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - Transaction assertion (spec 18.7, D22, ticket 71): a `mw.txn.request.v1` with `assertion` (mw-auth's JWS)
   keeps it in the stored request (it is no PIN material; `dto/TxnRequest.assertion`, `@Sensitive`) and
   `TransferPayload.of` copies it, with the request's `idempotencyKey` (part of its txnHash), into
-  ValidateTransaction, PostTransfer and HoldFunds. It is not part of the idempotency request hash. A core
-  refusal with reasonCode `MW-AUTH-046` (assertion invalid or used) becomes the status error `MW-AUTH-046` as
-  it is (`CoreEventMapper`), not `MW-CORE-*`. Tests: `mapper/CoreCommandMapperTest` (the assertion reaches
-  every authorising command, schema-valid; a bulk child sends none), `mapper/CoreEventMapperTest`.
+  ValidateTransaction, PostTransfer, HoldFunds and BalanceInquiry; the client sends it as `X-Txn-Assertion`
+  (ticket 95a). It is not part of the idempotency request hash. A core refusal `401 MW-AUTH-046` (assertion
+  invalid or used) becomes the status error `MW-AUTH-046` as it is (`CoreReplyMapper`), not `MW-CORE-*`. Tests:
+  `mapper/CoreCommandMapperTest` (the assertion reaches every authorising call; a bulk child sends none),
+  `mapper/CoreReplyMapperTest`, `client/CoreWalletClientTest`.
 - No PIN (ticket 72, M11 removed): the channels check the PIN at mw-auth and send only the assertion; the
   contracts carry no `encryptedPin` any more, `transaction.encrypted_pin` and its wipe on terminal states are
   gone (`V11__drop_encrypted_pin.sql`; V10 is the Java search-hash migration), and an old channel's
@@ -329,7 +363,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   {command, commandId, at = first send, sends, result = core event type, outcome, reasonCode,
   resultAt}, interleaved in the order they happened by the shared `timeline_seq`; `txn.core_call`
   is written by `SagaEngine.send` (a resend under the same commandId counts in `sends`; a
-  ReverseTransaction is filed under the original's txnId) and answered by `CoreEventService` before
+  ReverseTransaction is filed under the original's txnId) and answered by `CoreReplyService` before
   the state machine runs, so an ignored late result still shows; first result kept) and
   `partnerCalls` (`txn.partner_call`, V8: one row per PAY / STATUS_QUERY sent by
   `SagaEngine.sendToPartner`, answered by `PartnerReplyService` (outcome, partnerRef, errorCode,
@@ -414,8 +448,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   payloads), `mw.partner.request.v1`, `mw.partner.reply.v1`, `mw.partner.inbound.v1`,
   `api/mw-orchestrator/txn-query.v1.openapi.yaml` (internal query API, ticket 35; 1.3.0 wallet scope, ADR D25),
   `api/mw-orchestrator/orchestrator-test.v1.openapi.yaml` (test-only API, ticket 58), and
-  `common/defs.v1` (see `contracts/OWNERS.yml`). Tests validate every status and command the
-  service emits against them. `core.command.v1#UnlockWallet` (ticket 52) is in this contract but
+  `common/defs.v1` (see `contracts/OWNERS.yml`). Tests validate every status the service emits against
+  them. Since ticket 95a the orchestrator produces no `core.command.v1` message (it calls the core over REST);
+  the contract stays for mw-auth's VerifyCustomerFactors and mw-admin-api's UnlockWallet until ticket 95b retires
+  it (`CoreCommandMapperTest` still checks the internal call shapes against it). `core.command.v1#UnlockWallet` (ticket 52) is in this contract but
   produced by mw-admin-api (ops unlock after maker-checker), not by the orchestrator; its results
   `WalletUnlocked` / `UnlockRejected` carry a txnId the orchestrator does not know and are dropped
   (`txn.unknown`).
@@ -423,8 +459,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 ## Contracts used
 
 - `contracts.yml` (module root) is the machine-readable list of what this service produces and
-  consumes (each `core.command.v1` command type, `core.event.v1` event type and partner family
-  separately), checked by `./gradlew :contractsLint` and tested without Docker by
+  consumes (partner families separately; the core wallet API under `consumes.apis`, ticket 95a; no core event
+  is listed: the listener ignores them until 95c), checked by `./gradlew :contractsLint` and tested without Docker by
   `contracts/ProducedContractsTest` (every produced event built by the real mapper, serialised as
   the outbox does, validated), `contracts/ConsumedContractsTest` (every valid sample of a consumed
   event read into the own DTO) and `contracts/ApiContractsTest` (txn-query response bodies against
@@ -434,7 +470,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - `dto/ConfigChangedEvent` (`mw.config.changed.v1`) exists with its schema tests, but no route
   consumes the topic yet, so it is not in `contracts.yml`.
 - `events/mw-core-mock/core.event.v1.schema.json`: own type `dto/CoreEvent` (payload read as a
-  tree per `eventType`). Unknown fields are ignored.
+  tree per `eventType`), read by `CoreEventListener` and ignored since ticket 95a. Unknown fields are ignored.
+- `api/mw-core-mock/core-wallet.v1.openapi.yaml` (consumed, ADR D31, ticket 95a): `client/CoreWalletClient`;
+  `CoreWalletClientTest` validates its request bodies against the contract's schemas.
 - `events/mw-admin-api/mw.txn.action.v1.schema.json` (consumed, ticket 37): own type `dto/TxnAction`;
   `ConsumedContractsTest` reads the valid samples, `service/OperatorActionIT` covers the handling.
   The REVERSAL mw-admin-api sends on `mw.txn.request.v1` names only `ORG`/`bits-ops` as parties and

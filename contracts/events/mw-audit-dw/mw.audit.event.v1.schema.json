@@ -27,6 +27,32 @@
     "outcome": { "enum": ["SUCCESS", "FAILURE", "DENIED"] },
     "at": { "type": "string", "format": "date-time" },
     "sourceIp": { "anyOf": [{ "type": "string", "format": "ipv4" }, { "type": "string", "format": "ipv6" }] },
-    "service": { "type": "string", "pattern": "^mw-[a-z0-9-]+$" }
+    "service": { "type": "string", "pattern": "^mw-[a-z0-9-]+$" },
+    "hop": {
+      "enum": ["CHANNEL_IN", "ORCHESTRATOR", "CORE_CALL", "PARTNER_CALL", "PARTNER_CALLBACK", "NOTIFICATION"],
+      "description": "Ticket 130 (FRS AUD-01, AUD-04): which hop of a transaction this event records, for the per-hop timeline. Absent: mw-audit-dw infers it from the action (txn.state.changed and txn.operator.action ORCHESTRATOR, partner.call.completed PARTNER_CALL, partner.callback.* PARTNER_CALLBACK)."
+    },
+    "direction": {
+      "enum": ["IN", "OUT"],
+      "description": "Ticket 130: the hop's direction seen from the middleware: IN = a request the middleware received (channel request, partner callback), OUT = a call the middleware made (core, partner, SMSC)."
+    },
+    "durationMs": { "type": "integer", "minimum": 0, "description": "Ticket 130: latency of the hop (request to answer), in milliseconds." },
+    "payload": {
+      "type": "array",
+      "maxItems": 4,
+      "description": "Ticket 130 (FRS AUD-01, CON-04): the hop's bodies, masked by the producer (MaskingPolicy; never a PIN, PAN or clear MSISDN/NID); mw-audit-dw scrubs them again and stores them in audit.payload, inside the hash chain. A body may be an excerpt whose full masked text is behind payloadRef (an adapter's partner_payload store, ticket 97).",
+      "items": {
+        "type": "object",
+        "required": ["direction", "contentType"],
+        "anyOf": [{ "required": ["body"] }, { "required": ["payloadRef"] }],
+        "additionalProperties": false,
+        "properties": {
+          "direction": { "enum": ["IN", "OUT"], "description": "IN = received by the middleware (a request it served, a partner's answer), OUT = sent by it." },
+          "contentType": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "body": { "type": "string", "maxLength": 65536 },
+          "payloadRef": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    }
   }
 }

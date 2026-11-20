@@ -8,7 +8,6 @@ import java.time.Duration;
 import mfs.mw.orchestrator.TestData;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreCommand;
-import mfs.mw.orchestrator.dto.CoreEvent;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.PartnerReply;
 import mfs.mw.orchestrator.dto.PartnerRequest;
@@ -103,28 +102,9 @@ class PartnerMessagesTest {
     assertThat(mapper.toSagaEvent(reply("UNKNOWN", null, null, "gp"))).containsInstanceOf(SagaEvent.PartnerUnknown.class);
   }
 
-  @Test
-  void aTransactionStatusAnswerIsAHoldQueryResult() {
-    CoreEventMapper mapper = new CoreEventMapper();
-    CoreEvent held = coreEvent("{\"txnStatus\":\"HELD\",\"holdId\":\"HOLD-9\"}");
-    CoreEvent none = coreEvent("{\"txnStatus\":\"NOT_FOUND\"}");
-
-    assertThat(mapper.toSagaEvent(held, true)).contains(new SagaEvent.HoldQueryResult(true));
-    assertThat(mapper.holdId(held)).isEqualTo("HOLD-9");
-    assertThat(mapper.toSagaEvent(none, true)).contains(new SagaEvent.HoldQueryResult(false));
-    assertThat(mapper.holdId(none)).isNull();
-  }
-
   private PartnerReply reply(String outcome, String code, Boolean retryable, String partnerId) {
     return new PartnerReply(
         1, "telco", "r-1", TestData.txnId(), "c-1", partnerId, TestData.NOW,
         new PartnerReply.Payload("PAY", outcome, null, null, code, null, retryable, null));
-  }
-
-  private CoreEvent coreEvent(String payload) {
-    return json.readValue(
-        "{\"schemaVersion\":1,\"eventType\":\"TransactionStatus\",\"eventId\":\"e\",\"commandId\":\"c\","
-            + "\"txnId\":\"t\",\"coreRef\":\"r\",\"outcome\":\"SUCCESS\",\"payload\":" + payload + "}",
-        CoreEvent.class);
   }
 }

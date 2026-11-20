@@ -12,6 +12,8 @@ public enum SensitiveType {
   NAME,
   /** PIN ciphertext, keys, tokens: never shown. */
   SECRET,
+  /** A push device token (ticket 110): not personal data, but only its last 6 characters are logged. */
+  PUSH_TOKEN,
   /**
    * The id of a canonical party, masked by the party's type (ticket 23): in a record with a
    * {@code type} component, {@code WALLET}/{@code MSISDN}/{@code MERCHANT}/{@code ORG} ids that are

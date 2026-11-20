@@ -1,0 +1,4 @@
+{
+  "name": "42 Audit search, per-hop timeline and audited CSV export",
+  "description": "Ticket 130, FRS AUD-01, AUD-03, AUD-04, AUD-05: mw-audit-dw's search by the transaction's partner and amount (projection of mw.txn.status.v1), one transaction's per-hop timeline with latencies and masked payloads, and the CSV export that writes its own operator-action record. Read through the test-only route /test/audit-dw/v1/* (MW_E2E_ROUTES=1, key-auth)."
+}

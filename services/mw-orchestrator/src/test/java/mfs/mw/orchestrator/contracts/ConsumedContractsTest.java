@@ -9,12 +9,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
-import mfs.mw.orchestrator.dto.CoreEvent;
 import mfs.mw.orchestrator.dto.PartnerInbound;
 import mfs.mw.orchestrator.dto.PartnerReply;
 import mfs.mw.orchestrator.dto.TxnAction;
 import mfs.mw.orchestrator.dto.TxnRequest;
-import mfs.mw.orchestrator.mapper.CoreEventMapper;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -24,8 +22,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Every event this module consumes, per {@code consumes.events} of {@code contracts.yml}: each
  * {@code valid*.json} sample of the contract ({@code samples/<topic>/[<Msg>/]}) deserialises into
  * the module's own DTO with the JsonMapper the listeners use, and passes the checks the listener
- * itself makes (the ids it requires). Core event samples must also map to a saga event, since the
- * orchestrator lists only the types it acts on.
+ * itself makes (the ids it requires). No core event is listed since ticket 95a: the saga takes the
+ * core's answers over REST, and its core-event listener ignores the result events until ticket 95c.
  *
  * <p>Invalid samples are not asserted: the listeners ({@code TxnRequestListener}, {@code
  * CoreEventListener}, {@code PartnerReplyListener}, {@code PartnerInboundListener}) do no schema or
@@ -36,7 +34,6 @@ import tools.jackson.databind.json.JsonMapper;
 class ConsumedContractsTest {
 
   private static final JsonMapper JSON = ContractManifest.serviceJsonMapper();
-  private static final CoreEventMapper CORE_EVENTS = new CoreEventMapper();
 
   /** Schema path -> how a valid sample is read and checked (sample path, message type or null). */
   private static final Map<String, BiConsumer<Path, String>> READERS = new LinkedHashMap<>();
@@ -57,13 +54,6 @@ class ConsumedContractsTest {
       // TxnActionListener.handle requires these
       assertThat(List.of(a.actionId(), a.txnId(), a.action(), a.checkerId()))
           .as(p.toString()).allSatisfy(v -> assertThat(v).isNotBlank());
-    });
-    READERS.put("events/mw-core-mock/core.event.v1.schema.json", (p, msg) -> {
-      CoreEvent e = JSON.readValue(read(p), CoreEvent.class);
-      assertThat(e.eventId()).as(p.toString()).isNotBlank(); // CoreEventListener.handle
-      assertThat(e.txnId()).as(p.toString()).isNotNull();
-      assertThat(e.eventType()).as(p.toString()).isEqualTo(msg);
-      assertThat(CORE_EVENTS.toSagaEvent(e, true)).as("saga event for %s", p).isPresent();
     });
     READERS.put("events/mw-orchestrator/mw.partner.reply.v1.schema.json", (p, msg) -> {
       PartnerReply r = JSON.readValue(read(p), PartnerReply.class);

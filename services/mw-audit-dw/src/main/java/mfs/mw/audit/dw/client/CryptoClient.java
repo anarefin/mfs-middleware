@@ -8,7 +8,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import mfs.mw.audit.dw.config.AnchorProperties;
@@ -35,9 +37,10 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Component
 @ConditionalOnProperty(name = "mw.audit-dw.anchor.enabled", havingValue = "true", matchIfMissing = true)
-public class CryptoClient {
+public class CryptoClient implements MsisdnTokeniser {
 
   static final String SIGN_PATH = "/internal/v1/jws/sign";
+  static final String TOKENS_PATH = "/internal/v1/tokens";
   static final String JWKS_PATH = "/internal/v1/jwks/AUDIT_ANCHOR_SIGN";
   static final String PURPOSE = "AUDIT_ANCHOR_SIGN";
   /** JWS {@code typ} of an anchor, so it can never pass for another kind of token. */
@@ -96,6 +99,29 @@ public class CryptoClient {
     } catch (ParseException e) {
       throw new CryptoUnavailableException("mw-crypto JWKS unreadable", e);
     }
+  }
+
+  /**
+   * Ticket 130: MSISDN tokens for the search projection ({@code POST /internal/v1/tokens}, domain
+   * {@code MSISDN}, purpose {@code TOKENISE_MSISDN} bound to this service in mw-crypto's {@code
+   * mw.crypto.authz}). The values are never logged.
+   */
+  @Override
+  public List<String> tokenise(List<String> msisdns) {
+    HttpRequest req =
+        request(TOKENS_PATH)
+            .header("Content-Type", "application/json")
+            .POST(
+                HttpRequest.BodyPublishers.ofByteArray(
+                    json.writeValueAsBytes(Map.of("domain", "MSISDN", "values", msisdns))))
+            .build();
+    JsonNode tokens = read(send(req, "tokens"), "tokens").path("tokens");
+    if (!tokens.isArray() || tokens.size() != msisdns.size()) {
+      throw new CryptoUnavailableException("mw-crypto tokens answer does not match the request", null);
+    }
+    List<String> out = new ArrayList<>();
+    tokens.forEach(t -> out.add(t.asString()));
+    return out;
   }
 
   private HttpRequest.Builder request(String path) {

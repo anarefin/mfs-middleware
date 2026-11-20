@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.UUID;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreEvent;
@@ -38,7 +39,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.orchestrator.consumers.enabled=false",
       "mw.orchestrator.timer.enabled=false"
     })
-@Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, SagaServiceIT.TestClock.class})
 class InquirySagaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
@@ -48,7 +49,7 @@ class InquirySagaIT {
   private static final String PARTNER_TOPIC = "mw.partner.request.telco.v1";
 
   private final TransactionService transactions;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
   private final PartnerReplyService partnerReplies;
   private final SagaTimerService timers;
   private final MutableClock clock;
@@ -59,7 +60,7 @@ class InquirySagaIT {
   @Autowired
   InquirySagaIT(
       TransactionService transactions,
-      CoreEventService coreEvents,
+      CoreCalls coreEvents,
       PartnerReplyService partnerReplies,
       SagaTimerService timers,
       Clock clock,
@@ -96,14 +97,7 @@ class InquirySagaIT {
 
   /** Core commands on both command topics, in outbox order (ticket 50: hold, commit, release on core.payment). */
   private List<JsonNode> coreCommands(String txnId) {
-    return jdbc.queryForList(
-            "select payload::text from outbox where topic in ('core.wallet.command.v1', 'core.payment.command.v1')"
-                + " and msg_key = ? order by id",
-            String.class,
-            txnId)
-        .stream()
-        .map(json::readTree)
-        .toList();
+    return coreEvents.commands(txnId);
   }
 
   private List<String> statuses(String txnId) {
@@ -192,8 +186,8 @@ class InquirySagaIT {
             t.requestedAt());
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", null, "{\"fee\":{\"valueMinor\":200,\"currency\":\"BDT\"}}"));
-    coreEvents.handle(event("FundsHeld", txn, txn + ":hold", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", null, "{\"fee\":{\"valueMinor\":200,\"currency\":\"BDT\"}}"));
+    coreEvents.answer(event("FundsHeld", txn, txn + ":hold", null, "{\"holdId\":\"HOLD-CORE-7\"}"));
     assertThat(status(txn)).isEqualTo("PARTNER_PENDING");
     return txn;
   }
@@ -211,7 +205,7 @@ class InquirySagaIT {
     TxnRequest req = TestData.p2p(TestData.txnId(), "key-" + TestData.txnId(), 5_000);
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", null, "{}"));
     clock.advance(Duration.ofSeconds(6));
     timers.sweep();
     assertThat(status(txn)).isEqualTo("UNKNOWN");
@@ -251,7 +245,7 @@ class InquirySagaIT {
     assertThat(lastCommand(txn).path("commandType").asString()).isEqualTo("CommitHold");
     assertThat(lastCommand(txn).path("payload").path("holdId").asString()).isEqualTo("HOLD-CORE-7");
 
-    coreEvents.handle(event("HoldCommitted", txn, txn + ":commit", null, "{}"));
+    coreEvents.answer(event("HoldCommitted", txn, txn + ":commit", null, "{}"));
     assertThat(statuses(txn))
         .containsExactly("RECEIVED", "VALIDATING", "HOLDING", "PARTNER_PENDING", "UNKNOWN", "COMMITTING", "COMPLETED");
     assertThat(lastStatus(txn).path("partnerRef").asString()).isEqualTo("OCS-TSQ-1");
@@ -271,7 +265,7 @@ class InquirySagaIT {
     assertThat(statuses(txn)).endsWith("UNKNOWN", "RELEASING");
     assertThat(lastCommand(txn).path("commandType").asString()).isEqualTo("ReleaseHold");
 
-    coreEvents.handle(event("HoldReleased", txn, txn + ":release", null, "{}"));
+    coreEvents.answer(event("HoldReleased", txn, txn + ":release", null, "{}"));
     assertThat(status(txn)).isEqualTo("FAILED");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-PTR-GP-TOPUP_REJECTED");
     assertAllValid(txn);
@@ -309,7 +303,7 @@ class InquirySagaIT {
     advanceAndSweep(Duration.ofMinutes(1));
     partnerReplies.handle(inquiryReply(txn, "NOT_FOUND", ""));
     assertThat(statuses(txn)).endsWith("UNKNOWN", "RELEASING");
-    coreEvents.handle(event("HoldReleased", txn, txn + ":release", null, "{}"));
+    coreEvents.answer(event("HoldReleased", txn, txn + ":release", null, "{}"));
     JsonNode failed = lastStatus(txn);
     assertThat(failed.path("status").asString()).isEqualTo("FAILED");
     assertThat(failed.path("error").path("code").asString()).isEqualTo("MW-TMO-003");
@@ -364,7 +358,7 @@ class InquirySagaIT {
     assertThat(q.path("commandType").asString()).isEqualTo("QueryTransaction");
     assertThat(q.path("commandId").asString()).startsWith(txn + ":query");
 
-    coreEvents.handle(event("TransactionStatus", txn, q.path("commandId").asString(), null, "{\"txnStatus\":\"POSTED\"}"));
+    coreEvents.answer(event("TransactionStatus", txn, q.path("commandId").asString(), null, "{\"txnStatus\":\"POSTED\"}"));
 
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "POSTING", "UNKNOWN", "COMPLETED");
     assertThat(timersOf(txn)).isZero();
@@ -375,11 +369,11 @@ class InquirySagaIT {
   void aTransferTheCoreNeverSawFailsOnceItsCommandHasExpired() {
     String txn = startP2pToUnknown();
     advanceAndSweep(Duration.ofSeconds(30));
-    coreEvents.handle(event("TransactionStatus", txn, lastCommand(txn).path("commandId").asString(), null, "{\"txnStatus\":\"VALIDATED\"}"));
+    coreEvents.answer(event("TransactionStatus", txn, lastCommand(txn).path("commandId").asString(), null, "{\"txnStatus\":\"VALIDATED\"}"));
     assertThat(status(txn)).isEqualTo("UNKNOWN"); // PostTransfer may still arrive (60 s TTL)
 
     advanceAndSweep(Duration.ofMinutes(1));
-    coreEvents.handle(event("TransactionStatus", txn, lastCommand(txn).path("commandId").asString(), null, "{\"txnStatus\":\"NOT_FOUND\"}"));
+    coreEvents.answer(event("TransactionStatus", txn, lastCommand(txn).path("commandId").asString(), null, "{\"txnStatus\":\"NOT_FOUND\"}"));
 
     assertThat(statuses(txn)).endsWith("UNKNOWN", "FAILED");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-TMO-003");
@@ -390,7 +384,7 @@ class InquirySagaIT {
   void aTransferTheCoreRejectedFails() {
     String txn = startP2pToUnknown();
     advanceAndSweep(Duration.ofSeconds(30));
-    coreEvents.handle(event("TransactionStatus", txn, lastCommand(txn).path("commandId").asString(), null, "{\"txnStatus\":\"REJECTED\"}"));
+    coreEvents.answer(event("TransactionStatus", txn, lastCommand(txn).path("commandId").asString(), null, "{\"txnStatus\":\"REJECTED\"}"));
     assertThat(statuses(txn)).endsWith("UNKNOWN", "FAILED");
   }
 
@@ -398,7 +392,7 @@ class InquirySagaIT {
   void aCoreAnswerThatFitsNoOutcomeGoesToManualReview() {
     String txn = startP2pToUnknown();
     advanceAndSweep(Duration.ofSeconds(30));
-    coreEvents.handle(event("TransactionStatus", txn, lastCommand(txn).path("commandId").asString(), null, "{\"txnStatus\":\"HELD\",\"holdId\":\"HOLD-X\"}"));
+    coreEvents.answer(event("TransactionStatus", txn, lastCommand(txn).path("commandId").asString(), null, "{\"txnStatus\":\"HELD\",\"holdId\":\"HOLD-X\"}"));
 
     assertThat(statuses(txn)).endsWith("UNKNOWN", "MANUAL_REVIEW");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-TMO-005");
@@ -411,7 +405,7 @@ class InquirySagaIT {
   void aCommitTheCoreRefusesGoesToManualReview() {
     String txn = startTopup("gp");
     partnerReplies.handle(payReply(txn, "SUCCESS", ",\"partnerRef\":\"OCS-1\""));
-    coreEvents.handle(event("CommitFailed", txn, txn + ":commit", "HOLD_RELEASED", "{}"));
+    coreEvents.answer(event("CommitFailed", txn, txn + ":commit", "HOLD_RELEASED", "{}"));
 
     assertThat(statuses(txn)).endsWith("COMMITTING", "MANUAL_REVIEW");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-CORE-HOLD_RELEASED");
@@ -423,7 +417,7 @@ class InquirySagaIT {
   void aReleaseTheCoreRefusesGoesToManualReview() {
     String txn = startTopup("gp");
     partnerReplies.handle(payReply(txn, "FAILED", ",\"errorCode\":\"MW-PTR-GP-TOPUP_REJECTED\""));
-    coreEvents.handle(event("ReleaseFailed", txn, txn + ":release", "HOLD_ALREADY_COMMITTED", "{}"));
+    coreEvents.answer(event("ReleaseFailed", txn, txn + ":release", "HOLD_ALREADY_COMMITTED", "{}"));
 
     assertThat(statuses(txn)).endsWith("RELEASING", "MANUAL_REVIEW");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-CORE-HOLD_ALREADY_COMMITTED");
