@@ -116,7 +116,8 @@
 127-mw-recon-reports                        126               open
 128-mw-data-export                          123               open
 129-portal-bulk-sp                          95,116            open
-130-audit-frs                               97                open
+130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f
+130b-audit-hops-channels-core-notify        130               open   (CHANNEL_IN in channels, CORE_CALL in orchestrator, NOTIFICATION in mw-notify; closes AUD-01/AUD-04 with 135)
 # --- M12 gate: UC-01, UC-20..22
 131-admin-partner-credentials               91,97             split (131-split-decisions.md, 2026-11-20)
 131a-admin-credentials-backend              91,97             open
