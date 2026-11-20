@@ -78,7 +78,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `CoreWalletRestIT`.
 - **E-money total (ticket 127c, REC-07):** `GET /core/v1/reports/emoney-total` -> `EmoneyTotalView {asOf, total,
   walletCount, byType[]}`: the balance (held included) of every wallet but SYSTEM, whatever its status
-  (`WalletRepository.emoneyByType`); only `azp` mw-recon (its trust position job). Open item for Upay: the real
+  (`WalletRepository.emoneyByType`); only an `azp` of `mw.internal-auth.report-clients` (mw-recon, its trust position
+  job), a list apart from `allowed-clients`, so a mw-recon token reaches no other `/core/**` operation (403). Open item for Upay: the real
   core must provide the same endpoint.
 - **The Kafka command side is gone (ticket 95b):** `messaging/CoreCommandListener`, the topics
   `core.wallet.command.v1` / `core.payment.command.v1` (`deploy/kafka/topics.txt`) and the contract

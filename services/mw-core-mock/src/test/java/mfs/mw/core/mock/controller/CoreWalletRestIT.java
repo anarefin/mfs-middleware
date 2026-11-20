@@ -587,6 +587,20 @@ class CoreWalletRestIT {
     assertThat(mvc.get().uri("/core/v1/reports/emoney-total").exchange()).hasStatus(401);
   }
 
+  @Test
+  void aMwReconTokenReadsTheReportAndNothingElse() {
+    long before = total(PAYER);
+    Signed s = signed(CoreCommandsTestSupport.txnId(), "P2P", PAYER, "WALLET", PAYEE, 1000);
+    assertThat(mvc.post().uri("/core/v1/transfers").header("Authorization", InternalTokens.bearer("mw-recon"))
+        .header("X-Txn-Assertion", s.assertion()).contentType(MediaType.APPLICATION_JSON).content(s.body()).exchange())
+        .hasStatus(403);
+    assertThat(postAs("mw-recon", "/core/v1/credits", "{}")).hasStatus(403);
+    assertThat(getAs("mw-recon", "/core/v1/balance/" + PAYER)).hasStatus(403);
+    assertThat(getAs("mw-recon", "/core/v1/accounts/" + PAYER)).hasStatus(403);
+    assertThat(total(PAYER)).isEqualTo(before);
+    assertThat(getAs("mw-recon", "/core/v1/reports/emoney-total")).hasStatus(200);
+  }
+
   // --- account unlock and KYC factors (ticket 95b: mw-admin-api and mw-auth over REST) ---
 
   private MvcTestResult postAs(String client, String uri, String body) {

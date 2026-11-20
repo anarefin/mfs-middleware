@@ -71,7 +71,7 @@ public class SecurityConfig {
                     .requestMatchers(HttpMethod.POST, "/core/v1/customers/*/verify-factors")
                     .access(caller(props, FACTORS_CALLER))
                     .requestMatchers(HttpMethod.GET, "/core/v1/reports/emoney-total")
-                    .access(caller(props, EMONEY_CALLER))
+                    .access(reportCaller(props))
                     .requestMatchers("/core/**")
                     .access(
                         (auth, ctx) ->
@@ -91,8 +91,6 @@ public class SecurityConfig {
   static final String UNLOCK_CALLER = "mw-admin-api";
   /** The one client that may check a customer's KYC factors: the PIN reset (ticket 95b). */
   static final String FACTORS_CALLER = "mw-auth";
-  /** The one client that may read the e-money total: the trust position job (ticket 127c). */
-  static final String EMONEY_CALLER = "mw-recon";
 
   /** An allowed client ({@code azp}) that is also the operation's one caller. */
   private static AuthorizationManager<RequestAuthorizationContext> caller(InternalAuthProperties props, String client) {
@@ -101,6 +99,17 @@ public class SecurityConfig {
             && auth.get().getPrincipal() instanceof Jwt jwt
             && client.equals(jwt.getClaimAsString("azp"))
             && props.allowedClients().contains(client));
+  }
+
+  /**
+   * A report reader (ticket 127c): an {@code azp} of {@code report-clients} (mw-recon), a list of its own, so a
+   * report reader is never an allowed client of the wallet operations.
+   */
+  private static AuthorizationManager<RequestAuthorizationContext> reportCaller(InternalAuthProperties props) {
+    return (auth, ctx) -> new AuthorizationDecision(
+        auth.get() != null
+            && auth.get().getPrincipal() instanceof Jwt jwt
+            && props.reportClients().contains(jwt.getClaimAsString("azp")));
   }
 
   /** Signature from the realm's JWKS (fetched on first use), expiry, exact issuer and audience. */

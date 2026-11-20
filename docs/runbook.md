@@ -506,7 +506,7 @@ on the host, mw-recon's internal API on port 8097 (it needs an mw-admin-api serv
    `POST /test/recon/v1/trust-position?date=YYYY-MM-DD` does it on the test stack). A 503 `MW-SYS-002`
    (`E-money total: ...`): the core or Keycloak was not reachable, or client `mw-recon` of realm `services`
    lacks its secret (`mw.recon.core.client-secret`, from `KC_MW_RECON_SECRET`) or its `aud-mw-core-mock`
-   mapper; the core answers 403 when `mw-recon` is not in its allowed clients. A real gap (the core total
+   mapper; the core answers 403 when `mw-recon` is not in its `mw.internal-auth.report-clients` (`MW_INTERNALAUTH_REPORTCLIENTS`). A real gap (the core total
    moved after the cut-off, a bank posting not in the ledger) is explained by finance with
    `POST .../{id}/explanations`; the position row is in `recon.trust_position`.
 4. **A transaction class** (`MISSING_IN_UPAY`, `MISSING_IN_PARTNER`, `STATUS_MISMATCH`, `AMOUNT_MISMATCH`): look
