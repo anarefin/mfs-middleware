@@ -2,10 +2,17 @@
 <!--
   Inbound SOAP API of the UCB ATM switch (ticket 120a, FRS UC-17, EXT-16, FL-11, PLT-025, PLT-050).
   Owner: mw-adapter-atm. The WSDL is generated from this schema and served at
-  /partner/ucbatm/ws/v1/atm.wsdl. Every request carries a WS-Security UsernameToken (PasswordText)
-  in the SOAP header. atmTxnRef is the switch's own reference of one ATM session: a repeated request
+  /partner/ucbatm/ws/v1/atm.wsdl. Every request carries a WS-Security UsernameToken in the SOAP
+  header: PasswordDigest with wsse:Nonce (once only) and wsu:Created (within 300 s); PasswordText is
+  refused (ticket 120b1, PLT-008). atmTxnRef is the switch's own reference of one ATM session: a repeated request
   with the same atmTxnRef is answered with the first result and never processed twice (PLT-025).
   The token is a secret: it is never echoed, stored in clear or logged.
+  Status (ticket 120b1): ACCEPTED = done (dispense / credited); DECLINED = refused, do not dispense;
+  PENDING = outcome not known yet, do not dispense, ask again with the same atmTxnRef. Anything that
+  is not ACCEPTED, and every SOAP fault, means no cash leaves the ATM. A repeat of atmTxnRef with
+  another atmId, MSISDN or amount is the fault MW-IDEM-001; ConfirmDispense after ReversalAdvice (or
+  the reverse) is MW-IDEM-ATM_STATE. Until the token flow is live, VerifyTokenAndDebit and CashIn
+  answer the server fault MW-SYS-ATM_CASH_DISABLED.
 -->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            xmlns:tns="urn:bits:mw:atm:v1"
@@ -46,6 +53,8 @@
   <xs:simpleType name="Status">
     <xs:restriction base="xs:string">
       <xs:enumeration value="ACCEPTED"/>
+      <xs:enumeration value="DECLINED"/>
+      <xs:enumeration value="PENDING"/>
     </xs:restriction>
   </xs:simpleType>
 
