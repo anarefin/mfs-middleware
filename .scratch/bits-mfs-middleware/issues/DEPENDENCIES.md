@@ -128,7 +128,7 @@
 117a-bank-adapter-avl-w2b                   97,98,102         done     13m      34 files +2881 −27     692ab069
 117b-avl-api-linked-accounts                117a              in progress
 117c-w2b-flow-channels                      117b              open
-117d-bank-gateway-simulator                 117a              open
+117d-bank-gateway-simulator                 117a              done     19m      44 files +1416 −98     36bea5a1
 117e-bank-suite-regression                  117b,117c,117d    open
 118-mw-adapter-card                         95,97,102         open
 119-mw-adapter-remit                        95,97,102         open
