@@ -109,12 +109,13 @@ public class BillAggregatorMockService {
     if (existing.isPresent()) {
       return paymentReply(p, existing.get());
     }
-    String refusal = switch (d.mode()) {
+    // M9 review: the bill check runs inside the ledger lock, so one bill is never paid twice at once
+    java.util.function.Supplier<String> refusal = () -> switch (d.mode()) {
       case BUSINESS_FAILURE -> d.code() != null ? "CODE:" + d.code() : "REFUSED";
       case UNKNOWN_CODE -> "CODE:" + d.codeOr(AMBIGUOUS);
       default -> check(p, billerCode, billNumber, amount);
     };
-    boolean pending = refusal == null && control.settings(p.id()).callbackOnly();
+    boolean pending = control.settings(p.id()).callbackOnly();
     Payment payment = ledger.pay(p.id(), reference, billerCode, billNumber, amount, refusal, pending);
     log.atInfo().addKeyValue("event", "sim.agg.payment.applied").addKeyValue("partnerId", p.id())
         .log("payment {} status {} ({})", reference, payment.status(), d.source());

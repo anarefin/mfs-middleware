@@ -198,7 +198,8 @@ public class PartnerReplyService {
    * VALIDATING: SUCCESS asks the core next; FAILED, UNKNOWN or NOT_FOUND end FAILED with the partner's
    * error (nothing has moved, so no inquiry is worth it; the payer may simply try again); PENDING waits
    * for the VALIDATING deadline. NOTIFY (PAY) never touches the transaction: SUCCESS is logged; any
-   * other answer is retried with a fresh request id until {@code notify-attempts} sends, then the
+   * other answer is retried with a fresh request id, after a growing backoff ({@code notify-backoff},
+   * saga timer {@code MERCHANT_NOTIFY}), until {@code notify-attempts} sends, then the
    * notify is dead-lettered (ERROR {@code merchant.notify.dead_lettered}, audit
    * {@code merchant.notify.failed}). Any other answer is late and only on the timeline.
    */
@@ -242,7 +243,7 @@ public class PartnerReplyService {
       return;
     }
     if (sent < engine.merchantNotifyMaxAttempts()) {
-      engine.sendMerchantNotify(rec, sent + 1);
+      engine.scheduleMerchantNotify(rec, sent + 1); // M9 review: after a backoff, by the saga timer
       return;
     }
     String errorCode = reply.payload().errorCode();

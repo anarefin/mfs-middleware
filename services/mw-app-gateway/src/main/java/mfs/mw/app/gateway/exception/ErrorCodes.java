@@ -69,5 +69,11 @@ public final class ErrorCodes {
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 
+  /** Too many attempts of one wallet (M9 review: bank account validations), 429. */
+  public static final String SYS_RATE_LIMITED = "MW-SYS-RATE_LIMITED";
+
+  /** The bank account's holder is not the wallet's owner (M9 review, FL-08), 422; nothing linked. */
+  public static final String VAL_ACCOUNT_HOLDER_MISMATCH = "MW-VAL-ACCOUNT_HOLDER_MISMATCH";
+
   private ErrorCodes() {}
 }

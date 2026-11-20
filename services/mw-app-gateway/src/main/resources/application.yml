@@ -352,9 +352,13 @@ mw:
     # Linked bank accounts (ticket 117b, FRS FL-08; service/LinkedAccountService): the account number
     # is stored encrypted (AES-256-GCM under a key derived from encryption-key, which comes from Vault
     # only: secret/mw-app-gateway, created once by the dev provisioning; >= 32 chars) with a keyed hash
-    # for uniqueness and its last 4 digits; responses and logs show the last 4 only.
+    # for uniqueness and its last 4 digits; responses and logs show the last 4 only. Owner binding (M9
+    # review): the bank's holder must match the core's KYC name; avl-attempts account validations per
+    # wallet per avl-window (Redis avl:<wallet>, refused ones included), then 429 MW-SYS-RATE_LIMITED.
     linked-accounts:
       max-per-wallet: 5
+      avl-attempts: ${MW_APP_LINK_AVL_ATTEMPTS:5}
+      avl-window: 1h
     # Preview and confirm (ticket 105, FRS CH-APP-05, PLT-026; service/PreviewService): a preview is kept
     # in Redis preview:<id> for ttl; its previewId is signed with HMAC-SHA256 under signing-key, which
     # comes from Vault only (secret/mw-app-gateway, created once by the dev provisioning; >= 32 chars).

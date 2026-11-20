@@ -96,6 +96,7 @@ class PreviewConfirmControllerTest {
   @MockitoBean OrchestratorQuoteClient quotes;
   @MockitoBean TransactionService transactions;
   @MockitoBean mfs.mw.app.gateway.service.BillerService billers;
+  @MockitoBean mfs.mw.app.gateway.client.BankAccountClient bank;
 
   @Autowired
   PreviewConfirmControllerTest(MockMvcTester mvc) {

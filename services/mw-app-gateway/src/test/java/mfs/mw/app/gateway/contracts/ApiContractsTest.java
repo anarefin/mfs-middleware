@@ -90,10 +90,13 @@ class ApiContractsTest {
         new mfs.mw.app.gateway.dto.LinkedBankAccount.Page(List.of(row)));
     assertValid(OpenApiSchemas.component(BANK_API, "ValidateAccountRequest"),
         java.util.Map.of("bankCode", "dbbl", "accountNumber", "1234567890"));
-    String answer = "{\"bankCode\":\"dbbl\",\"accountLast4\":\"7890\",\"holderName\":\"R.\"}";
+    // M9 review owner binding: the KYC name as matchName, the answer's nameMatch
+    assertValid(OpenApiSchemas.component(BANK_API, "ValidateAccountRequest"),
+        java.util.Map.of("bankCode", "dbbl", "accountNumber", "1234567890", "matchName", "Rahim Uddin"));
+    String answer = "{\"bankCode\":\"dbbl\",\"accountLast4\":\"7890\",\"holderName\":\"R.\",\"nameMatch\":true}";
     assertThat(OpenApiSchemas.component(BANK_API, "AccountValidation").validate(JSON.readTree(answer))).isEmpty();
     assertThat(JSON.readValue(answer, mfs.mw.app.gateway.dto.BankAccountValidation.class))
-        .isEqualTo(new mfs.mw.app.gateway.dto.BankAccountValidation("dbbl", "7890", "R."));
+        .isEqualTo(new mfs.mw.app.gateway.dto.BankAccountValidation("dbbl", "7890", "R.", true));
   }
 
   // ---- served: app.v1 ----

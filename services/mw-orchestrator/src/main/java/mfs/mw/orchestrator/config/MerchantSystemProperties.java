@@ -1,5 +1,6 @@
 package mfs.mw.orchestrator.config;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -12,10 +13,14 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * system and its till. A MERCHANT_PAY to such a wallet is validated by the merchant system before the
  * core is asked, and the merchant is notified after COMPLETED: {@code notifyAttempts} sends in all
  * (the first plus retries), then the notify is dead-lettered (audit + alert); the payment stays.
+ * A retry waits {@code notifyBackoff} after the first failed answer, doubling for each later one
+ * (M9 review; default 30 s, so 30 s then 60 s), through the saga timer {@code MERCHANT_NOTIFY}.
  */
 @ConfigurationProperties("mw.orchestrator.merchant-systems")
 public record MerchantSystemProperties(
-    @DefaultValue Map<String, Merchant> merchants, @DefaultValue("3") int notifyAttempts) {
+    @DefaultValue Map<String, Merchant> merchants,
+    @DefaultValue("3") int notifyAttempts,
+    @DefaultValue("30s") Duration notifyBackoff) {
 
   public record Merchant(String partnerId, String merchantId, String tillId) {}
 
