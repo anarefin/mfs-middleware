@@ -5,7 +5,7 @@
 // with data-testid="scope"). Values are applied in their order (App flows: category, user, then the
 // type, as each one resets the fields after it). Pure data: how-to.test.ts checks every page and every fill target.
 
-export const PAGE_KEYS = ["home", "app", "auth", "ussd", "simulators", "files", "inbox", "checkout", "bulk", "transactions", "credentials", "seed-data"] as const;
+export const PAGE_KEYS = ["home", "app", "auth", "ussd", "simulators", "files", "inbox", "checkout", "bulk", "transactions", "preferences", "credentials", "seed-data"] as const;
 export type PageKey = (typeof PAGE_KEYS)[number];
 
 export type Fill = { label: string; values: Record<string, string> };
@@ -34,6 +34,7 @@ export const FILL_FIELDS: Record<PageKey, readonly string[]> = {
   checkout: ["merchant", "amount", "locale", "wallet", "pin"],
   bulk: ["user", "rows", "taka", "csv", "batchId", "reason"],
   transactions: ["txnId", "msisdn", "status", "txnType"],
+  preferences: ["user", "billerCode", "accountNo", "nickname", "msisdn", "label", "id"],
   credentials: [],
   "seed-data": [],
 };
@@ -298,6 +299,23 @@ export const HOW_TO: Record<PageKey, HowTo> = {
       { label: "MT942 at 14:00", values: { "file-run:party": "trustbank", "file-run:operation": "mt942", "file-run:at": "14:00" } },
       { label: "Next MT940 missing", values: { "file-fault:party": "trustbank", "file-fault:operation": "mt940", "file-fault:behaviour": "MISSING_FILE", "file-fault:nextN": "1" } },
       { label: "Next MT940 with 2 amount mismatches", values: { "file-fault:party": "trustbank", "file-fault:operation": "mt940", "file-fault:behaviour": "INJECTED_MISMATCH", "file-fault:kind": "AMOUNT_MISMATCH", "file-fault:count": "2", "file-fault:nextN": "1" } },
+    ],
+  },
+  preferences: {
+    goal: "Save a biller account and a favourite number for one wallet, and read that wallet's notification inbox.",
+    steps: [
+      "Pick a seeded user (customer01). The console binds the device and signs in.",
+      "Save a biller (DESCO, an account number) and list saved billers: the owner sees the account number.",
+      "Save a favourite number and list favourites.",
+      "Open the inbox. OTP messages are not listed. Mark one id read; another wallet's id is 404.",
+    ],
+    expect: [
+      "Save answers 201 and the list contains that row.",
+      "Removing another wallet's id answers 404.",
+      "The inbox page has items, limit and offset; the MSISDN is masked.",
+    ],
+    fills: [
+      { label: "DESCO for customer01", values: { user: "customer01", billerCode: "DESCO", accountNo: "9876543210", nickname: "home" } },
     ],
   },
   credentials: {

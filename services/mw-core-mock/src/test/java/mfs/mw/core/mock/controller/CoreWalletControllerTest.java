@@ -108,6 +108,22 @@ class CoreWalletControllerTest {
     verifyNoInteractions(service);
   }
 
+  /** Ticket 107b: mw-app-gateway may read an account. Unlock stays mw-admin-api. */
+  @Test
+  void appGatewayMayReadAnAccountButNotUnlockIt() {
+    given(service.account("01711000001"))
+        .willReturn(new AccountView("01711000001", "01711000001", "CUSTOMER", "ACTIVE", "FULL", "Rahim Uddin"));
+
+    assertThat(mvc.get().uri("/core/v1/accounts/01711000001")
+        .header("Authorization", InternalTokens.bearer("mw-app-gateway")))
+        .hasStatusOk().bodyJson().extractingPath("$.holderName").isEqualTo("Rahim Uddin");
+    assertThat(mvc.post().uri("/core/v1/accounts/01711000001/unlock")
+        .header("Authorization", InternalTokens.bearer("mw-app-gateway"))
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"txnId\":\"" + TXN + "\",\"changeRequestId\":\"11111111-1111-1111-1111-111111111111\"}"))
+        .hasStatus(403).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
+  }
+
   // --- WAL-01, WAL-03 ---
 
   @Test

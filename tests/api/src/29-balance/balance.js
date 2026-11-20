@@ -82,4 +82,43 @@ export default [
       S.check('the balance check is not listed', !((h.body || {}).items || []).some(i => i.txnId === id || i.txnType === 'BALANCE'), String(h));
     },
   },
+  {
+    name: '[notify] the signed-in wallet reads its notification inbox and cannot mark another id read',
+    run: async (MW, S) => {
+      const page = await MW.http('GET', '/app/v1/notifications?limit=5&offset=0', { headers: await MW.app.headers('customer01') });
+      S.record(page);
+      S.status(200);
+      S.eq('a page of at most 5', [Array.isArray(page.body.items), page.body.items.length <= 5, page.body.limit, page.body.offset],
+        [true, true, 5, 0]);
+      S.check('the inbox does not carry the raw MSISDN', !JSON.stringify(page.body).includes('01711000001'), String(page));
+      S.record(await MW.http('POST', '/app/v1/notifications/no-such-message/read', { headers: await MW.app.headers('customer01') }));
+      S.status(404);
+      S.code('MW-VAL-003');
+    },
+  },
+  {
+    name: '[balance] the signed-in wallet\'s profile shows its name, status, KYC level and Bangla',
+    run: async (MW, S) => {
+      const r = await MW.http('GET', '/app/v1/profile', { headers: await MW.app.headers('customer01') });
+      S.record(r);
+      S.status(200);
+      S.eq('Rahim Uddin, CUSTOMER, ACTIVE, FULL, bn',
+        [r.body.name, r.body.type, r.body.status, r.body.kycLevel, r.body.language],
+        ['Rahim Uddin', 'CUSTOMER', 'ACTIVE', 'FULL', 'bn']);
+      S.check('the profile does not echo the MSISDN', !JSON.stringify(r.body).includes('01711000001'), String(r));
+    },
+  },
+  {
+    name: '[balance] the signed-in wallet\'s limits are what it may still pay',
+    run: async (MW, S) => {
+      const r = await MW.http('GET', '/app/v1/limits', { headers: await MW.app.headers('customer01') });
+      S.record(r);
+      S.status(200);
+      const left = (r.body && r.body.remaining) || {};
+      S.eq('per transaction maximum is 5,000 Tk', left.perTxn && left.perTxn.valueMinor, 500000);
+      S.eq('BDT', left.daily && left.daily.currency, 'BDT');
+      S.check('daily remaining is a number of poisha', typeof (left.daily && left.daily.valueMinor) === 'number' && left.daily.valueMinor >= 0, left);
+      S.check('the limits do not carry the raw MSISDN', !JSON.stringify(r.body).includes('01711000001'), String(r));
+    },
+  },
 ];

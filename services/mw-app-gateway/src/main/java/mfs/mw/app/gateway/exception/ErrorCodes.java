@@ -57,6 +57,10 @@ public final class ErrorCodes {
   public static final String SYS_SESSION_STORE_UNAVAILABLE = "MW-SYS-012";
   /** mw-orchestrator's query API (the wallet history, ADR D25) could not be asked; retryable: 503. */
   public static final String SYS_ORCHESTRATOR_UNAVAILABLE = "MW-SYS-013";
+  /** mw-notify's customer inbox could not be asked; retryable: 503. */
+  public static final String SYS_NOTIFY_UNAVAILABLE = "MW-SYS-014";
+  /** The core wallet reads (profile, limits, statement) could not be asked; retryable: 503. */
+  public static final String SYS_CORE_UNAVAILABLE = "MW-SYS-015";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
 

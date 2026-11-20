@@ -138,7 +138,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | --- | --- |
 | `UC-01` registration with eKYC | ticket 124 |
 | `UC-02` login, device binding, PIN change | mw-auth (D20–D22); app types ticket 106, USSD ticket 109 |
-| `UC-03` balance and statement | balance done (D26); statement tickets 107, 109 |
+| `UC-03` balance and statement | balance done (D26); app statement done (107b); USSD statement ticket 109 |
 | `UC-04` P2P | done (`P2P`); FRS T1–T12 ticket 104 |
 | `UC-05`, `UC-06` cash-in, cash-out | done |
 | `UC-07` B2B float | ticket 106 |
@@ -205,7 +205,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-APP-05 | done | `POST /app/v1/{group}/preview` then `/confirm`; `POST /app/v1/transactions` runs both (ticket 105) |
 | CH-APP-06 | ticket 106 | channel roles for customer, agent, merchant apps built (spec 9.1); distributor, DSO, partner in 106 |
 | CH-APP-07 | ticket 106 | PIN lockout built (D20: 3 tries, then 1 h, 24 h); per-app-type throttles in 106 |
-| CH-APP-08 | ticket 107 | balance and history built (D25, D26); profile, limits, billers, favourites, inbox, statement in 107 |
+| CH-APP-08 | done | saved billers, favourites and the inbox (107a); profile, limits and the statement (107b: WAL-01, WAL-05, WAL-12, max 90 days) |
 | CH-APP-09 | done | `GET /app/v1/transactions/{txnId}` (mw-app-gateway) |
 | CH-USSD-01 | ticket 109 | GP over SMPP built; all four MNOs, TX+RX binds in 109 |
 | CH-USSD-02 | done | mw-ussd SMPP binds: enquire_link 30 s, reconnect with backoff, window (`UssdSmppProperties`) |
@@ -301,7 +301,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | WAL-09 | done | `POST /core/v1/transfers` (ticket 93): the `PostTransfer` rules |
 | WAL-10 | done | `POST /core/v1/credits` (tickets 93, 94): from the partner settlement wallet `settlementWallet` names (`SETTLEMENT_NPSB`, `SETTLEMENT_UCB_IMT`, ...), else `SETTLEMENT` |
 | WAL-11 | ticket 116 | `POST /core/v1/reversals` built (ticket 93, full, idempotent, once); partial reversal for refunds in 116 |
-| WAL-12 | ticket 107 | `GET /core/v1/statements` (tickets 93, 94): entries by wallet and range, paged, with the balance after each entry; the customer statement in 107 |
+| WAL-12 | done | `GET /core/v1/statements` (tickets 93, 94); the app statement `GET /app/v1/statement` (107b, max 90 days, JSON and CSV). USSD mini statement remains ticket 109 |
 | WAL-13 | done | `GET /core/v1/transactions/{txnId}` (ticket 93: status and entries); the orchestrator's HOLDING query, inquiry, reversal query and credit check use it (ticket 95a) |
 
 ## 8. Supporting services (FRS 8)

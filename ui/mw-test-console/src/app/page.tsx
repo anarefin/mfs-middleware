@@ -17,6 +17,7 @@ export const dynamic = "force-dynamic";
 
 const WHERE = [
   { href: "/app", label: "App flows", what: "device binding, P2P, cash in / out, merchant pay, top-up, bill pay, add money from bank, idempotent resend" },
+  { href: "/preferences", label: "Saved & favourites", what: "saved billers, favourite numbers and the notification inbox of one wallet" },
   { href: "/ussd", label: "USSD phone", what: "Bangla / English menus on gp, robi, bl and teletalk, each with its own code (HTTP and SMPP)" },
   { href: "/simulators", label: "Simulators & faults", what: "timeouts, refusals, callbacks, lost core replies (TSQ, UNKNOWN, MANUAL_REVIEW)" },
   { href: "/inbox", label: "SMS & email", what: "every notification" },

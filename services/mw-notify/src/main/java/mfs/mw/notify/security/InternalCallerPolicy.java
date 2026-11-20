@@ -11,23 +11,30 @@ import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jwt.Jwt;
 
-/** Caller rules of {@code /internal/v1/**} (spec 18.2): audience and an allowed client ({@code azp}). */
+/**
+ * Caller rules of {@code /internal/v1/**} (spec 18.2): audience and an allowed client ({@code azp}).
+ * The customer inbox ({@code /internal/v1/inbox}) is {@code mw-app-gateway} only. The notification
+ * log stays on {@code allowedClients} (ticket 111, {@code mw-admin-api}).
+ */
 public final class InternalCallerPolicy {
 
   private static final Logger log = LoggerFactory.getLogger(InternalCallerPolicy.class);
 
   private final Set<String> allowedClients;
   private final Set<String> orgScopedClients;
+  private final Set<String> inboxClients;
 
-  public InternalCallerPolicy(Set<String> allowedClients, Set<String> orgScopedClients) {
+  public InternalCallerPolicy(Set<String> allowedClients, Set<String> orgScopedClients, Set<String> inboxClients) {
     this.allowedClients = Set.copyOf(allowedClients);
     this.orgScopedClients = Set.copyOf(orgScopedClients);
+    this.inboxClients = Set.copyOf(inboxClients);
   }
 
   public boolean allows(Jwt jwt, HttpServletRequest request) {
     String client = jwt.getClaimAsString("azp");
-    boolean allowed = client != null && allowedClients.contains(client)
-        && !(orgScopedClients.contains(client) && isBlank(request.getParameter("orgId")));
+    boolean inbox = request.getRequestURI() != null && request.getRequestURI().startsWith("/internal/v1/inbox");
+    boolean allowed = client != null && (inbox ? inboxClients : allowedClients).contains(client)
+        && (inbox || !(orgScopedClients.contains(client) && isBlank(request.getParameter("orgId"))));
     if (!allowed) {
       log.atWarn().addKeyValue("event", "security.internal_call_denied")
           .addKeyValue("clientId", client == null ? "none" : client)

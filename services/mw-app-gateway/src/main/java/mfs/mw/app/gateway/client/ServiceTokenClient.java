@@ -21,7 +21,8 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * This service's access token for mw-auth's internal API (spec 18.2, ticket 68; mw-auth's copy,
  * D14): Keycloak realm {@code services}, client credentials, client authenticated with HTTP Basic,
- * audience {@code mw-auth}. Cached until {@link #EARLY} before it expires; {@link #invalidate()}
+ * audiences {@code mw-auth}, {@code mw-orchestrator}, {@code mw-notify} and {@code mw-core-mock}
+ * (the mappers on the client). Cached until {@link #EARLY} before it expires; {@link #invalidate()}
  * drops it (mw-auth answered 401). Failures are {@code MW-SYS-012} (503, retryable: fail closed);
  * the secret never appears in a message or log. The token call is plain HTTP inside the network
  * (dev Keycloak), never with the mTLS context.

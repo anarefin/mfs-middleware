@@ -80,3 +80,5 @@ files:
   events/mw-data-export/dw.audit.operator-action.v1.schema.json: mw-data-export
   api/mw-data-export/data-export.v1.openapi.yaml: mw-data-export
   api/mw-data-export/data-export-test.v1.openapi.yaml: mw-data-export
+  # customer inbox (ticket 107a); caller mw-app-gateway. Not the admin notification log.
+  api/mw-notify/notify-internal.v1.openapi.yaml: mw-notify

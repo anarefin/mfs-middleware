@@ -72,6 +72,86 @@ export default [
       S.code('MW-VAL-001');
     },
   },
+  {
+    name: '[history] the signed-in wallet saves a biller account and another wallet cannot see it',
+    run: async (MW, S) => {
+      const account = ('9' + MW.unique()).replace(/[^0-9A-Za-z]/g, '').slice(0, 20);
+      const saved = await MW.http('POST', '/app/v1/saved-billers', {
+        headers: await MW.app.headers('customer01'),
+        json: { billerCode: 'DESCO', accountNo: account, nickname: 'home' },
+      });
+      S.record(saved);
+      S.status(201);
+      S.eq('the owner sees the account number', saved.body.accountNo, account);
+      const id = saved.body.id;
+      const mine = await MW.http('GET', '/app/v1/saved-billers', { headers: await MW.app.headers('customer01') });
+      S.record(mine);
+      S.status(200);
+      S.check('the owner lists that biller', (mine.body.billers || []).some(b => b.id === id && b.accountNo === account), String(mine));
+      const other = await MW.http('GET', '/app/v1/saved-billers', { headers: await MW.app.headers('customer02') });
+      S.record(other);
+      S.status(200);
+      S.check('another wallet does not see it', !(other.body.billers || []).some(b => b.id === id || b.accountNo === account), String(other));
+      S.record(await MW.http('DELETE', '/app/v1/saved-billers/' + id, { headers: await MW.app.headers('customer02') }));
+      S.status(404);
+      S.code('MW-VAL-003');
+      S.record(await MW.http('DELETE', '/app/v1/saved-billers/' + id, { headers: await MW.app.headers('customer01') }));
+      S.status(204);
+    },
+  },
+  {
+    name: '[history] the signed-in wallet saves a favourite and another wallet cannot delete it',
+    run: async (MW, S) => {
+      const msisdn = '01719' + String(Date.now()).slice(-6);
+      const saved = await MW.http('POST', '/app/v1/favourites', {
+        headers: await MW.app.headers('customer01'),
+        json: { msisdn: msisdn, label: 'Amma' },
+      });
+      S.record(saved);
+      S.status(201);
+      S.eq('the owner sees the number', saved.body.msisdn, msisdn);
+      const id = saved.body.id;
+      const mine = await MW.http('GET', '/app/v1/favourites', { headers: await MW.app.headers('customer01') });
+      S.record(mine);
+      S.status(200);
+      S.check('the owner lists that favourite', (mine.body.favourites || []).some(f => f.id === id && f.msisdn === msisdn), String(mine));
+      S.record(await MW.http('DELETE', '/app/v1/favourites/' + id, { headers: await MW.app.headers('customer02') }));
+      S.status(404);
+      S.code('MW-VAL-003');
+      S.record(await MW.http('DELETE', '/app/v1/favourites/' + id, { headers: await MW.app.headers('customer01') }));
+      S.status(204);
+    },
+  },
+  {
+    name: '[history] a statement longer than 90 days is refused and a short range lists the transfer',
+    run: async (MW, S) => {
+      await S.txn('customer01', 'P2P', '01711000002', 1000, MW.pin);
+      S.status(200);
+      S.txnStatus('COMPLETED');
+      const id = S.txnId();
+      const longFrom = '2026-01-01T00:00:00Z';
+      const longTo = '2026-05-01T00:00:00Z';
+      S.record(await MW.http('GET', '/app/v1/statement?from=' + encodeURIComponent(longFrom) + '&to=' + encodeURIComponent(longTo), {
+        headers: await MW.app.headers('customer01'),
+      }));
+      S.status(400);
+      S.code('MW-VAL-001');
+      const from = new Date(Date.now() - 2 * 86400000).toISOString();
+      const to = new Date(Date.now() + 86400000).toISOString();
+      const query = 'from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to);
+      const st = await MW.http('GET', '/app/v1/statement?' + query, { headers: await MW.app.headers('customer01') });
+      S.record(st);
+      S.status(200);
+      S.check('the transfer is a debit on the statement', (st.body.entries || []).some(e => e.txnId === id && e.direction === 'DEBIT' && e.amount.valueMinor === 1000), String(st));
+      S.check('the statement does not carry the raw MSISDN', !JSON.stringify(st.body).includes('01711000001'), String(st));
+      const csv = await MW.http('GET', '/app/v1/statement?' + query, {
+        headers: Object.assign({ Accept: 'text/csv' }, await MW.app.headers('customer01')),
+      });
+      S.record(csv);
+      S.status(200);
+      S.check('the csv lists the transfer and not the raw number', csv.raw.includes(id) && !csv.raw.includes('01711000001'), csv.raw);
+    },
+  },
 ];
 
 // Shared step of the folder, inlined into each script by the builder (build_collection.mjs, `helpers`):

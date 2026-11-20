@@ -24,3 +24,7 @@ consumes:
     - api/mw-auth/auth-internal.v1.openapi.yaml
     - api/mw-auth/auth.v1.openapi.yaml
     - api/mw-orchestrator/txn-query.v1.openapi.yaml
+    # ticket 107a: the customer inbox (GET /internal/v1/inbox), asked for the token's MSISDN only
+    - api/mw-notify/notify-internal.v1.openapi.yaml
+    # ticket 107b: profile (WAL-01), limits (WAL-05) and the statement (WAL-12), asked for the token's MSISDN
+    - api/mw-core-mock/core-wallet.v1.openapi.yaml

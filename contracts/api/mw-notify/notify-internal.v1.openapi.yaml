@@ -1,0 +1,119 @@
+openapi: 3.1.0
+info:
+  title: Bits notification inbox (mw-notify)
+  version: 1.0.0
+  description: |
+    Customer inbox of mw-notify (ticket 107a), on the app network (`http://mw-notify:8080`; not
+    routed by APISIX). Caller `mw-app-gateway` only: a Keycloak realm `services` client-credentials
+    JWT whose `aud` contains `mw-notify` and whose `azp` is `mw-app-gateway`. Another client is 403
+    MW-AUTH-002; no or bad token is 401 MW-AUTH-001. Every error is the 5.3 envelope.
+
+    GET /internal/v1/inbox lists sent TXN, INFO and PROMO messages for the requested MSISDN only.
+    OTP rows are omitted, not masked. The MSISDN in each item is masked (`0171****789`). POST
+    /internal/v1/inbox/{id}/read marks that message read for that MSISDN; another MSISDN's id, or
+    an OTP id, is 404 MW-VAL-003. This is not GET /internal/v1/notifications (ticket 111, the admin
+    log, caller mw-admin-api).
+servers:
+  - url: http://mw-notify:8080
+security:
+  - internalClientCredentials: []
+paths:
+  /internal/v1/inbox:
+    get:
+      operationId: listInbox
+      summary: One MSISDN's inbox, OTP omitted
+      parameters:
+        - name: msisdn
+          in: query
+          required: true
+          schema: { type: string, maxLength: 20 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+      responses:
+        "200":
+          description: One page, newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InboxPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /internal/v1/inbox/{id}/read:
+    post:
+      operationId: markInboxRead
+      summary: Mark one message read for that MSISDN
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, maxLength: 200 }
+        - name: msisdn
+          in: query
+          required: true
+          schema: { type: string, maxLength: 20 }
+      responses:
+        "204": { description: Marked read }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    internalClientCredentials:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Error:
+      description: The 5.3 error envelope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  schemas:
+    InboxMessage:
+      type: object
+      required: [id, channel, msisdn, priority, body, read, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        channel: { type: string }
+        txnId: { type: string }
+        msisdn: { type: string, description: "Masked (0171****789)" }
+        priority: { type: string, enum: [TXN, INFO, PROMO] }
+        body: { type: string }
+        read: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    InboxPage:
+      type: object
+      required: [items, limit, offset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/InboxMessage" }
+        limit: { type: integer }
+        offset: { type: integer }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        timestamp: { type: string, format: date-time }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }

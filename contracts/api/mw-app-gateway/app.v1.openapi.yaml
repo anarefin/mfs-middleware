@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.9.0
+  version: 1.11.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -43,6 +43,22 @@ info:
     Push token (1.8.0, ticket 110): PUT /app/v1/notifications/push-token registers the app's FCM /
     APNs device token for the signed-in wallet's bound device; mw-notify then pushes transaction
     notices to it (SMS is always sent too). A new device binding drops the old device's token.
+
+    Saved billers, favourites and the inbox (1.10.0, ticket 107a): GET|POST|DELETE
+    /app/v1/saved-billers and /app/v1/favourites are the signed-in wallet's own rows, stored by
+    mw-app-gateway in the clear (the owner sees the account number and the counterparty MSISDN;
+    logs mask them). GET /app/v1/notifications pages that wallet's inbox from mw-notify (OTP
+    messages omitted, MSISDN masked); POST /app/v1/notifications/{id}/read marks one read. Session
+    level, no signature. Another wallet's row is 404 MW-VAL-003. A duplicate save is 409
+    MW-IDEM-001. 503 MW-SYS-014 (retryable) when the inbox cannot be asked.
+
+    Profile, limits and the statement (1.11.0, ticket 107b): GET /app/v1/profile is the signed-in
+    wallet's account (WAL-01: name, type, status, KYC level) plus language `bn`. The owner sees the
+    name; logs keep the first initial. GET /app/v1/limits is WAL-05 for a P2P of 100 poisha, so
+    `remaining` is what is left before that amount. GET /app/v1/statement?from&to is WAL-12 (JSON,
+    or CSV when `Accept` is `text/csv`); a range longer than 90 days is 400 MW-VAL-001. The wallet
+    is the token's. 503 MW-SYS-015 (retryable) when the core cannot be asked. A core refusal is
+    passed through (404 MW-VAL-003, 422 MW-CORE-*).
 servers:
   - url: https://localhost
 security:
@@ -522,6 +538,242 @@ paths:
         "502": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
         "504": { $ref: "#/components/responses/Error" }
+  /app/v1/profile:
+    get:
+      operationId: getProfile
+      summary: The signed-in wallet's profile (WAL-01) and language
+      description: >-
+        Name, type, status and KYC level from the core, plus language `bn`. The owner sees the
+        name. 404 MW-VAL-003 when the core has no such wallet. 503 MW-SYS-015 (retryable) when the
+        core cannot be asked.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      responses:
+        "200":
+          description: This wallet's profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WalletProfile" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /app/v1/limits:
+    get:
+      operationId: getLimits
+      summary: What the signed-in wallet may still pay (WAL-05)
+      description: >-
+        The core's limit check for a P2P of 100 poisha. `remaining` is what is left before that
+        amount. A limit the rule does not set is left out. 503 MW-SYS-015 (retryable) when the core
+        cannot be asked.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      responses:
+        "200":
+          description: The remaining limits
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WalletLimits" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /app/v1/statement:
+    get:
+      operationId: getStatement
+      summary: The signed-in wallet's ledger statement (WAL-12)
+      description: >-
+        Entries in `[from, to)`, oldest first, one page. JSON, or CSV (`at,txnId,direction,kind,amountMinor,balanceAfterMinor`)
+        when `Accept` is `text/csv`. The wallet is not in the body. A range that does not move
+        forward, or is longer than 90 days, is 400 MW-VAL-001. 503 MW-SYS-015 (retryable) when the
+        core cannot be asked.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - name: from
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: true
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, maximum: 100000, default: 0 }
+      responses:
+        "200":
+          description: One page of entries
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LedgerStatement" }
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /app/v1/saved-billers:
+    get:
+      operationId: listSavedBillers
+      summary: The signed-in wallet's saved billers
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      responses:
+        "200":
+          description: This wallet's saved billers, newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedBillerList" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: saveBiller
+      summary: Save a biller account for the signed-in wallet
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveBillerRequest" }
+      responses:
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SavedBiller" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /app/v1/saved-billers/{id}:
+    delete:
+      operationId: deleteSavedBiller
+      summary: Remove one saved biller of the signed-in wallet
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Removed }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /app/v1/favourites:
+    get:
+      operationId: listFavourites
+      summary: The signed-in wallet's favourite counterparties
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      responses:
+        "200":
+          description: This wallet's favourites, newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FavouriteList" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: saveFavourite
+      summary: Save a counterparty for the signed-in wallet
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SaveFavouriteRequest" }
+      responses:
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Favourite" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /app/v1/favourites/{id}:
+    delete:
+      operationId: deleteFavourite
+      summary: Remove one favourite of the signed-in wallet
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Removed }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /app/v1/notifications:
+    get:
+      operationId: listNotifications
+      summary: The signed-in wallet's notification inbox
+      description: >-
+        Paged from mw-notify. OTP messages are omitted. The MSISDN is masked. 503 MW-SYS-014
+        (retryable) when mw-notify cannot be asked.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+      responses:
+        "200":
+          description: One page
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InboxPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /app/v1/notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      summary: Mark one inbox message read for the signed-in wallet
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Marked read }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /app/v1/transactions/{txnId}:
     get:
       operationId: getTransaction
@@ -804,6 +1056,128 @@ components:
                 monthly: { $ref: "#/components/schemas/Money" }
                 dailyCount: { type: integer, minimum: 0 }
                 monthlyCount: { type: integer, minimum: 0 }
+    SaveBillerRequest:
+      type: object
+      required: [billerCode, accountNo]
+      additionalProperties: false
+      properties:
+        billerCode: { type: string, minLength: 1, maxLength: 32, pattern: "^[A-Z0-9_]{1,32}$" }
+        accountNo: { type: string, minLength: 1, maxLength: 32, pattern: "^[0-9A-Za-z-]{1,32}$" }
+        nickname: { type: string, maxLength: 40 }
+    WalletProfile:
+      type: object
+      required: [type, status, kycLevel, language]
+      additionalProperties: false
+      properties:
+        name: { type: string, description: "The owner's own holder name" }
+        type: { type: string, enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, ORGANISATION, SYSTEM] }
+        status: { type: string, enum: [ACTIVE, LOCKED, DORMANT, CLOSED, BLOCKED, HOLD] }
+        kycLevel: { type: string, enum: [BASIC, FULL] }
+        language: { type: string, enum: [bn, en] }
+    WalletLimits:
+      type: object
+      required: [allowed, remaining]
+      additionalProperties: false
+      properties:
+        allowed: { type: boolean }
+        reasonCode: { type: string }
+        remaining:
+          type: object
+          additionalProperties: false
+          properties:
+            perTxn: { $ref: "#/components/schemas/Money" }
+            daily: { $ref: "#/components/schemas/Money" }
+            monthly: { $ref: "#/components/schemas/Money" }
+            dailyCount: { type: integer, minimum: 0 }
+            monthlyCount: { type: integer, minimum: 0 }
+    LedgerStatement:
+      type: object
+      required: [from, to, page, hasMore, entries]
+      additionalProperties: false
+      properties:
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        page: { type: integer, minimum: 0 }
+        hasMore: { type: boolean }
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/LedgerEntry" }
+    LedgerEntry:
+      type: object
+      required: [txnId, direction, kind, amount, at]
+      additionalProperties: false
+      properties:
+        txnId: { type: string }
+        direction: { type: string, enum: [DEBIT, CREDIT] }
+        kind: { type: string, enum: [TRANSFER, FEE, VAT, COMMISSION, REVERSAL, ADJUSTMENT] }
+        amount: { $ref: "#/components/schemas/Money" }
+        balanceAfter: { $ref: "#/components/schemas/Money" }
+        at: { type: string, format: date-time }
+    SavedBiller:
+      type: object
+      required: [id, billerCode, accountNo, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        billerCode: { type: string }
+        accountNo: { type: string, description: "The owner's own account number, in the clear" }
+        nickname: { type: string }
+        createdAt: { type: string, format: date-time }
+    SavedBillerList:
+      type: object
+      required: [billers]
+      additionalProperties: false
+      properties:
+        billers:
+          type: array
+          items: { $ref: "#/components/schemas/SavedBiller" }
+    SaveFavouriteRequest:
+      type: object
+      required: [msisdn]
+      additionalProperties: false
+      properties:
+        msisdn: { type: string, minLength: 11, maxLength: 14 }
+        label: { type: string, maxLength: 40 }
+    Favourite:
+      type: object
+      required: [id, msisdn, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        msisdn: { type: string, description: "The owner's own counterparty, canonical 01…, in the clear" }
+        label: { type: string }
+        createdAt: { type: string, format: date-time }
+    FavouriteList:
+      type: object
+      required: [favourites]
+      additionalProperties: false
+      properties:
+        favourites:
+          type: array
+          items: { $ref: "#/components/schemas/Favourite" }
+    InboxMessage:
+      type: object
+      required: [id, channel, msisdn, priority, body, read, createdAt]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        channel: { type: string }
+        txnId: { type: string }
+        msisdn: { type: string, description: "Masked (0171****789)" }
+        priority: { type: string, enum: [TXN, INFO, PROMO] }
+        body: { type: string }
+        read: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    InboxPage:
+      type: object
+      required: [items, limit, offset]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/InboxMessage" }
+        limit: { type: integer }
+        offset: { type: integer }
     PushTokenRequest:
       type: object
       required: [token, platform]
