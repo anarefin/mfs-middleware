@@ -83,12 +83,21 @@ public final class AggregatorBillLedger implements PartyState {
     }
   }
 
+  /** billagg (the utility aggregator) keeps seeded bills here too; its payments stay in BillPaymentLedger. */
+  public static final String BILLAGG = "billagg";
+
   private final Map<String, Map<String, Bill>> bills = new ConcurrentHashMap<>();
   private final Map<String, Map<String, Payment>> payments = new ConcurrentHashMap<>();
   private final AtomicLong refs = new AtomicLong();
 
   public AggregatorBillLedger() {
     AggregatorProfile.ALL.forEach(p -> reset(p.id()));
+    reset(BILLAGG);
+  }
+
+  /** Sets a seeded bill's state (billagg: PAID after its payment, REVERSED after its reverse). */
+  public void mark(String profile, String billerCode, String billNumber, String status) {
+    bill(profile, billerCode, billNumber).ifPresent(b -> b.status = status);
   }
 
   public Optional<Bill> bill(String profile, String billerCode, String billNumber) {
@@ -140,7 +149,7 @@ public final class AggregatorBillLedger implements PartyState {
 
   @Override
   public void reset(String party) {
-    if (AggregatorProfile.ALL.stream().noneMatch(p -> p.id().equals(party))) {
+    if (!BILLAGG.equals(party) && AggregatorProfile.ALL.stream().noneMatch(p -> p.id().equals(party))) {
       return;
     }
     Map<String, Bill> seeded = new ConcurrentHashMap<>();

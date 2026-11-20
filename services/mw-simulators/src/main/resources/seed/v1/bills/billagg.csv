@@ -1,0 +1,12 @@
+billerCode,billNumber,amount,dueDate,billPeriod,status
+# Seeded bills of the utility aggregator billagg (ticket 114, FRS MCK-08), seed v1: stateful (UNPAID -> PAID
+# -> REVERSED, which is payable again), back to this file only on the party reset (POST /mock-control/reset,
+# DELETE /mock-control/billagg/journal). A bill number not listed here keeps the computed amount (100 taka
+# + its last three digits) and the magic endings of BillAggregatorService. Amounts in BDT. Plain CSV.
+DESCO,1149000001,1325.00,2026-12-12,2026-11,UNPAID
+DESCO,1149000002,512.40,2026-12-12,2026-11,UNPAID
+DESCO,1149000003,880.00,2026-12-12,2026-11,PAID
+DPDC,1149000011,2210.75,2026-12-14,2026-11,UNPAID
+DPDC,1149000012,95.00,2026-12-14,2026-11,PAID
+KGDCL,1149000021,1080.00,2026-12-20,2026-11,UNPAID
+BREB,1149000031,640.00,2026-12-18,2026-11,UNPAID

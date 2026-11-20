@@ -60,6 +60,11 @@ provision_mw_simulators() {
   # the WS-Security UsernameToken password of the billagg SOAP front end (SOAP billers)
   sync_env sim.billagg.ws-password BILLAGG_WS_PASSWORD
   sync_env sim.callback-secrets.c2wbank C2WBANK_HMAC_SECRET
+  # the bill aggregator mocks of ticket 114 sign their callbacks with the dev aggregator secret
+  sync_env sim.callback-secrets.sslcommerz BILLAGG_HMAC_SECRET
+  sync_env sim.callback-secrets.ekpay BILLAGG_HMAC_SECRET
+  sync_env sim.callback-secrets.agg3 BILLAGG_HMAC_SECRET
+  sync_env sim.callback-secrets.agg4 BILLAGG_HMAC_SECRET
   # the push server mock checks the key mw-notify sends (ticket 110)
   sync_env sim.push.api-key PUSH_API_KEY
   sync_env sim.ussd-gateway.credentials.gp USSD_GP_GATEWAY_SECRET
@@ -190,6 +195,16 @@ provision_mw_adapter_billpay() {
   KV="secret/$SVC/billagg"
   sync_env hmac-secret BILLAGG_HMAC_SECRET
   sync_env ws-password BILLAGG_WS_PASSWORD
+  # The bill aggregators of ticket 114 (deploy/partner-routes/aggregators/generate.mjs): callbacks are
+  # hmac-sha256 with the dev aggregator secret (shared with mw-simulators); the outbound credential
+  # follows each one's auth (the simulator checks only that the scheme is present).
+  local agg
+  for agg in sslcommerz ekpay agg3 agg4; do
+    KV="secret/$SVC/$agg"; sync_env hmac-secret BILLAGG_HMAC_SECRET
+  done
+  KV="secret/$SVC/ekpay"; gen_once client-secret 40
+  KV="secret/$SVC/agg3"; gen_once ws-password 40
+  KV="secret/$SVC/agg4"; gen_once basic-user 24; gen_once basic-password 40
   KV="secret/$SVC"
   db_role adapter_billpay_rw billpay_ref
 }

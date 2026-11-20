@@ -28,7 +28,7 @@ class ReversalServiceTest {
   private final OcsLedger ocs = new OcsLedger();
   private final BillPaymentLedger billagg = new BillPaymentLedger();
   private final BankDebitLedger bank = new BankDebitLedger();
-  private final ReversalService service = new ReversalService(engine, ocs, billagg, bank);
+  private final ReversalService service = new ReversalService(engine, ocs, billagg, bank, new mfs.mw.simulators.service.AggregatorBillLedger());
 
   @SuppressWarnings("unchecked")
   private static Map<String, Object> body(SimReply reply) {

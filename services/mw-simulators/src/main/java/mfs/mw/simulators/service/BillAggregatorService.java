@@ -52,13 +52,28 @@ public class BillAggregatorService {
   private final BillPaymentLedger ledger;
   private final BillAggregatorMapper mapper;
   private final CallbackService callbacks;
+  private final AggregatorBillLedger bills;
 
   public BillAggregatorService(
-      MockControl control, BillPaymentLedger ledger, BillAggregatorMapper mapper, CallbackService callbacks) {
+      MockControl control, BillPaymentLedger ledger, BillAggregatorMapper mapper, CallbackService callbacks,
+      AggregatorBillLedger bills) {
     this.control = control;
     this.ledger = ledger;
     this.mapper = mapper;
     this.callbacks = callbacks;
+    this.bills = bills;
+  }
+
+  /**
+   * A seeded bill (ticket 114, {@code seed/v1/bills/billagg.csv}) answers with its own amount and state:
+   * PAID is refused 3002; an unseeded bill number keeps the computed amount and the magic values.
+   */
+  private SimReply seededOrDue(BillFetchRequest req) {
+    return bills.bill(AggregatorBillLedger.BILLAGG, req.billerCode(), req.billNumber())
+        .map(b -> b.paid()
+            ? new SimReply(422, mapper.refused(req, BillAggregatorMapper.BILL_ALREADY_PAID, message(BillAggregatorMapper.BILL_ALREADY_PAID)))
+            : new SimReply(200, mapper.seeded(req, b.amount().toPlainString(), b.dueDate(), b.billPeriod())))
+        .orElseGet(() -> new SimReply(200, mapper.due(req)));
   }
 
   public SimReply billers() {
@@ -94,7 +109,7 @@ public class BillAggregatorService {
         PARTNER,
         () -> unknownBiller
             ? new SimReply(422, mapper.refused(req, BillAggregatorMapper.UNKNOWN_BILLER, "Unknown biller"))
-            : new SimReply(200, mapper.due(req)),
+            : seededOrDue(req),
         () -> new SimReply(503, mapper.unavailable(req)),
         () -> new SimReply(500, mapper.refused(req, "5000", "Internal error")),
         code -> {
@@ -134,11 +149,16 @@ public class BillAggregatorService {
       return reply(existing.get(), d);
     }
     boolean callbackOnly = control.settings(PARTNER).callbackOnly();
-    BillPaymentRecord candidate =
-        mapper.toRecord(req, d.mode(), ledger.nextRef(), callbackOnly).withCode(d.code());
+    var seeded = bills.bill(AggregatorBillLedger.BILLAGG, req.billerCode(), req.billNumber());
+    BillPaymentRecord candidate = seeded.isPresent() && seeded.get().paid() && d.mode() == SimMode.SUCCESS
+        ? mapper.alreadyPaid(req, ledger.nextRef(), callbackOnly)
+        : mapper.toRecord(req, d.mode(), ledger.nextRef(), callbackOnly).withCode(d.code());
     BillPaymentRecord record = ledger.putIfAbsent(candidate);
     if (record != candidate) {
       return reply(record, d); // a concurrent first payment won
+    }
+    if (seeded.isPresent() && "SUCCESS".equals(record.status())) {
+      bills.mark(AggregatorBillLedger.BILLAGG, req.billerCode(), req.billNumber(), "PAID"); // a paid bill stays paid
     }
     log.atInfo()
         .addKeyValue("event", "sim.billagg.payment.applied")

@@ -119,6 +119,27 @@ class BillAggregatorMockIT {
   }
 
   @Test
+  void billaggSeededBillsAreStatefulAndPayableAgainAfterAReverse() throws Exception {
+    String fetch = "{\"billerCode\":\"DPDC\",\"billNumber\":\"1149000011\"}";
+    JsonNode due = json.readTree(post("/billagg/v1/bills/fetch", fetch, Map.of()).body());
+    assertThat(due.get("amount").asString()).isEqualTo("2210.75");
+    String ref = ref();
+    String pay = "{\"transactionId\":\"%s\",\"billerCode\":\"DPDC\",\"billNumber\":\"1149000011\",\"amount\":\"2210.75\"}";
+    assertThat(post("/billagg/v1/payments", pay.formatted(ref), Map.of()).statusCode()).isEqualTo(200);
+    HttpResponse<String> paid = post("/billagg/v1/bills/fetch", fetch, Map.of());
+    assertThat(paid.statusCode()).isEqualTo(422);
+    assertThat(json.readTree(paid.body()).get("code").asString()).isEqualTo("3002");
+    HttpResponse<String> second = post("/billagg/v1/payments", pay.formatted(ref()), Map.of());
+    assertThat(second.statusCode()).isEqualTo(422);
+    assertThat(json.readTree(second.body()).get("code").asString()).isEqualTo("3002");
+
+    assertThat(post("/billagg/v1/payments/" + ref + "/reverse", "{}", Map.of()).statusCode()).isEqualTo(200);
+    assertThat(post("/billagg/v1/payments/" + ref + "/reverse", "{}", Map.of()).statusCode()).as("idempotent").isEqualTo(200);
+    assertThat(post("/billagg/v1/bills/fetch", fetch, Map.of()).statusCode()).isEqualTo(200);
+    send("DELETE", "/mock-control/billagg/journal", null, Map.of());
+  }
+
+  @Test
   void refusalsComeInTheProfilesCodes() throws Exception {
     assertThat(code(post("/sslcommerz/v1/bills/inquiry", "{\"biller_code\":\"AMBERIT\",\"bill_no\":\"404\"}", HMAC)))
         .isEqualTo("E101");

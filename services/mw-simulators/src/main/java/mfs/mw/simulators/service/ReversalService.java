@@ -37,11 +37,15 @@ public class ReversalService implements PartyState {
   private final Map<String, Map<String, Object>> reversed = new ConcurrentHashMap<>();
   private final AtomicLong refs = new AtomicLong();
 
-  public ReversalService(MockControl control, OcsLedger ocs, BillPaymentLedger billagg, BankDebitLedger bank) {
+  private final AggregatorBillLedger bills;
+
+  public ReversalService(
+      MockControl control, OcsLedger ocs, BillPaymentLedger billagg, BankDebitLedger bank, AggregatorBillLedger bills) {
     this.control = control;
     this.ocs = ocs;
     this.billagg = billagg;
     this.bank = bank;
+    this.bills = bills;
   }
 
   /** Reverses {@code transactionId} of {@code partner} ({@code ocs}, {@code billagg} or {@code c2wbank}). */
@@ -73,6 +77,11 @@ public class ReversalService implements PartyState {
                   .addKeyValue("event", "sim.reverse.applied")
                   .addKeyValue("partnerId", partner)
                   .log("reverse of {} applied", transactionId);
+              if ("billagg".equals(partner)) {
+                // a seeded bill (ticket 114) is payable again once its payment is reversed
+                billagg.find(transactionId).ifPresent(r -> bills.mark(AggregatorBillLedger.BILLAGG, r.billerCode(),
+                    r.billNumber(), "REVERSED"));
+              }
               return answer(transactionId, "REVERSED", "0000", "reversed", "REV-" + refs.incrementAndGet(), reversalId);
             });
     return new SimReply(200, result);

@@ -50,6 +50,16 @@ public class BillAggregatorMapper {
         today.format(PERIOD));
   }
 
+  /** A seeded bill (ticket 114) that is due: its own amount, due date and period. */
+  public BillResponse seeded(BillFetchRequest req, String amount, String dueDate, String billPeriod) {
+    return new BillResponse(req.billerCode(), req.billNumber(), "DUE", "000", "Bill found", amount, dueDate, billPeriod);
+  }
+
+  /** A payment of a seeded bill that is already paid (ticket 114): refused 3002, nothing applied. */
+  public BillPaymentRecord alreadyPaid(BillPaymentRequest req, String ref, boolean callbackOnly) {
+    return record(req, "FAILED", BILL_ALREADY_PAID, "Bill already paid", ref, SimMode.BUSINESS_FAILURE, callbackOnly);
+  }
+
   public BillResponse refused(BillFetchRequest req, String code, String message) {
     return new BillResponse(
         req.billerCode(), req.billNumber(), "FAILED", code, message, null, null, null);
