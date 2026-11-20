@@ -25,7 +25,7 @@ import tools.jackson.databind.json.JsonMapper;
  * resource ({@link #REJECT}), derived from the contract's request schema by {@code
  * scripts/derived-schemas.sh} ({@code ./gradlew :contractsLint} fails when one drifts); none has a
  * pattern or format, so no message repeats a request value. The CSV upload is not JSON and keeps
- * its own checks ({@code BulkCsvParser}).
+ * its own checks ({@code BulkFileParser}).
  *
  * <p>Duplicate keys are refused (two JSON parsers may keep different values), and so is trailing
  * content. Every failure is 400 MW-VAL-001.

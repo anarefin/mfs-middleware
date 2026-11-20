@@ -64,6 +64,9 @@ dependencies {
     // Scheduled jobs run on one instance only (ShedLock on this service's schema, 4.4).
     implementation("net.javacrumbs.shedlock:shedlock-spring:7.10.1")
     implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
+    // XLSX bulk uploads (ticket 129): read with the streaming SAX reader of service/BulkXlsxReader,
+    // never the user model; formulas, external links, oversize sheets refused (zip bomb guard).
+    implementation("org.apache.poi:poi-ooxml:6.0.0")
     // Request body schema check (service/BodySchema; body schemas are checked in the service, never
     // at the edge, review A6). The validator is built on a newer Jackson 3 than Boot manages; keep
     // Boot's, so this library does not change Jackson for the whole service (as mw-app-gateway).

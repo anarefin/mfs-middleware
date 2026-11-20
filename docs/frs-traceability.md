@@ -152,7 +152,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-16` remittance | partial: USSD status by Upay txn id is core WAL-13 (109c); inbound push credit built: mw-adapter-remit (signed credit, dedup by partner reference, outbox, keyed fingerprint, status API; 119a, 119b), APISIX route `partner-remit-v1`, orchestrator `RemitInFlow` (validate the beneficiary, CreditWallet from SETTLEMENT_UCB_IMT, refused credit -> MANUAL_REVIEW, outcome back to the adapter; 119b); beneficiary lookup, AML screen (ticket 125) and API suite folder 53 open |
 | `UC-17` ATM | partial: inbound SOAP (verify, confirm, reversal, cash-in) and UcbAtmMock (120a); cash fails closed (`MW-SYS-ATM_CASH_DISABLED`), cash-out state machine and edge route `partner-ucbatm-ws` (120b1); token issue, orchestrator flows and the suite remain tickets 120b2, 120b3 |
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122; 121a built the `mw-adapter-interop` module (family `interop`) and the NPSB participant list mock; the ISO 20022 wire (121b) and the flows and API (121c) remain |
-| `UC-20` bulk disbursement | CSV done; ticket 129 |
+| `UC-20` bulk disbursement | CSV and XLSX done (129a); preview, balance check, retry: ticket 129b-c |
 | `UC-21` AML | ticket 125 |
 | `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports, the exception queue and its maker-checker actions done (tickets 127, 127b); the trust position job and API suite folder `61-recon-reports` done (ticket 127c; open item for Upay: the real core must serve the e-money total endpoint, see REC-07) |
 
@@ -222,7 +222,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-WEB-03 | ticket 116 | redirect and signed IPN with retries built; 24 h retry horizon built (1m..24h, 116) |
 | CH-WEB-04 | ticket 116 | create, status and list by date built (116); refund API and refund IPN built (116c) |
 | CH-WEB-05 | done | session expiry `session-ttl: 15m` (mw-checkout `application.yml`) |
-| CH-POR-01 | ticket 129 | CSV upload and row validation built; XLSX and preview with totals in 129 |
+| CH-POR-01 | ticket 129 | 129a done: CSV and XLSX upload (`BulkFileParser`, bounded XLSX reader) and row validation built; preview with totals in 129b |
 | CH-POR-02 | done | bulk maker-checker in mw-portal-api |
 | CH-POR-03 | ticket 129 | async execution, throttle, per-row status, result file built; retry of failed rows in 129 |
 | CH-POR-04 | ticket 129 | balance check before execution |

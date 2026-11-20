@@ -30,6 +30,17 @@ paths:
         `line <n>: <column>` or `line <n>`, the header being line 1; the first 100 listed, the
         message counts them all; values are never echoed) and nothing is stored. A valid file is
         stored as one batch awaiting approval. Needs role `org-maker`.
+
+        Or XLSX (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, ticket 129):
+        the first sheet, row 1 the same header, one payee per row (blank rows skipped), the same
+        rules and errors, `line <n>` being the sheet's row number. Format the `msisdn` column as
+        text (a number loses its leading 0). Numbers are read in plain decimal notation. A formula
+        anywhere is 400 MW-VAL-031 (never evaluated), as are an external link and a file that is
+        not a workbook (`field` `file`); more rows or cells than the caps, or a workbook that
+        inflates beyond 64 MiB, or holds more than 4 shared strings per allowed row, is 400
+        MW-VAL-030. Cell text is read up to 256 characters. A number with an exponent of more
+        than 2 digits, more than 30 digits or more than 20 decimals is kept as typed and fails
+        the amount rule.
       parameters:
         - $ref: "#/components/parameters/CorrelationId"
       requestBody:
@@ -41,6 +52,8 @@ paths:
               msisdn,amount,reference
               01711000001,1500.00,SAL-NOV-001
               01811000002,1250.50,SAL-NOV-002
+          application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+            schema: { type: string, format: binary }
       responses:
         "201":
           description: Stored, status PENDING_APPROVAL
