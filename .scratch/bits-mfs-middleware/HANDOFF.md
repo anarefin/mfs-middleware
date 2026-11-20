@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (after merging ticket 104). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (after merging ticket 96b). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -15,7 +15,9 @@ Updated: 2026-11-20 (after merging ticket 104). Kept current after every merge/s
 89 (ADRs/traceability), 90 (Redis 8.10.3 AGPL — written OWN-03 approval still open), 91 (HashiCorp Vault 2.2.2), 92 (contracts),
 93 (core-mock /core/v1 REST), 94 (core-mock model), 95a (orchestrator -> core over REST),
 95b (mw-auth and mw-admin-api on /core/v1; `core.command.v1` retired; DROP_REPLY and NO_CALLBACK lose the REST answer),
-96a (inquiry schedule + ops alert), 97 (adapter REVERSE + health),
+96a (inquiry schedule + ops alert),
+96b (partner REVERSE after a refused commit; :mw-orchestrator:build passed; the live suite was not run),
+97 (adapter REVERSE + health),
 98 (routing in mw-orchestrator, including top-up operator resolution and maintenance),
 99 (duplicates/replay), 100a (client registry + APISIX sync), 100b (OAUTH2_CC bearer check; inbound mTLS stays 100c),
 101 (springdoc + drift tests), 102 (mock-control engine, a+b),
@@ -34,9 +36,10 @@ Review fix on the earlier salvage: 2308d22e (19 files +342 −57). 88 is superse
 None. The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
 
 ## Next (frontier, in priority order)
-1. **104 is merged.** The M7 live gate still waits until 96b is also on upay-main. 104's done check runs `scripts/api-test.sh` on a fresh stack. Folders 35, 41, 46, 47 and 62 are written and have not been run live.
-2. Unblocked and not started: 95c, 96b, 106/107/108/109, 115, 117, 130b, 135. Then **M8 gate** after the app and USSD tickets.
-3. 118–121 still name parent ticket 95, and 95c is open. 96c waits on 96b. 100c stays until M13. 132 can use the routing API from 98.
+1. **96b is merged.** 96c and 95c are the next orchestrator tickets and are not started.
+2. **The M7 live gate is unblocked** (104 and 96b are both on upay-main) and was not run. 104's done check runs `scripts/api-test.sh` on a fresh stack. Folders 35, 41, 46, 47 and 62 are written and have not been run live.
+3. Unblocked and not started: 95c, 96c, 106/107/108/109, 115, 117, 130b, 135. Then **M8 gate** after the app and USSD tickets.
+4. 118–121 still name parent ticket 95, and 95c is open. 100c stays until M13. 132 can use the routing API from 98.
 
 ## Milestone gate procedure (after the last ticket of a milestone)
 1. Code review of the milestone range; one fix pass.
