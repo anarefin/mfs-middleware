@@ -115,12 +115,15 @@
 129-portal-bulk-sp                          95,116            open
 130-audit-frs                               97                open
 # --- M12 gate: UC-01, UC-20..22
-131-admin-partner-credentials               91,97             open
+131-admin-partner-credentials               91,97             split (131-split-decisions.md, 2026-11-20)
+131a-admin-credentials-backend              91,97             open
+131b-maintenance-endpoint-profile           97,131a           open   (run before 115, 118-121; routing part after 98)
+131c-admin-ui-partner-tabs                  131a,131b         open
 132-admin-routing-billers-clients-ui        98,100a,113        open
 133-admin-ussd-editor-templates             109,111           open
 134-admin-actions-compliance-recon-ui       125,127,111       open
 135-admin-monitoring-users-audit-mock       103,130           open
-136-developer-guide-sample-connector        114,131           open
+136-developer-guide-sample-connector        114,131a,131b           open
 137-frs-e2e-completion                      104-129(flows)    open
 138-frs-acceptance-gate                     137               open
 # --- M13 gate: FRS 10.4 acceptance criteria 1-7
