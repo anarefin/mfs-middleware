@@ -1,6 +1,6 @@
 package mfs.mw.portal.api.config;
 
-import mfs.mw.portal.api.service.BulkCsvParser;
+import mfs.mw.portal.api.service.BulkFileParser;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -9,7 +9,7 @@ import org.springframework.context.annotation.Configuration;
 public class BulkConfig {
 
   @Bean
-  BulkCsvParser bulkCsvParser(PortalApiProperties props) {
-    return new BulkCsvParser(props.bulk().maxRows());
+  BulkFileParser bulkFileParser(PortalApiProperties props) {
+    return new BulkFileParser(props.bulk().maxRows());
   }
 }

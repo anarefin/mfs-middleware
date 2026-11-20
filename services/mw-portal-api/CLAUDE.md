@@ -41,7 +41,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   (staff usernames are not masked). No token / bad token `401 MW-AUTH-001`; no org `403
   MW-AUTH-002`. Roles per operation (`mw.portal-api.roles`, checked in `service/BatchService`):
   upload `org-maker`; approve/reject `org-checker`; list/get either. Missing role `403 MW-AUTH-002`.
-- Upload `POST /portal/org/v1/bulk/batches` (body `text/csv`, `service/BulkCsvParser`): header
+- Upload `POST /portal/org/v1/bulk/batches` (body `text/csv` or XLSX
+  `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` by `Content-Type`, ticket 129a;
+  `service/BulkFileParser` -> `BulkCsvParser` or `BulkXlsxReader`, both into `BulkRowValidator`, so
+  both formats give the same rows and errors). XLSX is read bounded: a ZIP pre-scan (at most 1,000
+  entries, 64 MiB inflated, else `MW-VAL-030`), an `xl/externalLinks/` part refused, then the first
+  sheet through POI's SAX reader (never the user model): a formula anywhere `MW-VAL-031` (never
+  evaluated), more data rows than `bulk.max-rows` or more than (rows+1)*32 cells `MW-VAL-030`, cell
+  text cut at 256 chars, numbers in plain decimal notation, `line` = the sheet row; not a workbook
+  `MW-VAL-031` field `file`. Rules (both formats): header
   `msisdn,amount,reference`, MSISDN in any accepted form (`util/Msisdn`, stored canonical), amount in
   taka > 0 with at most 2 decimals (stored in poisha), reference `[A-Za-z0-9._-]{1,32}` unique in
   the file. All or nothing: more than `bulk.max-rows` (10,000) data rows or `bulk.max-bytes` (2 MB)
@@ -126,7 +134,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.portal.api`. Follow t
   :contractsLint` fails on drift) by `filter/BodySchemaAdvice` -> `service/BodySchema` (copied from
   mw-app-gateway: duplicate keys, trailing content, non-objects refused; `400 MW-VAL-001`; over 64 KiB
   `413 MW-VAL-BODY_TOO_LARGE`); then Bean Validation. approve/pause/resume take no body. The CSV
-  upload is not JSON: `BulkCsvParser` and its caps (above) check it. A new JSON body type needs its
+  upload is not JSON: `BulkFileParser` and its caps (above) check it. A new JSON body type needs its
   derived schema added to the advice.
 
 ## Contracts used

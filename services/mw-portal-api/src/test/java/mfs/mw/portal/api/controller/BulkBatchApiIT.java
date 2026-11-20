@@ -132,6 +132,41 @@ class BulkBatchApiIT {
   }
 
   @Test
+  void anXlsxUploadIsStoredLikeTheSameCsv() throws java.io.IOException {
+    byte[] file;
+    try (var wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook();
+        var out = new java.io.ByteArrayOutputStream()) {
+      var sheet = wb.createSheet();
+      String[][] cells = {{"msisdn", "amount", "reference"}, {"01711000001", "100.50", "A1"}, {"+8801811000002", "20", "A2"}};
+      for (int r = 0; r < cells.length; r++) {
+        var row = sheet.createRow(r);
+        for (int c = 0; c < 3; c++) {
+          row.createCell(c).setCellValue(cells[r][c]);
+        }
+      }
+      wb.write(out);
+      file = out.toByteArray();
+    }
+    MvcTestResult r =
+        mvc.post()
+            .uri(BATCHES)
+            .with(MAKER)
+            .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+            .content(file)
+            .exchange();
+    assertThat(r).hasStatus(201);
+    String id = body(r).get("batchId").asString();
+    assertThat(body(r).get("status").asString()).isEqualTo("PENDING_APPROVAL");
+    assertThat(
+            jdbc.queryForList(
+                "select line_no || ':' || msisdn || ':' || amount_minor || ':' || reference"
+                    + " from batch_item where batch_id = ?::uuid order by line_no",
+                String.class,
+                id))
+        .containsExactly("2:01711000001:10050:A1", "3:01811000002:2000:A2");
+  }
+
+  @Test
   void tenThousandRowsAreAcceptedAndTenThousandAndOneRejected() {
     String id = uploaded(MAKER, rows(10_000));
     assertThat(jdbc.queryForObject("select count(*) from batch_item where batch_id = ?::uuid", Long.class, id))
