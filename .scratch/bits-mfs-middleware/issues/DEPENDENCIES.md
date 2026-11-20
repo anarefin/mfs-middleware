@@ -151,7 +151,7 @@
 121a-interop-adapter-module                 92,97,102         done     90m      270 files +25086 −28   80896661  (admin-api V21 interop; host port 8102; NPSB participant mock; no npsb seed yet)
 121b-npsb-iso20022-wire                     121a              split (1 h cap)
 121b1-iso20022-mapping-xmldsig              121a              done     60m      31 files +8375 −16     662834c6  (Prowide SRU2025-10.4.1; mw-crypto XMLDSIG purpose for interop)
-121b2-npsb-seed-inbound-mock                121b1             open   (EndToEndId = reference without BITS prefix; ISO step in adapter service layer; mTLS to mw-crypto)
+121b2-npsb-seed-inbound-mock                121b1             done     ~25m+    55 files +7060 −44     bee9a5e5..1d67e5bd,a6a599ec (merge 2ee17a9a; interop V8 npsb_inbound permanent dedup; CreDtTm 24 h/+5 min; mock signs with provisioned switch key; inbound kind stays NPSB_CREDIT with txnType NPSB_IN -> 121c keys on txnType; edge mTLS -> 100c)
 121c-npsb-flows-api                         121b              open   (orchestrator flows, app preview/confirm, Newman 57-npsb)
 122-banglaqr                                121               open
 # --- M11 gate: UC-18, UC-19
