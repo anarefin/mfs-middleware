@@ -92,7 +92,7 @@
 107-app-nonfinancial                        94,105            open
 108-app-soap-facade                         105               open
 109-ussd-frs                                94,105            open
-110-notify-push                             102               open
+110-notify-push                             102               done     37m      86 files +2628 −75     76ab0c4c,4757e709
 111-notify-campaign-optout-log              110               open
 # --- M8 gate: UC-02..07 on app and USSD
 112-telco-four-ocs                          97,98,102         open
