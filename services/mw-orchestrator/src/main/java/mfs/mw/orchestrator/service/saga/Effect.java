@@ -18,6 +18,18 @@ public enum Effect {
   SEND_CREDIT,
   SEND_RELEASE,
   SEND_REVERSE,
+  /**
+   * Partner {@code REVERSE} after a refused commit (ticket 96b). The same request id on every
+   * resend. Not the core ReverseTransaction of a completed transaction.
+   */
+  SEND_PARTNER_REVERSE,
+  /**
+   * QueryTransaction asking whether the hold of a refused commit still exists, once the partner
+   * has confirmed REVERSE (ticket 96b).
+   */
+  SEND_HOLD_QUERY,
+  /** ReleaseHold of a hold that the core says is still there after the partner confirmed REVERSE. */
+  SEND_COMPENSATING_RELEASE,
   /** QueryTransaction asking whether a REVERSING transaction was reversed (part of the reverse step). */
   SEND_REVERSAL_QUERY,
   /** QueryTransaction to the core (status inquiry). */

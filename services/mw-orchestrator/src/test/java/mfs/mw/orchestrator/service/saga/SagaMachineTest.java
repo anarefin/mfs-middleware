@@ -66,6 +66,8 @@ class SagaMachineTest {
 
     row(Status.COMMITTING, new CommitAcknowledged(), Status.COMPLETED, Effect.NONE);
     row(Status.COMMITTING, new CommitRefused(), Status.MANUAL_REVIEW, Effect.NONE);
+    // a partner leg was paid (ticket 96b): compensate it before asking about the hold
+    row(Status.COMMITTING, new CommitRefused(true), Status.REVERSING, Effect.SEND_PARTNER_REVERSE);
     row(Status.COMMITTING, new DeadlineExpired(), Status.COMMITTING, Effect.SEND_COMMIT);
     // an operator's forced credit (ticket 37) asks the core first: credit only what is not credited
     row(Status.COMMITTING, new CreditCheckResult(CreditCheckResult.Credit.CREDITED), Status.COMPLETED, Effect.NONE);
@@ -84,6 +86,15 @@ class SagaMachineTest {
     row(Status.REVERSING, new ReversalUnconfirmed(), Status.REVERSING, Effect.SEND_REVERSAL_QUERY);
     row(Status.REVERSING, new ReversalQueryResult(true), Status.REVERSED, Effect.NONE);
     row(Status.REVERSING, new ReversalQueryResult(false), Status.MANUAL_REVIEW, Effect.NONE);
+    // refused commit, after the partner confirms REVERSE (ticket 96b)
+    row(Status.REVERSING, new PartnerReverseConfirmed(), Status.REVERSING, Effect.SEND_HOLD_QUERY);
+    row(Status.REVERSING, new PartnerReverseRefused(), Status.FAILED, Effect.NONE);
+    row(Status.REVERSING, new HoldCheckResult(HoldCheckResult.Hold.EXISTS), Status.REVERSING, Effect.SEND_COMPENSATING_RELEASE);
+    row(Status.REVERSING, new HoldCheckResult(HoldCheckResult.Hold.GONE), Status.REVERSED, Effect.NONE);
+    row(Status.REVERSING, new HoldCheckResult(HoldCheckResult.Hold.UNCLEAR), Status.MANUAL_REVIEW, Effect.NONE);
+    row(Status.REVERSING, new CompensatingReleaseRetry(), Status.REVERSING, Effect.SEND_COMPENSATING_RELEASE);
+    row(Status.REVERSING, new CompensatingReleaseAcknowledged(), Status.REVERSED, Effect.NONE);
+    row(Status.REVERSING, new CompensatingReleaseRefused(), Status.MANUAL_REVIEW, Effect.NONE);
 
     row(Status.COMPLETED, new ReversalRequested(), Status.REVERSING, Effect.SEND_REVERSE);
 
@@ -105,7 +116,11 @@ class SagaMachineTest {
         new HoldQueryResult(false), new PostSucceeded(), new PostRejected(), new PartnerSucceeded(),
         new PartnerFailed(), new PartnerFailed(false), new PartnerUnknown(), new InquirySucceeded(true), new InquirySucceeded(false),
         new InquiryFailed(true), new InquiryFailed(false), new InquiryExhausted(),
-        new CommitAcknowledged(), new CommitRefused(), new ReleaseAcknowledged(), new ReleaseRefused(),
+        new CommitAcknowledged(), new CommitRefused(), new CommitRefused(true), new ReleaseAcknowledged(), new ReleaseRefused(),
+        new PartnerReverseConfirmed(), new PartnerReverseRefused(),
+        new HoldCheckResult(HoldCheckResult.Hold.EXISTS), new HoldCheckResult(HoldCheckResult.Hold.GONE),
+        new HoldCheckResult(HoldCheckResult.Hold.UNCLEAR),
+        new CompensatingReleaseRetry(), new CompensatingReleaseAcknowledged(), new CompensatingReleaseRefused(),
         new ReversalRequested(), new ReversalAcknowledged(), new ReversalFailed(),
         new ReversalResendsStopped(), new ReversalUnconfirmed(), new ReversalQueryResult(true), new ReversalQueryResult(false),
         new ManualCommit(), new ManualRelease(), new ManualInquiry(), new DeadlineExpired(),
@@ -122,7 +137,7 @@ class SagaMachineTest {
 
   @Test
   void everyListedTransitionIsTakenWithItsEffect() {
-    assertThat(TABLE).hasSize(52);
+    assertThat(TABLE).hasSize(61);
     TABLE.forEach(
         (key, expect) -> {
           Transition t = SagaMachine.apply(key.from(), key.event());

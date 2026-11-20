@@ -74,7 +74,7 @@
 97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
 96-orchestrator-saga-frs                    95,97             split (96-split-decisions.md, 2026-11-20)
 96a-inquiry-schedule-ops-alert              95a,97            done     75m      26 files +384 −152     1f61e790
-96b-partner-reverse-refused-commit          96a               open
+96b-partner-reverse-refused-commit          96a               done     -        22 files +718 −37      587f711b  (:mw-orchestrator:build passed; the live suite was not run)
 96c-partner-leg-reversal-folder30           96b               open
 98-routing-module                           96a,97            done     -        78 files +2755 −82     245a68ee
 99-idempotency-duplicates-replay            89                done     110m     95 files +2601 −110    e3d9c7c6,45ffe6a3
@@ -85,7 +85,7 @@
 101-openapi-swagger-wsdl                    89                done     75m      143 files +6928 −31    09fb498a
 102-mock-control-engine                     89                done (102a b8f2d843; 102b 33m 49 files +1774 −467 aacc96ef)
 103-mock-control-core-and-reset             102,94            done     120m     90 files +3425 −249    8c4ed022
-104-frs-e2e-harness                         96a,98,103         open
+104-frs-e2e-harness                         96a,98,103        done     -        10 files +630 −15      524e1bb6  (folder 41-p2p-frs; 40 already taken by mock-reset. Live Newman and the M7 gate were not run)
 # --- M7 gate: P2P T1-T12 via the app API; clean build; fresh-stack API suite
 105-app-preview-confirm                     95                done     -        67 files +3346 −158    d735f224
 106-app-types-b2b                           94,105            open

@@ -84,7 +84,10 @@ public final class SagaMachine {
       case COMMITTING ->
           switch (event) {
             case CommitAcknowledged e -> go(from, Status.COMPLETED, Effect.NONE);
-            // a definite refusal; resending the same commandId gets the same answer (7.4 conflict)
+            // a partner leg was paid: compensate it, then ask the core about the hold (ticket 96b)
+            case CommitRefused e when e.compensatePartner() ->
+                go(from, Status.REVERSING, Effect.SEND_PARTNER_REVERSE);
+            // a definite refusal with nothing to compensate; resending gets the same answer
             case CommitRefused e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             case DeadlineExpired e -> go(from, Status.COMMITTING, Effect.SEND_COMMIT);
             // a forced credit asks the core first (ticket 37): never credit a txn twice
@@ -111,6 +114,17 @@ public final class SagaMachine {
             case ReversalUnconfirmed e -> go(from, Status.REVERSING, Effect.SEND_REVERSAL_QUERY);
             case ReversalQueryResult e when e.reversed() -> go(from, Status.REVERSED, Effect.NONE);
             case ReversalQueryResult e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
+            // refused commit (ticket 96b): partner REVERSE, then the hold, then REVERSED
+            case PartnerReverseConfirmed e -> go(from, Status.REVERSING, Effect.SEND_HOLD_QUERY);
+            case PartnerReverseRefused e -> go(from, Status.FAILED, Effect.NONE);
+            case HoldCheckResult e when e.hold() == HoldCheckResult.Hold.EXISTS ->
+                go(from, Status.REVERSING, Effect.SEND_COMPENSATING_RELEASE);
+            case HoldCheckResult e when e.hold() == HoldCheckResult.Hold.GONE ->
+                go(from, Status.REVERSED, Effect.NONE);
+            case HoldCheckResult e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
+            case CompensatingReleaseRetry e -> go(from, Status.REVERSING, Effect.SEND_COMPENSATING_RELEASE);
+            case CompensatingReleaseAcknowledged e -> go(from, Status.REVERSED, Effect.NONE);
+            case CompensatingReleaseRefused e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
             default -> null;
           };
       case COMPLETED ->

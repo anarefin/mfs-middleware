@@ -175,10 +175,10 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-014 | tickets 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) and signed nonces (ticket 99) built; card, IMT, NPSB in their adapters |
 | PLT-020 | done | saga steps with compensation (`saga_step`, spec 7.1) |
 | PLT-021 | done | step state persisted per step; resume after restart (`scripts/chaos.sh`); a core REST call starts only after its step commits and its answer re-enters the saga in its own transaction (ticket 95a, `CoreCallDispatcher`, `CoreReplyService`) |
-| PLT-022 | ticket 96 | core-side compensation built; the partner leg (96b after a refused commit, 96c partner first when reversing a completed txn) |
+| PLT-022 | ticket 96 | core-side compensation built; a refused commit compensates the partner first, then releases a hold that remains (`PartnerReversalIT`, ticket 96b); partner-first reversal of a completed txn is 96c |
 | PLT-023 | done | `UNKNOWN` and the inquiry schedule (spec 7.4): default 30 s / 2 min / 10 min / 1 h, `mw.orchestrator.inquiry.schedule`, per-partner list of waits (ticket 96a, `InquiryScheduleTest`, `InquirySagaIT`); a core call without a definite answer (timeout, 5xx) goes UNKNOWN on its step deadline and WAL-13 settles it (ticket 95a, `CoreRestFlowIT`) |
 | PLT-024 | done | `MANUAL_REVIEW` once the last inquiry went unanswered (`answer-wait` 30 s, `MW-TMO-004`); entering MANUAL_REVIEW from any state counts `mw_manual_review_entered_total` and logs `txn.manual_review.entered` (`SagaAlerts`), and mw-notify alerts operations by SMS and email from the status (recipient `OPS`, `mw.notify.ops.*`, V16, `FlowNotificationsIT`; ticket 96a) |
-| PLT-025 | ticket 96 | partner REVERSE (96b, and 96c for a completed txn), idempotent and retried until acknowledged |
+| PLT-025 | ticket 96 | partner REVERSE after a refused commit is idempotent (`reverse:<txnId>`) and retried until acknowledged (`PartnerReversalIT`, ticket 96b); a completed txn is 96c |
 | PLT-026 | done | preview returns the core fee, VAT and commission (`PreviewService`, `POST /app/v1/{group}/preview`, ticket 105) |
 | PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector `client/CoreWalletClient` (connect/read timeouts, breaker `core`, reads retried only; ticket 95a) |
 | PLT-031 | done | no automatic redelivery of a PAY (D28); INQUIRY and STATUS retried |
@@ -373,16 +373,16 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | MCT-06 | done | `GET` and `DELETE /mock-control/{party}/journal`, DELETE resets the party's state (ticket 102) |
 | MCT-07 | done | `POST /mock-control/reset` on mw-simulators: every local party plus mw-core-mock's ledger back to the seed, one line per party; test route `/test/mock-control/*` (ticket 103, `GlobalResetIT`, `MockControlResetIT`) |
 | MCT-08 | ticket 135 | profile `mock-control` only on the test doubles: start guard with `MW_ENV=prod` (`ProdGuardTest`), `scripts/check-mock-control-prod.sh` under the root `check` (ticket 103); the UI part in 135 |
-| T1 | tickets 104, 137 | happy path: P2P in 104, every financial use case in 137 |
-| T2 | tickets 104, 137 | partner business rejection |
-| T3 | tickets 104, 137 | timeout, success on inquiry |
-| T4 | tickets 104, 137 | timeout, failure on inquiry |
-| T5 | tickets 96, 104, 137 | never answers, `MANUAL_REVIEW` with alert |
-| T6 | tickets 104, 137 | same Idempotency-Key twice |
-| T7 | tickets 104, 137 | duplicate partner callback |
-| T8 | tickets 98, 114, 137 | circuit open, failover |
-| T9 | tickets 104, 137 | insufficient balance / limit |
-| T10 | tickets 104, 137 | restart mid-saga (`scripts/chaos.sh` covers the restart today) |
+| T1 | tickets 104, 137 | happy path: P2P in `tests/api/src/41-p2p-frs` (ticket 104); every financial use case in 137 |
+| T2 | tickets 104, 137 | partner business rejection: P2P core refusal with en/bn text in folder 41 |
+| T3 | tickets 104, 137 | timeout, success on inquiry: P2P core `TIMEOUT` nextN in folder 41 |
+| T4 | tickets 104, 137 | timeout, failure on inquiry: P2P lost refusal in folder 41 |
+| T5 | tickets 96, 104, 137 | never answers, `MANUAL_REVIEW` with alert: P2P in `tests/api/src/90-slow/p2p-frs.js` |
+| T6 | tickets 104, 137 | same Idempotency-Key twice: P2P in folder 41 |
+| T7 | tickets 104, 137 | duplicate partner callback: P2P `DUPLICATE_CALLBACK` on the core in folder 41 |
+| T8 | tickets 98, 114, 137 | circuit open, failover: partner failover stays 98 and 114; P2P fast fail is the core switch DOWN in folder 41 |
+| T9 | tickets 104, 137 | insufficient balance / limit: P2P limit before any transfer, and a short balance, in folder 41 |
+| T10 | tickets 104, 137 | restart mid-saga (`scripts/chaos.sh` `CHAOS_TARGETS=mw-orchestrator` checks the ledger; folder 41 checks the same identity on a completed P2P) |
 | T11 | tickets 125, 137 | AML HOLD |
 | T12 | tickets 127, 137 | reconciliation next day |
 
