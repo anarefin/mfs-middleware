@@ -82,6 +82,7 @@ class PostingOperations {
 
   CoreEvent reverse(CoreCommand cmd, String coreRef) {
     ReversePayload p = commands.reverse(cmd);
+    ledger.lockReversalsOf(p.originalTxnId());
     List<LedgerEntry> original = ledger.entriesOf(p.originalTxnId());
     if (original.isEmpty()) {
       return rejected(cmd, "ReversalRejected", coreRef, Reason.ORIGINAL_NOT_FOUND);

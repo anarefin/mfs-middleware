@@ -290,6 +290,44 @@ class CoreWalletRestIT {
         "/core/v1/reversals", "post", 422).path("code").asString()).isEqualTo("MW-CORE-ALREADY_REVERSED");
   }
 
+  /** Security review of 116: refunds of one original racing each other never exceed it. */
+  @Test
+  void concurrentPartialReversalsNeverRefundMoreThanTheOriginal() throws Exception {
+    for (int round = 0; round < 3; round++) {
+      String txn = CoreCommandsTestSupport.txnId();
+      Signed p2p = signed(txn, "P2P", PAYER, "WALLET", PAYEE, 10000);
+      served(post("/core/v1/transfers", p2p.body(), p2p.assertion()), "/core/v1/transfers", "post", 200);
+      long payer = total(PAYER);
+
+      int threads = 6;
+      java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+      java.util.List<java.util.concurrent.Future<MvcTestResult>> calls = new java.util.ArrayList<>();
+      try (var pool = java.util.concurrent.Executors.newFixedThreadPool(threads)) {
+        for (int i = 0; i < threads; i++) {
+          String body = partial(CoreCommandsTestSupport.txnId(), txn, 4000);
+          calls.add(pool.submit(() -> {
+            start.await();
+            return post("/core/v1/reversals", body, null);
+          }));
+        }
+        start.countDown();
+        int ok = 0;
+        for (var call : calls) {
+          MvcTestResult r = call.get();
+          if (r.getResponse().getStatus() == 200) {
+            ok++;
+          } else {
+            assertThat(r).hasStatus(422);
+            assertThat(json.readTree(r.getResponse().getContentAsByteArray()).path("code").asString())
+                .isEqualTo("MW-CORE-REFUND_EXCEEDS");
+          }
+        }
+        assertThat(ok).as("two refunds of 40 Tk fit in 100 Tk, a third does not").isEqualTo(2);
+      }
+      assertThat(total(PAYER)).isEqualTo(payer + 8000);
+    }
+  }
+
   private static String partial(String txnId, String original, long minor) {
     return "{\"txnId\":\"" + txnId + "\",\"originalTxnId\":\"" + original + "\",\"amount\":{\"valueMinor\":" + minor
         + ",\"currency\":\"BDT\"},\"reason\":\"refund\"}";

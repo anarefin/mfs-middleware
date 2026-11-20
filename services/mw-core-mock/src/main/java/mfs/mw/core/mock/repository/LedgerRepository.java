@@ -99,6 +99,15 @@ public class LedgerRepository {
     return n != null && n > 0;
   }
 
+  /**
+   * Serialises every reversal and refund of {@code originalTxnId} until the calling transaction ends
+   * (security review of ticket 116): the refunded total and the reversed mark are read after it, so two
+   * racing refunds cannot both pass the cap.
+   */
+  public void lockReversalsOf(String originalTxnId) {
+    jdbc.queryForObject("select pg_advisory_xact_lock(hashtextextended(?, 116))::text", String.class, originalTxnId);
+  }
+
   /** The total of the partial reversals (refunds) of {@code originalTxnId} so far (ticket 116). */
   public long refundedMinor(String originalTxnId) {
     Long n = jdbc.queryForObject(
