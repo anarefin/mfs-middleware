@@ -340,4 +340,40 @@ class RefundSagaIT {
     assertThat(lastStatus(req.txnId()).path("error").path("code").asString()).isEqualTo("MW-VAL-021");
     assertThat(status(refund)).isEqualTo("COMPLETED");
   }
+
+  /**
+   * M9 review (CH-WEB-03/FL-06): a full SYSTEM reversal of a partially refunded payment is refused up
+   * front; the payment stays COMPLETED, no ReverseTransaction goes out, and it can still be refunded.
+   */
+  @Test
+  void aSystemReversalOfAPartiallyRefundedPaymentIsRefusedAndThePaymentStaysCompleted() {
+    String original = completedCheckout(10_000);
+    String refund = refund(original, 4_000, "refund-1");
+    core.answer(event("TransactionReversed", refund, refund + ":reverse", null));
+    core.clear();
+
+    TxnRequest req = TestData.reversal(TestData.txnId(), "rev-" + original, original, 10_000);
+    transactions.accept(req, "ops-1");
+
+    assertThat(lastStatus(req.txnId()).path("status").asString()).isEqualTo("REJECTED");
+    assertThat(lastStatus(req.txnId()).path("error").path("code").asString()).isEqualTo("MW-VAL-021");
+    assertThat(status(original)).isEqualTo("COMPLETED");
+    assertThat(reverseCommands()).isEmpty();
+    assertThat(status(refund(original, 1_000, "refund-2"))).isEqualTo("REVERSING");
+  }
+
+  /** A refund the core refused moved nothing, so the payment can still be reversed in full. */
+  @Test
+  void aSystemReversalAfterOnlyRefusedRefundsGoesAhead() {
+    String original = completedCheckout(10_000);
+    String refund = refund(original, 4_000, "refund-1");
+    core.answer(event("ReversalRejected", refund, refund + ":reverse", "REFUND_EXCEEDS"));
+    assertThat(status(refund)).isEqualTo("REJECTED");
+    core.clear();
+
+    TxnRequest req = TestData.reversal(TestData.txnId(), "rev-" + original, original, 10_000);
+    transactions.accept(req, "ops-1");
+
+    assertThat(status(original)).isEqualTo("REVERSING");
+  }
 }

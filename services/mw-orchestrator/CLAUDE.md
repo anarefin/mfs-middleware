@@ -354,7 +354,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   schedule above, the query asks about the refund's own txnId (`REVERSED` -> COMPLETED, else / none
   MANUAL_REVIEW `MW-TMO-020`; a later TransactionReversed moves MANUAL_REVIEW to COMPLETED). A refund is
   never reversed itself (`MW-VAL-021`) or inquired. The SYSTEM full reversal keeps the original-moving
-  path; after a partial refund the core refuses it (`REFUND_EXCEEDS`) and it ends MANUAL_REVIEW.
+  path; a payment with a refund that may have moved money (any refund record not REJECTED or FAILED) is
+  refused up front `MW-VAL-021` and stays COMPLETED (M9 review; `TransactionRepository.hasRefunds`): the core
+  would refuse the whole amount (`REFUND_EXCEEDS`) and the payment would end MANUAL_REVIEW.
 - Partner reversal after a refused commit (ticket 96b, FRS PLT-022, PLT-025): CommitFailed or
   CreditRejected on a flow with a partner leg (`CommitRefused(compensatePartner=true)`) moves
   COMMITTING to REVERSING and sends `REVERSE` on `mw.partner.request.<family>.v1`. An operator's

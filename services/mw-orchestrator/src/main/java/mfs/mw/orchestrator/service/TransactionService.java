@@ -284,6 +284,13 @@ public class TransactionService {
         refuse(req, replyTo, now, ErrorCodes.VAL_REVERSAL_AMOUNT, "Reversal amount must equal the original amount");
         return;
       }
+      if (transactions.hasRefunds(original.txnId())) {
+        // M9 review (CH-WEB-03/FL-06): the core would refuse the whole amount (REFUND_EXCEEDS) and the
+        // payment would end MANUAL_REVIEW; refused up front, the payment stays COMPLETED
+        refuse(req, replyTo, now, ErrorCodes.VAL_NOT_REVERSIBLE,
+            "A partially refunded payment cannot be reversed in full; refund the remainder instead");
+        return;
+      }
     }
 
     byte[] hash = requestMapper.requestHash(req);

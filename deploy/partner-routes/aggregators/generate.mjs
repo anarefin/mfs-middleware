@@ -61,7 +61,8 @@ function rest(a) {
     : ${b}.${f.status} = "${a.words.pending}"
       ? {"outcome": "PENDING", "partnerRef": ${b}.${f.paymentRef}}`;
   const mappings = {
-    'INQUIRY.request': req(`{"${f.billerCode}": partner.billerCode, "${f.billNumber}": creditParty.id}`) + '\n',
+    // billMonth (YYYYMM) only when the customer picked one: JSONata leaves an undefined value out (M9 review, FL-04)
+    'INQUIRY.request': req(`{"${f.billerCode}": partner.billerCode, "${f.billNumber}": creditParty.id, "${f.period}": billMonth}`) + '\n',
     // a paid bill is answered as such, never as due again (ticket 114: stateful bills)
     'INQUIRY.response': `status = 200 and ${B}.${f.status} = "${a.words.unpaid}" and $type(${B}.${f.amount}) = "string"
   ? {"outcome": "SUCCESS", "partnerRef": ${B}.${f.billNumber},
@@ -79,12 +80,14 @@ function rest(a) {
 : status = 400
   ? {"outcome": "FAILED", "code": "HTTP_400"}
 : ${unexpected}\n`,
+    // NOT_FOUND only for a 404 carrying the aggregator's own NOT_FOUND marker: a bare gateway or load
+    // balancer 404 stays UNKNOWN, or a paid bill's hold would be released (M9 review)
     'STATUS_QUERY.response': `status = 200
   ? (${payment(B)}
     : ${B}.${f.status} = "${a.words.failed}" and $type(${B}.${f.code}) = "string"
       ? {"outcome": "FAILED", "code": ${B}.${f.code}, "message": ${B}.${f.message}}
     : ${fail})
-: status = 404
+: status = 404 and ${B}.${f.status} = "NOT_FOUND"
   ? {"outcome": "NOT_FOUND", "code": ${B}.${f.code}}
 : ${unexpected}\n`,
     'REVERSE.request': req(`{"${f.reversalId}": reversalReference, "${f.amount}": amount.major}`) + '\n',
@@ -112,7 +115,7 @@ function soap(a) {
 : ${r}.status = "PENDING"
   ? {"outcome": "PENDING", "partnerRef": ${r}.receiptNo}`;
   const mappings = {
-    'INQUIRY.request': '{"GetBill": {"billerCode": partner.billerCode, "billNumber": creditParty.id}}\n',
+    'INQUIRY.request': '{"GetBill": {"billerCode": partner.billerCode, "billNumber": creditParty.id, "billPeriod": billMonth}}\n',
     'INQUIRY.response': `body.GetBillResponse.status = "UNPAID" and $type(body.GetBillResponse.amountDue) = "string"
   ? {"outcome": "SUCCESS", "partnerRef": body.GetBillResponse.billNumber,
      "attributes": {"amount": body.GetBillResponse.amountDue, "dueDate": body.GetBillResponse.dueDate,

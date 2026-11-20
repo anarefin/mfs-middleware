@@ -87,7 +87,7 @@ public class BillFetchService {
     biller.checkFetch(billNumber, billMonth);
     String partnerId = biller.partnerId();
     PartnerResponse response =
-        partners.call(calls.fetchCall(partnerId, billerCode, billNumber, MDC.get("correlationId")));
+        partners.call(calls.fetchCall(partnerId, billerCode, billNumber, billMonth, MDC.get("correlationId")));
     String fallback = biller.fallbackPartnerId();
     if (response instanceof PartnerResponse.NotSent n && FAILOVER.contains(n.reason())
         && fallback != null && !fallback.isBlank() && !fallback.equals(partnerId)) {
@@ -99,7 +99,7 @@ public class BillFetchService {
           .addKeyValue("partnerId", fallback)
           .log("bill fetch for {} not sent to {} ({}); asking the fallback", billerCode, partnerId, n.reason());
       partnerId = fallback;
-      response = partners.call(calls.fetchCall(partnerId, billerCode, billNumber, MDC.get("correlationId")));
+      response = partners.call(calls.fetchCall(partnerId, billerCode, billNumber, billMonth, MDC.get("correlationId")));
     }
     return answer(billerCode, billNumber, partnerId, response);
   }
