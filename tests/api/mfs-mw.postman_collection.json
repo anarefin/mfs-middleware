@@ -4089,6 +4089,75 @@
       ]
     },
     {
+      "name": "42 Audit search, per-hop timeline and audited CSV export",
+      "description": "Ticket 130, FRS AUD-01, AUD-03, AUD-04, AUD-05: mw-audit-dw's search by the transaction's partner and amount (projection of mw.txn.status.v1), one transaction's per-hop timeline with latencies and masked payloads, and the CSV export that writes its own operator-action record. Read through the test-only route /test/audit-dw/v1/* (MW_E2E_ROUTES=1, key-auth).",
+      "item": [
+        {
+          "name": "[audit topup] a search by partner and amount range finds the top-up and its partner call",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[audit topup] a search by partner and amount range finds the top-up and its partner call\", eval(MW.forRun(\"async function auditGet(MW, path) {\\n    return MW.http('GET', '/test/audit-dw/v1/audit/' + path, { apikey: true });\\n  }\\n;(async (MW, S) => {\\n      await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);\\n      S.status(200);\\n      const id = S.txnId();\\n      const q = 'partner=gp&amountMin=2000&amountMax=2000&limit=500&from='\\n        + encodeURIComponent(new Date(Date.now() - 10 * 60000).toISOString());\\n      const r = await MW.poll(() => auditGet(MW, 'events?' + q),\\n        x => ((x.body || {}).items || []).some(e => e.txnId === id && e.action === 'partner.call.completed'), 60000, 1000);\\n      S.status(200, r);\\n      const mine = r.body.items.filter(e => e.txnId === id);\\n      S.check('the top-up is found by partner gp and its amount (2000 poisha)', mine.length > 0, r.body);\\n      S.check('its partner call is the PARTNER_CALL hop', mine.some(e => e.hop === 'PARTNER_CALL' && e.direction === 'OUT'), mine);\\n      const other = await auditGet(MW, 'events?txnId=' + id + '&amountMin=2001');\\n      S.eq('another amount range does not find it', ((other.body || {}).items || []).length, 0, String(other));\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[audit p2p] the timeline of a P2P lists its hops in order with latencies and no clear MSISDN",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[audit p2p] the timeline of a P2P lists its hops in order with latencies and no clear MSISDN\", eval(MW.forRun(\"async function auditGet(MW, path) {\\n    return MW.http('GET', '/test/audit-dw/v1/audit/' + path, { apikey: true });\\n  }\\n;(async (MW, S) => {\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      const id = S.txnId();\\n      const r = await MW.poll(() => auditGet(MW, 'transactions/' + id + '/timeline'),\\n        x => ((x.body || {}).hops || []).some(h => (h.resource || '') === 'txn/' + id && /COMPLETED/.test(JSON.stringify(h))), 60000, 1000);\\n      S.status(200, r);\\n      const hops = r.body.hops || [];\\n      S.check('every orchestrator step is a hop', hops.filter(h => h.hop === 'ORCHESTRATOR').length >= 2, hops);\\n      const since = hops.map(h => h.sinceStartMs);\\n      S.check('hops are in the order they happened', since.every((v, i) => i === 0 || v >= since[i - 1]), since);\\n      S.eq('the first hop starts the timeline', since[0], 0, since);\\n      S.check('later hops carry the gap to the previous one', hops.slice(1).every(h => typeof h.gapMs === 'number'), hops);\\n      S.check('no clear MSISDN in the timeline', !MSISDN.test(r.raw), r.raw);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[audit] a CSV export of a transaction returns its rows and records one operator action",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[audit] a CSV export of a transaction returns its rows and records one operator action\", eval(MW.forRun(\"async function auditGet(MW, path) {\\n    return MW.http('GET', '/test/audit-dw/v1/audit/' + path, { apikey: true });\\n  }\\n;(async (MW, S) => {\\n      await S.p2p('customer01', '01711000002', 1000, MW.pin);\\n      S.status(200);\\n      const id = S.txnId();\\n      await MW.poll(() => auditGet(MW, 'events?txnId=' + id), x => ((x.body || {}).items || []).length >= 2, 60000, 1000);\\n      const operator = 'ops-e2e-auditor-' + id.slice(0, 8);\\n      const csv = await MW.http('GET', '/test/audit-dw/v1/audit/search/export.csv?txnId=' + id,\\n        { apikey: true, headers: { 'X-Mw-Operator-Id': operator } });\\n      S.status(200, csv);\\n      const lines = csv.raw.split('\\\\r\\\\n').filter(l => l);\\n      S.check('a header row and the transaction rows', lines[0].startsWith('at,recordedAt,auditId,txnId') && lines.length >= 3, csv.raw);\\n      S.check('every row is the transaction', lines.slice(1).every(l => l.includes(id)), csv.raw);\\n      S.eq('not truncated', csv.header('X-Mw-Export-Truncated'), 'false');\\n      const rec = await MW.poll(() => auditGet(MW, 'events?action=audit.search.exported&actorId=' + operator),\\n        x => ((x.body || {}).items || []).length >= 1, 10000, 500);\\n      const items = (rec.body || {}).items || [];\\n      S.eq('the export wrote one operator-action record', items.length, 1, items);\\n      S.eq('it names the rows exported', items[0] && items[0].after && items[0].after.rowCount, lines.length - 1, items);\\n      const refused = await MW.http('GET', '/test/audit-dw/v1/audit/search/export.csv?txnId=' + id, { apikey: true });\\n      S.status(400, refused);\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "90 Slow",
       "description": "What stays slow (the 10,000-row payout; the full retry-to-DLQ path, slow with production retry delays; the PIN lockout escalation and the assertion expiry, ticket 76); run with ALL=1.",
       "item": [

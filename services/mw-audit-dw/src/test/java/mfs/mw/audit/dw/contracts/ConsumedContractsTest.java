@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import mfs.mw.audit.dw.dto.AuditEvent;
+import mfs.mw.audit.dw.dto.TxnStatusEvent;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -46,6 +47,17 @@ class ConsumedContractsTest {
             assertThat(e.outcome()).isNotBlank();
             assertThat(e.service()).isNotBlank();
             assertThat(e.at()).isNotNull();
+          },
+          // ticket 130: the search projection audit.txn_index (service/TxnIndexService)
+          "events/mw-orchestrator/mw.txn.status.v1.schema.json",
+          body -> {
+            TxnStatusEvent e = JSON.readValue(body, TxnStatusEvent.class);
+            assertThat(e.txnId()).isNotNull();
+            assertThat(e.status()).isNotBlank();
+            assertThat(e.channel()).isNotBlank();
+            assertThat(e.amount()).isNotNull();
+            assertThat(e.amount().valueMinor()).isNotNull();
+            assertThat(e.updatedAt()).isNotNull();
           });
 
   static final ContractManifest MANIFEST = ContractManifest.load();

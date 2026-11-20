@@ -4,13 +4,17 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import mfs.mw.audit.dw.dto.AuditAnchor;
 import mfs.mw.audit.dw.entity.AnchorRow;
 import mfs.mw.audit.dw.entity.AuditRow;
 import mfs.mw.audit.dw.entity.ChainHead;
+import mfs.mw.audit.dw.entity.PayloadRow;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -45,13 +49,39 @@ public class AuditChainVerifier {
     return HashChain.verify(rows(month), head.isEmpty() ? null : head.get(0));
   }
 
-  /** Every row of one month's chain, in chain order. */
+  /** Every row of one month's chain, in chain order, with its payload rows (ticket 130). */
   public List<AuditRow> rows(String month) {
+    Map<UUID, List<PayloadRow>> payloads = new HashMap<>();
+    jdbc.query(
+        """
+        select audit_id, ordinal, direction, content_type, body, payload_ref, size, sha256
+          from payload where month = ? order by audit_id, ordinal
+        """,
+        rs -> {
+          payloads
+              .computeIfAbsent(rs.getObject("audit_id", UUID.class), k -> new ArrayList<>())
+              .add(
+                  new PayloadRow(
+                      rs.getInt("ordinal"),
+                      rs.getString("direction"),
+                      rs.getString("content_type"),
+                      rs.getString("body"),
+                      rs.getString("payload_ref"),
+                      (Integer) rs.getObject("size"),
+                      rs.getBytes("sha256")));
+        },
+        month);
+    return rawRows(month).stream()
+        .map(r -> r.withHop(r.hop(), r.direction(), r.durationMs(), payloads.getOrDefault(r.auditId(), List.of())))
+        .toList();
+  }
+
+  private List<AuditRow> rawRows(String month) {
     return jdbc.query(
             """
             select month, seq, audit_id, recorded_at, at, txn_id, correlation_id, actor_type,
                    actor_id, action, resource, outcome, service, source_ip, payload_ref,
-                   before::text before, after::text after, prev_hash, hash
+                   before::text before, after::text after, prev_hash, hash, hop, direction, duration_ms
               from event where month = ? order by seq
             """,
             (rs, i) ->
@@ -74,7 +104,11 @@ public class AuditChainVerifier {
                     rs.getString("before"),
                     rs.getString("after"),
                     rs.getBytes("prev_hash"),
-                    rs.getBytes("hash")),
+                    rs.getBytes("hash"),
+                    rs.getString("hop"),
+                    rs.getString("direction"),
+                    (Long) rs.getObject("duration_ms"),
+                    List.of()),
             month);
   }
 

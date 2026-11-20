@@ -255,7 +255,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CON-01 | done | partner engine (D28) with PAY, INQUIRY, STATUS_QUERY, REVERSE (`reverse:<txnId>`, sent once) and the optional `HEALTH_CHECK` probe (ticket 97; `PartnerReverseRouteIT`, `PartnerRouteHealthTest`) |
 | CON-02 | tickets 114, 131, 136 | partner routes as config with maker-checker built (D28); proven per family in 114, by console alone in 131, 136 |
 | CON-03 | done | JSONata and XSLT mappings in versioned partner records with maker-checker (D28, mw-admin-api) |
-| CON-04 | ticket 130 | partner audit event and raw masked payload store `partner_payload` with latency and `payloadRef` built (ticket 97, `PartnerPayloadIT`); audit side 130 |
+| CON-04 | done | partner audit event and raw masked payload store `partner_payload` with latency and `payloadRef` (ticket 97, `PartnerPayloadIT`); audit side (ticket 130): the adapters send the masked bodies as `payload` with hop PARTNER_CALL and the latency, mw-audit-dw scrubs them again and chains them in `audit.payload` (`PartnerAuditPublisherTest`, `PayloadScrubTest`, `HashChainWithPayloadIT`) |
 | CON-05 | done | `PartnerRouteHealth`: UP, DEGRADED, DOWN, MAINTENANCE (+ DISABLED, DELETED), changes on `mw.partner.route.status.v1` `health` (ticket 97) |
 | CON-06 | ticket 136 | developer guide and sample connector |
 | EXT-01 | ticket 109 | USSD gateway simulator (GP, SMPP) built; four MNOs in 109 |
@@ -330,11 +330,11 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CMP-03 | ticket 125 | real-time pre-check, fails open with an alert (D32) |
 | CMP-04 | ticket 124 | consent log |
 | CMP-05 | tickets 124, 134 | encrypted at rest; unmask by permission in 134 |
-| AUD-01 | ticket 130 | state changes and operator actions audited today; request and response payloads in 130 |
+| AUD-01 | ticket 130 | state changes, operator actions and partner calls audited with masked request/response payloads in the hash chain (`audit.payload`, ticket 130); open: channel request logging (CHANNEL_IN), core-call and notification hops are not sent yet |
 | AUD-02 | done | append-only audit with a hash chain (mw-audit-dw `audit_event`) |
-| AUD-03 | ticket 130 | search built (ADM-09); more filters and the 3 s / 30 day target in 130 |
-| AUD-04 | ticket 130 | saga timeline built; per-hop payloads and latency in 130 |
-| AUD-05 | ticket 130 | audited CSV export |
+| AUD-03 | done | search by txnId, actor, action, resource, outcome, time, and (ticket 130) partner, channel, status, amount range, MSISDN (TOKENISE_MSISDN token) via `audit.txn_index`; 3 s over 30 days proven by `AuditSearchPerfIT` (`slow-wait`) |
+| AUD-04 | ticket 135 | `GET /internal/v1/audit/transactions/{txnId}/timeline`: hops in order with latency, gaps and masked payloads (`TimelineIT`); mw-admin-api transaction detail does not call it yet (UI ticket 135) |
+| AUD-05 | done | `GET /internal/v1/audit/search/export.csv` with a row cap; every export writes an `audit.search.exported` operator-action record into the chain (`ExportAuditedIT`) |
 | DAT-01 | deviation | JSON Schema in Git, no schema registry (M9, D10, D31): the FRS allows JSON Schema; the registry is not run. The FRS topics come with tickets 127 (`recon.exception`) and 128 |
 | DAT-02 | ticket 128 | daily DW batch |
 | DAT-03 | ticket 128 | PII tokenisation policy |

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "auditId": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c70",
+  "txnId": "01933b8e-7c1a-7b2e-9f3d-2a4c5e6f7a8b",
+  "correlationId": "corr-0001",
+  "actor": { "type": "system", "id": "mw-adapter-telco" },
+  "action": "partner.call.completed",
+  "resource": "partner/ocs/PAY",
+  "after": { "httpStatus": "200", "partnerOutcome": "SUCCESS", "durationMs": "184" },
+  "payloadRef": "partner-payload/6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b",
+  "outcome": "SUCCESS",
+  "at": "2026-11-03T08:15:31Z",
+  "service": "mw-adapter-telco",
+  "hop": "PARTNER_CALL",
+  "direction": "OUT",
+  "durationMs": 184,
+  "payload": [
+    { "direction": "OUT", "contentType": "application/json", "body": "{\"msisdn\":\"0171****567\",\"amount\":\"50.00\"}", "payloadRef": "partner-payload/6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b" },
+    { "direction": "IN", "contentType": "application/json", "body": "{\"status\":\"OK\",\"ref\":\"OCS-1\"}", "payloadRef": "partner-payload/6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b" }
+  ]
+}

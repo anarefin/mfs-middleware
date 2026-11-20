@@ -38,6 +38,7 @@ class AuditTestControllerTest {
 
   @MockitoBean AuditSearchService search;
   @MockitoBean AuditTestService tests;
+  @MockitoBean mfs.mw.audit.dw.service.AuditExportService export;
 
   @Autowired
   AuditTestControllerTest(MockMvcTester mvc) {
@@ -51,7 +52,7 @@ class AuditTestControllerTest {
             UUID.randomUUID().toString(), "2026-11", 7L, Instant.parse("2026-11-06T10:00:00Z"),
             Instant.parse("2026-11-06T10:00:00Z"), null, "corr-1", new AuditEvent.Actor("user", "org-checker01"),
             "bulk.batch.approved", "bulk-batch/b1", "SUCCESS", "mw-portal-api", null, null, null, null);
-    when(search.search(any())).thenReturn(new AuditEntry.Page(List.of(e), 100, 0, AnchorStatus.off()));
+    when(search.search(any(), any())).thenReturn(new AuditEntry.Page(List.of(e), 100, 0, AnchorStatus.off()));
 
     assertThat(mvc.get().uri("/test/v1/audit/events?resource=bulk-batch/b1"))
         .hasStatusOk()
@@ -60,7 +61,7 @@ class AuditTestControllerTest {
         .isEqualTo("bulk.batch.approved");
 
     ArgumentCaptor<AuditSearchCriteria> c = ArgumentCaptor.forClass(AuditSearchCriteria.class);
-    verify(search).search(c.capture());
+    verify(search).search(c.capture(), any());
     assertThat(c.getValue().resource()).isEqualTo("bulk-batch/b1");
     assertThat(c.getValue().limit()).isEqualTo(100);
   }
