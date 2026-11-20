@@ -15,6 +15,7 @@ import mfs.mw.orchestrator.dto.TxnDetail;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.dto.TxnSearchCriteria;
 import mfs.mw.orchestrator.entity.TransactionRecord;
+import mfs.mw.orchestrator.service.saga.PendingLeg;
 import mfs.mw.orchestrator.service.saga.Status;
 import mfs.mw.orchestrator.util.SearchHash;
 import mfs.mw.orchestrator.util.SearchKeys;
@@ -29,7 +30,7 @@ public class TransactionRepository {
   private static final String COLUMNS =
       "txn_id, created_at, updated_at, status, previous_status, reply_to, fee_minor, core_ref,"
           + " error_code, error_message, error_message_bn, error_retryable,"
-          + " request::text, hold_id, partner_ref, reversal_txn_id";
+          + " request::text, hold_id, partner_ref, reversal_txn_id, pending_leg";
 
   /** {@link #COLUMNS} of the search's {@code transaction t}. */
   private static final String T_COLUMNS =
@@ -105,7 +106,7 @@ public class TransactionRepository {
         "update transaction set updated_at = ?, status = ?, previous_status = ?, fee_minor = ?,"
             + " core_ref = ?, error_code = ?, error_message = ?, error_message_bn = ?,"
             + " error_retryable = ?, hold_id = ?, partner_ref = ?,"
-            + " reversal_txn_id = ?, version = version + 1"
+            + " reversal_txn_id = ?, pending_leg = ?, version = version + 1"
             + " where txn_id = ?",
         Timestamp.from(rec.updatedAt()),
         rec.status().name(),
@@ -119,6 +120,7 @@ public class TransactionRepository {
         rec.holdId(),
         rec.partnerRef(),
         rec.reversalTxnId(),
+        rec.pendingLeg() == null ? null : rec.pendingLeg().name(),
         rec.txnId());
   }
 
@@ -303,6 +305,10 @@ public class TransactionRepository {
         txnId);
   }
 
+  private static PendingLeg pendingLeg(String value) {
+    return value == null ? null : PendingLeg.valueOf(value);
+  }
+
   private TransactionRecord map(ResultSet rs, int row) throws SQLException {
     String code = rs.getString("error_code");
     ErrorInfo error =
@@ -326,6 +332,7 @@ public class TransactionRepository {
         error,
         rs.getString("hold_id"),
         rs.getString("partner_ref"),
-        rs.getObject("reversal_txn_id", UUID.class));
+        rs.getObject("reversal_txn_id", UUID.class),
+        pendingLeg(rs.getString("pending_leg")));
   }
 }

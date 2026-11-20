@@ -411,14 +411,14 @@ class InquirySagaIT {
   // --- commit / release refused by the core ------------------------------------------------------
 
   @Test
-  void aCommitTheCoreRefusesGoesToManualReview() {
+  void aCommitTheCoreRefusesStartsPartnerReverse() {
     String txn = startTopup("gp");
     partnerReplies.handle(payReply(txn, "SUCCESS", ",\"partnerRef\":\"OCS-1\""));
     coreEvents.answer(event("CommitFailed", txn, txn + ":commit", "HOLD_RELEASED", "{}"));
 
-    assertThat(statuses(txn)).endsWith("COMMITTING", "MANUAL_REVIEW");
+    assertThat(statuses(txn)).endsWith("COMMITTING", "REVERSING");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-CORE-HOLD_RELEASED");
-    assertThat(timersOf(txn)).isZero();
+    assertThat(timersOf(txn)).isOne();
     assertAllValid(txn);
   }
 

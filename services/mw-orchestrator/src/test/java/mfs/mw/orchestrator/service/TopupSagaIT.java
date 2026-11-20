@@ -385,7 +385,7 @@ class TopupSagaIT {
 
     coreEvents.answer(event("CommitFailed", txn, txn + ":commit", "HOLD_NOT_FOUND", "{}"));
 
-    assertThat(status(txn)).isEqualTo("MANUAL_REVIEW");
+    assertThat(status(txn)).isEqualTo("REVERSING");
     assertThat(counter("mw.txn.commit.failed")).isEqualTo(before + 1);
   }
 

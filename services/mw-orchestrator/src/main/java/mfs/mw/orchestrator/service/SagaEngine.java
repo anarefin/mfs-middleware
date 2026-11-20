@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import mfs.mw.orchestrator.config.InquiryProperties;
 import mfs.mw.orchestrator.config.OrchestratorProperties;
@@ -36,6 +37,7 @@ import mfs.mw.orchestrator.service.saga.Effect;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
+import mfs.mw.orchestrator.service.saga.PendingLeg;
 import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
@@ -146,10 +148,15 @@ public class SagaEngine {
     Transition t = SagaMachine.apply(rec.status(), event);
     refuseStepOutsideFlow(rec, event, t);
     Instant now = clock.instant();
+    PendingLeg leg = nextLeg(t, rec.pendingLeg());
     TransactionRecord next = t.changesState() ? rec.moved(t.to(), now, error) : rec;
-
-    if (t.changesState()) {
+    if (!Objects.equals(leg, next.pendingLeg())) {
+      next = next.withPendingLeg(leg);
+    }
+    if (t.changesState() || !Objects.equals(leg, rec.pendingLeg())) {
       transactions.update(next);
+    }
+    if (t.changesState()) {
       transactions.recordStep(rec.txnId(), t.from(), t.to(), event.getClass().getSimpleName(), now);
       publishStatus(statusMapper.toStatus(next, balance), next.replyTo());
       audit(next, t.from(), now);
@@ -237,6 +244,16 @@ public class SagaEngine {
       scheduleFirstInquiry(rec, now);
       return;
     }
+    // Ticket 96b: not flow steps. A refused commit asks about the hold, and releases it when the
+    // core says it remains, including a flow that has no hold of its own (ADD_MONEY_BANK).
+    if (effect == Effect.SEND_HOLD_QUERY) {
+      send(rec, commandMapper.holdCheck(rec, now, properties.commandTtl()));
+      return;
+    }
+    if (effect == Effect.SEND_COMPENSATING_RELEASE) {
+      send(rec, commandMapper.release(rec, now, properties.commandTtl()));
+      return;
+    }
     Optional<Step> step = Step.of(effect);
     Optional<Flow> flow = flows.find(rec.request().txnType());
     if (step.isEmpty() || flow.isEmpty() || !flow.get().allows(step.get())) {
@@ -268,11 +285,36 @@ public class SagaEngine {
       case QUERY -> send(rec, commandMapper.query(rec, now, ttl));
       case CALL_PARTNER -> callPartner(rec, flow.get().partnerCall().orElseThrow(), now);
       case INQUIRE -> inquire(rec, flow.get(), now);
-      case REVERSE ->
-          send(rec, effect == Effect.SEND_REVERSAL_QUERY
-              ? commandMapper.reversalQuery(rec, now, ttl)
-              : commandMapper.reverse(rec, now, ttl));
+      case REVERSE -> {
+        if (effect == Effect.SEND_REVERSAL_QUERY) {
+          send(rec, commandMapper.reversalQuery(rec, now, ttl));
+        } else if (effect == Effect.SEND_PARTNER_REVERSE || rec.pendingLeg() == PendingLeg.PARTNER_REVERSE) {
+          sendPartnerReverse(rec, now);
+        } else {
+          send(rec, commandMapper.reverse(rec, now, ttl));
+        }
+      }
     }
+  }
+
+  /**
+   * The leg the transition waits on. A core reversal of a completed transaction ({@code
+   * SEND_REVERSE} with no partner leg) keeps a null leg, so its deadline still asks the core.
+   */
+  private static PendingLeg nextLeg(Transition t, PendingLeg current) {
+    return switch (t.effect()) {
+      case SEND_PARTNER_REVERSE -> PendingLeg.PARTNER_REVERSE;
+      case SEND_HOLD_QUERY -> PendingLeg.HOLD_QUERY;
+      case SEND_COMPENSATING_RELEASE -> PendingLeg.HOLD_RELEASE;
+      case NONE -> t.to().terminal() || t.to() == Status.MANUAL_REVIEW ? null : current;
+      default -> current;
+    };
+  }
+
+  /** Partner REVERSE of a refused commit. The request id is the name UUID of {@code reverse:<txnId>}. */
+  private void sendPartnerReverse(TransactionRecord rec, Instant now) {
+    PartnerCall call = flows.find(rec.request().txnType()).flatMap(Flow::partnerCall).orElseThrow();
+    sendToPartner(rec, call, partnerMapper.reverse(rec, call, now, properties.partnerTimeout()), now);
   }
 
   /**

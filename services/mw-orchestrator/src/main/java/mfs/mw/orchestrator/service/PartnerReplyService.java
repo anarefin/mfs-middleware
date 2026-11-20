@@ -79,6 +79,10 @@ public class PartnerReplyService {
       return;
     }
     recordAnswer(reply);
+    if (PartnerRequestMapper.REVERSE.equals(operation(reply))) {
+      applyReverse(found.get(), reply);
+      return;
+    }
     if (found.get().status() == Status.UNKNOWN) {
       inquiries.partnerAnswer(found.get(), reply); // STATUS_QUERY answer or a late PAY reply (7.4)
       return;
@@ -113,6 +117,35 @@ public class PartnerReplyService {
           .addKeyValue("status", e.from().name())
           .addKeyValue("outcome", reply.payload().outcome())
           .log("partner reply does not fit the transaction's state; ignored");
+    }
+  }
+
+  /**
+   * A REVERSE reply after a refused commit (ticket 96b). SUCCESS asks the core about the hold;
+   * a definite FAILED ends the transaction FAILED and leaves the hold untouched (the hold is
+   * asked about only after the partner confirms). UNKNOWN, PENDING and NOT_FOUND wait for the
+   * reversal deadline, which resends the same key.
+   */
+  private void applyReverse(TransactionRecord rec, PartnerReply reply) {
+    Optional<Outcome> outcome = PartnerReplyMapper.outcome(reply);
+    if (outcome.isEmpty() || outcome.get() == Outcome.UNKNOWN || outcome.get() == Outcome.PENDING
+        || outcome.get() == Outcome.NOT_FOUND) {
+      drop(reply, "partner.reverse.pending", "partner reversal has no definite answer yet; the deadline resends it");
+      return;
+    }
+    try {
+      if (outcome.get() == Outcome.SUCCESS) {
+        engine.fire(rec, new SagaEvent.PartnerReverseConfirmed(), null);
+      } else {
+        engine.fire(rec, new SagaEvent.PartnerReverseRefused(), mapper.error(reply));
+      }
+    } catch (InvalidTransitionException e) {
+      log.atInfo()
+          .addKeyValue("event", "saga.event.ignored")
+          .addKeyValue("txnId", reply.txnId())
+          .addKeyValue("status", e.from().name())
+          .addKeyValue("outcome", outcome.get().name())
+          .log("partner reversal reply does not fit the transaction's state; ignored");
     }
   }
 

@@ -11,6 +11,7 @@ import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.repository.SagaTimerRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
+import mfs.mw.orchestrator.service.saga.PendingLeg;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import org.slf4j.Logger;
@@ -72,7 +73,19 @@ public class SagaTimerService {
           continue;
         }
         if (rec.status() == Status.REVERSING) {
-          reversingDeadline(rec);
+          if (rec.pendingLeg() == PendingLeg.PARTNER_REVERSE) {
+            partnerReverseDeadline(rec);
+          } else if (rec.pendingLeg() == PendingLeg.HOLD_QUERY) {
+            engine.fire(rec, new SagaEvent.HoldCheckResult(SagaEvent.HoldCheckResult.Hold.UNCLEAR), HOLD_UNANSWERED);
+          } else if (rec.pendingLeg() == PendingLeg.HOLD_RELEASE) {
+            engine.fire(rec, new SagaEvent.CompensatingReleaseRetry(), null);
+            alerts.stillUnacknowledged(
+                Status.RELEASING, rec.txnId(),
+                transactions.enteredAt(rec.txnId(), Status.REVERSING).orElse(rec.updatedAt()),
+                timer.dueAt().minus(properties.retryTimeout()), clock.instant());
+          } else {
+            reversingDeadline(rec);
+          }
           continue;
         }
         engine.fire(rec, new SagaEvent.DeadlineExpired(), expiryError(rec.status()));
@@ -92,6 +105,24 @@ public class SagaTimerService {
       }
     }
     return due.size();
+  }
+
+  /**
+   * A partner REVERSE that the partner has not confirmed (ticket 96b, PLT-025). Resend the same
+   * key every {@code retry-timeout} until {@code reversing-timeout}, then MANUAL_REVIEW. Unlike a
+   * core reversal there is no later query: the partner either confirmed or it did not.
+   */
+  private void partnerReverseDeadline(TransactionRecord rec) {
+    Instant began = transactions.enteredAt(rec.txnId(), Status.REVERSING).orElse(rec.updatedAt());
+    if (clock.instant().isBefore(began.plus(properties.reversingTimeout()))) {
+      engine.fire(rec, new SagaEvent.DeadlineExpired(), null);
+    } else {
+      engine.fire(rec, new SagaEvent.ReversalFailed(), PARTNER_REVERSE_UNCONFIRMED);
+      log.atWarn()
+          .addKeyValue("event", "txn.partner_reverse.unacknowledged")
+          .addKeyValue("txnId", rec.txnId().toString())
+          .log("the partner did not acknowledge the reversal; operations will review it");
+    }
   }
 
   /**
@@ -128,6 +159,20 @@ public class SagaTimerService {
       engine.fire(rec, new SagaEvent.ReversalFailed(), REVERSAL_UNCONFIRMED);
     }
   }
+
+  private static final ErrorInfo PARTNER_REVERSE_UNCONFIRMED =
+      new ErrorInfo(
+          ErrorCodes.TMO_PARTNER_REVERSE,
+          "The partner did not acknowledge the reversal; operations will review it",
+          null,
+          false);
+
+  private static final ErrorInfo HOLD_UNANSWERED =
+      new ErrorInfo(
+          ErrorCodes.TMO_HOLD_UNCLEAR,
+          "The core did not say whether the hold still exists; operations will review it",
+          null,
+          false);
 
   private static final ErrorInfo REVERSAL_UNCONFIRMED =
       new ErrorInfo(
