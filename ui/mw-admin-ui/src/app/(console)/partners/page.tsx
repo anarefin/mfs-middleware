@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatTime } from "@/lib/format";
 import { adminApi, operatorToken } from "@/lib/server/admin";
 import { ApiError } from "../api-error";
+import { ExpiringCredentialsCard } from "./expiring-card";
 
 // Partners (spec 15.2, tickets 38 / 42): every partner config as published, with its state and
 // timeouts. Changes are filed on the partner's page and applied only after a checker approves.
@@ -17,10 +18,11 @@ const ms = (v: number | undefined) => (v === undefined ? "-" : `${v} ms`);
 export default async function PartnersPage() {
   const token = await operatorToken();
   if (!token) redirect("/login?error=SessionExpired");
-  const result = await adminApi().listPartners(token);
+  const [result, expiring] = await Promise.all([adminApi().listPartners(token), adminApi().listExpiringCredentials(token, 30)]);
   return (
     <>
       <PageHeader title="Partners" description="Every partner config as published: state, timeouts and version. Changes go through approval." />
+      <ExpiringCredentialsCard result={expiring} />
       {!result.ok ? <ApiError status={result.status} error={result.error} /> : result.data.items.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed px-6 py-12 text-center text-muted-foreground">
           <Plug className="size-6" />

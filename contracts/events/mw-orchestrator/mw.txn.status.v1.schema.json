@@ -21,7 +21,15 @@
     "fee": { "$ref": "../../common/defs.v1.schema.json#/$defs/Amount" },
     "vat": { "$ref": "../../common/defs.v1.schema.json#/$defs/Charge", "description": "VAT on the fee (FRS 2.2), when the core reports it." },
     "commission": { "$ref": "../../common/defs.v1.schema.json#/$defs/Charge", "description": "Commission earned on the transaction (FRS 2.2), when the core reports it." },
-    "partner": { "$ref": "../../common/defs.v1.schema.json#/$defs/PartnerRef" },
+    "partner": {
+      "description": "The partner on the request. partnerId may be absent when routing refused the request before choosing a connector (ticket 98).",
+      "type": "object",
+      "properties": {
+        "partnerId": { "type": "string", "minLength": 1 },
+        "productCode": { "type": "string", "minLength": 1 },
+        "billerCode": { "type": "string" }
+      }
+    },
     "partnerRef": { "type": "string", "description": "Partner's own reference, filled on partner response." },
     "partnerStatusCode": { "type": "string", "minLength": 1, "maxLength": 64, "description": "The partner's own status or response code as received (FRS 2.2 externalRef status code), beside partnerRef; the canonical outcome is status / error.code." },
     "coreRef": { "type": "string", "description": "Core ledger reference, filled on core event." },
@@ -58,7 +66,7 @@
       "description": "Error envelope subset (spec 5.3).",
       "required": ["code", "message", "retryable"],
       "properties": {
-        "code": { "type": "string", "pattern": "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR-[A-Z0-9_]+)-[A-Z0-9_]+$" },
+        "code": { "type": "string", "pattern": "^MW-(VAL|AUTH|IDEM|CORE|TMO|SYS|PTR(-[A-Z0-9_]+)?)(-[A-Z0-9_]+)$" },
         "message": { "type": "string" },
         "messageBn": { "type": "string" },
         "retryable": { "type": "boolean" }

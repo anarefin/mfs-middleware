@@ -90,10 +90,14 @@ export type TxnAction = "INQUIRE" | "FORCE_COMMIT" | "FORCE_RELEASE" | "REVERSE"
 export type WalletAction = "UNLOCK" | "PIN_RESET";
 export type ChangeRequestStatus = "PENDING" | "APPROVING" | "APPROVED" | "REJECTED" | "EXPIRED";
 
-export type PartnerAction = "ENABLE" | "DISABLE" | "SET_TIMEOUTS" | "UPSERT_ROUTE";
+export type PartnerAction = "ENABLE" | "DISABLE" | "SET_TIMEOUTS" | "UPSERT_ROUTE" | "SET_MAINTENANCE" | "SET_ENDPOINT";
+export type CredentialAction = "UPLOAD";
+export type ErrorMapAction = "SET_ERROR_MAP";
 export type ContentAction = "PUBLISH";
 export type KeyAction = "KEY_GENERATE" | "KEY_ROTATE" | "KEY_RETIRE" | "KEY_CEREMONY";
-export type ResourceType = "transaction" | "wallet" | "pin_reset" | "partner" | "ussd_menu" | "notify_template" | "key";
+export type ResourceType =
+  | "transaction" | "wallet" | "pin_reset" | "partner" | "ussd_menu" | "notify_template" | "key"
+  | "partner_credential" | "partner_error_map";
 
 /**
  * One side of a change request's diff: a transaction / wallet `status`; a partner's changed config
@@ -106,7 +110,7 @@ export type ChangeRequest = {
   id: string;
   resourceType: ResourceType;
   resourceId: string;
-  action: TxnAction | WalletAction | PartnerAction | ContentAction | KeyAction;
+  action: TxnAction | WalletAction | PartnerAction | ContentAction | KeyAction | CredentialAction | ErrorMapAction;
   payload: Record<string, unknown>;
   diff: { before: ChangeSide; after: ChangeSide };
   makerId: string;
@@ -160,7 +164,36 @@ export type PartnerConfig = PartnerTimeouts & {
   ambiguousCodes?: string[];
   sensitiveFields?: Record<string, string>;
   resilience?: string;
+  /** In maintenance now, until cleared (ticket 131b). */
+  maintenance?: boolean;
+  healthCheck?: boolean;
+  maintenanceWindow?: { start?: string; end?: string; messageEn?: string; messageBn?: string };
+  /** The selected profile; a route's `{{endpoint}}` is filled from `endpoints` (ticket 131b). */
+  endpoint?: "MOCK" | "REAL";
+  endpoints?: { MOCK?: string; REAL?: string };
 };
+
+export type CredentialType = "API_KEY" | "HMAC_SECRET" | "CLIENT_CERT";
+/** A partner credential as admin.v1 returns it (ticket 131): metadata only, never the secret. */
+export type Credential = {
+  credentialId: string;
+  partnerId: string;
+  name: string;
+  adapter: string;
+  type: CredentialType;
+  vaultFields: string[];
+  kid: string;
+  fingerprint?: string;
+  subject?: string;
+  serialNumber?: string;
+  notAfter?: string;
+  daysLeft?: number;
+  version: number;
+  uploadedBy: string;
+  approvedBy: string;
+  uploadedAt: string;
+};
+export type CredentialPage = { items: Credential[] };
 export type Partner = {
   partnerId: string;
   family: PartnerFamily;

@@ -91,6 +91,14 @@ public class TransactionRepository {
     }
   }
 
+  /** Stores the partner routing chose. The idempotency hash is not recomputed (ticket 98). */
+  public void updateRequest(UUID txnId, TxnRequest request) {
+    jdbc.update(
+        "update transaction set request = ?::jsonb, version = version + 1 where txn_id = ?",
+        json.writeValueAsString(request),
+        txnId);
+  }
+
   /** Persists the mutable columns of a moved record and bumps the version. */
   public void update(TransactionRecord rec) {
     jdbc.update(

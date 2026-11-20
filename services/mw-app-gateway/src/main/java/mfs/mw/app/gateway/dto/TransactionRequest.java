@@ -103,7 +103,7 @@ public record TransactionRequest(
    */
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Partner(
-      @Pattern(regexp = "gp|robi|banglalink|teletalk|c2wbank") String partnerId,
+      @Pattern(regexp = "[a-z0-9][a-z0-9-]{0,63}") String partnerId,
       @Pattern(regexp = "PREPAID|POSTPAID") String productCode,
       @Pattern(regexp = BILLER_CODE) String billerCode) {
 

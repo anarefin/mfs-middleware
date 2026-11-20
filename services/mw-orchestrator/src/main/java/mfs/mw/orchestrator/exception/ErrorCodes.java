@@ -21,8 +21,14 @@ public final class ErrorCodes {
   public static final String IDEM_CONFLICT = "MW-IDEM-001";
   /** The core did not answer ValidateTransaction in time; nothing was moved (spec 7.2). */
   public static final String TMO_CORE_VALIDATE = "MW-TMO-001";
-  /** A flow with a partner leg (TOPUP) was requested without {@code partner}. */
+  /** A bill without a biller, a bank top-up without a bank, or a top-up without a product. */
   public static final String VAL_PARTNER_REQUIRED = "MW-VAL-012";
+  /** The named partner is not one any matching routing rule allows (ticket 98). */
+  public static final String PTR_UNKNOWN = "MW-PTR-UNKNOWN";
+  /** Every connector is down or in maintenance and none can be called (ticket 98). */
+  public static final String SYS_PARTNER_CIRCUIT_OPEN = "MW-SYS-PARTNER_CIRCUIT_OPEN";
+  /** A maintenance message disables the partner or biller (ticket 98, FRS PLT-043). */
+  public static final String SYS_PARTNER_DISABLED = "MW-SYS-PARTNER_DISABLED";
   /**
    * The core did not answer HoldFunds in time (spec 7.2): a hold it then reported was released,
    * or it held nothing; either way nothing was moved and the payer may try again.

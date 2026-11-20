@@ -9,8 +9,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
+import mfs.mw.orchestrator.dto.ConfigChangedEvent;
 import mfs.mw.orchestrator.dto.PartnerInbound;
 import mfs.mw.orchestrator.dto.PartnerReply;
+import mfs.mw.orchestrator.dto.PartnerRouteStatus;
 import mfs.mw.orchestrator.dto.TxnAction;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import org.junit.jupiter.api.DynamicTest;
@@ -68,6 +70,15 @@ class ConsumedContractsTest {
       assertThat(in.txnId()).as(p.toString()).isNotNull();
       assertThat(in.payload()).as(p.toString()).isNotNull();
       assertThat(in.family()).as(p.toString()).isEqualTo(msg);
+    });
+    READERS.put("events/mw-admin-api/mw.config.changed.v1.schema.json", (p, msg) -> {
+      ConfigChangedEvent e = JSON.readValue(read(p), ConfigChangedEvent.class);
+      assertThat(e.configKey()).as(p.toString()).isNotBlank(); // ConfigChangedListener.handle
+      assertThat(e.configType()).as(p.toString()).isNotNull();
+    });
+    READERS.put("events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json", (p, msg) -> {
+      PartnerRouteStatus s = JSON.readValue(read(p), PartnerRouteStatus.class);
+      assertThat(s.partnerId()).as(p.toString()).isNotBlank(); // PartnerRouteStatusListener.handle
     });
   }
 

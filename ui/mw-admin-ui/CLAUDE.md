@@ -89,6 +89,14 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     REJECTED (vM still serves)`), problems, Kamelets and the YAML. Playwright `31-partner-route.spec.ts`
     (`@partners`): stub on mw-simulators (`MW_PORT_SIMULATORS`, default 8085), a refused route, then submit,
     approve, LIVE.
+    Partner tabs (ticket 131c), linked from the partner page: Maintenance (`SET_MAINTENANCE`: flag and
+    window, bn/en message), Endpoint (mock/real) (`SET_ENDPOINT`: profile and both URLs, host in
+    `allowedHosts`), Credentials (metadata from `GET /admin/v1/credentials?partnerId=`; upload
+    `POST /admin/v1/partners/{id}/credentials/{name}/change-requests` for an integration-maker only —
+    the secret field is cleared on submit and never echoed) and Error codes
+    (`POST /admin/v1/partners/{id}/error-map/change-requests`). The Partners page has a Credentials
+    expiring card (`GET /admin/v1/credentials/expiring?days=30`). Playwright `e2e/70-partner-credentials.spec.ts`
+    (`@partners` `@credentials`).
   - `/console/ussd?menuId=main[&from=N]`: the versions made in the console, the editor
     (`ussd/menu-editor.tsx`, client) on the newest PUBLISHED version or `from`: tree from `start`
     (`lib/ussd-menu.ts` `tree`, unreachable nodes last), per-node form (type, bn / en texts, options
@@ -218,9 +226,12 @@ html, junit `test-results/junit.xml`). `e2e/support/`:
   what an interrupted run left PENDING), `ussd.ts` (a real P2P: seeded customer `01712000001` ->
   `01712000002`, Tk 10, over robi's HTTP USSD route, English so the end screen carries the TxnID).
 - Specs: `00-smoke` (`@smoke`), `10-console` (`@console`), `20-approvals` (`@approvals`),
-  `30-partners` (`@partners`), `40-ussd` (`@ussd`), `50-templates` (`@templates`), `60-keys` (`@keys`:
-  a ceremony with two custodians and the KCV computed in the test from the two components, then a
-  rotation; a key id of its own per run). Idempotent across
+  `30-partners` (`@partners`), `31-partner-route` (`@partners`), `40-ussd` (`@ussd`), `50-templates`
+  (`@templates`), `60-keys` (`@keys`: a ceremony with two custodians and the KCV computed in the test
+  from the two components, then a rotation; a key id of its own per run), `70-partner-credentials`
+  (`@partners` `@credentials`: maintenance window, mock/real endpoint, error map, credential metadata
+  and the expiring card; the upload form itself is the Vitest test, because upload is integration-maker).
+  Idempotent across
   runs: own transactions per run, inbox rows by id, partner `ocs` put back as found, menu and template
   versions published with go-live / valid-from 2099 so mw-ussd and mw-notify keep serving the seeded
   texts the API suite reads.

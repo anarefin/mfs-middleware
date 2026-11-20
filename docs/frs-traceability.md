@@ -182,14 +182,14 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-026 | done | preview returns the core fee, VAT and commission (`PreviewService`, `POST /app/v1/{group}/preview`, ticket 105) |
 | PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector `client/CoreWalletClient` (connect/read timeouts, breaker `core`, reads retried only; ticket 95a) |
 | PLT-031 | done | no automatic redelivery of a PAY (D28); INQUIRY and STATUS retried |
-| PLT-032 | ticket 98 | fast failure `MW-SYS-PARTNER_CIRCUIT_OPEN` built; failover routing in 98 |
+| PLT-032 | done | failover only before money leaves (`service/routing`, `RoutingFailoverIT`): an open circuit, DOWN, MAINTENANCE or a definite pre-send refusal tries the next connector; with none, `MW-SYS-PARTNER_CIRCUIT_OPEN` before a hold; an ambiguous PAY timeout stays UNKNOWN |
 | PLT-033 | done | bulkhead per partner (`MW-SYS-PARTNER_BUSY`), one adapter per family (D32); bulkhead `core` on the core calls, each on its own virtual thread (ticket 95a) |
 | PLT-034 | done | Kafka retry topics and DLQ (D2, D27); the AML and DW feeds use them (tickets 125, 128) |
 | PLT-035 | done | transactional outbox in every producing service (spec 6.4) |
-| PLT-040 | ticket 98 | routing rules in the mw-orchestrator routing module |
-| PLT-041 | ticket 98 | rules in the database, maker-checker, 30 s cache refresh |
-| PLT-042 | ticket 98 | prefix to MNO with MNP override |
-| PLT-043 | ticket 98 | partner disable built (admin console); the adapter refuses a call inside the window or with the flag as `MW-SYS-PARTNER_MAINTENANCE` with the bn/en message (131b); routing that treats the partner as MAINTENANCE is 98; biller disable 113 |
+| PLT-040 | done | most specific enabled rule wins in mw-orchestrator `service/routing` (`RoutingServiceTest`); a named partner is honoured only when that rule allows it, otherwise `MW-PTR-UNKNOWN` |
+| PLT-041 | done | rules in `txn.routing_rule` (V14), maker-checker in mw-admin-api (V15, `RoutingRuleChangeRequestIT`), applied from `mw.config.changed.v1` and re-read every 30 s (`RoutingRuleReloadIT`) |
+| PLT-042 | done | prefix to MNO (017/013 gp, 018 robi, 015 teletalk, 019/014 banglalink) with an MNP override winning (`MsisdnRoutingTest`) |
+| PLT-043 | done | a maintenance message for a partner or biller is `MW-SYS-PARTNER_DISABLED` with the bn and en text (`MaintenanceMessageIT`, API folder 35); the adapter's own window stays 131b; biller-catalogue disable stays 113 |
 | PLT-050 | ticket 108 | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); no SOAP service is served yet, the app SOAP facade of 108 publishes the first WSDL |
 | PLT-051 | done | versioning policy in `contracts/README.md` ("Versioning", ticket 101): breaking change = new `/v2` file and path, `/v1` kept for one release |
 | PLT-052 | done | Swagger UI and `/v3/api-docs` only in profiles `dev`/`test` (off in production, `ApiDocsProductionTest`); test-only APISIX page `/docs/` lists them and the WSDLs (none until ticket 108) (ticket 101) |
@@ -344,14 +344,14 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); credential upload and error map API built (131a); the partner engine honours the maintenance window and the mock/real endpoint profile (131b); console tabs in 131c |
-| ADM-02 | ticket 131 | API built (131a): write-only credential upload through maker-checker (`partner_credential`, staged in Vault, approved into a field of `secret/mw-adapter-<family>/<partner>`, mw-admin-api's policy write-only there), metadata `GET /admin/v1/credentials`, dashboard feed `/admin/v1/credentials/expiring`, ops email at 30/7/1 days (`CredentialVaultIT`, `CredentialExpiryJobIT`, API folder 45); console tab and card in 131c |
+| ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); credential upload and error map API built (131a); the partner engine honours the maintenance window and the mock/real endpoint profile (131b); console tabs built (131c, `ui/mw-admin-ui`: Maintenance, Endpoint (mock/real), Credentials, Error codes) |
+| ADM-02 | ticket 131 | API built (131a): write-only credential upload through maker-checker (`partner_credential`, staged in Vault, approved into a field of `secret/mw-adapter-<family>/<partner>`, mw-admin-api's policy write-only there), metadata `GET /admin/v1/credentials`, dashboard feed `/admin/v1/credentials/expiring`, ops email at 30/7/1 days (`CredentialVaultIT`, `CredentialExpiryJobIT`, API folder 45); console credentials tab and the Credentials expiring card (131c) |
 | ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
-| ADM-04 | tickets 98, 132 | routing rules |
+| ADM-04 | tickets 98, 132 | API maker-checker for `ROUTING_RULE`, `MSISDN_PREFIX`, `MNP_OVERRIDE` and `MAINTENANCE_MESSAGE` (ticket 98, `RoutingRuleChangeRequestIT`, API folder 35); the console and testing a rule against a sample request stay 132 |
 | ADM-05 | tickets 113, 132 | billers |
 | ADM-06 | ticket 133 | USSD menu JSON editing built; visual editor and preview in 133 |
 | ADM-07 | tickets 111, 133 | SMS template editing built; rule table and test send |
-| ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the screen in 131c |
+| ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the Error codes tab (131c, `ui/mw-admin-ui`) |
 | ADM-09 | done | transaction search and saga timeline (mw-admin-api, `ui/mw-admin-ui`) |
 | ADM-10 | ticket 134 | TSQ, force complete and reversal with maker-checker built; resend notification and release hold in 134 |
 | ADM-11 | ticket 134 | recon workbench |

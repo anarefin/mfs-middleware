@@ -57,7 +57,6 @@
       "anyOf": [
         {
           "required": [
-            "partnerId",
             "productCode"
           ]
         },
@@ -74,14 +73,7 @@
       ],
       "properties": {
         "partnerId": {
-          "type": "string",
-          "enum": [
-            "gp",
-            "robi",
-            "banglalink",
-            "teletalk",
-            "c2wbank"
-          ]
+          "type": "string"
         },
         "productCode": {
           "type": "string",
