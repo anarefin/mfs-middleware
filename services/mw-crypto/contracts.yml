@@ -1,6 +1,6 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
 # `#<Msg>` names one message type of a multi-type topic, e.g.
-#   events/mw-orchestrator/core.command.v1.schema.json#HoldFunds
+#   events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged
 # `./gradlew :contractsLint` checks every entry exists; the module's build.gradle.kts tracks the listed
 # contracts as test inputs, so only the modules a contract change affects re-run their tests. Add contracts/ProducedContractsTest / ConsumedContractsTest
 # (no Spring, no Docker) once the service produces or consumes an event. The chassis's

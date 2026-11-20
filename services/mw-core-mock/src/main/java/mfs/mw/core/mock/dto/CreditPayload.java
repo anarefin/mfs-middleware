@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.Map;
 
 /**
- * Payload of {@code CreditWallet} (contract {@code core.command.v1}): inbound money, no PIN. The
+ * Payload of {@code CreditWallet} (the internal core command; contract {@code core.command.v1} retired in ticket 95b): inbound money, no PIN. The
  * fee the orchestrator may send is ignored; the money comes from the settlement wallet its
  * {@code attributes.settlementWallet} names, else {@code SETTLEMENT} (ticket 94).
  */

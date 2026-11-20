@@ -60,8 +60,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   CASH_IN agent -> customer, CASH_OUT customer -> agent, MERCHANT_PAY customer -> merchant; the core enforces the wallet types).
   `BulkDisburseFlow` (ticket 34, one child of an org bulk batch, sent by mw-portal-api) is validate +
   post too: debit `{ORG, <org wallet>}`, credit the customer's WALLET, **no PIN** (the org
-  authorised the batch by maker-checker; `core.command.v1` ValidateTransaction/PostTransfer require
-  `assertion` + `idempotencyKey` for every txnType but BULK_DISBURSE). Only channels in
+  authorised the batch by maker-checker; the core's validate / transfer require the
+  assertion + `idempotencyKey` for every txnType but BULK_DISBURSE). Only channels in
   `mw.orchestrator.bulk-channels` (default `ORG_PORTAL`) may send one, else REJECTED `MW-AUTH-021`
   (`BulkDisburseSagaIT`); the core restricts it to ORG -> CUSTOMER. The portal derives txnId and
   key per row, so a resent child is answered from the idempotency record. The batch's parent
@@ -444,17 +444,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Contracts owned
 
-- `events/mw-orchestrator/mw.txn.request.v1`, `mw.txn.status.v1`, `core.command.v1` (+ per-command
-  payloads), `mw.partner.request.v1`, `mw.partner.reply.v1`, `mw.partner.inbound.v1`,
+- `events/mw-orchestrator/mw.txn.request.v1`, `mw.txn.status.v1`, `mw.partner.request.v1`, `mw.partner.reply.v1`, `mw.partner.inbound.v1`,
   `api/mw-orchestrator/txn-query.v1.openapi.yaml` (internal query API, ticket 35; 1.3.0 wallet scope, ADR D25),
   `api/mw-orchestrator/orchestrator-test.v1.openapi.yaml` (test-only API, ticket 58), and
   `common/defs.v1` (see `contracts/OWNERS.yml`). Tests validate every status the service emits against
-  them. Since ticket 95a the orchestrator produces no `core.command.v1` message (it calls the core over REST);
-  the contract stays for mw-auth's VerifyCustomerFactors and mw-admin-api's UnlockWallet until ticket 95b retires
-  it (`CoreCommandMapperTest` still checks the internal call shapes against it). `core.command.v1#UnlockWallet` (ticket 52) is in this contract but
-  produced by mw-admin-api (ops unlock after maker-checker), not by the orchestrator; its results
-  `WalletUnlocked` / `UnlockRejected` carry a txnId the orchestrator does not know and are dropped
-  (`txn.unknown`).
+  them. Since ticket 95a the orchestrator calls the core over REST; ticket 95b retired `core.command.v1`
+  (its files, samples and the two command topics): `dto/CoreCommand` and its payloads are the internal
+  shape of a saga step's core call only. The core's `WalletUnlocked` / `UnlockRejected` (mw-admin-api's
+  REST unlock) carry a txnId the orchestrator does not know and are dropped (`txn.unknown`).
 
 ## Contracts used
 

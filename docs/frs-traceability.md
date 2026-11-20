@@ -275,7 +275,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-15 | ticket 119 | UCB IMT mock |
 | EXT-16 | ticket 120 | UCB ATM mock |
 | EXT-17 | tickets 123, 128 | DW Kafka and SFTP drop |
-| EXT-18 | ticket 95 | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93) and the orchestrator calls it (`client/CoreWalletClient`, ticket 95a); mw-auth and mw-admin-api still send Kafka commands until 95b |
+| EXT-18 | done | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93), the orchestrator calls it (`client/CoreWalletClient`, ticket 95a), mw-auth checks a PIN reset's KYC factors (`client/CoreClient`) and mw-admin-api unlocks an account (`client/CoreAccountClient`) over it (ticket 95b); the core command topics and `core.command.v1` are retired, the core events stay on Kafka |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
 | MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
 | MCK-03 | ticket 136 | magic values are the default trigger of the mock-control engine, an explicit scenario wins (ticket 102, `service/mockcontrol/ScenarioEngine`); trigger table per mock in `docs/concepts/simulators.html`; every new mock in 136 |

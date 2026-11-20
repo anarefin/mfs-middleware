@@ -43,7 +43,6 @@ import tools.jackson.databind.json.JsonMapper;
 class InquirySagaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
-  private static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
   private static final String PARTNER_SCHEMA = "events/mw-orchestrator/mw.partner.request.v1.schema.json";
   private static final String REPLY_SCHEMA = "events/mw-orchestrator/mw.partner.reply.v1.schema.json";
   private static final String PARTNER_TOPIC = "mw.partner.request.telco.v1";
@@ -127,9 +126,6 @@ class InquirySagaIT {
   private void assertAllValid(String txnId) {
     for (JsonNode n : outbox("mw.txn.status.v1", txnId)) {
       assertThat(ContractSchemas.schema(STATUS_SCHEMA).validate(n)).as(n.toString()).isEmpty();
-    }
-    for (JsonNode n : coreCommands(txnId)) {
-      assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
     for (JsonNode n : outbox(PARTNER_TOPIC, txnId)) {
       assertThat(ContractSchemas.schema(PARTNER_SCHEMA).validate(n)).as(n.toString()).isEmpty();

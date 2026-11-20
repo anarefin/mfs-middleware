@@ -100,23 +100,33 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   maker != checker rule (`403 MW-AUTH-030`) are the transaction ones; there is no status read (the
   core owns the wallet state, so a request is taken for any well-formed id and the core refuses an
   unlock of a wallet that is not LOCKED). Approval = one database transaction: row APPROVED
-  (`payload.commandId`) + `UnlockWallet` (`dto/UnlockWalletCommand`, `core.command.v1`, owned by
-  mw-orchestrator) on `core.wallet.command.v1` (key unlockTxnId, commandId `<changeRequestId>:unlock`,
-  `expiresAt` = issued + `mw.change-requests.unlock-command-ttl` 1h, payload subject WALLET + the
-  whole id, changeRequestId, makerId, checkerId) + audit. Audit resource `wallet/<masked id>`,
-  `walletStatus` where a transaction request has `txnStatus`, `after.sentAs` the topic.
+  (`payload.commandId` `<changeRequestId>:unlock`) + audit. Audit resource `wallet/<masked id>`,
+  `walletStatus` where a transaction request has `txnStatus`, `after.sentAs` what it sent.
+  **Ticket 95b (ADR D31):** the core lock is lifted over REST, only after that commit (no remote call
+  before the decision, as the ticket 70 review asks): `client/CoreAccountClient` `POST
+  /core/v1/accounts/{walletId}/unlock {txnId (the unlockTxnId), changeRequestId, makerId, checkerId}`
+  (contract `api/mw-core-mock/core-wallet.v1.openapi.yaml`, only client mw-admin-api; config
+  `config/CoreClientProperties` `mw.core.*`: `base-url` `MW_CORE_URL` `http://mw-core-mock:8080`, timeouts,
+  `attempts` 3 and `backoff` 300 ms: the unlock is idempotent by txnId, so no definite answer (5xx, 408,
+  429, timeout) is asked again, then UNKNOWN); the realm services token of client mw-admin-api now also
+  carries audience mw-core-mock (`aud-mw-core-mock` mapper). The answer (UNLOCKED, REFUSED with the core
+  reason, UNKNOWN) is logged (`admin.wallet.core_unlock`), not tracked: the request stays APPROVED (a
+  core lock left in place needs a new request). It replaced `UnlockWallet` on `core.wallet.command.v1`
+  (`dto/UnlockWalletCommand`, `mw.change-requests.unlock-command-ttl` gone). Tests `client/CoreAccountClientTest`
+  (local HTTP server: body against the contract, refusal, retries, token renewal, path encoding),
+  `controller/WalletUnlockApiIT` (the client mocked: called once after the approval, never on reject).
   Decisions (no product owner): ops-maker / ops-checker act on wallets as on transactions; the
-  core's answer (`WalletUnlocked` / `UnlockRejected`) is not consumed here (as for ticket 37, the
-  result is not tracked; mw-core-mock's wallet view shows it); the reason text is not sent to the core.
+  core's answer is not tracked (as for ticket 37; mw-core-mock's wallet view shows it); the reason text
+  is not sent to the core.
   **Ticket 70:** the same approval transaction also writes UNLOCK on `auth.wallet-lock.v1` (owned by
   mw-auth; `dto/WalletLockCommand`, `ChangeRequestMapper.authUnlock`: commandId
   `<changeRequestId>:auth-unlock`, key the wallet id, actor the checker, `payload.authCommandId`), so
   mw-auth lifts its PIN lock (every level) and any ADMIN lock; audit `after.sentAs`
-  `auth.wallet-lock.v1,core.wallet.command.v1`. **Decision:** `UnlockWallet` to the core stays, because
+  `auth.wallet-lock.v1,core-wallet.v1:unlock` (since 95b). **Decision:** the core unlock stays, because
   the core may lock an account for its own reasons. Ticket 72 removed the core PIN check and its lockout
   and kept the core's LOCKED status and `UnlockWallet` for such core-side locks (mw-core-mock CLAUDE.md), so
-  both commands stay: UNLOCK lifts the mw-auth PIN / ADMIN lock, `UnlockWallet` a core lock (`UnlockRejected
-  WALLET_NOT_LOCKED` when there is none, harmless).
+  both stay: UNLOCK lifts the mw-auth PIN / ADMIN lock, the core unlock a core lock (`422
+  MW-CORE-WALLET_NOT_LOCKED` when there is none, harmless).
 - Care PIN reset (ticket 70, spec 18.7): `POST /admin/v1/wallets/{walletId}/change-requests {action:
   PIN_RESET, reason}` (same maker role and id rules) opens a change request of resourceType
   `pin_reset` (`ChangeRequest.PIN_RESET`, handled like `wallet`: `ChangeRequest.walletLike`, masked id,
@@ -394,9 +404,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 
 ## Contracts used
 
-- `contracts.yml`: produces `events/mw-orchestrator/core.command.v1#UnlockWallet` (ticket 52,
-  `dto/UnlockWalletCommand`; `WalletUnlockApiIT` validates the outbox row),
-  `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
+- `contracts.yml`: produces `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
   `contracts/ProducedContractsTest`, and `AdminTransactionApiIT` validates the outbox row),
   `events/mw-admin-api/mw.txn.action.v1` (`dto/TxnAction`) and a REVERSAL on
   `events/mw-auth/auth.wallet-lock.v1` (ticket 70, `dto/WalletLockCommand` UNLOCK and PIN_RESET;
@@ -405,8 +413,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   validates both outbox rows), `events/mw-admin-api/mw.config.changed.v1` (`dto/ConfigChangedEvent`;
   `PartnerConfigApiIT` and `ContentChangeApiIT` validate the outbox rows), serves
   `admin.v1`; consumes `api/mw-orchestrator/txn-query.v1` (own type `dto/AdminTxn`) and
-  `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`) and `api/mw-crypto/crypto-internal.v1`
-  (ticket 75, own type `dto/CryptoKeys`), unknown fields ignored
+  `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`), `api/mw-crypto/crypto-internal.v1`
+  (ticket 75, own type `dto/CryptoKeys`) and `api/mw-core-mock/core-wallet.v1` (ticket 95b, the unlock;
+  `client/CoreAccountClientTest`), unknown fields ignored
   (`contracts/ApiContractsTest` reads contract-shaped answers). Consumes
   `events/mw-adapter-billpay/mw.partner.route.status.v1` (ticket 83, `contracts/ConsumedContractsTest`).
 

@@ -22,10 +22,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - Test double of the core wallet (spec "Core mock", 6.3, WP06): never ships to production, replaced by
   the real core with no change to the orchestrator.
 - **Core wallet REST API** (FRS 7.2 WAL-01, WAL-03..13, ADR D31, ticket 93; contract
-  `api/mw-core-mock/core-wallet.v1.openapi.yaml`, base `/core/v1`), beside the Kafka commands until ticket 95
-  retires them: `controller/CoreWalletController` (mapping and `@Valid` only) -> `service/CoreWalletService`.
-  Money operations are the Kafka commands of the same name, built there and handed to
-  `CoreCommandService.handle(cmd, topic)`: holds `HoldFunds`, `.../{holdId}/commit` `CommitHold`,
+  `api/mw-core-mock/core-wallet.v1.openapi.yaml`, base `/core/v1`), the only way in since ticket 95b retired the
+  Kafka commands: `controller/CoreWalletController` (mapping and `@Valid` only) -> `service/CoreWalletService`.
+  Money operations are the internal commands of the same name (`dto/CoreCommand`, once the Kafka contract), built
+  there and handed to `CoreCommandService.handle(cmd, topic)`: holds `HoldFunds`, `.../{holdId}/commit` `CommitHold`,
   `.../release` `ReleaseHold` (answers on `core.payment.event.v1`), transfers `PostTransfer`, credits
   `CreditWallet`, reversals `ReverseTransaction` (`amount` optional = the whole original; partial is
   `AMOUNT_MISMATCH` until ticket 116) on `core.wallet.event.v1`. So the rules, the faults, the `command_log`
@@ -64,12 +64,24 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `CreditRequest.round` n >= 1 are their own operation (`<txnId>:rest:<op>:manual-<n>`), so an operator's forced
   decision is decided afresh instead of replaying the refusal stored for the saga's own call. Tests in
   `CoreWalletRestIT` / `CoreWalletControllerTest`.
-- Consumes `core.wallet.command.v1` and `core.payment.command.v1` (two `@KafkaListener`s on
-  `messaging/CoreCommandListener`, off with `mw.coremock.consumer.enabled=false`), both with retry topics + DLQ. Handled: `ValidateTransaction`
-  (fee, limits, assertion, account status; moves no money), `PostTransfer` (double-entry debit/credit plus
-  fee), `HoldFunds`, `CommitHold`, `ReleaseHold`, `CreditWallet`, `ReverseTransaction`,
-  `QueryTransaction`, `UnlockWallet` (ticket 52), `VerifyCustomerFactors` (ticket 70), `BalanceInquiry`
-  (ADR D26). `ApplyComplianceAction` and unknown types are logged and ignored.
+- Additions for mw-admin-api and mw-auth (ticket 95b, ADR D31), each the internal command of the same name
+  under `<txnId>:rest:<op>` (rules, faults, replay, result event as below): `POST
+  /core/v1/accounts/{walletId}/unlock {txnId, changeRequestId, makerId?, checkerId?}` (`UnlockWallet`, op
+  `unlock`) -> `AccountActionResult {txnId, walletId, status UNLOCKED, coreRef}`, refusals `422
+  MW-CORE-WALLET_NOT_LOCKED` / `WALLET_NOT_FOUND`; `POST /core/v1/customers/{walletId}/verify-factors {txnId,
+  resetId, factors {nidLast4Token, dateOfBirthToken, tokenKid}}` (`VerifyCustomerFactors`, op `factors`; the
+  factors `@Sensitive(SECRET)`) -> `{..., status VERIFIED, resetId}`, refusals `422 MW-CORE-WALLET_NOT_FOUND` /
+  `WALLET_NOT_ACTIVE` / an injected `FACTORS_MISMATCH`. Per-operation callers in `config/SecurityConfig`: the
+  unlock only `azp` mw-admin-api, the factors check only mw-auth (else `403 MW-AUTH-002`). Tests in
+  `CoreWalletRestIT`.
+- **The Kafka command side is gone (ticket 95b):** `messaging/CoreCommandListener`, the topics
+  `core.wallet.command.v1` / `core.payment.command.v1` (`deploy/kafka/topics.txt`) and the contract
+  `core.command.v1` (files and samples) are retired; this module consumes no Kafka topic. The internal
+  commands it still runs: `ValidateTransaction` (fee, limits, assertion, account status; moves no money),
+  `PostTransfer` (double-entry debit/credit plus fee), `HoldFunds`, `CommitHold`, `ReleaseHold`,
+  `CreditWallet`, `ReverseTransaction`, `QueryTransaction`, `UnlockWallet` (ticket 52), `VerifyCustomerFactors`
+  (ticket 70), `BalanceInquiry` (ADR D26); the service tests build them directly
+  (`service/CoreCommandsTestSupport`). `ApplyComplianceAction` and unknown types are logged and ignored.
 - `BalanceInquiry` (ADR D26, txnType BALANCE, commandId `<txnId>:balance`; `CoreCommandMapper.balance`: a
   `TransferPayload` with amount 0 and debit = credit wallet, assertion required, else malformed): unknown
   wallet `BalanceInquiryRejected WALLET_NOT_FOUND`, not ACTIVE (LOCKED, BLOCKED, HOLD) `WALLET_NOT_ACTIVE`,
@@ -84,8 +96,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   WALLET_NOT_FOUND`, BLOCKED / HOLD `WALLET_NOT_ACTIVE` (a core LOCKED wallet may still reset), else
   `CustomerFactorsVerified {walletId, resetId}`; a mismatch is played with a REJECT fault (`reasonCode`
   e.g. `FACTORS_MISMATCH`; `CoreEventMapper.factorsRejected` carries the resetId). The real core compares
-  the hashes with its KYC record (open point). Events on `core.wallet.event.v1` with commandId
-  `pin-reset:<resetId>`; mw-orchestrator drops them (`txn.unknown`), mw-auth consumes them.
+  the hashes with its KYC record (open point). Events on `core.wallet.event.v1` (since ticket 95b commandId
+  `<txnId>:rest:factors`); mw-orchestrator drops them (`txn.unknown`), mw-auth skips them (it has the REST
+  answer).
 - **No PIN in the core (ticket 72, D20, D22; M11 removed).** The core holds, decrypts and checks no PIN
   and keeps no PIN lockout: mw-auth checks the PIN and locks (ticket 70) and the core only verifies its
   transaction assertion (below). Gone: `security/PinCipher`, `PinKeyProvider`, `controller/PinKeyController`
@@ -95,15 +108,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   first PIN from `auth.credential`). **UnlockWallet decision:** status `LOCKED`, `WalletRepository.unlock` and
   `UnlockWallet` STAY, for core-side account locks (a real core locks an account for its own reasons:
   compliance, fraud, dormancy). The mock no longer sets LOCKED itself (no API either; tests set it in SQL), so
-  ops unlock (mw-admin-api) keeps sending both mw-auth `UNLOCK` on `auth.wallet-lock.v1` (the PIN lock) and core
-  `UnlockWallet` (a core lock; `WALLET_NOT_LOCKED` when there is none, which is harmless).
-- **Topic decision (spec 6.3 does not say which command goes where):** the mock accepts every
-  command type on either command topic and answers on the paired event topic (wallet command ->
-  `core.wallet.event.v1`, payment command -> `core.payment.event.v1`). The handler never looks at
-  the topic otherwise. The split (M2 gate decision, ticket 50; followed by mw-orchestrator, not enforced
-  here): payment topic for `HoldFunds`/`CommitHold`/`ReleaseHold` (transactions with an external call),
-  wallet topic for every other command. The mock keeps accepting any command on either topic. A command that is repeated on the other topic is answered from
-  `command_log`, on the topic it arrived on.
+  ops unlock (mw-admin-api) keeps sending both mw-auth `UNLOCK` on `auth.wallet-lock.v1` (the PIN lock) and the
+  core unlock (a core lock, REST since ticket 95b; `WALLET_NOT_LOCKED` when there is none, which is harmless).
+- **Event topic decision (M2 gate, ticket 50):** the result of `HoldFunds` / `CommitHold` / `ReleaseHold` goes
+  to `core.payment.event.v1`, every other result to `core.wallet.event.v1` (`CoreWalletService` names the
+  topic per REST operation; the command topics of the decision are retired since ticket 95b).
 - `ValidateTransaction` whose credit party is outside the core (`BILLER_ACCOUNT`, `BANK_ACCOUNT`,
   `CARD_TOKEN`; ticket 21, BILL_PAY) checks the payer side only (wallet types, status, assertion,
   limits, funds with the type's fee); `PostTransfer` still needs a credit wallet
@@ -184,7 +193,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   `RestCall`: the switch once (DOWN closes the connection, MAINTENANCE `503 MW-SYS-CORE_UNAVAILABLE`, SLOW
   latency), reads decided there (BUSINESS_ERROR `422 MW-CORE-<code>`), money calls by the engine inside the
   command; then the answer is held (DELAY, TIMEOUT: applied), replaced (`<httpStatus|500> MW-SYS-CORE_ERROR`),
-  cut short or dropped. Journal: one entry per handled command (`COMMAND /<operation>/<commandType>`,
+  cut short or dropped; a NO_CALLBACK (the legacy `DROP_REPLY` fault) also loses the REST answer: `504
+  MW-TMO-CORE_ANSWER_LOST` after the call was applied or refused (ticket 95b; the API suite's lost-answer
+  scenarios keep their UNKNOWN -> WAL-13 path; `CoreMockScenarioIT`). Journal: one entry per handled command (`COMMAND /<operation>/<commandType>`,
   header `x-txn-id`, body the keys; never an assertion), last `journal-limit` 1000. `DELETE
   /mock-control/core/journal` clears journal, scenarios, switch, settings (ledger stays). `POST
   /mock-control/reset {seedVersion?}` (MCT-07; `CoreReset`, called by mw-simulators' global reset) =
@@ -327,9 +338,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 - `events/mw-core-mock/core.event.v1.schema.json` and its per-event payload schemas (topics
   `core.wallet.event.v1`, `core.payment.event.v1`). Tests validate every emitted event against it.
 - Machine-readable list: `contracts.yml` (produces 23 `core.event.v1` types (ticket 67: `WalletStateChanged`; D26: `BalanceReported`,
-  `BalanceInquiryRejected`; ticket 94: `HoldExpired`, no consumer in the repo until ticket 95), consumes the 11 handled
-  `core.command.v1` types; `ApplyComplianceAction` is ignored, so neither it nor `ComplianceAction*` is
-  listed), checked by `./gradlew :contractsLint`, tested by `contracts/ProducedContractsTest` /
+  `BalanceInquiryRejected`; ticket 94: `HoldExpired`, no consumer in the repo until ticket 95); consumes no event
+  since ticket 95b (`contracts/ConsumedContractsTest`)), checked by `./gradlew :contractsLint`, tested by `contracts/ProducedContractsTest` /
   `ConsumedContractsTest` (no Spring, no Docker). The fault and balance admin API is not a product
   contract; the wallet GET, the test-only seed PUT and the deprecated faults alias are `api/mw-core-mock/core-mock-seed.v1.openapi.yaml`
   (ticket 57, consumed by mw-seeder), served shapes checked by `contracts/ApiContractsTest`.
@@ -343,10 +353,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
 
 ## Contracts used
 
-- `events/mw-orchestrator/core.command.v1.schema.json` (+ the payload of each handled command),
-  own types in `dto/CoreCommand`, `dto/TransferPayload`, `HoldPayload`, `CreditPayload`,
-  `ReversePayload`, `QueryPayload`, `UnlockPayload`; `common/defs.v1` shapes. Tests build every command through the
-  schema (`CoreCommandsTestSupport`).
+- `api/mw-auth/auth.v1.openapi.yaml` (the assertion key set); `common/defs.v1` shapes. The former
+  `events/mw-orchestrator/core.command.v1` is retired (ticket 95b); `dto/CoreCommand`, `TransferPayload`,
+  `HoldPayload`, `CreditPayload`, `ReversePayload`, `QueryPayload`, `UnlockPayload`, `FactorsPayload` are the
+  internal command shapes the REST API builds.
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
 

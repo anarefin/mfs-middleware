@@ -114,10 +114,10 @@ val contractsDir = layout.projectDirectory.dir(providers.gradleProperty("mwContr
 // must capture only locals, never a top-level val of this script (that serialises the script object).
 val listedContracts = providers.fileContents(layout.projectDirectory.file("contracts.yml")).asText.map { yml ->
     // Read by tests although contracts.yml does not list them: dto/ConfigChangedEventSchemaTest
-    // (mw.config.changed.v1) and contracts/ContractSchemasTest (core.command.v1 HoldFunds example).
+    // (mw.config.changed.v1) and contracts/ContractSchemasTest (mw.txn.request.v1 example).
     val extraTestContracts = listOf(
         "events/mw-admin-api/mw.config.changed.v1.schema.json",
-        "events/mw-orchestrator/core.command.v1.schema.json",
+        "events/mw-orchestrator/mw.txn.request.v1.schema.json",
     )
     val paths = yml.lines()
         .filterNot { it.trimStart().startsWith("#") }

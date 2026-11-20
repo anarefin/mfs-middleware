@@ -596,8 +596,8 @@ test_topic_plan_has_the_mvp_catalogue_with_spec_partitions_and_retention() {
   assert_plan_has "mw.txn.status.v1 partitions=48 retention.ms=604800000"
   # operator actions after maker-checker (ticket 37; low volume, not in the 6.2 catalogue)
   assert_plan_has "mw.txn.action.v1 partitions=6 retention.ms=604800000"
-  assert_plan_has "core.wallet.command.v1 partitions=48 retention.ms=604800000"
-  assert_plan_has "core.payment.command.v1 partitions=48 retention.ms=604800000"
+  # ticket 95b (ADR D31): the core commands are REST calls; the command topics are retired
+  printf '%s\n' "$OUT" | grep -q "^core\.[a-z]*\.command\.v1 " && fail "a core command topic is still planned"
   assert_plan_has "core.wallet.event.v1 partitions=48 retention.ms=604800000"
   assert_plan_has "core.payment.event.v1 partitions=48 retention.ms=604800000"
   assert_plan_has "mw.partner.request.telco.v1 partitions=24 retention.ms=259200000"

@@ -24,9 +24,9 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 - Wallet projection (D5; `messaging/CoreWalletEventListener` (`@KafkaListener`) ->
   `service/WalletProjectionService`, `mapper/WalletEventMapper`, `dto/WalletStateChanged`): consumes
   `core.wallet.event.v1` in group `mw-auth` (retry topics + DLQ; `deploy/kafka/topics.txt`). Only
-  `WalletStateChanged` is read for the projection (and, ticket 70, `CustomerFactorsVerified` /
-  `CustomerFactorsRejected` for the PIN reset, below); the topic's other events (replies to
-  mw-orchestrator) are skipped without an inbox row. Every WalletStateChanged goes through the inbox (consumer `mw-auth.wallet-projection`,
+  `WalletStateChanged` is read; the topic's other events (the results of the core calls; since ticket 95b
+  also `CustomerFactorsVerified` / `CustomerFactorsRejected`, as the PIN reset gets the core's answer over
+  REST, below) are skipped without an inbox row. Every WalletStateChanged goes through the inbox (consumer `mw-auth.wallet-projection`,
   eventId) and replaces the row only with a higher `version` (`upsertIfNewer` / `updateIfNewer`), so
   duplicates, the dev snapshot and out-of-order events change nothing. A wallet seen for the first time
   gets its MSISDN (normalised to `01XXXXXXXXX`) tokenised (`msisdn_token`, keyed hash under
@@ -197,11 +197,20 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
     not stop a reset; an open CARE reset `409 MW-VAL-030`): the RESET OTP, the factors tokenised by
     mw-crypto under `TOKENISE_NID` as `<walletId>:<nid4>` and `<walletId>:<YYYY-MM-DD>`
     (`CryptoClient.tokeniseNid`), then one transaction: OTP spent, an older open SELF reset expired, the
-    reset `PENDING_KYC` (random UUIDv4 id = the device's capability, `ttl` 15 min) and
-    `VerifyCustomerFactors` on `core.wallet.command.v1` through the outbox (`dto/VerifyCustomerFactorsCommand`,
-    UUIDv7 txnId, commandId `pin-reset:<resetId>`). The core's `CustomerFactorsVerified` /
-    `CustomerFactorsRejected` (inbox consumer `mw-auth.pin-reset`, matched on commandId) move it to
-    `VERIFIED` / `REJECTED` (reason the core's code); a late answer changes nothing. `GET
+    reset `PENDING_KYC` (random UUIDv4 id = the device's capability, `ttl` 15 min; `command_id`
+    `pin-reset:<resetId>` kept), answered 202. **Ticket 95b (ADR D31):** after that commit, on a virtual
+    thread (`config/CoreClientConfig` executor `kycCheckExecutor`, never the request thread), the core checks
+    the factors over REST: `client/CoreClient` `POST /core/v1/customers/{walletId}/verify-factors {txnId
+    (UUIDv7), resetId, factors {nidLast4Token, dateOfBirthToken, tokenKid}}` (contract
+    `api/mw-core-mock/core-wallet.v1.openapi.yaml`, only client mw-auth; the realm services token of client
+    mw-auth, now also audience mw-core-mock; config `config/CoreClientProperties` `mw.auth.core.*`:
+    `base-url` `MW_CORE_URL` `http://mw-core-mock:8080`, timeout 2 s, `attempts` 3, `backoff` 500 ms; breaker
+    `core`). 200 moves the reset to `VERIFIED`, 422 `MW-CORE-<reason>` to `REJECTED` (reason the core's),
+    each with its audit (`PinResetService.kycAnswered`, conditional on `PENDING_KYC`: a late answer changes
+    nothing); no definite answer (5xx, 408, 429, timeout: asked again under the same txnId) leaves it
+    `PENDING_KYC` until it expires (the customer starts again). It replaced `VerifyCustomerFactors` on
+    `core.wallet.command.v1` and the inbox consumer `mw-auth.pin-reset` (`mw.auth.pin.reset.command-topic`
+    and `command-ttl` gone). `GET
     /auth/v1/pin-resets/{id}` and `PUT /auth/v1/pin-resets/{id}/pin {encryptedPin}` only for the reset's
     device (`X-Device-Id`, else 404 `MW-VAL-003`), the PUT only while `VERIFIED` and unexpired (409
     `MW-VAL-031`): the policy, then one transaction: `DONE`, credential replaced, the PIN lock and count
@@ -224,8 +233,8 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
     `auth.wallet-lock.v1`, group `mw-auth`, retry topics + DLQ, `deploy/kafka/topics.txt`): once per
     `commandId` (inbox `mw-auth.wallet-lock`): `LOCK` = an ADMIN lock (403 `MW-AUTH-043` everywhere) +
     every refresh token revoked + session closed; `UNLOCK` = ADMIN lock and PIN lock (every level,
-    count) removed (mw-admin-api's approved ops unlock, ticket 52; it also sends core `UnlockWallet`, which since
-    ticket 72 lifts only a core-side account lock: the core has no PIN lockout, mw-auth's is the only one); `REVOKE_SESSIONS` = revoke and close
+    count) removed (mw-admin-api's approved ops unlock, ticket 52; it also unlocks the core account, over REST
+    since ticket 95b, which since ticket 72 lifts only a core-side account lock: the core has no PIN lockout, mw-auth's is the only one); `REVOKE_SESSIONS` = revoke and close
     only; `PIN_RESET` (with `changeRequestId`, `makerId`) = the approved care reset above (its own
     idempotency, no inbox row). The Redis session close runs on every delivery (idempotent). Unknown wallet: skipped
     (logged); malformed: `MW-VAL-002` (retry topics, DLQ). Audited `auth.wallet.locked|unlocked|sessions_revoked`.
@@ -311,10 +320,10 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
 ## Contracts used
 
 - `events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged` (own type `dto/WalletStateChanged`;
-  `contracts/ConsumedContractsTest` reads every sample through `mapper/WalletEventMapper`), and (ticket 70)
-  `#CustomerFactorsVerified`, `#CustomerFactorsRejected` (`WalletEventMapper.readFactorsAnswer`).
-- `events/mw-orchestrator/core.command.v1.schema.json#VerifyCustomerFactors` (produced, ticket 70: the
-  owner mw-orchestrator's file, changed as this ticket's proposal; `contracts/ProducedContractsTest`).
+  `contracts/ConsumedContractsTest` reads every sample through `mapper/WalletEventMapper`).
+- `api/mw-core-mock/core-wallet.v1.openapi.yaml` as a client (ticket 95b: `POST
+  /core/v1/customers/{walletId}/verify-factors`, `client/CoreClient`; `client/CoreClientTest` checks the body
+  against the contract's `FactorsRequest`).
 - `events/mw-audit-dw/mw.audit.event.v1` (produced, ticket 70).
 - `api/mw-crypto/crypto-internal.v1.openapi.yaml` as a client (`/tokens`, `/envelope/encrypt`,
   `/envelope/decrypt`, `/pin/verify`, `/pin/derive`, `/jws/sign`, `/jwks/{purpose}`; ticket 70 `/tokens` domain
@@ -363,11 +372,13 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   levels through login (041 with retryAfter, 24 h, 042 permanent; no mw-crypto call while locked), the
   decay, device binding counting and refusing while locked, parallel wrong PINs never skipping a level,
   PIN change (step-up, policy inputs, LAST_PIN, family revoked), the self-service reset with the core's
-  answer (command validated against core.command.v1, factors never in clear, wrong device 404, not ready
-  409, weak 044, lock cleared, tokens revoked), the rejection and a duplicate answer, the reset's
+  answer (ticket 95b: `client/CoreClient` mocked, called off the request thread with the factors as hashes,
+  PENDING_KYC until it answers, wrong device 404, not ready 409, weak 044, lock cleared, tokens revoked),
+  the rejection with the core's reason, no answer leaving it pending, the reset's
   device/signature/OTP rules, the care reset (only mw-admin-api, idempotent, a new device);
   `messaging/WalletLockKafkaIT` (Kafka + Redis: LOCK, UNLOCK, duplicate, REVOKE_SESSIONS, unknown
-  wallet, malformed, the core's answer on core.wallet.event.v1); `service/PinServiceTest` (policy inputs,
+  wallet, malformed); `client/CoreClientTest` (ticket 95b: local HTTP server, verified, refused, retried
+  then unknown, token renewal, path encoding); `service/PinServiceTest` (policy inputs,
   every rule mw-crypto names, LAST_PIN on the history, the history kept).
 
 ## Chassis (copied on purpose, spec 4.3 rule 5; keep aligned with 5.3, 18.3, 21)
