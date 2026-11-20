@@ -18,6 +18,10 @@ public final class ErrorCodes {
 
   /** A partner callback whose signature (or timestamp) does not verify (ticket 22). */
   public static final String AUTH_SIGNATURE = "MW-AUTH-001";
+  /** The internal API (ticket 117b): no or bad client-credentials token. */
+  public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
+  /** The internal API (ticket 117b): a client that may not call. */
+  public static final String AUTH_FORBIDDEN = "MW-AUTH-002";
   /** A callback could not be written to Kafka: not acknowledged, the partner sends it again. */
   public static final String SYS_EVENT_NOT_WRITTEN = "MW-SYS-EVENT_NOT_WRITTEN";
 

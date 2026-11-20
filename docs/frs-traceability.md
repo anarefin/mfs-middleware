@@ -240,7 +240,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-05 | tickets 113, 132 | biller catalogue in mw-admin-api (`biller` table V16, 57-biller dev seed, `BillerChangeRequestIT`), published as `mw.config.changed.v1` BILLER; mw-adapter-billpay projection (`BillerProjectionIT`); app-gateway and USSD projections still open (113 follow-up) |
 | FL-06 | ticket 116 | refund bounds enforced in mw-core-mock (`MW-CORE-REFUND_EXCEEDS`, 116); checkout refund API open |
 | FL-07 | ticket 118 | card tokens only (card PAN never enters the middleware, root `CLAUDE.md`) |
-| FL-08 | ticket 117 | linked bank accounts with AVL |
+| FL-08 | ticket 117 | linked bank accounts with AVL: done (117b: `/app/v1/bank-accounts`, AVL API `/bank/v1/accounts/validate`) |
 | FL-09 | ticket 117 | W2B with AVL and a hold |
 | FL-10 | ticket 119 | IMT push and lookup |
 | FL-11 | ticket 120 | ATM one-time token |

@@ -66,6 +66,7 @@ class ApiContractsTest {
   static final String QUERY_API = "api/mw-orchestrator/txn-query.v1.openapi.yaml";
   static final String NOTIFY_API = "api/mw-notify/notify-internal.v1.openapi.yaml";
   static final String CORE_API = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
+  static final String BANK_API = "api/mw-adapter-bank/bank.v1.openapi.yaml";
   static final String TXN_ID = "019a4f6e-1c2d-7a3b-8c4d-5e6f7a8b9c0d";
   static final String CORRELATION_ID = "019a4f6e-0000-7a3b-8c4d-5e6f7a8b9c0d";
   static final Instant NOW = Instant.parse("2026-11-04T06:00:00Z");
@@ -75,7 +76,24 @@ class ApiContractsTest {
     ContractManifest manifest = ContractManifest.load();
     assertThat(manifest.producedApis()).containsExactly(APP_API);
     assertThat(manifest.consumedApis())
-        .containsExactly(BILLPAY_API, AUTH_API, AUTH_PUBLIC_API, QUERY_API, NOTIFY_API, CORE_API);
+        .containsExactly(BILLPAY_API, BANK_API, AUTH_API, AUTH_PUBLIC_API, QUERY_API, NOTIFY_API, CORE_API);
+  }
+
+  // ---- linked bank accounts (ticket 117b) ----
+
+  @Test
+  void linkedBankAccountsMatchTheAppApiAndTheBankAnswerReads() {
+    var row = new mfs.mw.app.gateway.dto.LinkedBankAccount(
+        "11111111-1111-1111-1111-111111111111", "dbbl", "7890", "R.", java.time.Instant.parse("2026-11-20T08:00:00Z"));
+    assertValid(OpenApiSchemas.component(APP_API, "LinkedBankAccount"), row);
+    assertValid(OpenApiSchemas.component(APP_API, "LinkedBankAccountList"),
+        new mfs.mw.app.gateway.dto.LinkedBankAccount.Page(List.of(row)));
+    assertValid(OpenApiSchemas.component(BANK_API, "ValidateAccountRequest"),
+        java.util.Map.of("bankCode", "dbbl", "accountNumber", "1234567890"));
+    String answer = "{\"bankCode\":\"dbbl\",\"accountLast4\":\"7890\",\"holderName\":\"R.\"}";
+    assertThat(OpenApiSchemas.component(BANK_API, "AccountValidation").validate(JSON.readTree(answer))).isEmpty();
+    assertThat(JSON.readValue(answer, mfs.mw.app.gateway.dto.BankAccountValidation.class))
+        .isEqualTo(new mfs.mw.app.gateway.dto.BankAccountValidation("dbbl", "7890", "R."));
   }
 
   // ---- served: app.v1 ----
