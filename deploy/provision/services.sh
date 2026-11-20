@@ -162,8 +162,20 @@ provision_mw_admin_api() {
   EXTRA_POLICY="$(credential_upload_policy)"
 }
 
+# Operator OCS secrets (ticket 112a), one Vault secret per partner, read by the route when it
+# loads. The database password stays on the service secret, so KV is restored before db_role.
 provision_mw_adapter_telco() {
   gen_once spring.datasource.password 40
+  KV="secret/$SVC/gp-ocs"
+  gen_once api-key 40
+  KV="secret/$SVC/robi-ocs"
+  gen_once hmac-secret 40
+  KV="secret/$SVC/teletalk-ocs"
+  gen_once client-secret 40
+  KV="secret/$SVC/bl-ocs"
+  gen_once basic-user 24
+  gen_once basic-password 40
+  KV="secret/$SVC"
   db_role adapter_telco_rw partner_ref
 }
 

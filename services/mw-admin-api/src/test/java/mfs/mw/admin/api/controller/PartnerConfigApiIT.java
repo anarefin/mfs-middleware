@@ -77,7 +77,7 @@ class PartnerConfigApiIT {
     jdbc.update("delete from content_version");
     jdbc.update("delete from change_request");
     jdbc.update("delete from partner.partner");
-    assertThat(seeds.seedAll()).isEqualTo(3);
+    assertThat(seeds.seedAll()).isEqualTo(7);
   }
 
   static RequestPostProcessor operator(String username, String... roles) {
@@ -286,11 +286,13 @@ class PartnerConfigApiIT {
   }
 
   @Test
-  void theDevSeedsAreTheThreeAdaptersPartnersAsRoutes() {
+  void theDevSeedsAreTheAdaptersPartnersAsRoutes() {
     JsonNode items = body(mvc.get().uri("/admin/v1/partners").with(CHECKER).exchange()).path("items");
     assertValid("/admin/v1/partners", "get", "200", body(mvc.get().uri("/admin/v1/partners").with(CHECKER).exchange()));
-    assertThat(items).hasSize(3);
-    Map<String, String> families = Map.of("billagg", "billpay", "c2wbank", "bank", "ocs", "telco");
+    assertThat(items).hasSize(7);
+    Map<String, String> families = Map.of(
+        "billagg", "billpay", "c2wbank", "bank", "ocs", "telco",
+        "gp-ocs", "telco", "robi-ocs", "telco", "teletalk-ocs", "telco", "bl-ocs", "telco");
     for (JsonNode p : items) {
       String id = p.path("partnerId").asString();
       assertThat(p.path("family").asString()).isEqualTo(families.get(id));
@@ -366,7 +368,7 @@ class PartnerConfigApiIT {
     assertThat(record.path("value").path("dryRun").path("operation").asString()).isEqualTo("PAY");
     JsonNode robi = partner("robi");
     assertThat(robi.path("family").asString()).isEqualTo("telco");
-    assertThat(body(mvc.get().uri("/admin/v1/partners").with(MAKER).exchange()).path("items")).hasSize(4);
+    assertThat(body(mvc.get().uri("/admin/v1/partners").with(MAKER).exchange()).path("items")).hasSize(8);
 
     // version 1 has not passed its dry-run yet: an ENABLE / DISABLE / SET_TIMEOUTS on it keeps the
     // dry-run, so the unproven route still has to prove itself before the adapter loads it

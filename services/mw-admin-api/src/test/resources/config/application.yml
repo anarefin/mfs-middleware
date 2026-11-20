@@ -40,5 +40,9 @@ mw:
     # The dev seeds (application-dev.yml) are what the ITs change; PartnerConfigApiIT re-seeds them.
     seeds:
       - classpath:partner-seeds/dev/ocs.json
+      - classpath:partner-seeds/dev/gp-ocs.json
+      - classpath:partner-seeds/dev/robi-ocs.json
+      - classpath:partner-seeds/dev/teletalk-ocs.json
+      - classpath:partner-seeds/dev/bl-ocs.json
       - classpath:partner-seeds/dev/billagg.json
       - classpath:partner-seeds/dev/c2wbank.json

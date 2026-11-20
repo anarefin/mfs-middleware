@@ -33,8 +33,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     seedVersion?, detail?}]}`, the local parties first; a party that fails (the core unreachable or not
     200) is FAILED with the reason and the others still go. Test-only APISIX route `/test/mock-control/*`
     (`MW_E2E_ROUTES=1`). Test: `GlobalResetIT` (a stub core).
-  - Parties (`MockParties`, `GET /mock-control/parties`): `ocs` (topup, status, reverse; keys msisdn,
-    txnRef), `billagg` (billers, fetch, pay, status, reverse; biller, billNumber, txnRef; REST and SOAP
+  - Parties (`MockParties`, `GET /mock-control/parties`): `ocs` (legacy single profile; topup, status,
+    reverse; keys msisdn, txnRef), the operator profiles `ocs-gp`, `ocs-robi`, `ocs-teletalk`, `ocs-bl`
+    (ticket 112a; topup, inquiry, postpaid, status, reverse; keys msisdn, txnRef), `billagg` (billers,
+    fetch, pay, status, reverse; biller, billNumber, txnRef; REST and SOAP
     front ends), `c2wbank` (debit, status, reverse; account, txnRef), `merchant` (ipn; ipnId, path), and the
     SMPP / TCP parties of ticket 102b (FRS MCT-04): `smsc` (bind, submit; systemId, msisdn), `ussdgw` (bind,
     submit, enquire_link, dial; systemId, msisdn, mno), the per-MNO USSD ports `ussd-gp`, `ussd-robi`,
@@ -110,7 +112,15 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   /ocs/v1/topup/{transactionId}` returns the real outcome (200, or 404 NOT_FOUND). Replies:
   `{transactionId, status SUCCESS|FAILED|NOT_FOUND|UNAVAILABLE|ERROR, code, message, ocsRef}`;
   success 200 code `0000`, failure 422 (`2001` business, `9876` unknown), MAINTENANCE 503
-  (not applied). A repeated `transactionId` returns the original outcome.
+  (not applied). A repeated `transactionId` returns the original outcome. Operator profiles (ticket
+  112a, `service/OperatorOcsService`, `OperatorOcsProfile`, `controller/OperatorOcsController`):
+  `/ocs-gp/v1`, `/ocs-robi/v1`, `/ocs-teletalk/v1`, `/ocs-bl/v1` (recharge or the operator's name for
+  it, bill fetch, postpaid pay, status, reverse) plus `POST /ocs-teletalk/oauth/token`. An MSISDN
+  ending `999` is that operator's barred code. Seeded postpaid accounts: GP `01711000021` outstanding
+  `450.00` minimum `50.00` bill `GPB-01711000021`; Robi `01811000021` `320.50` / `20.00` /
+  `RBB-01811000021`; Teletalk `01511000021` `180.00` / `10.00` / `TTB-01511000021`; Banglalink
+  `01911000021` `275.75` / `25.00` / `BLB-01911000021`. Any other postpaid number is the unknown-bill
+  code. A second reverse returns the first operator reference. `service/OperatorOcsServiceTest`.
 - Bill aggregator wire format (`billagg`, `controller/BillAggregatorController`,
   `service/BillAggregatorService`, `BillPaymentLedger`): `GET /billagg/v1/billers` -> `[{code,
   name, category, protocol: REST|SOAP}]`, 10 billers (`BillAggregatorService.BILLERS`, read from the seed file

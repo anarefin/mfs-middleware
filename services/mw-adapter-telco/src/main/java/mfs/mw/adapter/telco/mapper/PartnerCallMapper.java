@@ -32,11 +32,14 @@ public class PartnerCallMapper {
       return Optional.of("payload is required");
     }
     if (!"PAY".equals(p.operation()) && !"STATUS_QUERY".equals(p.operation())
-        && !"REVERSE".equals(p.operation())) {
+        && !"REVERSE".equals(p.operation()) && !"INQUIRY".equals(p.operation())) {
       return Optional.of("unsupported operation");
     }
     if (p.partner() == null || p.partner().partnerId() == null || p.partner().partnerId().isBlank()) {
       return Optional.of("partner is required");
+    }
+    if ("INQUIRY".equals(p.operation())) {
+      return msisdnProblem(p);
     }
     if ("STATUS_QUERY".equals(p.operation())) {
       return Optional.empty(); // the partner is asked by our stable reference only
@@ -51,6 +54,11 @@ public class PartnerCallMapper {
     if (p.amount() == null || p.amount().valueMinor() == null || p.amount().valueMinor() <= 0) {
       return Optional.of("amount must be positive");
     }
+    return msisdnProblem(p);
+  }
+
+  /** A bill fetch or a top-up credits an MSISDN. */
+  private static Optional<String> msisdnProblem(PartnerRequest.Payload p) {
     if (p.creditParty() == null
         || !"MSISDN".equals(p.creditParty().type())
         || p.creditParty().id() == null

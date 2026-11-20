@@ -38,9 +38,16 @@ public final class PartnerTestSeeds {
     return Binder.get(environment).bind("mw.partners", PartnerProperties.class).get();
   }
 
-  /** The adapter's one dev seed partner (telco {@code ocs}, billpay {@code billagg}, bank {@code c2wbank}). */
+  /**
+   * The legacy dev seed these unit tests load a route from: telco {@code ocs}. The operator profiles
+   * sit beside it; billpay and bank each still have a single seed, so this returns that one when
+   * {@code ocs} is absent.
+   */
   public static Map.Entry<String, PartnerConfig> devSeed() {
     Map<String, PartnerConfig> seeds = properties(Map.of()).instances();
+    if (seeds.containsKey("ocs")) {
+      return Map.entry("ocs", seeds.get("ocs"));
+    }
     if (seeds.size() != 1) {
       throw new IllegalStateException("expected one dev seed partner, found " + seeds.keySet());
     }
