@@ -1,0 +1,4 @@
+{
+  "name": "30 Saga FRS (partner reversal of a completed top-up)",
+  "description": "Ticket 96c, FRS PLT-022 and PLT-025. Reversing a completed top-up asks the operator to reverse first. The core reversal follows only after that confirms. A partner refusal ends MANUAL_REVIEW and leaves the posting. The OCS scenario is cleared in the scenario."
+}

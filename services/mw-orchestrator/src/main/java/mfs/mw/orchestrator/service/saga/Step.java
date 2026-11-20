@@ -33,7 +33,7 @@ public enum Step {
           case SEND_PARTNER_REQUEST -> CALL_PARTNER;
           case SEND_COMMIT, SEND_CREDIT -> COMMIT;
           case SEND_RELEASE -> RELEASE;
-          case SEND_REVERSE, SEND_REVERSAL_QUERY, SEND_PARTNER_REVERSE -> REVERSE;
+          case SEND_REVERSE, SEND_REVERSAL_QUERY, SEND_PARTNER_REVERSE, SEND_CORE_REVERSE -> REVERSE;
           // Not a flow step: a refused commit asks about the hold and may release it even when
           // the flow has no QUERY or RELEASE of its own (ADD_MONEY_BANK). SagaEngine performs them.
           case SEND_HOLD_QUERY, SEND_COMPENSATING_RELEASE -> null;

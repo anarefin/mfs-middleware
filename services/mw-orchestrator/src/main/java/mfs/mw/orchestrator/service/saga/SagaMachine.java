@@ -114,8 +114,13 @@ public final class SagaMachine {
             case ReversalUnconfirmed e -> go(from, Status.REVERSING, Effect.SEND_REVERSAL_QUERY);
             case ReversalQueryResult e when e.reversed() -> go(from, Status.REVERSED, Effect.NONE);
             case ReversalQueryResult e -> go(from, Status.MANUAL_REVIEW, Effect.NONE);
-            // refused commit (ticket 96b): partner REVERSE, then the hold, then REVERSED
+            // refused commit (ticket 96b): partner REVERSE, then the hold, then REVERSED.
+            // a completed top-up or bill payment (ticket 96c): partner REVERSE, then the core.
+            case PartnerReverseConfirmed e when e.follow() == PartnerReverseConfirmed.Follow.CORE ->
+                go(from, Status.REVERSING, Effect.SEND_CORE_REVERSE);
             case PartnerReverseConfirmed e -> go(from, Status.REVERSING, Effect.SEND_HOLD_QUERY);
+            case PartnerReverseRefused e when e.end() == PartnerReverseRefused.End.MANUAL_REVIEW ->
+                go(from, Status.MANUAL_REVIEW, Effect.NONE);
             case PartnerReverseRefused e -> go(from, Status.FAILED, Effect.NONE);
             case HoldCheckResult e when e.hold() == HoldCheckResult.Hold.EXISTS ->
                 go(from, Status.REVERSING, Effect.SEND_COMPENSATING_RELEASE);
@@ -128,9 +133,12 @@ public final class SagaMachine {
             default -> null;
           };
       case COMPLETED ->
-          event instanceof ReversalRequested
-              ? go(from, Status.REVERSING, Effect.SEND_REVERSE)
-              : null;
+          switch (event) {
+            case ReversalRequested e when e.partnerFirst() ->
+                go(from, Status.REVERSING, Effect.SEND_PARTNER_REVERSE);
+            case ReversalRequested e -> go(from, Status.REVERSING, Effect.SEND_REVERSE);
+            default -> null;
+          };
       case MANUAL_REVIEW ->
           switch (event) {
             case ManualCommit e -> go(from, Status.COMMITTING, Effect.SEND_COMMIT);

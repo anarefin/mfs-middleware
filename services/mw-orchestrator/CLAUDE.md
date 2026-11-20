@@ -276,18 +276,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   Each transaction is reversed once: a further REVERSAL of a transaction already
   REVERSING/REVERSED/MANUAL_REVIEW (after a reversal), under any key, gets the original's current
   status as a duplicate answer (`attributes.duplicate`, `requestTxnId`) and changes nothing; the
-  idempotency key is stored with the ORIGINAL's txnId. A reversal of a completed transaction is
-  core-only: no partner REVERSE is sent (a reversed TOPUP gives the money back, not the airtime;
-  partner-first reversal of a completed TOPUP or bill payment is ticket 96c). A refused commit is
-  different, below.
+  idempotency key is stored with the ORIGINAL's txnId. A completed transaction with no held partner
+  leg (P2P, cash, merchant pay, add money) is reversed at the core only. A completed TOPUP or
+  BILL_PAY is different, below: the partner is reversed first. A refused commit is also below.
 - Partner reversal after a refused commit (ticket 96b, FRS PLT-022, PLT-025): CommitFailed or
   CreditRejected on a flow with a partner leg (`CommitRefused(compensatePartner=true)`) moves
   COMMITTING to REVERSING and sends `REVERSE` on `mw.partner.request.<family>.v1`. An operator's
   forced commit or credit that the core refuses again stays MANUAL_REVIEW. The request id
   is the name-based UUID of `reverse:<txnId>` (the same key on every resend; amount and
   `originalPartnerRef` are the PAY's). `transaction.pending_leg` names the leg:
-  `PARTNER_REVERSE`, then `HOLD_QUERY`, then `HOLD_RELEASE`; a completed-transaction reversal leaves
-  it null, so its deadline still runs the core reversal above. The partner leg is resent every
+  `PARTNER_REVERSE`, then `HOLD_QUERY`, then `HOLD_RELEASE`. The partner leg is resent every
   `retry-timeout` until `reversing-timeout` (60 s); no definite answer by then is MANUAL_REVIEW
   `MW-TMO-022`. A definite FAILED ends FAILED (`PartnerReverseRefused`) and does not touch the hold.
   SUCCESS (`PartnerReverseConfirmed`) asks the core, commandId `<txnId>:hold-check:<epoch ms>`:
@@ -296,6 +294,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `retry-timeout`, is MANUAL_REVIEW `MW-TMO-021`. ReleaseHold of a hold that remains is resent
   every `retry-timeout` (the release-unacknowledged alert); ReleaseFailed is MANUAL_REVIEW. A
   duplicate REVERSE ack is dropped by the inbox (`requestId:outcome`). `PartnerReversalIT`.
+- Partner-first reversal of a completed top-up or bill payment (ticket 96c, FRS PLT-022, PLT-025,
+  spec 7.4): TOPUP and BILL_PAY hold, pay the partner, then commit. Reversing one
+  (`ReversalRequested(partnerFirst)`) sets `pending_leg` `PARTNER_REVERSE` and sends the same
+  `REVERSE` (key `reverse:<txnId>`) before any core call. The partner leg is resent on the same
+  schedule as a refused commit; no definite answer is MANUAL_REVIEW `MW-TMO-022`, and no
+  ReverseTransaction has been sent. SUCCESS (`PartnerReverseConfirmed(CORE)`) clears the leg and
+  only then sends ReverseTransaction under the reversal's txnId; from there the core reversal
+  above applies (TransactionReversed -> REVERSED, a core refusal or no confirmation ->
+  MANUAL_REVIEW). A definite partner FAILED (`PartnerReverseRefused(MANUAL_REVIEW)`) ends
+  MANUAL_REVIEW with the partner's error and does not move the posting: the partner still delivered
+  the airtime or the bill. A completed ADD_MONEY_BANK stays a core reversal (the bank credit is not
+  this leg). A reply that arrives after the partner leg has finished changes nothing.
+  `CompletedPartnerReversalIT`. API folder `30-saga-frs`.
 - Audit (ticket 12, spec 14.3): one `mw.audit.event.v1` per state a transaction passes through
   (`mapper/AuditMapper`, own type `dto/AuditEvent`), through the outbox in the same transaction:
   action `txn.state.changed`, resource `txn/<txnId>`, actor `system`/`mw-orchestrator`, `before`
@@ -351,7 +362,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   COMMITTING / RELEASING / REVERSING every `retry-timeout` (5 s) -> resend CommitHold /
   ReleaseHold / ReverseTransaction (same commandId; REVERSING stops resending after
   `reversing-timeout` and asks the core, above),
-  UNKNOWN on the inquiry schedule (above). MANUAL_REVIEW and terminal states arm no timer. A late
+  UNKNOWN on the inquiry schedule (above). A REVERSING transaction whose pending leg is
+  `PARTNER_REVERSE` resends the partner REVERSE instead, and goes to MANUAL_REVIEW `MW-TMO-022`
+  when that window ends with no definite answer, before any core call. MANUAL_REVIEW and terminal states arm no timer. A late
   core reply after a timeout is ignored (state machine refuses it).
 - `commandId` = `<txnId>:validate` / `:post` / `:hold` / `:commit` / `:release` / `:credit` / `:balance`
   (QueryTransaction: above; ReverseTransaction: `<reversalTxnId>:reverse`). `expiresAt` = issuedAt + `command-ttl` (60 s).

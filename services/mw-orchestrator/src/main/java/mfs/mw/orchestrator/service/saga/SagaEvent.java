@@ -90,11 +90,35 @@ public sealed interface SagaEvent {
     }
   }
 
-  /** The partner confirmed REVERSE of a refused commit (ticket 96b). */
-  record PartnerReverseConfirmed() implements SagaEvent {}
+  /**
+   * The partner confirmed REVERSE. {@link Follow#HOLD} asks whether the hold of a refused commit
+   * remains (ticket 96b). {@link Follow#CORE} sends ReverseTransaction for a completed top-up or
+   * bill payment (ticket 96c).
+   */
+  record PartnerReverseConfirmed(Follow follow) implements SagaEvent {
 
-  /** The partner definitely refused REVERSE of a refused commit (ticket 96b). */
-  record PartnerReverseRefused() implements SagaEvent {}
+    public enum Follow { HOLD, CORE }
+
+    /** Refused-commit compensation (ticket 96b). */
+    public PartnerReverseConfirmed() {
+      this(Follow.HOLD);
+    }
+  }
+
+  /**
+   * The partner definitely refused REVERSE. {@link End#FAILED} leaves the hold of a refused commit
+   * untouched (ticket 96b). {@link End#MANUAL_REVIEW} keeps the posting of a completed top-up or
+   * bill payment for operations (ticket 96c).
+   */
+  record PartnerReverseRefused(End end) implements SagaEvent {
+
+    public enum End { FAILED, MANUAL_REVIEW }
+
+    /** Refused-commit compensation (ticket 96b). */
+    public PartnerReverseRefused() {
+      this(End.FAILED);
+    }
+  }
 
   /**
    * The core's answer, after the partner confirmed REVERSE, to whether the hold remains.
@@ -119,7 +143,17 @@ public sealed interface SagaEvent {
   /** The core refused ReleaseHold (ReleaseFailed): the hold was already committed. */
   record ReleaseRefused() implements SagaEvent {}
 
-  record ReversalRequested() implements SagaEvent {}
+  /**
+   * Operations asked to reverse a completed transaction. {@code partnerFirst}: a top-up or bill
+   * payment, so the partner REVERSE goes out before the core reversal (ticket 96c).
+   */
+  record ReversalRequested(boolean partnerFirst) implements SagaEvent {
+
+    /** A completed transaction with no held partner leg to undo first. */
+    public ReversalRequested() {
+      this(false);
+    }
+  }
 
   record ReversalAcknowledged() implements SagaEvent {}
 

@@ -289,6 +289,8 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 43 | [ussd frs] my account shows a mini statement and does not move money | - |  |
 | 43 | [ussd frs] change PIN on USSD stays on the maintenance text and moves nothing | - |  |
 | 43 | [ussd frs] a remittance reference that is not an Upay txn id says there is none | - |  |
+| 30 | [topup reversal frs] a completed top-up is reversed at the operator before the core and every balance is restored | - |  | FR-07 |
+| 30 | [topup reversal frs] a partner refusal to reverse a completed top-up ends in manual review and keeps the posting | - |  | FR-07 |
 
 ## FRS UC x T1-T12
 
