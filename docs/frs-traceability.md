@@ -268,7 +268,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-08 | ticket 112 | one OCS simulator built; four operator profiles landed in 112a (`gp-ocs`, `robi-ocs`, `teletalk-ocs`, `bl-ocs`); 112b stores the fetched bill on the quote (minimum through outstanding); T1–T4 and T6–T10 are `tests/api/src/46-topup-operators` (112c). T5 waits out the inquiry schedule |
 | EXT-09 | ticket 114 | utility aggregator simulator (billagg) built; stateful bills and callbacks in 114 |
 | EXT-10 | ticket 114 | four bill aggregator profiles |
-| EXT-11 | done (115a, 115b) | merchant SOAP: mw-adapter-merchant `merchant-soap`, mw-simulators `MerchantSoapMock`, orchestrator validate + notify |
+| EXT-11 | done | merchant SOAP (115a, 115b): mw-adapter-merchant `merchant-soap`, mw-simulators `MerchantSoapMock`, orchestrator validate + notify |
 | EXT-12 | ticket 117 | partial: 20 bank profiles (REST and SOAP) generated from `deploy/partner-routes/bank/bank-profiles.csv`, AVL/W2B/STATUS/REVERSE routes (117a); mw-simulators bank gateway from the same CSV, seeded accounts, trigger table, mock party `bank-<code>`, health probe (117d); AVL API, W2B flow, suite open |
 | EXT-13 | tickets 121, 122 | NPSB and BanglaQR mock switch |
 | EXT-14 | ticket 118 | CyberSource mock |
