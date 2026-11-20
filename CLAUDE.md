@@ -44,9 +44,10 @@ when a spec decision row has no ADR: a new script, knob or decision updates thes
   the payShield simulator; mTLS API only, caller policy per key purpose); test doubles `mw-core-mock`,
   `mw-simulators`, one-shot `mw-seeder`; `mw-data-export` (DW stream, daily SFTP batch, archive; ticket 128)
   and `mw-recon` (trust MT940/MT942, partner settlement matching and classification; ticket 126; no Camel).
-  `mw-adapter-card` (card acquiring, CyberSource style, tokens only; ticket 118a) and `mw-adapter-merchant`
-  (merchant systems over SOAP: validate before a MERCHANT_PAY, notify after it, refund; tickets 115a/115b).
-  Planned by the FRS run (ADR D32; not built yet): adapters `mw-adapter-remit`, `mw-adapter-atm`,
+  `mw-adapter-card` (card acquiring, CyberSource style, tokens only; ticket 118a), `mw-adapter-merchant`
+  (merchant systems over SOAP: validate before a MERCHANT_PAY, notify after it, refund; tickets 115a/115b)
+  and `mw-adapter-atm` (UCB ATM inbound SOAP, family `atm`; ticket 120a).
+  Planned by the FRS run (ADR D32; not built yet): adapters `mw-adapter-remit`,
   `mw-adapter-interop` (Camel and the copied `partner/` framework) and `mw-compliance` (no Camel: sshj and `RestClient` in
   `client/`); routing is a module of mw-orchestrator. Also decided (not built): the core wallet over REST (D31), one `/mock-control` API (D33);
   until then the rules below name the stack as it runs.

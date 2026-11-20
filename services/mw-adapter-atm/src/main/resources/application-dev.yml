@@ -1,0 +1,61 @@
+# Dev profile only (SPRING_PROFILES_ACTIVE=dev): set by deploy/docker-compose.yml for the dev stack
+# and by the test config. The seed partner (version 0) points at mw-simulators over plain http; the
+# packaged application.yml has none, so a production start has no partners. Plain http still needs
+# MW_PARTNER_INSECURE_HTTP_HOSTS (docker-compose.yml sets it).
+mw:
+  partners:
+    # Dry-runs of new partner versions go to mw-simulators' programmable stub (ticket 83).
+    dry-run:
+      base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
+    instances:
+      # UCB ATM switch (ticket 120a, FRS UC-17 / EXT-16; mw-simulators UcbAtmMock). The ATM calls us
+      # (inbound SOAP: controller/AtmSoapEndpoint, WSDL /partner/ucbatm/ws/v1/atm.wsdl); the only
+      # outbound operation is the dispense status of a cash-out the orchestrator holds (ticket 120b:
+      # T3/T4, a ConfirmDispense that never came). REST/JSON, signed hmac-sha256 with the field
+      # hmac-secret of Vault secret/mw-adapter-atm/ucbatm (dev value UCBATM_HMAC_SECRET,
+      # deploy/provision/services.sh); never here.
+      #   STATUS_QUERY  GET /ucbatm/v1/dispenses/{reference}: DISPENSED = SUCCESS, NOT_DISPENSED =
+      #                 FAILED, 404 NOT_FOUND = NOT_FOUND; a 5xx or an unreadable answer is UNKNOWN.
+      ucbatm:
+        family: atm
+        base-url: ${UCBATM_BASE_URL:http://mw-simulators:8080}
+        allowed-hosts: ${MW_UCBATM_ALLOWED_HOSTS:mw-simulators}
+        connect-timeout-ms: 3000
+        timeout-ms: 10000
+        read-timeout-ms: 12000
+        inquiry-retries: 1
+        auth:
+          scheme: hmac-sha256
+          credentials-ref: hmac-secret
+        ambiguous-codes: ["9876"]
+        error-map:
+          "[5101]": { suffix: NOT_DISPENSED, retryable: false }
+          "[5102]": { suffix: ATM_OUT_OF_SERVICE, retryable: false }
+        route: |
+          - route:
+              from:
+                uri: direct:partner-ucbatm
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=STATUS_QUERY.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.ucbatm.base-url}&method=GET&path=/ucbatm/v1/dispenses/{reference}&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          # The switch is asked by path, not by a body. The map step still runs so a loaded route
+          # always names mw-map (the engine's dev-seed check) and the reference is the stable one.
+          "[STATUS_QUERY.request]": |
+            {"reference": reference}
+          "[STATUS_QUERY.response]": |
+            status = 200
+              ? (body.status = "DISPENSED" and $type(body.dispenseRef) = "string" and body.dispenseRef != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.dispenseRef, "code": body.code}
+                  : body.status = "NOT_DISPENSED" and $type(body.code) = "string" and body.code != ""
+                    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 404 and body.status = "NOT_FOUND"
+              ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}

@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Inbound SOAP API of the UCB ATM switch (ticket 120a, FRS UC-17, EXT-16, FL-11, PLT-025, PLT-050).
+  Owner: mw-adapter-atm. The WSDL is generated from this schema and served at
+  /partner/ucbatm/ws/v1/atm.wsdl. Every request carries a WS-Security UsernameToken (PasswordText)
+  in the SOAP header. atmTxnRef is the switch's own reference of one ATM session: a repeated request
+  with the same atmTxnRef is answered with the first result and never processed twice (PLT-025).
+  The token is a secret: it is never echoed, stored in clear or logged.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:bits:mw:atm:v1"
+           targetNamespace="urn:bits:mw:atm:v1"
+           elementFormDefault="qualified">
+
+  <xs:simpleType name="AtmTxnRef">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Za-z0-9_\-]{1,40}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="AtmId">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[A-Za-z0-9_\-]{1,20}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Msisdn">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="01[3-9][0-9]{8}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Token">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9]{6}"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <!-- Amount in poisha (minor units), BDT only. -->
+  <xs:simpleType name="AmountMinor">
+    <xs:restriction base="xs:long">
+      <xs:minExclusive value="0"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="Status">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="ACCEPTED"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="Ack">
+    <xs:sequence>
+      <xs:element name="atmTxnRef" type="tns:AtmTxnRef"/>
+      <xs:element name="status" type="tns:Status"/>
+      <xs:element name="txnId" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- Cash-out: the token the customer generated in the app, for this wallet and amount. -->
+  <xs:element name="VerifyTokenAndDebitRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="atmTxnRef" type="tns:AtmTxnRef"/>
+        <xs:element name="atmId" type="tns:AtmId"/>
+        <xs:element name="msisdn" type="tns:Msisdn"/>
+        <xs:element name="token" type="tns:Token"/>
+        <xs:element name="amountMinor" type="tns:AmountMinor"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="VerifyTokenAndDebitResponse" type="tns:Ack"/>
+
+  <!-- The cash left the ATM: the held debit of atmTxnRef commits. -->
+  <xs:element name="ConfirmDispenseRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="atmTxnRef" type="tns:AtmTxnRef"/>
+        <xs:element name="atmId" type="tns:AtmId"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="ConfirmDispenseResponse" type="tns:Ack"/>
+
+  <!-- The dispense failed: the held debit of atmTxnRef is released. Idempotent (PLT-025). -->
+  <xs:element name="ReversalAdviceRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="atmTxnRef" type="tns:AtmTxnRef"/>
+        <xs:element name="atmId" type="tns:AtmId"/>
+        <xs:element name="reasonCode" minOccurs="0">
+          <xs:simpleType>
+            <xs:restriction base="xs:string">
+              <xs:pattern value="[A-Z0-9_]{1,20}"/>
+            </xs:restriction>
+          </xs:simpleType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="ReversalAdviceResponse" type="tns:Ack"/>
+
+  <!-- Cash-in: notes deposited at the ATM credit the wallet from the UCB settlement wallet. -->
+  <xs:element name="CashInRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="atmTxnRef" type="tns:AtmTxnRef"/>
+        <xs:element name="atmId" type="tns:AtmId"/>
+        <xs:element name="msisdn" type="tns:Msisdn"/>
+        <xs:element name="amountMinor" type="tns:AmountMinor"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="CashInResponse" type="tns:Ack"/>
+</xs:schema>

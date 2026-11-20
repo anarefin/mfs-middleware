@@ -1,0 +1,5 @@
+{
+  "invalid-pay-without-amount.json": [
+    "/payload must have required property 'amount'"
+  ]
+}
