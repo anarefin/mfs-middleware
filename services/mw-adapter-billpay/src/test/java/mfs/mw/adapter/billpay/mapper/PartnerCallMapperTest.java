@@ -98,7 +98,9 @@ class PartnerCallMapperTest {
     assertThat(call.correlationId()).isEqualTo("corr-f");
     assertThat(call.input())
         .containsEntry("creditParty", Map.of("type", "BILLER_ACCOUNT", "id", "1234567"))
-        .containsEntry("partner", Map.of("partnerId", "billagg", "billerCode", "DESCO"));
+        .containsEntry("partner", Map.of("partnerId", "billagg", "billerCode", "DESCO"))
+        .doesNotContainKey("billMonth");
+    assertThat(mapper.fetchCall("billagg", "DESCO", "1234567", "202409", "corr-f").input()).containsEntry("billMonth", "202409");
   }
 
   private static PartnerRequest withOperation(PartnerRequest r, String op) {

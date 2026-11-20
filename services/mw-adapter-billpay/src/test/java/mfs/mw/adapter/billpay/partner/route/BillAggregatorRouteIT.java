@@ -16,6 +16,7 @@ import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import java.util.List;
 import java.util.Map;
 import mfs.mw.adapter.billpay.TestInfrastructure;
+import mfs.mw.adapter.billpay.mapper.PartnerCallMapper;
 import mfs.mw.adapter.billpay.partner.PartnerCall;
 import mfs.mw.adapter.billpay.partner.PartnerResponse;
 import mfs.mw.adapter.billpay.partner.config.PartnerConfigStore;
@@ -54,6 +55,7 @@ class BillAggregatorRouteIT {
 
   private final PartnerGateway gateway;
   private final PartnerConfigStore store;
+  private final PartnerCallMapper calls = new PartnerCallMapper();
 
   @Autowired
   BillAggregatorRouteIT(PartnerGateway gateway, PartnerConfigStore store) {
@@ -236,6 +238,27 @@ class BillAggregatorRouteIT {
       AGG.stubFor(get(urlEqualTo(path)).willReturn(json(404, notFound[0])));
       assertThat(gateway.call(call(id, "STATUS_QUERY"))).as(id + " NOT_FOUND body").isInstanceOf(PartnerResponse.NotFound.class);
     });
+  }
+
+  /** M9 review (113a, FL-04): the bill month the customer picked goes on the wire of every aggregator. */
+  @Test
+  void theBillMonthGoesOnTheWire() {
+    stubToken();
+    AGG.stubFor(post(urlEqualTo("/ekpay/v1/bills/inquiry"))
+        .withRequestBody(equalToJson("{\"billerId\":\"DESCO\",\"billNo\":\"" + BILL + "\",\"billMonth\":\"202409\"}"))
+        .willReturn(json(200, "{\"status\":\"DUE\",\"billNo\":\"" + BILL + "\",\"amount\":\"10.00\",\"billMonth\":\"202409\"}")));
+    assertThat(gateway.call(calls.fetchCall("ekpay", "DESCO", BILL, "202409", "corr-113")))
+        .isInstanceOf(PartnerResponse.Success.class);
+    AGG.stubFor(post(urlEqualTo("/sslcommerz/v1/bills/inquiry"))
+        .withRequestBody(equalToJson("{\"biller_code\":\"DESCO\",\"bill_no\":\"" + BILL + "\",\"bill_period\":\"202409\"}"))
+        .willReturn(json(200, "{\"status\":\"UNPAID\",\"bill_no\":\"" + BILL + "\",\"amount\":\"10.00\"}")));
+    assertThat(gateway.call(calls.fetchCall("sslcommerz", "DESCO", BILL, "202409", "corr-113")))
+        .isInstanceOf(PartnerResponse.Success.class);
+    AGG.stubFor(post(urlEqualTo("/agg4/v1/bills/inquiry"))
+        .withRequestBody(equalToJson("{\"req\":{\"svc\":\"DESCO\",\"acct\":\"" + BILL + "\",\"month\":\"202409\"}}"))
+        .willReturn(json(200, "{\"res\":{\"state\":\"OPEN\",\"acct\":\"" + BILL + "\",\"amt\":\"10.00\"}}")));
+    assertThat(gateway.call(calls.fetchCall("agg4", "DESCO", BILL, "202409", "corr-113")))
+        .isInstanceOf(PartnerResponse.Success.class);
   }
 
   static void stubToken() {

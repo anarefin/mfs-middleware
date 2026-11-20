@@ -148,7 +148,7 @@ mw:
           # 200 DUE carries the amount due (decimal string, major units) as attributes; 422 with a
           # code is a refusal (unknown bill, already paid, unknown biller).
           "[INQUIRY.request]": |
-            {"billerCode": partner.billerCode, "billNumber": creditParty.id}
+            {"billerCode": partner.billerCode, "billNumber": creditParty.id, "billMonth": billMonth}
           "[INQUIRY.response]": |
             status = 200
               ? (body.status = "DUE" and $type(body.amount) = "string" and $type(body.billNumber) = "string"
