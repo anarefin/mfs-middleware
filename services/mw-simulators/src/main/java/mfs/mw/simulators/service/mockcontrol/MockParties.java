@@ -56,6 +56,8 @@ public final class MockParties {
               List.of("biller", "billNumber", "txnRef")),
           new MockParty("c2wbank", "C2W partner bank", List.of("debit", "status", "reverse"), List.of("account", "txnRef")),
           new MockParty("merchant", "checkout merchant IPN receiver", List.of("ipn"), List.of("ipnId", "path")),
+          new MockParty("merchant-soap", "merchant system over SOAP (mw-adapter-merchant): validate, notify, query, refund",
+              List.of("validate", "notify", "query", "refund"), List.of("merchantId", "txnRef")),
           new MockParty("cybersource", "card acquirer (CyberSource style): hosted page, 3-D Secure webhook, capture, refund",
               List.of("session", "authenticate", "capture", "status", "refund"), List.of("txnRef", "session")),
           new MockParty("ucb-imt", "UCB IMT inbound remittance: pushes a signed credit to the middleware on demand",

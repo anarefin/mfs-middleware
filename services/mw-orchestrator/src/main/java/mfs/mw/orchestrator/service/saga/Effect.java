@@ -50,5 +50,7 @@ public enum Effect {
    */
   SEND_INQUIRY,
   /** BalanceInquiry to the core (BALANCE, ADR D26); moves no money. */
-  SEND_BALANCE_INQUIRY
+  SEND_BALANCE_INQUIRY,
+  /** MERCHANT_PAY to a merchant with its own system (ticket 115b): the merchant VALIDATE (partner INQUIRY). */
+  SEND_MERCHANT_VALIDATE
 }

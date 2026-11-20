@@ -1,8 +1,13 @@
 package mfs.mw.orchestrator.service;
 
+import java.time.Clock;
 import java.util.Optional;
 import java.util.UUID;
+import mfs.mw.orchestrator.dto.AuditEvent;
 import mfs.mw.orchestrator.dto.ErrorInfo;
+import mfs.mw.orchestrator.exception.ErrorCodes;
+import mfs.mw.orchestrator.messaging.EventMetadata;
+import mfs.mw.orchestrator.messaging.OutboxWriter;
 import mfs.mw.orchestrator.dto.PartnerReply;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.mapper.AuditMapper;
@@ -13,6 +18,7 @@ import mfs.mw.orchestrator.repository.PartnerCallRepository;
 import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
+import mfs.mw.orchestrator.service.saga.MerchantPayFlow;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.Outcome;
 import mfs.mw.orchestrator.service.saga.PendingLeg;
@@ -45,6 +51,9 @@ public class PartnerReplyService {
   private final InquiryService inquiries;
   private final FlowRegistry flows;
   private final PartnerCallRepository partnerCalls;
+  private final AuditMapper audits;
+  private final OutboxWriter outbox;
+  private final Clock clock;
 
   public PartnerReplyService(
       Inbox inbox,
@@ -53,7 +62,10 @@ public class PartnerReplyService {
       SagaEngine engine,
       InquiryService inquiries,
       FlowRegistry flows,
-      PartnerCallRepository partnerCalls) {
+      PartnerCallRepository partnerCalls,
+      AuditMapper audits,
+      OutboxWriter outbox,
+      Clock clock) {
     this.inbox = inbox;
     this.transactions = transactions;
     this.mapper = mapper;
@@ -61,6 +73,9 @@ public class PartnerReplyService {
     this.inquiries = inquiries;
     this.flows = flows;
     this.partnerCalls = partnerCalls;
+    this.audits = audits;
+    this.outbox = outbox;
+    this.clock = clock;
   }
 
   /**
@@ -80,6 +95,11 @@ public class PartnerReplyService {
       return;
     }
     recordAnswer(reply);
+    if (MerchantPayFlow.TXN_TYPE.equals(found.get().request().txnType())
+        && MerchantPayFlow.MERCHANT.family().equals(reply.family())) {
+      merchantAnswer(found.get(), reply);
+      return;
+    }
     if (PartnerRequestMapper.REVERSE.equals(operation(reply))) {
       applyReverse(found.get(), reply);
       return;
@@ -160,6 +180,71 @@ public class PartnerReplyService {
           .addKeyValue("outcome", outcome.get().name())
           .log("partner reversal reply does not fit the transaction's state; ignored");
     }
+  }
+
+  /**
+   * The merchant system's answer for a MERCHANT_PAY (ticket 115b). VALIDATE (INQUIRY) while
+   * VALIDATING: SUCCESS asks the core next; FAILED, UNKNOWN or NOT_FOUND end FAILED with the partner's
+   * error (nothing has moved, so no inquiry is worth it; the payer may simply try again); PENDING waits
+   * for the VALIDATING deadline. NOTIFY (PAY) never touches the transaction: SUCCESS is logged; any
+   * other answer is retried with a fresh request id until {@code notify-attempts} sends, then the
+   * notify is dead-lettered (ERROR {@code merchant.notify.dead_lettered}, audit
+   * {@code merchant.notify.failed}). Any other answer is late and only on the timeline.
+   */
+  private void merchantAnswer(TransactionRecord rec, PartnerReply reply) {
+    Optional<Outcome> outcome = PartnerReplyMapper.outcome(reply);
+    if (outcome.isEmpty() || outcome.get() == Outcome.PENDING) {
+      drop(reply, "partner.reply.pending", "merchant system answer without a final outcome; nothing changes");
+      return;
+    }
+    String op = operation(reply);
+    if (PartnerRequestMapper.INQUIRY.equals(op) && rec.status() == Status.VALIDATING) {
+      if (outcome.get() == Outcome.SUCCESS) {
+        engine.fire(rec, new SagaEvent.MerchantValidated(), null);
+      } else {
+        ErrorInfo error = mapper.error(reply);
+        engine.fire(rec, new SagaEvent.MerchantRejected(), error != null ? error
+            : new ErrorInfo(ErrorCodes.TMO_CORE_VALIDATE, "The merchant could not be confirmed", null, true));
+      }
+      return;
+    }
+    if (PartnerRequestMapper.PAY.equals(op)) {
+      notifyAnswer(rec, reply, outcome.get());
+      return;
+    }
+    drop(reply, "saga.event.ignored", "merchant system answer after that step finished");
+  }
+
+  private void notifyAnswer(TransactionRecord rec, PartnerReply reply, Outcome outcome) {
+    int sent = engine.merchantNotifyAttempts(rec);
+    if (outcome == Outcome.SUCCESS) {
+      log.atInfo()
+          .addKeyValue("event", "merchant.notify.delivered")
+          .addKeyValue("txnId", reply.txnId())
+          .addKeyValue("partnerId", reply.partnerId())
+          .addKeyValue("attempt", sent)
+          .log("merchant system received the payment notify");
+      return;
+    }
+    if (!reply.requestId().equals(PartnerRequestMapper.requestId(reply.txnId(), "NOTIFY:" + sent))) {
+      drop(reply, "saga.event.ignored", "answer to an older merchant notify attempt; the latest decides");
+      return;
+    }
+    if (sent < engine.merchantNotifyMaxAttempts()) {
+      engine.sendMerchantNotify(rec, sent + 1);
+      return;
+    }
+    String errorCode = reply.payload().errorCode();
+    log.atError()
+        .addKeyValue("event", "merchant.notify.dead_lettered")
+        .addKeyValue("txnId", reply.txnId())
+        .addKeyValue("partnerId", reply.partnerId())
+        .addKeyValue("attempts", sent)
+        .addKeyValue("errorCode", errorCode)
+        .log("merchant payment notify failed after every attempt; the payment stays COMPLETED");
+    AuditEvent e = audits.merchantNotifyFailed(rec, reply.partnerId(), sent, errorCode, clock.instant());
+    outbox.append(
+        SagaEngine.AUDIT_TOPIC, e.txnId(), new EventMetadata(e.correlationId(), e.txnId(), e.auditId(), 1), e);
   }
 
   /** The answer on the saga timeline (ticket 35), whatever the state machine makes of it. */

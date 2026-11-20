@@ -7,6 +7,18 @@ public sealed interface SagaEvent {
 
   record RequestRejected() implements SagaEvent {}
 
+  /**
+   * A MERCHANT_PAY to a merchant with its own system (ticket 115b) was accepted: ask the merchant
+   * system first (VALIDATE: merchant exists, active, till valid), before the core and before any money moves.
+   */
+  record MerchantValidationStarted() implements SagaEvent {}
+
+  /** The merchant system confirmed the merchant (ticket 115b): now the core's ValidateTransaction. */
+  record MerchantValidated() implements SagaEvent {}
+
+  /** The merchant system refused the merchant, or gave no definite answer (ticket 115b): FAILED, nothing moved. */
+  record MerchantRejected() implements SagaEvent {}
+
   /** A BALANCE check (ADR D26) was accepted: ask the core for the wallet's balance. */
   record BalanceInquiryStarted() implements SagaEvent {}
 

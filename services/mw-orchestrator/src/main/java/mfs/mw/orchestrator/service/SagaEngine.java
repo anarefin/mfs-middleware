@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import mfs.mw.orchestrator.config.InquiryProperties;
+import mfs.mw.orchestrator.config.MerchantSystemProperties;
 import mfs.mw.orchestrator.config.OrchestratorProperties;
 import mfs.mw.orchestrator.dto.AuditEvent;
 import mfs.mw.orchestrator.dto.Balance;
@@ -36,6 +37,7 @@ import mfs.mw.orchestrator.service.routing.RoutingService;
 import mfs.mw.orchestrator.service.saga.Effect;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
+import mfs.mw.orchestrator.service.saga.MerchantPayFlow;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
 import mfs.mw.orchestrator.service.saga.PendingLeg;
 import mfs.mw.orchestrator.service.saga.RefundFlow;
@@ -85,6 +87,7 @@ public class SagaEngine {
   private final CoreCallDispatcher core;
   private final SagaAlerts alerts;
   private final RoutingCatalog routing;
+  private final MerchantSystemProperties merchantSystems;
   private final Clock clock;
 
   public SagaEngine(
@@ -103,6 +106,7 @@ public class SagaEngine {
       CoreCallDispatcher core,
       SagaAlerts alerts,
       RoutingCatalog routing,
+      MerchantSystemProperties merchantSystems,
       Clock clock) {
     this.transactions = transactions;
     this.timers = timers;
@@ -119,6 +123,7 @@ public class SagaEngine {
     this.core = core;
     this.alerts = alerts;
     this.routing = routing;
+    this.merchantSystems = merchantSystems;
     this.clock = clock;
   }
 
@@ -170,6 +175,9 @@ public class SagaEngine {
           .log("transaction state changed");
       if (t.to() == Status.MANUAL_REVIEW) {
         alerts.manualReviewEntered(t.from(), rec.txnId(), next.error());
+      }
+      if (t.to() == Status.COMPLETED && t.from() != Status.REVERSING) {
+        sendMerchantNotify(next, 1); // ticket 115b: after commit, best effort, never reverses
       }
     }
     rearm(next, t, now);
@@ -253,6 +261,13 @@ public class SagaEngine {
     }
     if (effect == Effect.SEND_COMPENSATING_RELEASE) {
       send(rec, commandMapper.release(rec, now, properties.commandTtl()));
+      return;
+    }
+    // Ticket 115b: the merchant system's VALIDATE, before the core is asked
+    if (effect == Effect.SEND_MERCHANT_VALIDATE) {
+      MerchantSystemProperties.Merchant merchant = merchantOf(rec).orElseThrow();
+      sendToPartner(rec, MerchantPayFlow.MERCHANT,
+          partnerMapper.merchantValidate(rec, merchant, now, properties.validatingTimeout()), merchant.partnerId(), now);
       return;
     }
     Optional<Step> step = Step.of(effect);
@@ -460,13 +475,62 @@ public class SagaEngine {
 
   /** Sends a partner request through the outbox and records it on the saga timeline (ticket 35). */
   private void sendToPartner(TransactionRecord rec, PartnerCall call, PartnerRequest request, Instant now) {
+    sendToPartner(rec, call, request, partnerId(rec), now);
+  }
+
+  private void sendToPartner(
+      TransactionRecord rec, PartnerCall call, PartnerRequest request, String partnerId, Instant now) {
     outbox.append(
         call.topic(),
         request.txnId(),
         new EventMetadata(request.correlationId(), request.txnId(), request.requestId(), 1),
         request);
     partnerCalls.sent(
-        request.requestId(), rec.txnId(), request.payload().operation(), call.family(), partnerId(rec), now);
+        request.requestId(), rec.txnId(), request.payload().operation(), call.family(), partnerId, now);
+  }
+
+  /**
+   * The merchant system behind a MERCHANT_PAY's credit wallet (ticket 115b), empty for any other
+   * transaction or a merchant without one.
+   */
+  public Optional<MerchantSystemProperties.Merchant> merchantOf(TransactionRecord rec) {
+    TxnRequest req = rec.request();
+    if (!MerchantPayFlow.TXN_TYPE.equals(req.txnType()) || req.creditParty() == null) {
+      return Optional.empty();
+    }
+    return merchantSystems.forWallet(req.creditParty().id());
+  }
+
+  /**
+   * Sends NOTIFY attempt {@code attempt} of a COMPLETED merchant payment to its merchant system
+   * (ticket 115b) through the outbox, so it leaves only once the completion has committed. It never
+   * changes the transaction.
+   */
+  public void sendMerchantNotify(TransactionRecord rec, int attempt) {
+    merchantOf(rec).ifPresent(merchant -> {
+      Instant now = clock.instant();
+      sendToPartner(rec, MerchantPayFlow.MERCHANT,
+          partnerMapper.merchantNotify(rec, merchant, attempt, now, properties.partnerTimeout()),
+          merchant.partnerId(), now);
+      log.atInfo()
+          .addKeyValue("event", "merchant.notify.sent")
+          .addKeyValue("txnId", rec.txnId().toString())
+          .addKeyValue("partnerId", merchant.partnerId())
+          .addKeyValue("attempt", attempt)
+          .log("merchant payment notify sent");
+    });
+  }
+
+  /** How many NOTIFY attempts went to the merchant system for this transaction so far. */
+  public int merchantNotifyAttempts(TransactionRecord rec) {
+    return (int) partnerCalls.of(rec.txnId()).stream()
+        .filter(c -> PartnerRequestMapper.PAY.equals(c.operation()))
+        .count();
+  }
+
+  /** The configured number of NOTIFY sends in all (first + retries). */
+  public int merchantNotifyMaxAttempts() {
+    return Math.max(1, merchantSystems.notifyAttempts());
   }
 
   /**

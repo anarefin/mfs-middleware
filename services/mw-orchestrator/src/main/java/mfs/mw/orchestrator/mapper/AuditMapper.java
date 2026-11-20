@@ -58,6 +58,37 @@ public class AuditMapper {
         SERVICE);
   }
 
+  /** The merchant system never took a payment notify (ticket 115b): the dead-letter record. */
+  public static final String MERCHANT_NOTIFY_FAILED = "merchant.notify.failed";
+
+  /**
+   * A merchant payment notify that failed on every attempt (ticket 115b): outcome FAILURE, the
+   * transaction's status unchanged, the attempts and the last error code. No parties or amounts.
+   */
+  public AuditEvent merchantNotifyFailed(
+      TransactionRecord rec, String partnerId, int attempts, String errorCode, Instant at) {
+    Map<String, String> after = new HashMap<>();
+    after.put("status", rec.status().name());
+    after.put("attempts", Integer.toString(attempts));
+    if (errorCode != null) {
+      after.put("errorCode", errorCode);
+    }
+    String txnId = rec.txnId().toString();
+    return new AuditEvent(
+        1,
+        UUID.randomUUID().toString(),
+        txnId,
+        rec.request().correlationId(),
+        new AuditEvent.Actor("partner", partnerId == null || partnerId.isBlank() ? "unknown" : partnerId),
+        MERCHANT_NOTIFY_FAILED,
+        "txn/" + txnId,
+        Map.of("status", rec.status().name()),
+        after,
+        "FAILURE",
+        at,
+        SERVICE);
+  }
+
   /** A callback that does not belong to the transaction (ownership check failed). */
   public static final String CALLBACK_REJECTED = "partner.callback.rejected";
 

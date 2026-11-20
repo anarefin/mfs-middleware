@@ -174,6 +174,8 @@ public class TransactionService {
       engine.fire(rec, new SagaEvent.RequestRejected(), refusal);
     } else if (flows.find(req.txnType()).orElseThrow().allows(Step.BALANCE_INQUIRY)) {
       engine.fire(rec, new SagaEvent.BalanceInquiryStarted(), null); // ADR D26: no money moves
+    } else if (engine.merchantOf(rec).isPresent()) {
+      engine.fire(rec, new SagaEvent.MerchantValidationStarted(), null); // ticket 115b
     } else {
       engine.fire(rec, new SagaEvent.ValidationStarted(), null);
     }

@@ -3,11 +3,18 @@ package mfs.mw.orchestrator.mapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import mfs.mw.orchestrator.config.MerchantSystemProperties;
+import mfs.mw.orchestrator.dto.Amount;
+import mfs.mw.orchestrator.dto.Party;
+import mfs.mw.orchestrator.dto.PartnerRef;
 import mfs.mw.orchestrator.dto.PartnerRequest;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.entity.TransactionRecord;
+import mfs.mw.orchestrator.service.saga.MerchantPayFlow;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
 import org.springframework.stereotype.Component;
 
@@ -59,6 +66,45 @@ public class PartnerRequestMapper {
         new PartnerRequest.Payload(
             PAY, req.txnType(), req.partner(), partnerTxnRef(txnId), req.amount(), req.debitParty(),
             req.creditParty(), null, req.attributes()));
+  }
+
+  public static final String INQUIRY = "INQUIRY";
+
+  /**
+   * The merchant VALIDATE (ticket 115b): an INQUIRY to the merchant system before the core is asked.
+   * Partner = the merchant's record, credit party {@code {MERCHANT, <merchant id in that system>}},
+   * {@code attributes.tillId} the till; request id {@code <txnId>:INQUIRY}.
+   */
+  public PartnerRequest merchantValidate(
+      TransactionRecord rec, MerchantSystemProperties.Merchant merchant, Instant now, Duration deadline) {
+    return merchant(rec, merchant, INQUIRY, INQUIRY, null, now, deadline);
+  }
+
+  /**
+   * The merchant NOTIFY (ticket 115b): a PAY to the merchant system after COMPLETED, attempt {@code n}
+   * (1 = first); request id {@code <txnId>:NOTIFY:<n>}, so each retry is a new request to the adapter.
+   */
+  public PartnerRequest merchantNotify(
+      TransactionRecord rec, MerchantSystemProperties.Merchant merchant, int attempt, Instant now, Duration deadline) {
+    return merchant(rec, merchant, PAY, "NOTIFY:" + attempt, rec.request().amount(), now, deadline);
+  }
+
+  private PartnerRequest merchant(
+      TransactionRecord rec, MerchantSystemProperties.Merchant merchant, String operation, String key,
+      Amount amount, Instant now, Duration deadline) {
+    String txnId = rec.txnId().toString();
+    TxnRequest req = rec.request();
+    Map<String, String> attributes = new LinkedHashMap<>();
+    if (merchant.tillId() != null && !merchant.tillId().isBlank()) {
+      attributes.put("tillId", merchant.tillId());
+    }
+    return new PartnerRequest(
+        1, MerchantPayFlow.MERCHANT.family(), requestId(txnId, key), txnId, req.correlationId(), now,
+        now.plus(deadline),
+        new PartnerRequest.Payload(
+            operation, req.txnType(), new PartnerRef(merchant.partnerId(), "MERCHANT", null), partnerTxnRef(txnId),
+            amount, req.debitParty(), new Party("MERCHANT", merchant.merchantId(), null, null), null,
+            attributes.isEmpty() ? null : attributes));
   }
 
   /**

@@ -118,6 +118,11 @@ class ProducedContractsTest {
     FIXTURES.put(PARTNER_REQUEST + "#telco", () -> PARTNER.pay(topupHeld(), leg(new TopupFlow()), TestData.NOW, PARTNER_DEADLINE));
     FIXTURES.put(PARTNER_REQUEST + "#billpay", () -> PARTNER.pay(billPay(), leg(new BillPayFlow()), TestData.NOW, PARTNER_DEADLINE));
     FIXTURES.put(PARTNER_REQUEST + "#bank", () -> PARTNER.pay(addMoney(), leg(new AddMoneyBankFlow()), TestData.NOW, PARTNER_DEADLINE));
+    // ticket 115b: the merchant system NOTIFY of a completed merchant payment
+    FIXTURES.put(PARTNER_REQUEST + "#merchant", () -> PARTNER.merchantNotify(
+        REQUESTS.toRecord(TestData.merchantPay(TestData.txnId(), "key-mp", 66_700, "01911000020"), null, TestData.NOW),
+        new mfs.mw.orchestrator.config.MerchantSystemProperties.Merchant("merchant-soap", "M-0001", "TILL-01"),
+        1, TestData.NOW, PARTNER_DEADLINE));
     FIXTURES.put(TXN_REQUEST, ProducedContractsTest::testReversal);
     FIXTURES.put(AUDIT, () -> new AuditMapper().stateChanged(
         p2p().moved(Status.VALIDATING, TestData.NOW, null)

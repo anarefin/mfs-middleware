@@ -9,6 +9,14 @@ and only for this (ADR D1 amendment); Kafka goes through Spring Kafka (ADR D27).
 
 First implemented in mw-adapter-billpay (ticket 82); its `CLAUDE.md` holds the details.
 
+A SOAP partner end to end: mw-adapter-merchant's `merchant-soap` record (tickets 115a/115b) is one
+`choice` branch per operation (INQUIRY = ValidateMerchant, PAY = NotifyPayment, STATUS_QUERY =
+QueryNotify, REVERSE = Refund), each `mw-map` -> `mw-soap-call` (XSLT request and response, a
+WS-Security UsernameToken from the partner's Vault secret) -> `mw-classify`. mw-orchestrator sends
+the INQUIRY before a MERCHANT_PAY to a merchant with its own system and the PAY (the notify) after it
+completed; mw-simulators' `MerchantSoapMock` plays the merchant system. mw-admin-api holds the same
+record as its dev seed (`partner-seeds/dev/merchant-soap.json`).
+
 ## The route contract
 
 - In: `from: direct:partner-<id>`. The body is the canonical partner call (JSON: `partnerId`,
