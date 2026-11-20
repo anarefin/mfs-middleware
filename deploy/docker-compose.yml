@@ -718,6 +718,7 @@ services:
       BILLAGG_HMAC_SECRET: ${BILLAGG_HMAC_SECRET:?cp dev.env.defaults .env}
       BILLAGG_WS_PASSWORD: ${BILLAGG_WS_PASSWORD:?cp dev.env.defaults .env}
       C2WBANK_HMAC_SECRET: ${C2WBANK_HMAC_SECRET:?cp dev.env.defaults .env}
+      MERCHANT_SOAP_WS_PASSWORD: ${MERCHANT_SOAP_WS_PASSWORD:?cp dev.env.defaults .env}
       PUSH_API_KEY: ${PUSH_API_KEY:?cp dev.env.defaults .env}
       CHECKOUT_DEMO_MERCHANT_SECRET: ${CHECKOUT_DEMO_MERCHANT_SECRET:?cp dev.env.defaults .env}
       KC_MW_ADMIN_API_SECRET: ${KC_MW_ADMIN_API_SECRET:?cp dev.env.defaults .env}
@@ -1295,7 +1296,7 @@ services:
       - adapter-merchant-approle:/run/mw/approle:ro
     environment:
       <<: *jvm-env
-      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "2"
       # Merchant system SOAP endpoint; the MVP stack targets mw-simulators (/merchant/v1/soap, ticket 115b).
       MERCHANT_SOAP_BASE_URL: ${MERCHANT_SOAP_BASE_URL:-http://mw-simulators:8080}
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev}
@@ -1540,6 +1541,7 @@ services:
       mw-adapter-telco: { condition: service_healthy }
       mw-adapter-billpay: { condition: service_healthy }
       mw-adapter-bank: { condition: service_healthy }
+      mw-adapter-merchant: { condition: service_healthy }
       mw-checkout: { condition: service_healthy }
       mw-portal-api: { condition: service_healthy }
     volumes:

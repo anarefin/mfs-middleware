@@ -5,7 +5,7 @@
 
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
-PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t PUSH_API_KEY=push-t
+PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t MERCHANT_SOAP_WS_PASSWORD=merchant-ws-t PUSH_API_KEY=push-t
   CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_DATA_EXPORT_SECRET=data-export-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t KC_MW_SIMULATORS_SECRET=simulators-t SFTP_DEV_PASSWORD=sftp-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
@@ -137,7 +137,7 @@ test_provision_creates_every_secret_role_and_approle() {
     grep -q "^vault policy write $s -$" .vault-calls || fail "$s: no policy"
     grep -q "^vault write auth/approle/role/$s token_policies=$s " .vault-calls || fail "$s: no AppRole"
   done
-  assert_out_contains "provision: 17 services provisioned"
+  assert_out_contains "provision: 18 services provisioned"
 }
 
 test_provision_writes_the_service_specific_keys() {
