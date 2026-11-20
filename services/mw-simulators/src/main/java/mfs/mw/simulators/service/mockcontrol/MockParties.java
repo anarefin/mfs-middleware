@@ -64,6 +64,9 @@ public final class MockParties {
               List.of("fetch", "pay", "status", "reverse"), List.of("biller", "billNumber", "txnRef")),
           new MockParty("agg4", "aggregator 4 (REST JSON envelope, Basic)",
               List.of("fetch", "pay", "status", "reverse"), List.of("biller", "billNumber", "txnRef")),
+          // ticket 136: the biller of the sample connector (deploy/partner-routes/examples/sample-rest-biller.yaml)
+          new MockParty("samplebiller", "sample REST biller of the connector developer guide (REST JSON, api key)",
+              List.of("fetch", "pay", "status", "reverse", "health"), List.of("biller", "billNumber", "txnRef")),
           new MockParty("merchant", "checkout merchant IPN receiver", List.of("ipn"), List.of("ipnId", "path")),
           new MockParty("merchant-soap", "merchant system over SOAP (mw-adapter-merchant): validate, notify, query, refund",
               List.of("validate", "notify", "query", "refund"), List.of("merchantId", "txnRef")),

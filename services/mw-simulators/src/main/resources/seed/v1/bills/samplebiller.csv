@@ -1,0 +1,9 @@
+billerCode,billNumber,amount,dueDate,billPeriod,status
+# Seeded bills of the samplebiller mock (ticket 136, the sample connector of docs/connectors/developer-guide.md),
+# seed v1: stateful in the simulator (DUE -> PAID -> REVERSED, which is DUE again); back to this file only on
+# POST /mock-control/reset or DELETE /mock-control/samplebiller/journal. Amounts in BDT (major units). Plain CSV.
+SAMPLEWATER,1360000001,845.00,2026-12-10,2026-11,UNPAID
+SAMPLEWATER,1360000002,480.00,2026-12-10,2026-11,UNPAID
+SAMPLEWATER,1360000003,320.25,2026-11-25,2026-10,PAID
+SAMPLEWATER,1360000004,1250.50,2026-12-15,2026-11,UNPAID
+SAMPLEWATER,1360000005,99.00,2026-12-15,2026-11,UNPAID

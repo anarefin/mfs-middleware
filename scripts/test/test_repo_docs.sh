@@ -118,7 +118,8 @@ op_docs() { # the operator docs, repo-relative
   # globs expand under REPO_DIR: the runner calls the tests from a scratch directory
   for f in "$REPO_DIR"/README.md "$REPO_DIR"/deploy/RUNNING.html "$REPO_DIR"/docs/runbook.md "$REPO_DIR"/docs/demo.md \
            "$REPO_DIR"/docs/testing-guide.html "$REPO_DIR"/docs/tutorial/*.html "$REPO_DIR"/docs/concepts/*.html \
-           "$REPO_DIR"/docs/adr/*.md "$REPO_DIR"/docs/frs-traceability.md; do
+           "$REPO_DIR"/docs/adr/*.md "$REPO_DIR"/docs/frs-traceability.md \
+           "$REPO_DIR"/docs/connectors/*.md "$REPO_DIR"/docs/mocks/*.md "$REPO_DIR"/docs/api-catalogue.md; do
     [ -f "$f" ] && printf '%s\n' "${f#"$REPO_DIR"/}"
   done
   return 0

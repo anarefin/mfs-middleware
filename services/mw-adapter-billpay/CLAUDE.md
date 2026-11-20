@@ -457,6 +457,13 @@ one payment store for both front ends. `BillaggSoapRouteIT`. mw-admin-api's
 keep the two equal. An example record:
 `deploy/partner-routes/examples/rest-apikey-biller.yaml`; the concept page: `docs/concepts/camel-partner-routes.md`.
 
+**Sample connector** (ticket 136, FRS CON-06; `docs/connectors/developer-guide.md`): `deploy/partner-routes/examples/sample-rest-biller.yaml`,
+the record an operator enters for a new REST biller (api key, `url={{endpoint}}` with MOCK = mw-simulators'
+`samplebiller` and REAL, error map `SB01`..`SB06`, `ambiguousCodes` 9876, resilience fields, HEALTH_CHECK). Not a
+seed: it goes through the console. `partner/route/SampleConnectorRouteIT` loads a checked copy
+(`src/test/resources/partner-routes/`, `scripts/test/test_connector_docs.sh` keeps it identical) with only
+the MOCK URL pointed at WireMock and runs every operation.
+
 **The four "other biller" aggregators** (ticket 114, FRS UC-10, EXT-10, CON-02): configuration only, no Java per
 partner. `node deploy/partner-routes/aggregators/generate.mjs` writes `src/main/resources/aggregators-dev.yml`
 (imported by `application-dev.yml`; base URL `BILL_AGG_BASE_URL`, hosts `MW_BILL_AGG_ALLOWED_HOSTS`) and
