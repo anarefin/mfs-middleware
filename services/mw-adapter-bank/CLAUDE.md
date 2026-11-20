@@ -123,7 +123,10 @@ and mTLS as `mw-http-call`) are billpay's "SOAP partners".
   `urn:bank:<code>:v1`). Shared error map `4001` ACCOUNT_NOT_FOUND, `4002` ACCOUNT_INACTIVE, `4003`
   INSUFFICIENT_FUNDS, `4004` LIMIT_EXCEEDED, `4005` TRANSFER_REFUSED, `9876` ambiguous
   (`MW-PTR-BANK_<CODE>-<suffix>`). Callbacks are hmac-sha256 (`hmac-secret`) for every bank; secrets in
-  `secret/mw-adapter-bank/bank-<code>` (dev: `provision_mw_adapter_bank`). Base URL
+  `secret/mw-adapter-bank/bank-<code>` (dev: `provision_mw_adapter_bank`; the callback `hmac-secret` is
+  `BANK_GATEWAY_HMAC_SECRET`, shared with mw-simulators' `sim.callback-secrets.bank-<code>`, ticket 117e). Bank
+  callbacks reach `/partner/bank-<code>/callback/**` through the generated APISIX route `partner-bank-callback`
+  (one uri per bank of the CSV). API suite folder `55-bank-avl-w2b`. Base URL
   `BANK_GATEWAY_BASE_URL`, hosts `MW_BANK_ALLOWED_HOSTS`. Proved by `partner/route/BankProfileRouteIT`
   (`bank-dbbl` REST, `bank-sonali` SOAP, the health probe). Every profile has `healthCheck: true` and a
   HEALTH_CHECK branch (`GET /bank/<code>/v1/health` with the profile's HTTP auth, none for ws-security; ticket
