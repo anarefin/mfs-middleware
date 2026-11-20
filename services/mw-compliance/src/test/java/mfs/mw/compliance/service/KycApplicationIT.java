@@ -282,6 +282,28 @@ class KycApplicationIT {
     assertThat(EC.getAllServeEvents()).isEmpty();
   }
 
+  /** Security review: the unscoped console client reads only; every write needs a WALLET or AGENT subject. */
+  @Test
+  void anUnscopedClientsWritesAreRefused() throws Exception {
+    String id = apply("1990123456555", NAME_EN);
+    String path = "/internal/v1/kyc/applications/" + id;
+    String create = json.writeValueAsString(Map.of("walletId", "01712345670", "channel", "DSO", "agentId", "DSO-77",
+        "nid", "1990123456556", "dob", "1990-05-17", "nameEn", NAME_EN, "consent", Map.of("purpose", "EKYC_ONBOARDING")));
+    String doc = json.writeValueAsString(Map.of("type", "SELFIE", "contentType", "image/jpeg",
+        "content", Base64.getEncoder().encodeToString(JPEG)));
+
+    for (HttpResponse<String> res : List.of(
+        callAs("mw-admin-api", null, null, "POST", "/internal/v1/kyc/applications", create),
+        callAs("mw-admin-api", null, null, "POST", path + "/documents", doc),
+        callAs("mw-admin-api", null, null, "POST", path + "/submit", null))) {
+      assertThat(res.statusCode()).as(res.body()).isEqualTo(403);
+      assertThat(json.readTree(res.body()).path("code").asString()).isEqualTo("MW-AUTH-002");
+    }
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM kyc_application WHERE agent_id = 'DSO-77'", Integer.class))
+        .isZero();
+    assertThat(EC.getAllServeEvents()).isEmpty();
+  }
+
   /** Security review: an NID already verified for another wallet goes to manual review, no EC call, no level. */
   @Test
   void anNidAnotherWalletHoldsGoesToManualReview() throws Exception {

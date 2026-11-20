@@ -26,7 +26,7 @@ SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:sim
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank mw-adapter-merchant:adapter-merchant
   mw-adapter-card:adapter-card mw-adapter-remit:adapter-remit mw-adapter-atm:adapter-atm
-  mw-portal-api:portal-api mw-checkout:checkout mw-data-export:data-export mw-recon:recon"
+  mw-portal-api:portal-api mw-checkout:checkout mw-data-export:data-export mw-recon:recon mw-compliance:compliance"
 
 # Ledger stand-in. No PIN key since ticket 72 (D22): it verifies mw-auth's assertions with the
 # public set at mw-auth's assertion-jwks.json, which needs no secret.
@@ -311,6 +311,13 @@ provision_mw_recon() {
   sync_env mw.recon.trust.password SFTP_DEV_PASSWORD
   sync_env mw.recon.core.client-secret KC_MW_RECON_SECRET
   db_role recon_rw recon
+}
+
+# Customer eKYC (ticket 124a): its own schema compliance. Ticket 124b adds the mw-crypto client secret
+# (KC_MW_COMPLIANCE_SECRET), the EC credentials and its PKI_SERVICES entry.
+provision_mw_compliance() {
+  gen_once spring.datasource.password 40
+  db_role compliance_rw compliance
 }
 
 provision_mw_checkout() {

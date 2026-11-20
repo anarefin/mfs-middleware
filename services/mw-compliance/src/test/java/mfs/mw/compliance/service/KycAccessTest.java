@@ -105,6 +105,28 @@ class KycAccessTest {
   }
 
   @Test
+  void theUnscopedCallerMayOnlyRead() {
+    UUID id = UUID.randomUUID();
+    when(store.findApplication(id)).thenReturn(Optional.of(app(id, Channel.APP, null)));
+    when(store.lockApplication(id)).thenReturn(Optional.of(app(id, Channel.APP, null)));
+    Caller console = Caller.unscoped("mw-admin-api");
+    CreateApplicationRequest assisted = new CreateApplicationRequest(WALLET, Channel.DSO, "DSO-99", "1990123456789",
+        LocalDate.of(1990, 5, 17), "Rahim Uddin", null, new ConsentRequest("EKYC_ONBOARDING", null));
+
+    for (Runnable write : List.<Runnable>of(
+        () -> service.create(assisted, console, "corr-1"),
+        () -> service.addDocument(id, new DocumentRequest(DocumentType.SELFIE, "image/jpeg", "/9j/4A=="), console),
+        () -> service.submit(id, console))) {
+      MwException e = catchThrowableOfType(MwException.class, write::run);
+      assertThat(e).isNotNull();
+      assertThat(e.code()).isEqualTo(ErrorCodes.AUTH_FORBIDDEN);
+    }
+    verify(store, never()).insertApplication(any());
+    verify(store, never()).upsertDocument(any());
+    verifyNoInteractions(ec, pii);
+  }
+
+  @Test
   void aWalletMayOnlyApplyForItselfAndAnAgentAlwaysAppliesAsItself() {
     when(pii.tokeniseNid(anyString())).thenReturn("NID_TOKEN");
     when(pii.seal(anyString(), anyString())).thenReturn("{}");

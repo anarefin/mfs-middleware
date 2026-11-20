@@ -233,8 +233,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| FL-01 | partial | mw-compliance (124a): consent, EC verify (`client/EcNidClient`), match rules FULL/BASIC/MISMATCHED (`service/KycMatchService`), `mw.kyc.completed.v1`; KYC level on the core and the channel routes in 124b |
-| FL-02 | done (124a) | images, NID, DOB and names as mw-crypto `KEK_COLUMN` envelopes (`service/PiiCipher`), NID by `TOKENISE_NID` token; `KycApplicationIT.piiAtRestIsNeverClear` |
+| FL-01 | ticket 124 | mw-compliance (124a): consent, EC verify (`client/EcNidClient`), match rules FULL/BASIC/MISMATCHED (`service/KycMatchService`), `mw.kyc.completed.v1`; KYC level on the core and the channel routes in 124b |
+| FL-02 | done | images, NID, DOB and names as mw-crypto `KEK_COLUMN` envelopes (`service/PiiCipher`), NID by `TOKENISE_NID` token; `KycApplicationIT.piiAtRestIsNeverClear` |
 | FL-03 | ticket 112 | postpaid quote fetches the bill once; confirm pays from the minimum due through the outstanding (112b) |
 | FL-04 | ticket 113 | two-step bill fetch then pay (billpay); the catalogue carries the amount rule (FIXED, MINIMUM, OPEN) and bill month, billpay checks field regex and `billMonth` on the fetch (`BillerCatalogTest`); mw-orchestrator projects each BILLER record (`txn.biller_rule` V17) and `BillPayFlow.amountRefusal` refuses MINIMUM below the minimum, OPEN outside its range and FIXED other than the fetched bill with `MW-VAL-032` before a hold (`BillPayFlowTest`, `BillerAmountRuleIT`, API folder `49-biller-catalogue`); FIXED is checked when the channel attaches the fetched bill (`billOutstandingMinor`): mw-app-gateway keeps each fetch in Redis (`BillFetchStore`) and its bill-pay preview attaches it, mw-ussd attaches the `bill` lookup's amount (ticket 113b, `PreviewServiceTest`, `TxnRequestMapperTest`, API folder 49) |
 | FL-05 | tickets 113, 132 | biller catalogue in mw-admin-api (`biller` table V16, 57-biller dev seed, `BillerChangeRequestIT`), published as `mw.config.changed.v1` BILLER; mw-adapter-billpay projection (`BillerProjectionIT`); mw-app-gateway projection (in-memory replay, `GET /app/v1/billers` with fields, labels, amount rule; app.v1 1.14.0) and mw-ussd projection (`ussd.biller_catalog` V7, DYNAMIC billers, bill-number prompt from the field label) (ticket 113b) |
@@ -264,7 +264,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-04 | done | mw-notify `client/PushClient` (FCM / APNs style app-server push API) against mw-simulators' stateful push mock, mock party `push` (ticket 110; `PushSimulatorIT`, `PushDispatchIT`, API suite 43) |
 | EXT-05 | ticket 125 | mock side done (ticket 123): mw-simulators party `aml` answers each file of `aml/in` with ALERT / HOLD / BLOCK lines in `aml/out` (rules `seed/v1/aml/rules.json`, draft format `contracts/files/aml/README.md`; `AmlResponderTest`, `SftpMocksIT`, API folder 44); the feed and response handling in 125 |
 | EXT-06 | done | trust bank mock (ticket 123) and the pull (ticket 126): `mw-recon` reads MT940 and MT942 from `trustbank/out` (sshj, Prowide) and classifies them (`Mt940ParserTest`, `ReconMatchingIT`, folder 60) |
-| EXT-07 | partial | EC NID REST client in mw-compliance (124a; Resilience4j timeout, retry, breaker); the mw-simulators EC mock (SOAP and REST, seed, triggers) in 124b |
+| EXT-07 | ticket 124 | EC NID REST client in mw-compliance (124a; Resilience4j timeout, retry, breaker); the mw-simulators EC mock (SOAP and REST, seed, triggers) in 124b |
 | EXT-08 | ticket 112 | one OCS simulator built; four operator profiles landed in 112a (`gp-ocs`, `robi-ocs`, `teletalk-ocs`, `bl-ocs`); 112b stores the fetched bill on the quote (minimum through outstanding); T1–T4 and T6–T10 are `tests/api/src/46-topup-operators` (112c). T5 waits out the inquiry schedule |
 | EXT-09 | done | utility aggregator simulator (billagg): seeded stateful bills `seed/v1/bills/billagg.csv`, reverse, callbacks (ticket 114, `BillAggregatorMockIT`) |
 | EXT-10 | done | four bill aggregators sslcommerz, ekpay, agg3 (SOAP), agg4 as generated route records (`deploy/partner-routes/aggregators/generate.mjs`) and mock profiles (ticket 114; agg4 JSON, not form/XML: open item) |
@@ -329,8 +329,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CMP-01 | ticket 125 | AML file export |
 | CMP-02 | tickets 125, 134 | HOLD and BLOCK applied (wallet lock built in mw-auth and the core); release in 134 |
 | CMP-03 | ticket 125 | real-time pre-check, fails open with an alert (D32) |
-| CMP-04 | done (124a) | `compliance.consent`, committed before any EC call, its id on the EC request (`ConsentBeforeCallTest`) |
-| CMP-05 | partial | encrypted at rest in mw-compliance (124a); unmask by permission in 134 |
+| CMP-04 | done | `compliance.consent`, committed before any EC call, its id on the EC request (`ConsentBeforeCallTest`) |
+| CMP-05 | ticket 134 | encrypted at rest in mw-compliance (124a); unmask by permission in 134 |
 | AUD-01 | ticket 130 | state changes, operator actions and partner calls audited with masked request/response payloads in the hash chain (`audit.payload`, ticket 130); open: channel request logging (CHANNEL_IN), core-call and notification hops are not sent yet |
 | AUD-02 | done | append-only audit with a hash chain (mw-audit-dw `audit_event`) |
 | AUD-03 | done | search by txnId, actor, action, resource, outcome, time, and (ticket 130) partner, channel, status, amount range, MSISDN (TOKENISE_MSISDN token) via `audit.txn_index`; 3 s over 30 days proven by `AuditSearchPerfIT` (`slow-wait`) |

@@ -26,9 +26,10 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * compliance.v1 internal eKYC API (ticket 124): mTLS plus a realm {@code services} JWT ({@code config/SecurityConfig}).
- * The caller is the JWT's client; a client outside {@code mw.compliance.unscoped-clients} must name the end user
- * its app token authenticated in {@code X-Mw-Subject-Type} ({@code WALLET} or {@code AGENT}) and {@code
- * X-Mw-Subject-Id}, else 403 {@code MW-AUTH-002}. APISIX strips {@code X-Mw-*} at the edge.
+ * Every write (create, documents, submit) names the end user the channel's app token authenticated in {@code
+ * X-Mw-Subject-Type} ({@code WALLET} or {@code AGENT}) and {@code X-Mw-Subject-Id}, else 403 {@code MW-AUTH-002},
+ * whoever the client is: there is no operator write path. Only a client of {@code mw.compliance.unscoped-clients}
+ * (mw-admin-api) may read (GET) without a subject. APISIX strips {@code X-Mw-*} at the edge.
  */
 @RestController
 @RequestMapping("/internal/v1/kyc/applications")
@@ -52,7 +53,7 @@ public class KycController {
       @AuthenticationPrincipal Jwt jwt,
       @RequestHeader(name = SUBJECT_TYPE, required = false) String subjectType,
       @RequestHeader(name = SUBJECT_ID, required = false) String subjectId) {
-    return service.create(body, caller(jwt, subjectType, subjectId), MDC.get("correlationId"));
+    return service.create(body, subject(jwt, subjectType, subjectId), MDC.get("correlationId"));
   }
 
   @PostMapping("/{id}/documents")
@@ -63,7 +64,7 @@ public class KycController {
       @AuthenticationPrincipal Jwt jwt,
       @RequestHeader(name = SUBJECT_TYPE, required = false) String subjectType,
       @RequestHeader(name = SUBJECT_ID, required = false) String subjectId) {
-    return service.addDocument(id, body, caller(jwt, subjectType, subjectId));
+    return service.addDocument(id, body, subject(jwt, subjectType, subjectId));
   }
 
   @PostMapping("/{id}/submit")
@@ -72,7 +73,7 @@ public class KycController {
       @AuthenticationPrincipal Jwt jwt,
       @RequestHeader(name = SUBJECT_TYPE, required = false) String subjectType,
       @RequestHeader(name = SUBJECT_ID, required = false) String subjectId) {
-    return service.submit(id, caller(jwt, subjectType, subjectId));
+    return service.submit(id, subject(jwt, subjectType, subjectId));
   }
 
   @GetMapping("/{id}")
@@ -84,11 +85,18 @@ public class KycController {
     return service.get(id, caller(jwt, subjectType, subjectId));
   }
 
+  /** For reads: an unscoped client (mw-admin-api) without a subject reads any application. */
   private Caller caller(Jwt jwt, String subjectType, String subjectId) {
     String client = jwt == null ? null : jwt.getClaimAsString("azp");
-    if (client != null && props.unscopedClients().contains(client)) {
+    if (client != null && props.unscopedClients().contains(client) && subjectType == null && subjectId == null) {
       return Caller.unscoped(client);
     }
+    return subject(jwt, subjectType, subjectId);
+  }
+
+  /** For writes: always the WALLET or AGENT the channel's app token authenticated, whoever the client is. */
+  private static Caller subject(Jwt jwt, String subjectType, String subjectId) {
+    String client = jwt == null ? null : jwt.getClaimAsString("azp");
     if (subjectId == null || subjectId.isBlank()) {
       throw noSubject();
     }

@@ -92,6 +92,7 @@ public class KycApplicationService {
   }
 
   public ApplicationView create(CreateApplicationRequest req, Caller caller, String correlationId) {
+    requireSubject(caller);
     if (blank(req.nameEn()) && blank(req.nameBn())) {
       throw new MwException(ErrorCodes.VAL_INVALID, "nameEn or nameBn is required");
     }
@@ -130,6 +131,7 @@ public class KycApplicationService {
   }
 
   public DocumentView addDocument(UUID id, DocumentRequest req, Caller caller) {
+    requireSubject(caller);
     KycApplication app = find(id, caller);
     if (app.status() != KycStatus.SUBMITTED && app.status() != KycStatus.FAILED) {
       throw state("Documents can no longer be changed");
@@ -154,6 +156,7 @@ public class KycApplicationService {
   }
 
   public ApplicationView submit(UUID id, Caller caller) {
+    requireSubject(caller);
     KycApplication app = tx.execute(s -> {
       KycApplication a = store.lockApplication(id).filter(x -> visible(x, caller)).orElseThrow(() -> notFound(id));
       boolean staleCall = a.status() == KycStatus.EC_CALLED
@@ -273,6 +276,16 @@ public class KycApplicationService {
 
   private static MwException notFound(UUID id) {
     return new MwException(ErrorCodes.VAL_NOT_FOUND, "No such application").withStatus(HttpStatus.NOT_FOUND);
+  }
+
+  /**
+   * Writes need the end user the channel authenticated (security review): the unscoped console client reads only;
+   * there is no operator write path.
+   */
+  private static void requireSubject(Caller caller) {
+    if (caller.isUnscoped()) {
+      throw forbidden("Writes need the authenticated customer or agent");
+    }
   }
 
   private static MwException forbidden(String message) {

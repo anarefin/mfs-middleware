@@ -15,7 +15,9 @@ info:
     without them 403 MW-AUTH-002. It then sees only the applications of that wallet, or the ones that agent
     assisted: any other id is 404 MW-VAL-003, as if it did not exist. A customer applies for their own wallet on
     channel APP only; an agent applies as itself (its id replaces `agentId`); otherwise 403 MW-AUTH-002. Only
-    the clients of `mw.compliance.unscoped-clients` (mw-admin-api) read any application without a subject.
+    the clients of `mw.compliance.unscoped-clients` (mw-admin-api) read (GET) any application without a
+    subject; every write (create, documents, submit) needs the subject whoever the client is (403
+    MW-AUTH-002 otherwise): there is no operator write path.
 
     NID reuse: when another wallet already holds the same NID (an application MATCHED, APPROVED or being
     checked), submit makes no EC call and issues no level: the application is MANUAL_REVIEW with reason

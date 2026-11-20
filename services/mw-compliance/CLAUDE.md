@@ -29,7 +29,8 @@ Compliance domain service (ADR D32; no Camel: outbound calls are `RestClient` + 
   must send `X-Mw-Subject-Type` WALLET|AGENT and `X-Mw-Subject-Id` (the app token's customer wallet or
   assisting agent), else 403; it sees only that wallet's or that agent's applications, any other id 404
   (`KycApplicationService.visible`, `KycAccessTest`). A customer applies for their own wallet on APP only; an
-  agent's id replaces `agentId`.
+  agent's id replaces `agentId`. The unscoped client reads (GET) only: every write needs a subject, there is
+  no operator write path (`KycAccessTest.theUnscopedCallerMayOnlyRead`).
 - NID reuse: in the submit transaction, under an advisory lock on the token, an NID another wallet holds
   (EC_CALLED, MATCHED, APPROVED) makes the application MANUAL_REVIEW, reason NID_IN_USE: no EC call, no level.
 - Open product decision: a DOB-only match (name below the threshold) auto-issues BASIC and publishes
