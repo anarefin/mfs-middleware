@@ -5,7 +5,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Responsibilities
 
-- Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, BULK_DISBURSE (child), TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, the BALANCE check (ADR D26) and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
+- Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, BULK_DISBURSE (child), TOPUP, BILL_PAY, ADD_MONEY_BANK and W2B transactions, the BALANCE check (ADR D26) and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
   Consumes `mw.txn.request.v1` (`messaging/TxnRequestListener`), the core's events on
   `core.wallet.event.v1` and `core.payment.event.v1` (one listener, `messaging/CoreEventListener`; since ticket 95a it
   ignores the result events of the REST calls, and since ticket 95c it applies HoldExpired and consumes
@@ -117,6 +117,18 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `txn.outcome.conflict`). Deviations from the 7.2 table, documented here: VALIDATING ->
   PARTNER_PENDING and PARTNER_PENDING -> FAILED (no hold), and COMMITTING sends CreditWallet for
   inbound money (spec 6.3 lists CreditWallet for "add money, C2W"; POSTING is "no partner").
+  `W2bFlow` (ticket 117c, txnType W2B, FRS UC-15, FL-09; transfer to bank) = the TOPUP steps on the bank
+  family: validate + hold + callPartner (`PartnerCall` bank, `mw.partner.request.bank.v1`, PAY = credit the
+  account; mw-adapter-bank sends `direction CREDIT`) + commit + release. Parties as mw-app-gateway sets them:
+  debit the customer's WALLET, credit `BANK_ACCOUNT` (the linked account it decrypted from its own store,
+  never a client field), partner `{partnerId: bank-<code>, productCode: W2B}`. Intake refuses a W2B whose
+  parties are not WALLET -> BANK_ACCOUNT (`[0-9]{6,20}`) `MW-VAL-001`, and one without a bank `MW-VAL-012`,
+  before any hold. The hold stays until the bank confirms: SUCCESS (reply or callback) commits, a definite
+  FAILED releases, UNKNOWN / no answer in 30 s -> UNKNOWN -> bank STATUS_QUERY (no second PAY); a refused
+  commit reverses at the bank first (ticket 96b rules). Routing (V18): one rule per bank profile of
+  `deploy/partner-routes/bank/bank-profiles.csv` for W2B and for ADD_MONEY_BANK (`bank_code` = connector =
+  `bank-<code>`), so add money from a linked account goes to the account's bank profile; `c2wbank` stays for
+  the older add money; any other bank is `MW-PTR-UNKNOWN`. `W2bFlowTest`, `W2bSagaIT`.
   `BalanceFlow` (ADR D26, txnType BALANCE) moves no money and the middleware never stores the balance:
   steps BALANCE_INQUIRY only (it overrides `allows`: no REVERSE, no INQUIRE). Intake refuses a BALANCE
   with an amount other than 0 (`MW-VAL-011`; 0 is refused `MW-VAL-011` for every other type), debit and
@@ -420,7 +432,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.
 - Schema `txn` (role `orchestrator_rw`): `transaction`, `saga_step`, `saga_timer`, `idempotency`
   (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`, `wallet_txn`, `routing_rule`, `msisdn_prefix`,
-  `mnp_override`, `maintenance_message`, `biller_rule`); migrations V1..V17 (V17 `biller_rule`, ticket 113c; V14 routing tables and the prefix and partner
+  `mnp_override`, `maintenance_message`, `biller_rule`); migrations V1..V18 (V18 bank routing rules, ticket 117c; V17 `biller_rule`, ticket 113c; V14 routing tables and the prefix and partner
   seeds, ticket 98; V12 `wallet_txn`,
   V13 = Java migration `repository/WalletPartyMigration` filling it for older rows, ADR D25, `WalletPartyMigrationIT`;
   V11 drops `transaction.encrypted_pin`, ticket 72; V6 `reversal_txn_id`, V7 drops

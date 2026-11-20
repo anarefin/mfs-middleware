@@ -30,6 +30,7 @@ import mfs.mw.orchestrator.service.saga.BillPayFlow;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import mfs.mw.orchestrator.service.saga.Step;
+import mfs.mw.orchestrator.service.saga.W2bFlow;
 import mfs.mw.orchestrator.util.SearchKeys;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -396,9 +397,15 @@ public class TransactionService {
         && (req.partner() == null || req.partner().billerCode() == null || req.partner().billerCode().isBlank())) {
       return new ErrorInfo(ErrorCodes.VAL_PARTNER_REQUIRED, "A biller is required for this transaction type", null, false);
     }
-    if ("ADD_MONEY_BANK".equals(req.txnType())
+    if (("ADD_MONEY_BANK".equals(req.txnType()) || W2bFlow.TXN_TYPE.equals(req.txnType()))
         && (req.partner() == null || req.partner().partnerId() == null || req.partner().partnerId().isBlank())) {
       return new ErrorInfo(ErrorCodes.VAL_PARTNER_REQUIRED, "A partner bank is required for this transaction type", null, false);
+    }
+    if (W2bFlow.TXN_TYPE.equals(req.txnType())
+        && (!"WALLET".equals(req.debitParty().type()) || !"BANK_ACCOUNT".equals(req.creditParty().type())
+            || !req.creditParty().id().matches("[0-9]{6,20}"))) {
+      // ticket 117c: a wallet pays a bank account (the linked account mw-app-gateway decrypted)
+      return new ErrorInfo(ErrorCodes.VAL_INVALID, "A transfer to bank pays from a wallet to a bank account", null, false);
     }
     if ("TOPUP".equals(req.txnType())
         && (req.partner() == null || req.partner().productCode() == null || req.partner().productCode().isBlank())) {

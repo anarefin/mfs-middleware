@@ -24,6 +24,22 @@ public record TransactionView(
     Instant requestedAt,
     Instant updatedAt) {
 
+  /**
+   * A bank account (ADD_MONEY_BANK's payer, W2B's payee; ticket 117c) is never shown whole: the last
+   * 4 digits only, so neither the 200 answer, the projection row nor a replayed answer carry the number.
+   */
+  public TransactionView {
+    debitParty = maskedAccount(debitParty);
+    creditParty = maskedAccount(creditParty);
+  }
+
+  private static Party maskedAccount(Party p) {
+    if (p == null || !"BANK_ACCOUNT".equals(p.type()) || p.id() == null) {
+      return p;
+    }
+    return new Party(p.type(), mfs.mw.app.gateway.util.MaskingPolicy.maskPartyId(p.type(), p.id()), p.name(), p.walletType());
+  }
+
   public static final String PROCESSING = "PROCESSING";
 
   public static TransactionView processing(String txnId) {

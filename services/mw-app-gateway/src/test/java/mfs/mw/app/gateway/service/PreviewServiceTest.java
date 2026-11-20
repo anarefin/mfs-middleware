@@ -169,6 +169,37 @@ class PreviewServiceTest {
     verify(transactions).submit(eq(USER), eq("key-1"), any(), any());
   }
 
+  static final String LINKED = "0b6f5a4e-3d2c-4b1a-9e8f-7d6c5b4a3f2e";
+  static final String OTHER_LINKED = "1b6f5a4e-3d2c-4b1a-9e8f-7d6c5b4a3f2e";
+
+  @Test
+  void aTransferToBankIsQuotedForTheStoredAccountAndConfirmedOnlyForTheSameLinkedAccount() {
+    when(quotes.quote(any())).thenReturn(quote(true, null));
+    when(transactions.linkedAccount(eq(USER), any())).thenReturn(Optional.of(
+        new LinkedAccountService.Resolved(LINKED, "dbbl", "2050123456781234", "1234")));
+    Amount amount = new Amount(150_000L, "BDT");
+
+    PreviewView v = service.preview(USER, "transfer-to-bank", new PreviewRequest(null, null, null, amount, "en", null, LINKED));
+
+    assertThat(v.txnType()).isEqualTo("W2B");
+    ArgumentCaptor<QuoteRequest> asked = ArgumentCaptor.forClass(QuoteRequest.class);
+    verify(quotes).quote(asked.capture());
+    assertThat(asked.getValue().counterparty()).isEqualTo(new QuoteRequest.Counterparty("BANK_ACCOUNT", "2050123456781234"));
+
+    // another linked account than the previewed one is a different transaction
+    assertThatThrownBy(() -> service.confirm(USER, "transfer-to-bank", "k-1", new ConfirmRequest(
+            v.previewId(), null, null, null, amount, new EncryptedPin("pin-1", "Y2lwaGVy"), "en", null, null, OTHER_LINKED)))
+        .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-VAL-026"));
+
+    when(transactions.submit(any(), any(), any(), any())).thenReturn(SubmitResult.processing(TransactionView.processing("t-1")));
+    service.confirm(USER, "transfer-to-bank", "k-1", new ConfirmRequest(
+        v.previewId(), null, null, null, amount, new EncryptedPin("pin-1", "Y2lwaGVy"), "en", null, null, LINKED));
+    ArgumentCaptor<TransactionRequest> sent = ArgumentCaptor.forClass(TransactionRequest.class);
+    verify(transactions).submit(eq(USER), eq("k-1"), sent.capture(), any());
+    assertThat(sent.getValue().txnType()).isEqualTo("W2B");
+    assertThat(sent.getValue().linkedAccountId()).isEqualTo(LINKED);
+  }
+
   @Test
   void aBrokenLimitIsTheCoreReasonInEnglishAndBanglaAndNoPreviewIsKept() {
     when(quotes.quote(any())).thenReturn(quote(false, "LIMIT_EXCEEDED_DAILY"));
@@ -256,7 +287,7 @@ class PreviewServiceTest {
   void eachGroupNamesItsType() {
     assertThat(PreviewService.GROUPS).containsExactlyInAnyOrderEntriesOf(Map.of(
         "send-money", "P2P", "cash-in", "CASH_IN", "cash-out", "CASH_OUT", "payment", "MERCHANT_PAY",
-        "bill-pay", "BILL_PAY", "top-up", "TOPUP", "add-money", "ADD_MONEY_BANK",
+        "bill-pay", "BILL_PAY", "top-up", "TOPUP", "add-money", "ADD_MONEY_BANK", "transfer-to-bank", "W2B",
         "b2b", "B2B_TRANSFER", "disburse", "BULK_DISBURSE"));
   }
 

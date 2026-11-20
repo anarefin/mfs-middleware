@@ -290,7 +290,7 @@ mw:
     instance-id: ${HOSTNAME:}
     request-topic: mw.txn.request.v1
     status-topic: mw.txn.status.v1
-    supported-txn-types: P2P,CASH_IN,CASH_OUT,MERCHANT_PAY,TOPUP,BILL_PAY,ADD_MONEY_BANK,B2B_TRANSFER,BULK_DISBURSE
+    supported-txn-types: P2P,CASH_IN,CASH_OUT,MERCHANT_PAY,TOPUP,BILL_PAY,ADD_MONEY_BANK,W2B,B2B_TRANSFER,BULK_DISBURSE
     # Which app role (wallet type) may initiate which txnType (spec WP20). Deny by default: a
     # supported type with no entry is refused for every role (403 MW-AUTH-002).
     txn-type-roles:
@@ -302,6 +302,7 @@ mw:
       TOPUP: CUSTOMER
       BILL_PAY: CUSTOMER
       ADD_MONEY_BANK: CUSTOMER
+      W2B: CUSTOMER
       # float: the caller pays from their own wallet (distributor or DSO to an agent, agent back)
       B2B_TRANSFER: [DISTRIBUTOR, DSO, AGENT]
       # partner app disbursement only; the core still requires an organisation debit for a posted child

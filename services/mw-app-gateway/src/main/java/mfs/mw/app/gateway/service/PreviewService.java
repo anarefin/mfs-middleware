@@ -62,6 +62,7 @@ public class PreviewService {
       "bill-pay", RequestMapper.BILL_PAY,
       "top-up", RequestMapper.TOPUP,
       "add-money", RequestMapper.ADD_MONEY_BANK,
+      "transfer-to-bank", RequestMapper.W2B,
       "b2b", "B2B_TRANSFER",
       "disburse", "BULK_DISBURSE");
 
@@ -109,7 +110,7 @@ public class PreviewService {
     transactions.check(user, txn);
     Quote quote;
     try {
-      quote = quotes.quote(quoteRequest(user, txn));
+      quote = quotes.quote(quoteRequest(user, txn, transactions.linkedAccount(user, txn).orElse(null)));
     } catch (OrchestratorUnavailableException e) {
       throw new MwException(ErrorCodes.SYS_ORCHESTRATOR_UNAVAILABLE, "Preview temporarily unavailable, try again", e)
           .withStatus(HttpStatus.SERVICE_UNAVAILABLE)
@@ -165,10 +166,11 @@ public class PreviewService {
   public SubmitResult submitOneShot(AppUser user, String idempotencyKey, TransactionRequest body) {
     String group = groupOf(body.txnType());
     PreviewView view = preview(user, group, new PreviewRequest(
-        body.creditParty(), body.debitParty(), body.partner(), body.amount(), body.locale(), body.attributes()));
+        body.creditParty(), body.debitParty(), body.partner(), body.amount(), body.locale(), body.attributes(),
+        body.linkedAccountId()));
     return confirm(user, group, idempotencyKey, new ConfirmRequest(
         view.previewId(), body.creditParty(), body.debitParty(), body.partner(), body.amount(),
-        body.encryptedPin(), body.locale(), body.confirmDuplicate(), body.attributes()));
+        body.encryptedPin(), body.locale(), body.confirmDuplicate(), body.attributes(), body.linkedAccountId()));
   }
 
   private static String groupOf(String txnType) {
@@ -225,9 +227,14 @@ public class PreviewService {
   }
 
   /** The quote of the signed-in wallet; the payee in its canonical form (an add money: the bank account). */
-  private static QuoteRequest quoteRequest(AppUser user, TransactionRequest txn) {
+  private static QuoteRequest quoteRequest(
+      AppUser user, TransactionRequest txn, LinkedAccountService.Resolved linked) {
     QuoteRequest.Counterparty payee = null;
-    if (txn.debitParty() != null) {
+    if (linked != null) {
+      // ticket 117c: the stored account (W2B's payee, a linked add money's source), decrypted here
+      // only; the quote answers it masked
+      payee = new QuoteRequest.Counterparty("BANK_ACCOUNT", linked.accountNumber());
+    } else if (txn.debitParty() != null) {
       payee = new QuoteRequest.Counterparty(txn.debitParty().type(), txn.debitParty().id());
     } else if (txn.creditParty() != null) {
       payee = new QuoteRequest.Counterparty(creditType(txn), creditId(txn));
@@ -284,6 +291,9 @@ public class PreviewService {
     }
     if (txn.attributes() != null && !txn.attributes().isEmpty()) {
       c.put("attributes", new TreeMap<>(txn.attributes()));
+    }
+    if (txn.linkedAccountId() != null) {
+      c.put("linkedAccountId", txn.linkedAccountId());
     }
     return sha256(canonical(c));
   }
