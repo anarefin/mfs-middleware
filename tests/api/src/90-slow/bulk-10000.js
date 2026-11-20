@@ -8,6 +8,8 @@ export default [
       const up = S.record(await MW.portal.upload('org-maker01', MW.portal.payoutFile(10000, '1.00')));
       S.status(201);
       const id = up.body.batchId;
+      S.record(await MW.portal.submit('org-maker01', up.body.batchId));
+      S.status(200);
       // not 01711000001: the run plays customer01's number as the run customer (lib.js forRun), the file pays the real one;
       // not 01711000002 either: the assertion scenario of this folder pays it, and the folder's requests may run in parallel
       await S.note(['01311000001', '01711000003', '01711001000']);

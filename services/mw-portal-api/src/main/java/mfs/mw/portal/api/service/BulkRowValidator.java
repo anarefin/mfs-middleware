@@ -6,9 +6,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
+import mfs.mw.portal.api.dto.BulkFile;
 import mfs.mw.portal.api.dto.BulkRecord;
 import mfs.mw.portal.api.dto.BulkRow;
 import mfs.mw.portal.api.dto.ErrorDetail;
+import mfs.mw.portal.api.dto.InvalidRow;
 import mfs.mw.portal.api.exception.ErrorCodes;
 import mfs.mw.portal.api.exception.MwException;
 import mfs.mw.portal.api.util.Msisdn;
@@ -17,9 +19,9 @@ import mfs.mw.portal.api.util.Msisdn;
  * The row rules of a bulk disbursement file, whatever its format (spec 9.4, tickets 33 and 129):
  * header {@code msisdn,amount,reference} (any case), an accepted MSISDN ({@link Msisdn}), an
  * amount in taka above zero with at most two decimals, a reference {@code [A-Za-z0-9._-]{1,32}}
- * unique within the file. More data rows than the cap is {@code MW-VAL-030}; any bad row is {@code
- * MW-VAL-031} with one detail per bad field and line (the first {@link #MAX_REPORTED}; the message
- * counts them all). Values are never echoed back.
+ * unique within the file. More data rows than the cap is {@code MW-VAL-030}; a bad header or no
+ * rows is {@code MW-VAL-031}. A bad row no longer refuses the file (ticket 129b): it is kept with
+ * its error codes for the preview and never executed. Values are never echoed back.
  */
 final class BulkRowValidator {
 
@@ -43,9 +45,10 @@ final class BulkRowValidator {
 
   /**
    * Validates a whole file: {@code header} is line 1 (null when the file is empty), {@code rows}
-   * its non-blank data lines in file order.
+   * its non-blank data lines in file order. A bad header or no rows refuses the file ({@code
+   * MW-VAL-031}); a bad row is kept as an {@link InvalidRow} with its error codes (ticket 129b).
    */
-  static List<BulkRow> validate(List<String> header, List<BulkRecord> rows, int maxRows) {
+  static BulkFile validate(List<String> header, List<BulkRecord> rows, int maxRows) {
     if (rows.size() > maxRows) {
       throw tooLarge(rows.size(), maxRows);
     }
@@ -57,42 +60,43 @@ final class BulkRowValidator {
     if (rows.isEmpty()) {
       report(errors, errorCount, new ErrorDetail("file", "has no rows"));
     }
+    if (errorCount[0] > 0) {
+      throw invalid(errorCount[0], errors);
+    }
 
     List<BulkRow> valid = new ArrayList<>();
+    List<InvalidRow> invalid = new ArrayList<>();
     Map<String, Integer> referenceLines = new HashMap<>();
     for (BulkRecord record : rows) {
       int line = record.line();
       List<String> f = record.fields();
       if (f.size() != 3) {
-        report(errors, errorCount, new ErrorDetail("line " + line, "must have 3 fields, has " + f.size()));
+        invalid.add(new InvalidRow(line, null, null, List.of(InvalidRow.FIELD_COUNT)));
         continue;
       }
-      boolean ok = true;
+      List<String> codes = new ArrayList<>(2);
       String msisdn = Msisdn.canonical(f.get(0));
       if (msisdn == null) {
-        ok = report(errors, errorCount, field(line, "msisdn", "must be a mobile number 01XNNNNNNNN"));
+        codes.add(InvalidRow.MSISDN_INVALID);
       }
       long amount = amountMinor(f.get(1));
       if (amount <= 0) {
-        ok = report(errors, errorCount, field(line, "amount", "must be taka above 0 with at most 2 decimals"));
+        codes.add(InvalidRow.AMOUNT_INVALID);
       }
       String reference = f.get(2);
       if (!REFERENCE.matcher(reference).matches()) {
-        ok = report(errors, errorCount, field(line, "reference", "must be 1 to 32 of A-Z a-z 0-9 . _ -"));
-      } else {
-        Integer first = referenceLines.putIfAbsent(reference, line);
-        if (first != null) {
-          ok = report(errors, errorCount, field(line, "reference", "duplicate of line " + first));
-        }
+        codes.add(InvalidRow.REFERENCE_INVALID);
+        reference = null;
+      } else if (referenceLines.putIfAbsent(reference, line) != null) {
+        codes.add(InvalidRow.REFERENCE_DUPLICATE);
       }
-      if (ok) {
+      if (codes.isEmpty()) {
         valid.add(new BulkRow(line, msisdn, amount, reference));
+      } else {
+        invalid.add(new InvalidRow(line, amount > 0 ? amount : null, reference, codes));
       }
     }
-    if (errorCount[0] > 0) {
-      throw invalid(errorCount[0], errors);
-    }
-    return valid;
+    return new BulkFile(valid, invalid);
   }
 
   /** {@code MW-VAL-031} for a file refused as a whole by one problem (e.g. not a workbook). */

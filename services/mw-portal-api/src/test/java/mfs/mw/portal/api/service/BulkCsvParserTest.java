@@ -2,15 +2,18 @@ package mfs.mw.portal.api.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
+import static org.assertj.core.api.Assertions.tuple;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import mfs.mw.portal.api.dto.BulkFile;
 import mfs.mw.portal.api.dto.BulkRow;
+import mfs.mw.portal.api.dto.InvalidRow;
 import mfs.mw.portal.api.dto.ErrorDetail;
 import mfs.mw.portal.api.exception.MwException;
 import org.junit.jupiter.api.Test;
 
-/** Bulk disbursement CSV (spec 9.4, ticket 33): header, row rules, the row cap, per-line errors. */
+/** Bulk disbursement CSV (spec 9.4, ticket 33): header, row rules, the row cap, per-line error codes (129b). */
 class BulkCsvParserTest {
 
   final BulkCsvParser parser = new BulkCsvParser(10_000);
@@ -35,7 +38,8 @@ class BulkCsvParserTest {
   void validRowsAreReadWithTheirLineAndAmountInPoisha() {
     List<BulkRow> rows =
         parser.parse(
-            csv("msisdn,amount,reference\r\n01711000001,100.50,SAL-NOV-001\r\n+8801811000002,25,SAL-NOV-002\r\n"));
+            csv("msisdn,amount,reference\r\n01711000001,100.50,SAL-NOV-001\r\n+8801811000002,25,SAL-NOV-002\r\n"))
+            .rows();
     assertThat(rows)
         .containsExactly(
             new BulkRow(2, "01711000001", 10_050L, "SAL-NOV-001"),
@@ -45,13 +49,13 @@ class BulkCsvParserTest {
   @Test
   void aByteOrderMarkQuotesSurroundingSpacesAndBlankLinesAreTolerated() {
     List<BulkRow> rows =
-        parser.parse(csv("﻿MSISDN, Amount ,Reference\n\n\"01711000001\", 1.5 ,\"R1\"\n\n"));
+        parser.parse(csv("﻿MSISDN, Amount ,Reference\n\n\"01711000001\", 1.5 ,\"R1\"\n\n")).rows();
     assertThat(rows).containsExactly(new BulkRow(3, "01711000001", 150L, "R1"));
   }
 
   @Test
   void tenThousandRowsAreAccepted() {
-    assertThat(parser.parse(rows(10_000))).hasSize(10_000);
+    assertThat(parser.parse(rows(10_000)).rows()).hasSize(10_000);
   }
 
   @Test
@@ -63,9 +67,9 @@ class BulkCsvParserTest {
   }
 
   @Test
-  void everyMalformedRowIsReportedByLine() {
-    MwException e =
-        rejected(
+  void everyMalformedRowIsKeptByLineWithItsCodes() {
+    BulkFile file =
+        parser.parse(
             csv(
                 """
                 msisdn,amount,reference
@@ -79,26 +83,24 @@ class BulkCsvParserTest {
                 01711000008,10.00
                 01711000009,10.00,OK-1
                 """));
-    assertThat(e.code()).isEqualTo("MW-VAL-031");
-    assertThat(e.status().value()).isEqualTo(400);
-    assertThat(e.details())
-        .extracting(ErrorDetail::field)
+    assertThat(file.rows()).extracting(BulkRow::line).containsExactly(2);
+    assertThat(file.invalid())
+        .extracting(InvalidRow::line, InvalidRow::errors)
         .containsExactly(
-            "line 3: msisdn",
-            "line 4: amount",
-            "line 5: amount",
-            "line 6: amount",
-            "line 7: reference",
-            "line 8: reference",
-            "line 9",
-            "line 10: reference");
-    assertThat(e.details().get(7).issue()).contains("duplicate").contains("line 2");
+            tuple(3, List.of("MSISDN_INVALID")),
+            tuple(4, List.of("AMOUNT_INVALID")),
+            tuple(5, List.of("AMOUNT_INVALID")),
+            tuple(6, List.of("AMOUNT_INVALID")),
+            tuple(7, List.of("REFERENCE_INVALID")),
+            tuple(8, List.of("REFERENCE_INVALID")),
+            tuple(9, List.of("FIELD_COUNT")),
+            tuple(10, List.of("REFERENCE_DUPLICATE")));
   }
 
   @Test
-  void aBadValueIsNeverEchoedInTheReport() {
-    MwException e = rejected(csv("msisdn,amount,reference\n0171100000,10.00,R1\n"));
-    assertThat(e.details()).singleElement().satisfies(d -> assertThat(d.issue()).doesNotContain("0171100000"));
+  void aBadValueIsNeverKept() {
+    BulkFile file = parser.parse(csv("msisdn,amount,reference\n0171100000,10.00,R1\n01711000002,1,has space\n"));
+    assertThat(file.invalid().toString()).doesNotContain("0171100000").doesNotContain("has space");
   }
 
   @Test
@@ -115,13 +117,11 @@ class BulkCsvParserTest {
   }
 
   @Test
-  void theReportIsCappedButCountsEveryBadRow() {
+  void everyBadRowIsKeptHoweverMany() {
     StringBuilder b = new StringBuilder("msisdn,amount,reference\n");
     for (int i = 0; i < 250; i++) {
       b.append("x,1.00,R").append(i).append('\n');
     }
-    MwException e = rejected(csv(b.toString()));
-    assertThat(e.details()).hasSize(BulkCsvParser.MAX_REPORTED);
-    assertThat(e.getMessage()).contains("250");
+    assertThat(parser.parse(csv(b.toString())).invalid()).hasSize(250);
   }
 }

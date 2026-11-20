@@ -3,6 +3,7 @@ package mfs.mw.portal.api.controller;
 import jakarta.validation.Valid;
 import java.net.URI;
 import mfs.mw.portal.api.dto.BatchList;
+import mfs.mw.portal.api.dto.BatchPreview;
 import mfs.mw.portal.api.dto.BatchView;
 import mfs.mw.portal.api.dto.BulkFileFormat;
 import mfs.mw.portal.api.dto.RejectRequest;
@@ -42,7 +43,7 @@ public class BulkBatchController {
   }
 
   /**
-   * 201 with the stored batch (PENDING_APPROVAL); 400 MW-VAL-030/031 when the file is refused. CSV
+   * 201 with the stored batch (PREVIEW, ticket 129b); 400 MW-VAL-030/031 when the file is refused. CSV
    * or XLSX (ticket 129), by the request's {@code Content-Type}.
    */
   @PostMapping(consumes = {BulkFileFormat.CSV_TYPE, BulkFileFormat.XLSX_TYPE})
@@ -65,6 +66,26 @@ public class BulkBatchController {
   @GetMapping("/{batchId}")
   public BatchView get(@AuthenticationPrincipal Jwt jwt, @PathVariable String batchId) {
     return service.get(users.resolve(jwt), batchId);
+  }
+
+  /**
+   * One page of the batch's rows with its totals (ticket 129b); 400 MW-VAL-001 for a limit outside
+   * 1..200 or a negative offset.
+   */
+  @GetMapping("/{batchId}/preview")
+  public BatchPreview preview(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable String batchId,
+      @RequestParam(defaultValue = "0") int offset,
+      @RequestParam(defaultValue = "50") int limit,
+      @RequestParam(required = false) Boolean valid) {
+    return service.preview(users.resolve(jwt), batchId, offset, limit, valid);
+  }
+
+  /** The maker sends a PREVIEW batch for approval (ticket 129b); 409 MW-VAL-036 / MW-VAL-037. */
+  @PostMapping("/{batchId}/submit")
+  public BatchView submit(@AuthenticationPrincipal Jwt jwt, @PathVariable String batchId) {
+    return service.submit(users.resolve(jwt), batchId);
   }
 
   @PostMapping("/{batchId}/approve")

@@ -1192,10 +1192,11 @@ curl -sk -X POST https://localhost/test/mock-control/dw/run -H 'apikey: e2e-test
   query as payee), sp-viewer01 (no organisation: refused, 403). The seeder's <code>seed-org-maker</code> /
   <code>seed-org-checker</code> (ORG001) are not in the list.</p>
   <div class="case" id="c8-1">
-    <h3><span class="id">8.1</span>Upload, approve, result</h3>
+    <h3><span class="id">8.1</span>Upload, preview, submit, approve, result</h3>
     <ol>
       <li>Portal user <code>org-maker01</code>; <span class="ui">Rows</span> <code>5</code>, <span class="ui">Tk each</span> <code>1.00</code>, <span class="ui">Generate sample</span>: a CSV <code>msisdn,amount,reference</code> appears (editable).</li>
-      <li><span class="ui">Upload as org-maker01</span>: a batch id (filled in below) and its status.</li>
+      <li><span class="ui">Upload as org-maker01</span>: a batch id (filled in below), status <code>PREVIEW</code> with its valid and invalid rows and the total of the valid ones; <span class="ui">Preview rows</span> lists every row (an invalid one with its codes, e.g. <code>MSISDN_INVALID</code>; it is never paid). Edit a row to <code>0171</code> to see one.</li>
+      <li>Still as <code>org-maker01</code>, <span class="ui">Submit (maker)</span>: <code>PENDING_APPROVAL</code> (another user cannot submit it).</li>
       <li>Portal user <code>org-checker01</code>, <span class="ui">Approve</span>. Press <span class="ui">Batch status</span> until <code>COMPLETED</code> (or <code>COMPLETED_WITH_EXCEPTIONS</code>).</li>
       <li><span class="ui">Result file</span>: one line per row with its outcome. <span class="ui">Transactions</span>: the batch's child transactions. <span class="ui">List batches</span>: every batch of the org.</li>
     </ol>

@@ -27,6 +27,10 @@ public final class ErrorCodes {
   public static final String VAL_NO_PAYOUT_WALLET = "MW-VAL-034";
   /** Result file of a batch that was never approved (no rows were paid): HTTP 409. */
   public static final String VAL_NO_RESULT = "MW-VAL-035";
+  /** Submit of a batch that is not a PREVIEW (already submitted, or expired): HTTP 409 (ticket 129b). */
+  public static final String VAL_BATCH_NOT_PREVIEW = "MW-VAL-036";
+  /** Submit of a PREVIEW batch without a single valid row: HTTP 409 (ticket 129b). */
+  public static final String VAL_BATCH_NO_VALID_ROWS = "MW-VAL-037";
   /** No valid bearer token (missing, expired, bad signature, wrong realm): HTTP 401. */
   public static final String AUTH_UNAUTHENTICATED = "MW-AUTH-001";
   /** Valid token, but no org (claim orgId) or not the role this operation needs: HTTP 403. */
