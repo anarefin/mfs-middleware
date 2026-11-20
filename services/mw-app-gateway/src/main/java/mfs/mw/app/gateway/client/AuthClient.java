@@ -8,6 +8,8 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import mfs.mw.app.gateway.config.AuthClientProperties;
 import mfs.mw.app.gateway.config.ServiceCertificateManager;
+import mfs.mw.app.gateway.dto.AtmTokenIssue;
+import mfs.mw.app.gateway.dto.AtmTokenView;
 import mfs.mw.app.gateway.dto.BoundDevice;
 import mfs.mw.app.gateway.dto.ChannelPinKey;
 import mfs.mw.app.gateway.dto.ErrorEnvelope;
@@ -39,7 +41,8 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>Only the internal port, over mTLS with this service's Vault certificate ({@link
  *       ServiceCertificateManager#clientSslContext()}, CN {@code mw-app-gateway}) and a
  *       client-credentials JWT of the same client ({@link ServiceTokenClient}): the device gate's
- *       {@link #device} and {@link #session}, the transaction assertion {@link #authorise} and the
+ *       {@link #device} and {@link #session}, the transaction assertion {@link #authorise}, the ATM
+ *       token {@link #issueAtmToken} and the
  *       PIN transport key {@link #pinKey} (security review of ticket 72: a {@code PIN_TRANSPORT}
  *       key only, never from the plain public port).
  * </ul>
@@ -122,10 +125,29 @@ public class AuthClient {
    * MwException} with its code, status, messages and details.
    */
   public TxnAuthorisation authorise(TxnAuthorisationRequest body) {
-    String op = "txn-authorisation";
-    TxnAuthorisation a;
+    TxnAuthorisation a = answer("txn-authorisation", "/internal/v1/txn-authorisations", body, TxnAuthorisation.class);
+    if (a == null || a.assertion() == null || a.assertion().isBlank()) {
+      throw unavailable("txn-authorisation", null);
+    }
+    return a;
+  }
+
+  /**
+   * The ATM cash-out token mw-auth issues against the step-up assertion in {@code body} (ticket
+   * 120b2); mw-auth's refusal passes through as for {@link #authorise}.
+   */
+  public AtmTokenView issueAtmToken(AtmTokenIssue body) {
+    AtmTokenView t = answer("atm-token", "/internal/v1/atm-tokens", body, AtmTokenView.class);
+    if (t == null || t.token() == null || t.token().isBlank() || t.expiresAt() == null) {
+      throw unavailable("atm-token", null);
+    }
+    return t;
+  }
+
+  /** A POST whose 4xx envelope is mw-auth's answer; anything else fails closed. */
+  private <T> T answer(String op, String path, Object body, Class<T> type) {
     try {
-      a = breaker.executeSupplier(() -> withToken(() -> post("/internal/v1/txn-authorisations", body)));
+      return breaker.executeSupplier(() -> withToken(() -> post(path, body, type)));
     } catch (HttpClientErrorException e) {
       ErrorEnvelope envelope = envelope(e.getResponseBodyAsByteArray());
       if (envelope == null) {
@@ -140,10 +162,6 @@ public class AuthClient {
     } catch (CallNotPermittedException | RestClientException e) {
       throw unavailable(op, e);
     }
-    if (a == null || a.assertion() == null || a.assertion().isBlank()) {
-      throw unavailable(op, null);
-    }
-    return a;
   }
 
   /**
@@ -201,7 +219,7 @@ public class AuthClient {
         .body(type);
   }
 
-  private TxnAuthorisation post(String path, Object body) {
+  private <T> T post(String path, Object body, Class<T> type) {
     return headers(
             rest.post()
                 .uri(path)
@@ -209,7 +227,7 @@ public class AuthClient {
                 .header("Authorization", "Bearer " + tokens.token())
                 .body(body))
         .retrieve()
-        .body(TxnAuthorisation.class);
+        .body(type);
   }
 
   private static <S extends RestClient.RequestHeadersSpec<?>> S headers(S spec) {

@@ -257,6 +257,17 @@ mw:
       max-attempts: 3
       max-sends: ${MW_AUTH_CHANNEL_OTP_MAX_SENDS:5}
       send-window: 15m
+    # The ATM cash-out token (ticket 120b2, FRS FL-11; config/AtmTokenProperties, service/AtmTokenService):
+    # 6 digits, stored only as an HMAC under the mw-crypto HMAC_ATMTOKEN key bound to wallet + amount,
+    # single use, max-attempts checks (then void, as the OTPs). Issued after the app's PIN step-up
+    # (the assertion for ATM_CASH_OUT wallet -> PARTNER/partner-id), checked by the ATM adapter.
+    atm-token:
+      ttl: 10m
+      max-attempts: 3
+      key-id: hmac-atmtoken
+      partner-id: ucbatm
+      issuers: mw-app-gateway
+      verifiers: mw-adapter-atm
     # The wallet users' tokens (spec 18.7, D21, ticket 69; config/TokenProperties): access JWT RS256 by
     # the mw-crypto key JWT_SIGN, refresh token opaque and rotated. The issuer is what the discovery
     # document says and what APISIX (route app-v1) and mw-app-gateway compare exactly; jwks-uri is the
@@ -343,8 +354,15 @@ mw:
     jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
     issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
     audience: mw-auth
-    # spec 18.7: the channels (txn authorisation, ticket 71) and the admin API (PIN locks, ticket 70)
-    allowed-clients: mw-app-gateway,mw-ussd,mw-checkout,mw-admin-api
+    # spec 18.7: the channels (txn authorisation, ticket 71), the admin API (PIN locks, ticket 70) and
+    # the ATM adapter (the ATM token check only, ticket 120b2)
+    allowed-clients: mw-app-gateway,mw-ussd,mw-checkout,mw-admin-api,mw-adapter-atm
+    # security/InternalCallerPolicy (ticket 120b2): a client named here reaches only its paths ...
+    client-paths:
+      mw-adapter-atm: /internal/v1/atm-tokens/verifications
+    # ... and these paths only the client they are reserved for (exact, or a prefix ending in /**)
+    reserved-paths:
+      mw-app-gateway: /internal/v1/devices/**,/internal/v1/sessions/**
   kafka:
     # How long EventPublisher.publish waits for Kafka's acknowledgement (just above the producer's
     # delivery.timeout.ms, so the producer decides first).
