@@ -113,7 +113,7 @@ public class IpnDeliveryService {
     }
     long ts = at.getEpochSecond();
     Map<String, String> headers = new LinkedHashMap<>();
-    headers.put(HEADER_IPN_ID, d.sessionId().toString());
+    headers.put(HEADER_IPN_ID, d.ipnId().toString());
     headers.put(HEADER_ATTEMPT, Integer.toString(d.attempt()));
     headers.put(HEADER_TIMESTAMP, Long.toString(ts));
     headers.put(HEADER_SIGNATURE, IpnSigner.sign(m.secret(), ts, d.payload()));

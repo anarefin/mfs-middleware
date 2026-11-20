@@ -23,6 +23,7 @@ public record TxnRequest(
     Party debitParty,
     Party creditParty,
     Amount amount,
+    String originalTxnId,
     @Sensitive(SensitiveType.SECRET) String assertion,
     String locale,
     Map<String, String> metadata,
@@ -32,6 +33,6 @@ public record TxnRequest(
   /** This request carrying mw-auth's assertion. */
   public TxnRequest withAssertion(String jws) {
     return new TxnRequest(schemaVersion, txnId, idempotencyKey, correlationId, channel, txnType, initiator,
-        debitParty, creditParty, amount, jws, locale, metadata, attributes, requestedAt);
+        debitParty, creditParty, amount, originalTxnId, jws, locale, metadata, attributes, requestedAt);
   }
 }

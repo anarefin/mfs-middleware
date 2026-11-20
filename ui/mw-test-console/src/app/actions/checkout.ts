@@ -3,7 +3,7 @@
 // CHECKOUT_MERCHANTS: APISIX hmac-auth consumer, key id, wallet; default merchant_demo "Karim Traders")
 // creates a session; the payer pays on the hosted page API with
 // the OTP the SMSC simulator received and the PIN; the merchant checks the signed redirect and
-// the signed IPN the simulator's merchant endpoint received. The merchant secrets stay here; the
+// the signed IPN the simulator's merchant endpoint received; then refunds it, whole or in part (ticket 116). The merchant secrets stay here; the
 // redirect and the IPNs are checked with the secret of the merchant that created the session.
 
 import { checkoutHeaders, encryptPin, queryOf, verifyCheckoutResult, verifyIpn } from "@/lib/crypto";
@@ -109,6 +109,37 @@ export async function checkout(prev: CheckoutState, form: FormData): Promise<Che
         const checks = list.map((i) => ({ answered: i.answeredStatus, attempt: i.headers?.["x-bits-attempt"], signatureValid: verifyIpn(i.headers ?? {}, i.body ?? "", checkoutSecret(m)), body: i.body }));
         t.note("merchant: verify each IPN signature", `${list.length} IPN(s)`, checks.every((c) => c.signatureValid), checks);
         return out(`${list.length} IPN(s) received, answered ${checks.map((c) => c.answered).join(", ") || "-"}`);
+      }
+      case "refund": {
+        // ticket 116: the shop refunds the paid payment, whole (amount empty) or in part; each refund
+        // is its own transaction with its own Idempotency-Key; the refunded total never passes the payment
+        if (!co.sessionId) return out("create and pay a session first");
+        const m = checkoutMerchant(co.merchantId);
+        const amountText = str(form, "refundAmount");
+        const amount = amountText ? takaToMinor(amountText) : undefined;
+        if (amountText && !amount) return out("enter the refund amount in taka, or leave it empty for the whole payment");
+        const body = JSON.stringify(amount ? { amount: { valueMinor: amount, currency: "BDT" }, reason: "test console refund" } : { reason: "test console refund" });
+        const path = `/checkout/v1/payments/${co.sessionId}/refunds`;
+        const before = co.wallet ? await core.wallet(co.wallet) : null;
+        const r = await t.call(`merchant ${m.name}: refund ${amount ? `Tk ${taka(amount)}` : "the whole payment"} (hmac-auth, Idempotency-Key)`, "POST", path,
+          { headers: { ...checkoutHeaders("POST", path, body, checkoutSecret(m), m.keyId, new Date()), "Idempotency-Key": `tc-${crypto.randomUUID()}` }, raw: body }, [201, 202, 422]);
+        const after = co.wallet ? await core.wallet(co.wallet) : null;
+        if (before && after) t.note("payer balance", `${taka(before.balanceMinor)} -> ${taka(after.balanceMinor)}`);
+        const b = (r.body ?? {}) as { refundId?: string; status?: string; code?: string; txnId?: string };
+        const listPath = `/checkout/v1/payments/${co.sessionId}/refunds`;
+        const list = await t.call(`merchant ${m.name}: the payment's refunds`, "GET", listPath,
+          { headers: checkoutHeaders("GET", listPath, null, checkoutSecret(m), m.keyId, new Date()) }, [200]);
+        const refunded = (list.body as { refunded?: { valueMinor?: number } } | null)?.refunded?.valueMinor ?? 0;
+        const refundId = b.refundId ?? b.txnId;
+        if (refundId) {
+          const ipn = await poll(async () => {
+            const res = await t.call("refund IPN the shop's server received (simulator)", "GET", `/test/sim/merchant/ipn/received?ipnId=${refundId}&type=REFUND`, { apikey: true });
+            return Array.isArray(res.body) ? (res.body as { headers?: Record<string, string>; body?: string }[]) : [];
+          }, (l) => l.length > 0, 15000).catch(() => []);
+          t.note("merchant: verify the refund IPN signature", `${ipn.length} refund IPN(s)`,
+            ipn.length > 0 && ipn.every((i) => verifyIpn(i.headers ?? {}, i.body ?? "", checkoutSecret(m))), ipn.map((i) => i.body));
+        }
+        return out(b.code ? `refund refused ${b.code}; refunded so far Tk ${taka(refunded)}` : `refund ${refundId} ${b.status}; refunded so far Tk ${taka(refunded)}`);
       }
       default:
         return out("unknown step");

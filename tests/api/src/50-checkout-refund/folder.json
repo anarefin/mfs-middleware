@@ -1,0 +1,4 @@
+{
+  "name": "50 Web checkout refunds",
+  "description": "Ticket 116 (FRS CH-WEB-03, FL-06, UC-12). The dev merchant (merchant_demo, Karim Traders, wallet 01911000001) refunds a checkout payment of customer01 through POST /checkout/v1/payments/{id}/refunds (hmac-auth with Digest and X-Nonce, Idempotency-Key): each refund is its own REVERSAL transaction (mw-orchestrator RefundFlow), the core-mock keeps the refunded total and refuses past the payment (MW-CORE-REFUND_EXCEEDS); the merchant lists the refunds and receives one signed refund IPN per finished refund (the simulator's merchant IPN receiver, type REFUND). Another merchant's 403 is CheckoutRefundIT (the suite signs as merchant_demo only)."
+}

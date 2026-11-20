@@ -16,7 +16,7 @@ public class IpnDeliveryRepository {
 
   private static final String COLUMNS =
       "delivery_id, session_id, merchant_id, attempt, ipn_url, payload, status, due_at, attempted_at,"
-          + " http_status, error, duration_ms, created_at";
+          + " http_status, error, duration_ms, created_at, refund_id";
 
   private final JdbcClient jdbc;
 
@@ -25,10 +25,10 @@ public class IpnDeliveryRepository {
   }
 
   public void insert(IpnDelivery d) {
-    jdbc.sql("insert into ipn_delivery (" + COLUMNS + ") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    jdbc.sql("insert into ipn_delivery (" + COLUMNS + ") values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .params(
             d.deliveryId(), d.sessionId(), d.merchantId(), d.attempt(), d.ipnUrl(), d.payload(), d.status().name(),
-            ts(d.dueAt()), ts(d.attemptedAt()), d.httpStatus(), d.error(), d.durationMs(), ts(d.createdAt()))
+            ts(d.dueAt()), ts(d.attemptedAt()), d.httpStatus(), d.error(), d.durationMs(), ts(d.createdAt()), d.refundId())
         .update();
   }
 
@@ -42,10 +42,19 @@ public class IpnDeliveryRepository {
         .list();
   }
 
-  /** Every attempt for a session, in order. */
+  /** Every attempt of a session's payment IPN, in order (refund IPNs left out). */
   public List<IpnDelivery> findBySession(UUID sessionId) {
-    return jdbc.sql("select " + COLUMNS + " from ipn_delivery where session_id = ? order by attempt")
+    return jdbc.sql(
+            "select " + COLUMNS + " from ipn_delivery where session_id = ? and refund_id is null order by attempt")
         .param(sessionId)
+        .query(IpnDeliveryRepository::map)
+        .list();
+  }
+
+  /** Every attempt of a refund's IPN, in order. */
+  public List<IpnDelivery> findByRefund(UUID refundId) {
+    return jdbc.sql("select " + COLUMNS + " from ipn_delivery where refund_id = ? order by attempt")
+        .param(refundId)
         .query(IpnDeliveryRepository::map)
         .list();
   }
@@ -76,7 +85,8 @@ public class IpnDeliveryRepository {
         rs.getObject("http_status", Integer.class),
         rs.getString("error"),
         rs.getObject("duration_ms", Long.class),
-        instant(rs.getTimestamp("created_at")));
+        instant(rs.getTimestamp("created_at")),
+        rs.getObject("refund_id", UUID.class));
   }
 
   private static Timestamp ts(Instant i) {
