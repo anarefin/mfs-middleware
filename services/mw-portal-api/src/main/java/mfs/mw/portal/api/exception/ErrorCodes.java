@@ -45,6 +45,8 @@ public final class ErrorCodes {
   public static final String SYS_INTERNAL = "MW-SYS-001";
   /** mw-orchestrator's query API is unreachable or answered unusably (ticket 35): 503, retryable. */
   public static final String SYS_ORCHESTRATOR_UNAVAILABLE = "MW-SYS-040";
+  /** The core gave no org wallet balance for a batch's approval: HTTP 503, retryable (ticket 129c). */
+  public static final String SYS_CORE_UNAVAILABLE = "MW-SYS-041";
 
   private ErrorCodes() {}
 }

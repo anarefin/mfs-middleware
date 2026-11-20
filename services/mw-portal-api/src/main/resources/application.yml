@@ -253,6 +253,14 @@ mw:
     consumers:
       # messaging/TxnStatusListener: the children's mw.txn.status.v1 records (tests switch it off)
       enabled: true
+    # The core wallet API (ticket 129c): only the org wallet's balance, checked at approval and when
+    # the dispatcher starts a batch (short: BLOCKED_FUNDS, nothing sent). Same service token as the
+    # orchestrator's query API (realm services client mw-portal-api, audience mw-core-mock).
+    core:
+      base-url: ${MW_CORE_BASE_URL:http://mw-core-mock:8080}
+      connect-timeout: 1s
+      read-timeout: 3s
+      balance-check: ${MW_BULK_BALANCE_CHECK:true}
     # mw-orchestrator's internal query API (SP transaction query, ticket 35), over the app network;
     # not routed by APISIX.
     orchestrator:

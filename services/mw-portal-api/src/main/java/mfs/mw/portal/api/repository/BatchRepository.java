@@ -34,7 +34,8 @@ public class BatchRepository {
           + " invalid_count";
 
   private static final String COLUMNS =
-      INSERT_COLUMNS + ", retry_round, retry_requested_sub, retry_requested_name, retry_requested_at";
+      INSERT_COLUMNS
+          + ", retry_round, retry_requested_sub, retry_requested_name, retry_requested_at, shortfall_minor, blocked_reason";
 
   private final JdbcTemplate jdbc;
 
@@ -131,16 +132,18 @@ public class BatchRepository {
   }
 
   /**
-   * Records the checker's decision only while the batch awaits approval and the checker is not its
-   * maker (one atomic statement, so racing checkers decide once). Returns whether it was recorded.
+   * Records the checker's decision only while the batch awaits approval (PENDING_APPROVAL, or
+   * BLOCKED_FUNDS approved again) and the checker is not its maker (one atomic statement, so racing
+   * checkers decide once). Returns whether it was recorded.
    */
   public boolean decide(
       UUID batchId, String orgId, BatchStatus decision, String checkerSub, String checkerName,
       String reason, Instant at) {
     return jdbc.update(
             """
-            UPDATE batch SET status = ?, checker_sub = ?, checker_name = ?, reason = ?, decided_at = ?
-            WHERE batch_id = ? AND org_id = ? AND status = 'PENDING_APPROVAL' AND maker_sub <> ?
+            UPDATE batch SET status = ?, checker_sub = ?, checker_name = ?, reason = ?, decided_at = ?,
+                   shortfall_minor = NULL, blocked_reason = NULL
+            WHERE batch_id = ? AND org_id = ? AND status IN ('PENDING_APPROVAL', 'BLOCKED_FUNDS') AND maker_sub <> ?
             """,
             decision.name(), checkerSub, checkerName, reason, ts(at), batchId, orgId, checkerSub)
         == 1;
@@ -178,10 +181,48 @@ public class BatchRepository {
         rs.getInt("retry_round"),
         rs.getString("retry_requested_sub"),
         rs.getString("retry_requested_name"),
-        instant(rs, "retry_requested_at"));
+        instant(rs, "retry_requested_at"),
+        rs.getObject("shortfall_minor", Long.class),
+        rs.getString("blocked_reason"));
   }
 
   // --- execution (ticket 34) -------------------------------------------------------------------
+
+  /**
+   * Blocks a batch for short funds (ticket 129c) while it is in {@code from} (awaiting approval, or
+   * APPROVED and not started); false when it moved on meanwhile. At approval only for a checker
+   * who is not its maker.
+   */
+  public boolean blockFunds(UUID batchId, BatchStatus from, String checkerSub, long shortfallMinor, String reason) {
+    return jdbc.update(
+            """
+            UPDATE batch SET status = 'BLOCKED_FUNDS', shortfall_minor = ?, blocked_reason = ?
+            WHERE batch_id = ? AND status = ? AND (?::text IS NULL OR maker_sub <> ?::text)
+            """,
+            shortfallMinor, reason, batchId, from.name(), checkerSub, checkerSub)
+        == 1;
+  }
+
+  /** An APPROVED batch the dispatcher has not started yet, with the amount of its unsent rows. */
+  public record Unstarted(UUID batchId, String orgWallet, long pendingMinor) {}
+
+  /** The APPROVED batches, oldest approval first. */
+  public List<Unstarted> unstarted() {
+    return jdbc.query(
+        """
+        SELECT b.batch_id, b.org_wallet,
+               coalesce((SELECT sum(i.amount_minor) FROM batch_item i
+                         WHERE i.batch_id = b.batch_id AND i.status = 'PENDING'), 0) AS pending_minor
+        FROM batch b WHERE b.status = 'APPROVED'
+        ORDER BY b.decided_at, b.batch_id
+        """,
+        (rs, n) -> new Unstarted(rs.getObject("batch_id", UUID.class), rs.getString("org_wallet"), rs.getLong("pending_minor")));
+  }
+
+  /** Starts an APPROVED batch whose funds were checked: EXECUTING, so the dispatcher sends its rows. */
+  public boolean start(UUID batchId) {
+    return jdbc.update("UPDATE batch SET status = 'EXECUTING' WHERE batch_id = ? AND status = 'APPROVED'", batchId) == 1;
+  }
 
   /** On approval: the batch's parent txnId and the wallet its rows are paid from. */
   public void startPayout(UUID batchId, UUID parentTxnId, String orgWallet) {
@@ -217,7 +258,7 @@ public class BatchRepository {
         SELECT i.batch_id, i.line_no, i.msisdn, i.amount_minor, i.reference, i.attempt,
                b.org_id, b.org_wallet, b.parent_txn_id, b.currency
         FROM batch_item i JOIN batch b ON b.batch_id = i.batch_id
-        WHERE i.status = 'PENDING' AND b.status IN ('APPROVED', 'EXECUTING')
+        WHERE i.status = 'PENDING' AND b.status = 'EXECUTING'
         ORDER BY b.decided_at, i.batch_id, i.line_no
         LIMIT ?
         FOR NO KEY UPDATE OF i, b SKIP LOCKED

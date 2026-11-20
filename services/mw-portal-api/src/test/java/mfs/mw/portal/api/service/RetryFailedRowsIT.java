@@ -37,7 +37,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Retry of a settled batch's FAILED rows (ticket 129c, FRS CH-POR-04) through its service seams,
+ * Retry of a settled batch's FAILED rows (ticket 129c, FRS CH-POR-03) through its service seams,
  * against PostgreSQL and a stub of mw-orchestrator's query API. A row never pays twice: the
  * orchestrator answers a re-sent key that ended FAILED with that FAILED, so a retried row is sent
  * as a new attempt ({@code bulk-<batchId>-<line>-a<n>}), and only after the failed attempt is

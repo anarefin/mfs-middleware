@@ -41,7 +41,9 @@ public final class BatchMapper {
         b.invalidCount(),
         null,
         b.retryRound() == 0 ? null : b.retryRound(),
-        b.retryRequestedBy());
+        b.retryRequestedBy(),
+        b.shortfallMinor() == null ? null : new Amount(b.shortfallMinor(), b.currency()),
+        b.blockedReason());
   }
 
   /** The upload's answer: the view plus the given invalid rows' codes. */

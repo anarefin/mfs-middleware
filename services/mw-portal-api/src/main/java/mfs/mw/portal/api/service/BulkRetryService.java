@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * The retry check of an approved retry (ticket 129c, FRS CH-POR-04): a row never pays twice. The
+ * The retry check of an approved retry (ticket 129c, FRS CH-POR-03): a row never pays twice. The
  * orchestrator answers a re-sent key that ended FAILED with that FAILED, so a retried row goes out
  * as a new attempt with its own txnId and key, and only once its failed attempt is proven to have
  * posted nothing ({@link #postedNothing}), read from mw-orchestrator's internal query API: else the

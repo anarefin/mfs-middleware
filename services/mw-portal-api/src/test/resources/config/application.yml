@@ -14,6 +14,9 @@ mw:
       # Tests that switch it on want each hop at once, not after a 500 ms idle wait.
       period: 50ms
   portal-api:
+    # Off by default in tests (no core): BalanceCheckIT switches it on against a stub core.
+    core:
+      balance-check: false
     orchestrator:
       auth:
         # Obviously fake; the real one comes from Vault. ITs with a stub orchestrator serve a token.

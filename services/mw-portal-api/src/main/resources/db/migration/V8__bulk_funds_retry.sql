@@ -1,4 +1,11 @@
--- Retry of a settled batch's FAILED rows (ticket 129c, FRS CH-POR-04). A maker requests it
+-- Balance check (ticket 129c, FRS CH-POR-04): the org wallet's available balance is read from the
+-- core at approval and when the dispatcher starts the batch; short, the batch is BLOCKED_FUNDS
+-- (statuses are text) with the shortfall and the reason, nothing sent; a checker approves it again.
+ALTER TABLE batch
+  ADD COLUMN shortfall_minor bigint CHECK (shortfall_minor > 0),
+  ADD COLUMN blocked_reason  text;
+
+-- Retry of a settled batch's FAILED rows (ticket 129c, FRS CH-POR-03). A maker requests it
 -- (retry_requested_*), a checker who is not that maker approves it: retry_round + 1 and the FAILED
 -- rows become RETRY_CHECK, one statement each, so a repeated click finds nothing to approve. A
 -- RETRY_CHECK row goes back to PENDING with attempt + 1 only once its failed attempt is proven to

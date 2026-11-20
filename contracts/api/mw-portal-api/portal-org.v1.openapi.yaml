@@ -188,7 +188,12 @@ paths:
       description: >-
         Needs role `org-checker` (else 403 MW-AUTH-002) and a user other than the batch's maker
         (else 403 MW-AUTH-030). A batch already approved or rejected is 409 MW-VAL-032; of
-        concurrent decisions exactly one wins.
+        concurrent decisions exactly one wins. The org wallet's available balance is read from the
+        core first (ticket 129c), and again when the batch starts executing: below the batch's
+        amount, the batch becomes BLOCKED_FUNDS with `shortfall` and `blockedReason`
+        MW-CORE-INSUFFICIENT_BALANCE (200, nothing sent); once the wallet is funded, a checker
+        approves the BLOCKED_FUNDS batch again (same rules). No balance from the core: 503
+        MW-SYS-041 (retryable), nothing changed.
       parameters:
         - $ref: "#/components/parameters/CorrelationId"
         - $ref: "#/components/parameters/BatchId"
@@ -203,6 +208,7 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /portal/org/v1/bulk/batches/{batchId}/pause:
     post:
       operationId: pauseBulkBatch
@@ -521,9 +527,11 @@ components:
         (maker-checker), or EXPIRED when no checker decided within 72 h of the upload; APPROVED -> EXECUTING (first row sent) <-> PAUSED -> COMPLETED
         (every row settled) or COMPLETED_WITH_EXCEPTIONS (every row settled or given up, at least
         one MANUAL_REVIEW or UNRESOLVED); a settled batch -> EXECUTING again when the retry of its
-        FAILED rows is approved. More states may be added within v1; clients must accept
+        FAILED rows is approved. BLOCKED_FUNDS: the org wallet held less than the batch at approval
+        or when it was about to start (nothing sent); a checker approves it again (-> APPROVED) or
+        rejects it. More states may be added within v1; clients must accept
         unknown values.
-      enum: [PREVIEW, PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, EXECUTING, PAUSED, COMPLETED, COMPLETED_WITH_EXCEPTIONS]
+      enum: [PREVIEW, PENDING_APPROVAL, APPROVED, REJECTED, EXPIRED, EXECUTING, PAUSED, COMPLETED, COMPLETED_WITH_EXCEPTIONS, BLOCKED_FUNDS]
     BatchProgress:
       type: object
       description: Row counts of an approved batch.
@@ -575,6 +583,8 @@ components:
         completedAt: { type: string, format: date-time, description: When the last row settled }
         retryRound: { type: integer, minimum: 1, description: "Approved retries of the FAILED rows (absent: none)" }
         retryRequestedBy: { type: string, description: Username of the maker whose retry request awaits a checker }
+        shortfall: { $ref: "#/components/schemas/Amount", description: "BLOCKED_FUNDS only: what the org wallet lacked" }
+        blockedReason: { type: string, description: "BLOCKED_FUNDS only: MW-CORE-INSUFFICIENT_BALANCE" }
     RowErrorCode:
       type: string
       description: Why a row of an upload is invalid. More codes may be added within v1.

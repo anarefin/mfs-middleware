@@ -11,7 +11,8 @@ import java.util.List;
  * will be executed, {@code invalidCount} those that broke a row rule, {@code totalAmount} the amount
  * of the valid rows; {@code rowErrors} (the first invalid rows with their codes) only answers the
  * upload (ticket 129b). {@code retryRound} (from 1) counts the approved retries of its FAILED rows,
- * {@code retryRequestedBy} names the maker of a retry request awaiting a checker (ticket 129c).
+ * {@code retryRequestedBy} names the maker of a retry request awaiting a checker; a BLOCKED_FUNDS
+ * batch carries its {@code shortfall} and {@code blockedReason} (ticket 129c).
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record BatchView(
@@ -32,7 +33,9 @@ public record BatchView(
     int invalidCount,
     List<RowError> rowErrors,
     Integer retryRound,
-    String retryRequestedBy) {
+    String retryRequestedBy,
+    Amount shortfall,
+    String blockedReason) {
 
   /** An invalid row of the upload: its line (header = 1) and error codes. */
   public record RowError(int line, List<String> errors) {}
@@ -41,6 +44,7 @@ public record BatchView(
   public BatchView withRowErrors(List<RowError> errors) {
     return new BatchView(
         batchId, orgId, status, rowCount, totalAmount, makerId, checkerId, reason, createdAt, decidedAt,
-        parentTxnId, progress, completedAt, validCount, invalidCount, errors, retryRound, retryRequestedBy);
+        parentTxnId, progress, completedAt, validCount, invalidCount, errors, retryRound, retryRequestedBy,
+        shortfall, blockedReason);
   }
 }

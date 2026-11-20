@@ -224,8 +224,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-WEB-05 | done | session expiry `session-ttl: 15m` (mw-checkout `application.yml`) |
 | CH-POR-01 | ticket 129 | 129a done: CSV and XLSX upload (`BulkFileParser`, bounded XLSX reader) and row validation built; 129b done: upload as PREVIEW with totals and per-row error codes, `GET .../preview`, `POST .../submit` (`BulkPreviewTest`, `BulkBatchApiIT`) |
 | CH-POR-02 | done | bulk maker-checker in mw-portal-api |
-| CH-POR-03 | ticket 129 | async execution, throttle, per-row status, result file built; retry of failed rows in 129 |
-| CH-POR-04 | ticket 129 | balance check before execution |
+| CH-POR-03 | ticket 129 | async execution, throttle, per-row status, result file built; 129c done: retry of FAILED rows, maker-checker, a new attempt key only after the failed attempt is proven to have posted nothing (`RetryFailedRowsIT`) |
+| CH-POR-04 | ticket 129 | 129c done: org wallet balance read from the core at approval and at dispatch start, short -> BLOCKED_FUNDS with the shortfall, nothing sent (`BalanceCheckIT`) |
 | CH-POR-05 | ticket 129 | SP transaction query built; settlements, refunds, reports in 129 |
 | CH-POR-06 | done | OAuth2 on the Keycloak `portals` realm, maker and checker roles per organisation |
 

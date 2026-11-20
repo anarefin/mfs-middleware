@@ -9,7 +9,8 @@ import java.util.UUID;
  * {@code rowCount} is every data row of the file, {@code invalidCount} those that broke a row rule
  * and are never executed, {@code totalMinor} the amount of the valid rows (ticket 129b).
  * {@code retryRound} counts the approved retries of its FAILED rows, {@code retryRequested*} is a
- * maker's retry request awaiting a checker (ticket 129c).
+ * maker's retry request awaiting a checker, {@code shortfallMinor} and {@code blockedReason} why a
+ * BLOCKED_FUNDS batch is blocked (ticket 129c).
  */
 public record Batch(
     UUID batchId,
@@ -33,7 +34,9 @@ public record Batch(
     int retryRound,
     String retryRequestedSub,
     String retryRequestedBy,
-    Instant retryRequestedAt) {
+    Instant retryRequestedAt,
+    Long shortfallMinor,
+    String blockedReason) {
 
   /** A batch never retried. */
   public Batch(
@@ -44,7 +47,7 @@ public record Batch(
     this(
         batchId, orgId, status, rowCount, totalMinor, currency, fileSha256, makerSub, makerName, checkerSub,
         checkerName, reason, createdAt, decidedAt, parentTxnId, orgWallet, completedAt, invalidCount, 0, null, null,
-        null);
+        null, null, null);
   }
 
   /** A batch without invalid rows. */

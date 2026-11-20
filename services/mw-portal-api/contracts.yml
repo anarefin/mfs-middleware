@@ -4,4 +4,4 @@ produces:
   apis:   [api/mw-portal-api/portal-org.v1.openapi.yaml]
 consumes:
   events: [events/mw-orchestrator/mw.txn.status.v1.schema.json]
-  apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml]
+  apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-core-mock/core-wallet.v1.openapi.yaml]

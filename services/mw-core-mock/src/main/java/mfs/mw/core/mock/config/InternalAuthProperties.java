@@ -17,6 +17,8 @@ import org.springframework.validation.annotation.Validated;
  * @param allowedClients client ids ({@code azp}) allowed to call the wallet operations
  * @param reportClients client ids ({@code azp}) allowed to read only the reports ({@code GET
  *     /core/v1/reports/emoney-total}, ticket 127c: mw-recon); nothing else of {@code /core/**}
+ * @param balanceClients client ids ({@code azp}) allowed to read only balances ({@code GET
+ *     /core/v1/balance/{walletId}}, ticket 129c: mw-portal-api, org wallets only); nothing else
  */
 @Validated
 @ConfigurationProperties("mw.internal-auth")
@@ -25,10 +27,12 @@ public record InternalAuthProperties(
     @NotBlank String issuer,
     @NotBlank String audience,
     @NotEmpty Set<String> allowedClients,
-    Set<String> reportClients) {
+    Set<String> reportClients,
+    Set<String> balanceClients) {
 
   public InternalAuthProperties {
     allowedClients = Set.copyOf(allowedClients == null ? Set.of() : allowedClients);
     reportClients = Set.copyOf(reportClients == null ? Set.of() : reportClients);
+    balanceClients = Set.copyOf(balanceClients == null ? Set.of() : balanceClients);
   }
 }

@@ -812,6 +812,8 @@ services:
       MW_INTERNALAUTH_ALLOWEDCLIENTS: mw-orchestrator,mw-auth,mw-admin-api,mw-simulators,mw-app-gateway,mw-ussd
       # Report readers only (ticket 127c): mw-recon reads GET /core/v1/reports/emoney-total and nothing else.
       MW_INTERNALAUTH_REPORTCLIENTS: mw-recon
+      # Balance readers only (ticket 129c): mw-portal-api reads GET /core/v1/balance/{walletId} of org wallets.
+      MW_INTERNALAUTH_BALANCECLIENTS: mw-portal-api
       # The core party's mock control /mock-control and the global reset's core part (ADR D33, ticket 103):
       # test-only, never production (scripts/check-mock-control-prod.sh; a start with MW_ENV=prod fails).
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev},mock-control

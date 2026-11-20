@@ -5,6 +5,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.OptionalLong;
 import java.util.UUID;
 import mfs.mw.portal.api.config.PortalApiProperties;
 import mfs.mw.portal.api.dto.BatchPreview;
@@ -15,6 +16,7 @@ import mfs.mw.portal.api.dto.InvalidRow;
 import mfs.mw.portal.api.dto.PortalUser;
 import mfs.mw.portal.api.entity.Batch;
 import mfs.mw.portal.api.entity.BatchStatus;
+import mfs.mw.portal.api.exception.CoreUnavailableException;
 import mfs.mw.portal.api.exception.ErrorCodes;
 import mfs.mw.portal.api.exception.MwException;
 import mfs.mw.portal.api.mapper.BatchMapper;
@@ -52,14 +54,17 @@ public class BatchService {
   private final PortalApiProperties props;
   private final Clock clock;
   private final BatchAudit audit;
+  private final FundsCheck funds;
 
   public BatchService(
-      BatchRepository batches, BulkFileParser parser, PortalApiProperties props, Clock clock, BatchAudit audit) {
+      BatchRepository batches, BulkFileParser parser, PortalApiProperties props, Clock clock, BatchAudit audit,
+      FundsCheck funds) {
     this.batches = batches;
     this.parser = parser;
     this.props = props;
     this.clock = clock;
     this.audit = audit;
+    this.funds = funds;
   }
 
   /** A CSV upload ({@link #upload(PortalUser, byte[], BulkFileFormat)}). */
@@ -275,6 +280,12 @@ public class BatchService {
     return batches.list(user.orgId(), filter, LIST_LIMIT).stream().map(BatchMapper::view).toList();
   }
 
+  /**
+   * Approves a batch awaiting approval (PENDING_APPROVAL, or BLOCKED_FUNDS again once funded). The
+   * org wallet's balance is read from the core first (ticket 129c): short, the batch becomes
+   * BLOCKED_FUNDS with the shortfall ({@code MW-CORE-INSUFFICIENT_BALANCE}) and nothing is sent; no
+   * balance from the core {@code 503 MW-SYS-041}, nothing changed.
+   */
   @Transactional
   public BatchView approve(PortalUser checker, String batchId) {
     return decide(checker, batchId, BatchStatus.APPROVED, null);
@@ -297,7 +308,21 @@ public class BatchService {
       throw new MwException(ErrorCodes.VAL_NO_PAYOUT_WALLET, "The org has no payout wallet configured")
           .withStatus(HttpStatus.CONFLICT);
     }
-    if (batch.status() != BatchStatus.PENDING_APPROVAL
+    boolean awaiting = batch.status() == BatchStatus.PENDING_APPROVAL || batch.status() == BatchStatus.BLOCKED_FUNDS;
+    if (decision == BatchStatus.APPROVED && awaiting) {
+      OptionalLong shortfall;
+      try {
+        shortfall = funds.shortfall(wallet, batch.totalMinor());
+      } catch (CoreUnavailableException e) {
+        throw new MwException(ErrorCodes.SYS_CORE_UNAVAILABLE, "The org wallet balance could not be read; try again")
+            .withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+            .withRetryable(true);
+      }
+      if (shortfall.isPresent()) {
+        return blockFunds(checker, batch, shortfall.getAsLong());
+      }
+    }
+    if (!awaiting
         || !batches.decide(
             batch.batchId(), checker.orgId(), decision, checker.subject(), checker.username(), reason,
             clock.instant())) {
@@ -311,7 +336,7 @@ public class BatchService {
     Batch decided = load(checker, batchId);
     audit.record(
         decided, decision == BatchStatus.APPROVED ? "approved" : "rejected", checker.username(),
-        BatchStatus.PENDING_APPROVAL, decision, reason);
+        batch.status(), decision, reason);
     log.atInfo()
         .addKeyValue("event", "bulk.batch.decided")
         .addKeyValue("batchId", batch.batchId())
@@ -319,6 +344,22 @@ public class BatchService {
         .addKeyValue("decision", decision.name())
         .log("Bulk batch " + decision.name().toLowerCase(java.util.Locale.ROOT));
     return viewWithProgress(decided);
+  }
+
+  private BatchView blockFunds(PortalUser checker, Batch batch, long shortfallMinor) {
+    if (!batches.blockFunds(
+        batch.batchId(), batch.status(), checker.subject(), shortfallMinor, FundsCheck.INSUFFICIENT_BALANCE)) {
+      throw notPending();
+    }
+    Batch blocked = load(checker, batch.batchId().toString());
+    audit.record(blocked, "blocked_funds", checker.username(), batch.status(), BatchStatus.BLOCKED_FUNDS, null);
+    log.atWarn()
+        .addKeyValue("event", "bulk.batch.blocked_funds")
+        .addKeyValue("batchId", batch.batchId())
+        .addKeyValue("orgId", batch.orgId())
+        .addKeyValue("errorCode", FundsCheck.INSUFFICIENT_BALANCE)
+        .log("Bulk batch blocked at approval: the org wallet holds less than the batch");
+    return viewWithProgress(blocked);
   }
 
   private Batch load(PortalUser user, String batchId) {
