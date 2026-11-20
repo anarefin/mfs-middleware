@@ -313,7 +313,9 @@ mw:
     # Per MNO (spec 9.2): transport, short codes (each MNO its own; a BEGIN with another code ends
     # at once with the wrong-code screen), screen limits (GSM-7 / UCS-2), session timeout
     # (MNO limit, TBC), overflow TRUNCATE|PAGE and the HTTP continue/end flag values. GP runs
-    # over SMPP (WP19, binds in mw.ussd.smpp below); the others are HTTP until their contracts say otherwise.
+    # over SMPP (WP19, binds in mw.ussd.smpp below); robi, bl and teletalk stay HTTP in dev so the
+    # existing dials keep working, and bind over SMPP when their transport is switched (CH-USSD-01).
+    # tlv-profile selects the MNO's TLV adapter (same 3GPP tags; session-info packing differs).
     mno:
       gp:
         transport: SMPP
@@ -325,6 +327,7 @@ mw:
         overflow: PAGE
         continue-flag: CON
         end-flag: END
+        tlv-profile: gp
       robi:
         transport: HTTP
         short-codes: ["*269#"]
@@ -335,6 +338,7 @@ mw:
         overflow: PAGE
         continue-flag: CON
         end-flag: END
+        tlv-profile: robi
       bl:
         transport: HTTP
         short-codes: ["*270#"]
@@ -347,6 +351,7 @@ mw:
         end-flag: END
         # spec 9.2 names the MNO bl; mw-adapter-telco's top-up partnerId is banglalink
         operator: banglalink
+        tlv-profile: bl
       teletalk:
         transport: HTTP
         short-codes: ["*271#"]
@@ -357,6 +362,7 @@ mw:
         overflow: TRUNCATE
         continue-flag: CON
         end-flag: END
+        tlv-profile: teletalk
     # SMPP USSD transport (spec 9.2, 9.2.1, WP19, client/UssdSmppClient): one bind group for every
     # MNO above with transport SMPP; the others are config-ready (switch the MNO's transport to
     # SMPP to bind). Window, TPS and bind count are MNO contract values (TBC). Passwords from
@@ -377,18 +383,22 @@ mw:
           window: 10
           tps: 50
           retry-delays: [500ms, 1s, 2s]
+          bind-mode: TRANSCEIVER
         robi:
           host: ${MW_USSD_SMPP_ROBI_HOST:mw-simulators}
-          port: ${MW_USSD_SMPP_ROBI_PORT:2776}
+          port: ${MW_USSD_SMPP_ROBI_PORT:2777}
           system-id: bits-ussd
+          bind-mode: TRANSMITTER_RECEIVER
         bl:
           host: ${MW_USSD_SMPP_BL_HOST:mw-simulators}
-          port: ${MW_USSD_SMPP_BL_PORT:2776}
+          port: ${MW_USSD_SMPP_BL_PORT:2778}
           system-id: bits-ussd
+          bind-mode: TRANSCEIVER
         teletalk:
           host: ${MW_USSD_SMPP_TELETALK_HOST:mw-simulators}
-          port: ${MW_USSD_SMPP_TELETALK_PORT:2776}
+          port: ${MW_USSD_SMPP_TELETALK_PORT:2779}
           system-id: bits-ussd
+          bind-mode: TRANSMITTER_RECEIVER
 
 # Generated API document and Swagger UI (ticket 101, PLT-050..052): off by default, so a production
 # build exposes neither /v3/api-docs nor /swagger-ui; on in the dev and test profiles below (the dev

@@ -72,6 +72,8 @@ public record UssdProperties(
    * @param endFlag value of the HTTP response flag that ends it
    * @param operator mw-adapter-telco's partnerId for this MNO's subscribers (a top-up of the own
    *     number); blank = the MNO key itself (bl: {@code banglalink})
+   * @param tlvProfile which {@code MnoTlvAdapter} reads this MNO's SMPP TLVs ({@code gp}, {@code
+   *     robi}, {@code bl}, {@code teletalk}); blank = the MNO key
    */
   public record Mno(
       @NotNull Transport transport,
@@ -83,7 +85,8 @@ public record UssdProperties(
       @NotBlank String continueFlag,
       @NotBlank String endFlag,
       String operator,
-      Duration screenTimeout) {
+      Duration screenTimeout,
+      String tlvProfile) {
 
     /**
      * A test MNO with the 30 s screen timeout. A second constructor would stop Spring from binding
@@ -101,7 +104,7 @@ public record UssdProperties(
         String operator) {
       return new Mno(
           transport, shortCodes, maxLengthGsm, maxLengthUcs2, sessionTimeout, overflow, continueFlag, endFlag,
-          operator, Duration.ofSeconds(30));
+          operator, Duration.ofSeconds(30), null);
     }
 
     public Mno {
@@ -109,6 +112,12 @@ public record UssdProperties(
       if (screenTimeout == null) {
         screenTimeout = Duration.ofSeconds(30);
       }
+      tlvProfile = tlvProfile == null || tlvProfile.isBlank() ? null : tlvProfile;
+    }
+
+    /** The TLV profile, or {@code mnoKey} when none is configured. */
+    public String tlvProfileOr(String mnoKey) {
+      return tlvProfile == null ? mnoKey : tlvProfile;
     }
 
     /** The top-up operator (telco partnerId) of this MNO, whose key is {@code key}. */

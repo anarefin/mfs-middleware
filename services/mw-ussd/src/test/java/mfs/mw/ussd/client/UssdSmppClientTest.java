@@ -14,7 +14,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import mfs.mw.ussd.config.UssdSmppProperties;
+import mfs.mw.ussd.config.UssdSmppProperties.BindMode;
 import mfs.mw.ussd.dto.SmppUssdMessage;
+import mfs.mw.ussd.transport.GpTlvAdapter;
+import org.jsmpp.bean.BindType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,15 +55,20 @@ class UssdSmppClientTest {
   }
 
   UssdSmppProperties.Endpoint endpoint(int binds, Duration enquireLink, int tps) {
+    return endpoint(binds, enquireLink, tps, BindMode.TRANSCEIVER);
+  }
+
+  UssdSmppProperties.Endpoint endpoint(int binds, Duration enquireLink, int tps, BindMode mode) {
     return new UssdSmppProperties.Endpoint("127.0.0.1", gateway.port(), "Bits", "fake-pw", null, null, binds,
         enquireLink, 3, Duration.ofMillis(300), Duration.ofMillis(100), Duration.ofMillis(400), 4, tps,
-        List.of(Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofMillis(50)));
+        List.of(Duration.ofMillis(50), Duration.ofMillis(50), Duration.ofMillis(50)), mode);
   }
 
   /** Starts a client for gp whose listener answers every deliver_sm with "Hello" on the same bind. */
   void start(UssdSmppProperties.Endpoint ep) {
     client = new UssdSmppClient(new UssdSmppProperties(true, Map.of("gp", ep, "robi", ep)), java.util.Set.of("gp"),
-        meters, Clock.systemUTC());
+        Map.of("gp", new GpTlvAdapter()), meters, Clock.systemUTC());
+    int sessions = ep.bindMode() == BindMode.TRANSMITTER_RECEIVER ? ep.binds() * 2 : ep.binds();
     client.listen(m -> {
       inbound.add(m);
       Thread.ofVirtual().start(() -> {
@@ -73,7 +81,29 @@ class UssdSmppClientTest {
       });
     });
     client.start();
-    await().atMost(Duration.ofSeconds(10)).until(() -> gateway.boundSessions() == ep.binds());
+    await().atMost(Duration.ofSeconds(10)).until(() -> gateway.boundSessions() == sessions);
+  }
+
+  @Test
+  void aTransmitterAndReceiverPairAnswersOnTheTransmitter() {
+    start(endpoint(1, Duration.ofSeconds(30), 50, BindMode.TRANSMITTER_RECEIVER));
+
+    int receiver = -1;
+    for (int i = 0; i < 2; i++) {
+      if (gateway.bindType(i) == BindType.BIND_RX) {
+        receiver = i;
+      }
+    }
+    assertThat(receiver).isNotNegative();
+    List<UssdGatewayStub.Screen> screens = gateway.dial(receiver, MSISDN, "*268#", List.of());
+
+    assertThat(screens).singleElement().satisfies(s -> {
+      assertThat(gateway.bindType(s.bindIndex())).isEqualTo(BindType.BIND_TX);
+      assertThat(s.text()).isEqualTo("Hello");
+      assertThat(s.serviceOp()).isEqualTo(SmppUssdMessage.USSR_REQUEST);
+    });
+    assertThat(bindUp("gp-1-tx")).isEqualTo(1.0);
+    assertThat(bindUp("gp-1-rx")).isEqualTo(1.0);
   }
 
   double bindUp(String bind) {

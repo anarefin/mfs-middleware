@@ -29,11 +29,12 @@ import org.springframework.stereotype.Component;
 
 /**
  * {@code SmppUssdTransport} (spec 9.2, WP19): {@code deliver_sm} in, {@code submit_sm} out, on the
- * binds of {@link UssdSmppClient}. {@code ussd_service_op} 1 (PSSR indication) begins a session,
- * 18 (USSR confirm) continues it, the end-of-session bit of {@code its_session_info} aborts it
- * (subscriber released); screens go out as 2 (USSR request) or, when the menu ends, 17 (PSSR
- * response) with end-of-session set. The session id is the {@code its_session_info} session
- * number plus the source address (hashed: no MSISDN in Redis keys), and a session's responses go
+ * binds of {@link UssdSmppClient}. The MNO's {@link MnoTlvAdapter} reads the TLVs:
+ * {@code ussd_service_op} 1 (PSSR indication) begins a session, 18 (USSR confirm) continues it,
+ * the adapter's end-of-session flag aborts it (subscriber released); screens go out as 2 (USSR
+ * request) or, when the menu ends, 17 (PSSR response) with end-of-session set. The session id is
+ * the session number the adapter read plus the source address (hashed: no MSISDN in Redis keys),
+ * and a session's responses go
  * out on the bind that received it. Each step runs on its own virtual thread, never on jSMPP's
  * PDU threads (an ACTION waits up to the sync budget).
  */

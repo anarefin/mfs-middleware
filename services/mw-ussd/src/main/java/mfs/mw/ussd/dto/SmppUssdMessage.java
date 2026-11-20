@@ -5,8 +5,8 @@ import mfs.mw.ussd.util.SensitiveType;
 
 /**
  * One USSD PDU on an SMPP bind (spec 9.2): a {@code deliver_sm} from the MNO or a {@code
- * submit_sm} to it, with the {@code ussd_service_op} (0x0501) and {@code its_session_info}
- * (0x1383: session number, then sequence number in bits 7..1 and end-of-session in bit 0).
+ * submit_sm} to it. The TLV bytes are the MNO adapter's ({@code ussd_service_op} 0x0501,
+ * {@code its_session_info} 0x1383); these fields are what that adapter read or will write.
  *
  * @param bind the bind it came in on or must go out on (a session's responses use the bind that
  *     received it)

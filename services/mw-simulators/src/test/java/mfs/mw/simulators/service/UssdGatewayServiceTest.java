@@ -66,7 +66,8 @@ class UssdGatewayServiceTest {
     return new UssdGatewayService(
         new UssdGatewayClient(JSON, env),
         new mfs.mw.simulators.client.UssdSmppGateway(
-            new mfs.mw.simulators.config.UssdSmppGatewayProperties(false, 0, java.util.List.of("gp"), null),
+            new mfs.mw.simulators.config.UssdSmppGatewayProperties(false, 0, java.util.List.of("gp"), null, null,
+                null, false, null),
             control, new StaticListableBeanFactory().getBeanProvider(Journal.class), Clock.systemUTC()),
         control,
         "http://127.0.0.1:" + server.getAddress().getPort() + "/ussd", "END");

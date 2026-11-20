@@ -233,6 +233,24 @@ sim:
       port: 2776
       mnos: [gp]
       screen-timeout: 15s
+      # Grameenphone. A scenario on the legacy party ussdgw still applies when ussd-gp has none.
+      party: ussd-gp
+      packing: EOS_BIT0
+      # robi, bl and teletalk each have a port. Dev dials them over HTTP (mnos stays [gp]).
+      peers-enabled: true
+      peers:
+        robi:
+          port: ${SIM_USSD_SMPP_ROBI_PORT:2777}
+          party: ussd-robi
+          packing: EOS_BIT7
+        bl:
+          port: ${SIM_USSD_SMPP_BL_PORT:2778}
+          party: ussd-bl
+          packing: EOS_BIT0
+        teletalk:
+          port: ${SIM_USSD_SMPP_TELETALK_PORT:2779}
+          party: ussd-teletalk
+          packing: EOS_BIT7
   # payShield 10K simulator (ticket 64, spec 18.8, D23): host commands over TCP for mw-crypto's
   # payShield provider (internal network only). The LMK is a token object of the SoftHSM paysim
   # token (softhsm:5658 through the image's p11-kit proxy; user PIN from Vault secret/mw-simulators

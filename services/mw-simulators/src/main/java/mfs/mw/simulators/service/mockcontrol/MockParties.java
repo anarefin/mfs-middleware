@@ -54,6 +54,14 @@ public final class MockParties {
               List.of("bind", "submit"), List.of("systemId", "msisdn"), SMSC_BEHAVIOURS),
           new MockParty("ussdgw", "USSD gateway: SMPP server mw-ussd binds to; dial plays a session (SMPP or HTTP)",
               List.of("bind", "submit", "enquire_link", "dial"), List.of("systemId", "msisdn", "mno"), WIRE_BEHAVIOURS),
+          new MockParty("ussd-gp", "Grameenphone USSD SMPP gateway (port 2776)",
+              List.of("bind", "submit", "enquire_link"), List.of("systemId", "msisdn"), WIRE_BEHAVIOURS),
+          new MockParty("ussd-robi", "Robi USSD SMPP gateway (port 2777)",
+              List.of("bind", "submit", "enquire_link"), List.of("systemId", "msisdn"), WIRE_BEHAVIOURS),
+          new MockParty("ussd-bl", "Banglalink USSD SMPP gateway (port 2778)",
+              List.of("bind", "submit", "enquire_link"), List.of("systemId", "msisdn"), WIRE_BEHAVIOURS),
+          new MockParty("ussd-teletalk", "Teletalk USSD SMPP gateway (port 2779)",
+              List.of("bind", "submit", "enquire_link"), List.of("systemId", "msisdn"), WIRE_BEHAVIOURS),
           new MockParty("payshield", "payShield 10K HSM, TCP host commands of mw-crypto",
               List.of("command"), List.of("command"), WIRE_BEHAVIOURS),
           new MockParty("push", "app-server push API (FCM / APNs style) of mw-notify; keeps every push",
@@ -80,8 +88,14 @@ public final class MockParties {
   private static final Pattern SMPP_STATUS = Pattern.compile("0[xX][0-9A-Fa-f]{1,8}|[0-9]{1,10}");
 
   /** The form of a BUSINESS_ERROR {@code code} for the parties that have their own. */
-  private static final Map<String, Pattern> CODES =
-      Map.of("smsc", SMPP_STATUS, "ussdgw", SMPP_STATUS, "payshield", Pattern.compile("[0-9A-Z]{2}"));
+  private static final Map<String, Pattern> CODES = Map.of(
+      "smsc", SMPP_STATUS,
+      "ussdgw", SMPP_STATUS,
+      "ussd-gp", SMPP_STATUS,
+      "ussd-robi", SMPP_STATUS,
+      "ussd-bl", SMPP_STATUS,
+      "ussd-teletalk", SMPP_STATUS,
+      "payshield", Pattern.compile("[0-9A-Z]{2}"));
 
   private MockParties() {}
 
