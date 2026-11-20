@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 import mfs.mw.orchestrator.dto.ConfigChangedEvent;
+import mfs.mw.orchestrator.dto.CoreEvent;
 import mfs.mw.orchestrator.dto.PartnerInbound;
 import mfs.mw.orchestrator.dto.PartnerReply;
 import mfs.mw.orchestrator.dto.PartnerRouteStatus;
@@ -24,8 +25,8 @@ import tools.jackson.databind.json.JsonMapper;
  * Every event this module consumes, per {@code consumes.events} of {@code contracts.yml}: each
  * {@code valid*.json} sample of the contract ({@code samples/<topic>/[<Msg>/]}) deserialises into
  * the module's own DTO with the JsonMapper the listeners use, and passes the checks the listener
- * itself makes (the ids it requires). No core event is listed since ticket 95a: the saga takes the
- * core's answers over REST, and its core-event listener ignores the result events until ticket 95c.
+ * itself makes (the ids it requires). Of the core's events, ticket 95c lists HoldExpired and
+ * WalletStateChanged; the result events of the REST calls stay unlisted and ignored.
  *
  * <p>Invalid samples are not asserted: the listeners ({@code TxnRequestListener}, {@code
  * CoreEventListener}, {@code PartnerReplyListener}, {@code PartnerInboundListener}) do no schema or
@@ -79,6 +80,17 @@ class ConsumedContractsTest {
     READERS.put("events/mw-adapter-billpay/mw.partner.route.status.v1.schema.json", (p, msg) -> {
       PartnerRouteStatus s = JSON.readValue(read(p), PartnerRouteStatus.class);
       assertThat(s.partnerId()).as(p.toString()).isNotBlank(); // PartnerRouteStatusListener.handle
+    });
+    READERS.put("events/mw-core-mock/core.event.v1.schema.json", (p, msg) -> {
+      CoreEvent e = JSON.readValue(read(p), CoreEvent.class);
+      // CoreEventListener.handle requires these; CoreEventService reads holdId off a HoldExpired
+      assertThat(e.eventId()).as(p.toString()).isNotBlank();
+      assertThat(e.txnId()).as(p.toString()).isNotBlank();
+      assertThat(e.eventType()).as(p.toString()).isEqualTo(msg);
+      assertThat(e.payload()).as(p.toString()).isNotNull();
+      if ("HoldExpired".equals(msg)) {
+        assertThat(e.payload().path("holdId").asString()).as(p.toString()).isNotBlank();
+      }
     });
   }
 

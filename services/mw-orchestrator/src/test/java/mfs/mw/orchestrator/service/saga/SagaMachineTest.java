@@ -44,6 +44,8 @@ class SagaMachineTest {
     row(Status.HOLDING, new DeadlineExpired(), Status.HOLDING, Effect.SEND_QUERY);
     row(Status.HOLDING, new HoldQueryResult(true), Status.RELEASING, Effect.SEND_RELEASE);
     row(Status.HOLDING, new HoldQueryResult(false), Status.REJECTED, Effect.NONE);
+    // the core released the hold on expiry before the partner was asked (ticket 95c)
+    row(Status.HOLDING, new HoldExpired(false), Status.RELEASING, Effect.SEND_RELEASE);
 
     row(Status.POSTING, new PostSucceeded(), Status.COMPLETED, Effect.NONE);
     row(Status.POSTING, new PostRejected(), Status.REJECTED, Effect.NONE);
@@ -55,6 +57,8 @@ class SagaMachineTest {
     row(Status.PARTNER_PENDING, new PartnerFailed(false), Status.FAILED, Effect.NONE);
     row(Status.PARTNER_PENDING, new PartnerUnknown(), Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);
     row(Status.PARTNER_PENDING, new DeadlineExpired(), Status.UNKNOWN, Effect.SCHEDULE_INQUIRY);
+    // waiting on the partner when the hold runs out: confirm the release (ticket 95c)
+    row(Status.PARTNER_PENDING, new HoldExpired(false), Status.RELEASING, Effect.SEND_RELEASE);
 
     // 7.4: a held transaction commits or releases its hold; a posting one (nothing held) ends
     row(Status.UNKNOWN, new InquirySucceeded(true), Status.COMMITTING, Effect.SEND_COMMIT);
@@ -73,6 +77,8 @@ class SagaMachineTest {
     row(Status.COMMITTING, new CreditCheckResult(CreditCheckResult.Credit.CREDITED), Status.COMPLETED, Effect.NONE);
     row(Status.COMMITTING, new CreditCheckResult(CreditCheckResult.Credit.NOT_CREDITED), Status.COMMITTING, Effect.SEND_CREDIT);
     row(Status.COMMITTING, new CreditCheckResult(CreditCheckResult.Credit.CONFLICT), Status.MANUAL_REVIEW, Effect.NONE);
+    // the partner already succeeded and the hold can no longer be committed (ticket 95c)
+    row(Status.COMMITTING, new HoldExpired(true), Status.MANUAL_REVIEW, Effect.NONE);
 
     row(Status.RELEASING, new ReleaseAcknowledged(), Status.FAILED, Effect.NONE);
     row(Status.RELEASING, new ReleaseRefused(), Status.MANUAL_REVIEW, Effect.NONE);
@@ -112,6 +118,8 @@ class SagaMachineTest {
 
     // an operator's status inquiry (ticket 37): one inquiry now, the state stays
     row(Status.UNKNOWN, new ManualInquiry(), Status.UNKNOWN, Effect.SEND_INQUIRY);
+    // the partner has not succeeded: the expired hold is confirmed released (ticket 95c)
+    row(Status.UNKNOWN, new HoldExpired(false), Status.RELEASING, Effect.SEND_RELEASE);
     row(Status.MANUAL_REVIEW, new ManualInquiry(), Status.MANUAL_REVIEW, Effect.SEND_INQUIRY);
   }
 
@@ -131,6 +139,7 @@ class SagaMachineTest {
         new ReversalRequested(), new ReversalRequested(true), new ReversalAcknowledged(), new ReversalFailed(),
         new ReversalResendsStopped(), new ReversalUnconfirmed(), new ReversalQueryResult(true), new ReversalQueryResult(false),
         new ManualCommit(), new ManualRelease(), new ManualInquiry(), new DeadlineExpired(),
+        new HoldExpired(false), new HoldExpired(true),
         new CreditCheckResult(CreditCheckResult.Credit.CREDITED), new CreditCheckResult(CreditCheckResult.Credit.NOT_CREDITED),
         new CreditCheckResult(CreditCheckResult.Credit.CONFLICT));
   }
@@ -144,7 +153,7 @@ class SagaMachineTest {
 
   @Test
   void everyListedTransitionIsTakenWithItsEffect() {
-    assertThat(TABLE).hasSize(64);
+    assertThat(TABLE).hasSize(68);
     TABLE.forEach(
         (key, expect) -> {
           Transition t = SagaMachine.apply(key.from(), key.event());

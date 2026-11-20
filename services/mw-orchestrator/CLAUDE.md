@@ -8,7 +8,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - Runs P2P, CASH_IN, CASH_OUT, MERCHANT_PAY, BULK_DISBURSE (child), TOPUP, BILL_PAY and ADD_MONEY_BANK transactions, the BALANCE check (ADR D26) and the REVERSAL of a completed one, as persisted sagas (spec 7, WP07 part, WP13 part, WP14, WP15 part).
   Consumes `mw.txn.request.v1` (`messaging/TxnRequestListener`), the core's events on
   `core.wallet.event.v1` and `core.payment.event.v1` (one listener, `messaging/CoreEventListener`; since ticket 95a it
-  ignores the result events of the REST calls, see "Core over REST") and partner adapter answers on
+  ignores the result events of the REST calls, and since ticket 95c it applies HoldExpired and consumes
+  wallet-state events, see "Core over REST") and partner adapter answers on
   `mw.partner.reply.v1` (`messaging/PartnerReplyListener`) and partner callbacks on `mw.partner.inbound.v1`
   (`messaging/PartnerInboundListener`) and operator actions on `mw.txn.action.v1` (`messaging/TxnActionListener`,
   ticket 37): Spring Kafka `@KafkaListener`s (ADR D27), all with retry topics and DLQ, all stopped by
@@ -56,10 +57,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   own transaction (REQUIRES_NEW, row lock; reversal query, credit check and inquiry answers as before; a late
   FundsHeld after REJECTED releases the orphan hold). **An ambiguous answer applies nothing**: the step's persisted
   deadline decides exactly as for a lost answer (VALIDATING -> FAILED, HOLDING -> WAL-13 query, POSTING -> UNKNOWN ->
-  WAL-13 inquiries, COMMITTING / RELEASING / REVERSING resend with the same txnId), so `SagaMachine` is unchanged and a
-  crash between commit and call loses nothing. `service/CoreEventService` ignores every core event (FundsHeld,
-  HoldCommitted, TransferPosted ... that the REST operations also publish), so nothing is applied twice
-  (`SagaServiceIT`); ticket 95c makes it consume HoldExpired and wallet-state changes. Tests:
+  WAL-13 inquiries, COMMITTING / RELEASING / REVERSING resend with the same txnId), so an ambiguous answer
+  adds no state, and a crash between commit and call loses nothing. `service/CoreEventService` ignores the result events the REST
+  operations also publish (FundsHeld, HoldCommitted, TransferPosted, ...), so nothing is applied twice
+  (`SagaServiceIT`). Hold expiry and wallet-state events are the exception, below. Tests:
   `client/CoreWalletClientTest` (endpoints, headers, classification, retries, token renewal, request bodies against
   the core contract), `mapper/CoreReplyMapperTest` (2xx, 422, 401 assertion, 5xx / timeout -> no event),
   `messaging/CoreRestFlowIT` (P2P and TOPUP over `messaging/CoreRestStub`; a lost PostTransfer answer -> UNKNOWN ->
@@ -136,7 +137,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   (partner's `partnerRef` stored in `transaction.partner_ref`, shown on the status), FAILED ->
   RELEASING with the reply's canonical error (kept into FAILED; a code outside the status
   pattern becomes `MW-PTR-<PARTNER>-UNMAPPED`), UNKNOWN -> UNKNOWN (status inquiry), PENDING
-  ignored. HoldRejected -> REJECTED (`MW-CORE-*`). The deadline resends CommitHold / ReleaseHold
+  ignored. HoldRejected -> REJECTED (`MW-CORE-*`). HoldExpired (ticket 95c, FRS 7.3; the core has already
+  freed the reservation and a later commit fails `HOLD_EXPIRED`, a release succeeds without effect): on
+  `HOLDING`, `PARTNER_PENDING` or `UNKNOWN` the saga goes to RELEASING with `MW-CORE-HOLD_EXPIRED` and sends
+  ReleaseHold for the event's hold id (kept into FAILED when the release is acknowledged); on `COMMITTING`
+  (the partner already succeeded) it goes to MANUAL_REVIEW with the same code and sends nothing. Any other
+  state, a repeated event (inbox `orchestrator.hold-expiry`) and a flow that holds nothing stay as they are.
+  `WalletStateChanged`, `WalletUnlocked` and `UnlockRejected` are consumed and move no saga. `HoldExpirySagaIT`.
+  The deadline resends CommitHold / ReleaseHold
   until the core answers (7.2 "retry until acknowledged"; still unanswered 60 s after entering the
   state: WARN `txn.commit.unacknowledged` / `txn.release.unacknowledged` + counter, once); a definite
   release refusal (ReleaseFailed: hold already committed) goes to MANUAL_REVIEW with
@@ -507,13 +515,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   them. Since ticket 95a the orchestrator calls the core over REST; ticket 95b retired `core.command.v1`
   (its files, samples and the two command topics): `dto/CoreCommand` and its payloads are the internal
   shape of a saga step's core call only. The core's `WalletUnlocked` / `UnlockRejected` (mw-admin-api's
-  REST unlock) carry a txnId the orchestrator does not know and are dropped (`txn.unknown`).
+  REST unlock) carry a txnId the orchestrator does not know; they are consumed and move no saga.
 
 ## Contracts used
 
 - `contracts.yml` (module root) is the machine-readable list of what this service produces and
-  consumes (partner families separately; the core wallet API under `consumes.apis`, ticket 95a; no core event
-  is listed: the listener ignores them until 95c), checked by `./gradlew :contractsLint` and tested without Docker by
+  consumes (partner families separately; the core wallet API under `consumes.apis`, ticket 95a;
+  `core.event.v1#HoldExpired` and `#WalletStateChanged`, ticket 95c; the result events of the REST calls
+  stay unlisted), checked by `./gradlew :contractsLint` and tested without Docker by
   `contracts/ProducedContractsTest` (every produced event built by the real mapper, serialised as
   the outbox does, validated), `contracts/ConsumedContractsTest` (every valid sample of a consumed
   event read into the own DTO) and `contracts/ApiContractsTest` (txn-query response bodies against
@@ -523,7 +532,9 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - `dto/ConfigChangedEvent` (`mw.config.changed.v1`) exists with its schema tests, but no route
   consumes the topic yet, so it is not in `contracts.yml`.
 - `events/mw-core-mock/core.event.v1.schema.json`: own type `dto/CoreEvent` (payload read as a
-  tree per `eventType`), read by `CoreEventListener` and ignored since ticket 95a. Unknown fields are ignored.
+  tree per `eventType`), read by `CoreEventListener`. Result events of the REST calls are ignored
+  (ticket 95a). `HoldExpired` and `WalletStateChanged` are consumed (ticket 95c; `ConsumedContractsTest`).
+  Unknown fields are ignored.
 - `api/mw-core-mock/core-wallet.v1.openapi.yaml` (consumed, ADR D31, ticket 95a): `client/CoreWalletClient`;
   `CoreWalletClientTest` validates its request bodies against the contract's schemas.
 - `events/mw-admin-api/mw.txn.action.v1.schema.json` (consumed, ticket 37): own type `dto/TxnAction`;

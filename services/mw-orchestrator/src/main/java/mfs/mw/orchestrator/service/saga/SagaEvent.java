@@ -196,4 +196,11 @@ public sealed interface SagaEvent {
 
   /** The deadline stored in {@code saga_timer} passed; the meaning depends on the state. */
   record DeadlineExpired() implements SagaEvent {}
+
+  /**
+   * The core released a hold that ran out (ticket 95c, FRS 7.3). {@code partnerSucceeded}: the
+   * partner already delivered, so operations decide and the saga sends nothing more; otherwise the
+   * saga confirms the release the core already made.
+   */
+  record HoldExpired(boolean partnerSucceeded) implements SagaEvent {}
 }
