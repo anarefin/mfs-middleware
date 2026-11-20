@@ -5,7 +5,7 @@
 
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
-PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t MERCHANT_SOAP_WS_PASSWORD=merchant-ws-t CYBERSOURCE_HMAC_SECRET=cybersource-t UCB_IMT_HMAC_SECRET=ucb-imt-t UCBATM_HMAC_SECRET=ucbatm-t UCBATM_WS_PASSWORD=ucbatm-ws-t PUSH_API_KEY=push-t
+PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t BANK_GATEWAY_HMAC_SECRET=bankgw-t MERCHANT_SOAP_WS_PASSWORD=merchant-ws-t CYBERSOURCE_HMAC_SECRET=cybersource-t UCB_IMT_HMAC_SECRET=ucb-imt-t UCBATM_HMAC_SECRET=ucbatm-t UCBATM_WS_PASSWORD=ucbatm-ws-t PUSH_API_KEY=push-t
   CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_DATA_EXPORT_SECRET=data-export-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t KC_MW_RECON_SECRET=recon-t KC_MW_SIMULATORS_SECRET=simulators-t SFTP_DEV_PASSWORD=sftp-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
@@ -158,6 +158,10 @@ test_provision_writes_the_service_specific_keys() {
   [ "$(kv mw-adapter-billpay/billagg ws-password)" = billagg-ws-t ] || fail "billpay ws-password"
   [ "$(kv mw-simulators sim.billagg.ws-password)" = billagg-ws-t ] || fail "sim billagg ws-password"
   [ "$(kv mw-simulators sim.callback-secrets.c2wbank)" = c2w-t ] || fail "sim c2wbank"
+  [ "$(kv mw-adapter-bank/bank-dbbl hmac-secret)" = bankgw-t ] || fail "bank-dbbl hmac"
+  [ "$(kv mw-adapter-bank/bank-nrbc hmac-secret)" = bankgw-t ] || fail "bank-nrbc hmac"
+  [ "$(kv mw-simulators sim.callback-secrets.bank-dbbl)" = bankgw-t ] || fail "sim bank-dbbl"
+  [ "$(kv mw-simulators sim.callback-secrets.bank-sonali)" = bankgw-t ] || fail "sim bank-sonali"
   [ "$(kv mw-simulators sim.callback-secrets.cybersource)" = cybersource-t ] || fail "sim cybersource"
   [ "$(kv mw-simulators sim.callback-secrets.ucbatm)" = ucbatm-t ] || fail "sim ucbatm"
   local m
