@@ -14,6 +14,7 @@ import java.util.Map;
 import mfs.mw.simulators.dto.BankAccountSeed;
 import mfs.mw.simulators.dto.BankProfile;
 import mfs.mw.simulators.dto.Biller;
+import mfs.mw.simulators.dto.NpsbParticipant;
 import mfs.mw.simulators.service.files.AmlResponder.AmlRules;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -87,6 +88,15 @@ public final class SeedFiles {
       }
     });
     return Map.copyOf(out);
+  }
+
+  /** The participants of the simulated NPSB switch (ticket 121, {@code npsb/participants.json}). */
+  public static List<NpsbParticipant> npsbParticipants(String version) {
+    List<NpsbParticipant> out = new ArrayList<>();
+    json(version, "npsb/participants.json").path("participants").forEach(p -> out.add(new NpsbParticipant(
+        p.path("id").asString(), p.path("name").asString(),
+        NpsbParticipant.Kind.valueOf(p.path("kind").asString()), p.path("active").asBoolean())));
+    return List.copyOf(out);
   }
 
   private static JsonNode json(String version, String file) {

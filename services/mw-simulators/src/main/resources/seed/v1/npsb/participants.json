@@ -1,0 +1,17 @@
+{
+  "comment": "NPSB switch participants of the mock (ticket 121, FRS MCK-01). Fake 8-character ids shaped like BICs (FAKE + BD/MF + 2), never real ones. active false = suspended: a transfer to it is refused.",
+  "participants": [
+    { "id": "FAKEBDD1", "name": "Fake Dutch Bangla Bank", "kind": "BANK", "active": true },
+    { "id": "FAKEBDB2", "name": "Fake BRAC Bank", "kind": "BANK", "active": true },
+    { "id": "FAKEBDC3", "name": "Fake City Bank", "kind": "BANK", "active": true },
+    { "id": "FAKEBDE4", "name": "Fake Eastern Bank", "kind": "BANK", "active": true },
+    { "id": "FAKEBDI5", "name": "Fake Islami Bank", "kind": "BANK", "active": true },
+    { "id": "FAKEBDS6", "name": "Fake Sonali Bank", "kind": "BANK", "active": true },
+    { "id": "FAKEBDP7", "name": "Fake Prime Bank", "kind": "BANK", "active": true },
+    { "id": "FAKEBDU8", "name": "Fake United Commercial Bank", "kind": "BANK", "active": true },
+    { "id": "FAKEBDX9", "name": "Fake Suspended Bank", "kind": "BANK", "active": false },
+    { "id": "FAKEMFB1", "name": "Fake bKash", "kind": "MFS", "active": true },
+    { "id": "FAKEMFN2", "name": "Fake Nagad", "kind": "MFS", "active": true },
+    { "id": "FAKEMFR3", "name": "Fake Rocket", "kind": "MFS", "active": true }
+  ]
+}

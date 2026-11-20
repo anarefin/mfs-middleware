@@ -22,10 +22,16 @@ PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw m
 EDGE_SECRETS="ussd-gp:USSD_GP_GATEWAY_SECRET ussd-robi:USSD_ROBI_GATEWAY_SECRET ussd-bl:USSD_BL_GATEWAY_SECRET
   ussd-teletalk:USSD_TELETALK_GATEWAY_SECRET"
 
+# BANK_CODES: the banks of deploy/partner-routes/bank/bank-profiles.csv (ticket 117); each bank-<code>
+# profile's callback secret is BANK_GATEWAY_HMAC_SECRET in mw-adapter-bank and mw-simulators alike
+# (ticket 117e; scripts/test/test_bank_profiles.sh keeps this list equal to the CSV).
+BANK_CODES="dbbl brac city ebl ucb mtb prime pubali dhaka one southeast standard sonali janata agrani rupali ibbl ab premier nrbc"
+
 SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank mw-adapter-merchant:adapter-merchant
   mw-adapter-card:adapter-card mw-adapter-remit:adapter-remit mw-adapter-atm:adapter-atm
+  mw-adapter-interop:adapter-interop
   mw-portal-api:portal-api mw-checkout:checkout mw-data-export:data-export mw-recon:recon mw-compliance:compliance"
 
 # Ledger stand-in. No PIN key since ticket 72 (D22): it verifies mw-auth's assertions with the
@@ -63,6 +69,11 @@ provision_mw_simulators() {
   # the WS-Security password of the merchant system SOAP mock (MerchantSoapMock, ticket 115b)
   sync_env sim.merchant-soap.ws-password MERCHANT_SOAP_WS_PASSWORD
   sync_env sim.callback-secrets.c2wbank C2WBANK_HMAC_SECRET
+  # the simulated bank gateway signs every bank-<code> callback with the dev bank secret (ticket 117e)
+  local code
+  for code in $BANK_CODES; do
+    sync_env "sim.callback-secrets.bank-$code" BANK_GATEWAY_HMAC_SECRET
+  done
   # the bill aggregator mocks of ticket 114 sign their callbacks with the dev aggregator secret
   sync_env sim.callback-secrets.sslcommerz BILLAGG_HMAC_SECRET
   sync_env sim.callback-secrets.ekpay BILLAGG_HMAC_SECRET
@@ -225,19 +236,20 @@ provision_mw_adapter_bank() {
   KV="secret/$SVC/c2wbank"
   sync_env hmac-secret C2WBANK_HMAC_SECRET
   # Bank gateway profiles (ticket 117, deploy/partner-routes/bank/bank-profiles.csv): every bank
-  # signs its callbacks hmac-sha256; the outbound auth field follows the profile's auth column.
+  # signs its callbacks hmac-sha256 with the dev secret mw-simulators shares (ticket 117e); the
+  # outbound auth field follows the profile's auth column.
   local code
-  for code in dbbl city ucb prime dhaka southeast; do
-    KV="secret/$SVC/bank-$code"; gen_once hmac-secret 40
+  for code in $BANK_CODES; do
+    KV="secret/$SVC/bank-$code"; sync_env hmac-secret BANK_GATEWAY_HMAC_SECRET
   done
   for code in brac ebl mtb pubali one standard; do
-    KV="secret/$SVC/bank-$code"; gen_once hmac-secret 40; gen_once api-key 40
+    KV="secret/$SVC/bank-$code"; gen_once api-key 40
   done
   for code in sonali agrani ibbl premier; do
-    KV="secret/$SVC/bank-$code"; gen_once hmac-secret 40; gen_once basic-user 24; gen_once basic-password 40
+    KV="secret/$SVC/bank-$code"; gen_once basic-user 24; gen_once basic-password 40
   done
   for code in janata rupali ab nrbc; do
-    KV="secret/$SVC/bank-$code"; gen_once hmac-secret 40; gen_once ws-password 40
+    KV="secret/$SVC/bank-$code"; gen_once ws-password 40
   done
   KV="secret/$SVC"
   db_role adapter_bank_rw bank_ref
@@ -284,6 +296,13 @@ provision_mw_adapter_atm() {
   sync_env hmac-secret UCBATM_HMAC_SECRET
   KV="secret/$SVC"
   db_role adapter_atm_rw atm_ref
+}
+
+# The NPSB interop adapter (ticket 121a): its database role and schema only. Its messages are signed
+# and verified through mw-crypto (XML-DSig, ticket 121b), so it holds no key material of its own.
+provision_mw_adapter_interop() {
+  gen_once spring.datasource.password 40
+  db_role adapter_interop_rw interop_ref
 }
 
 # Realm services client secret: mw-orchestrator's internal query API (M3 gate).

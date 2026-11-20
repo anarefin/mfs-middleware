@@ -147,11 +147,11 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-11` merchant payment | done: app (folder 04); USSD menu MERCHANT_PAY (109c); a merchant with its own system is validated over SOAP before the core and notified after COMPLETED, retried then dead-lettered (115b, folder 52) |
 | `UC-12` web checkout and refund | pay done; refund: core partial reversal built (116a), orchestrator refund as its own REVERSAL record, owning merchant only (116b), checkout refund API `POST|GET /checkout/v1/payments/{id}/refunds` with the signed refund IPN built (116c) |
 | `UC-13` add money from card | ticket 118 |
-| `UC-14` add money from bank (C2W) | done (one bank); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
-| `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts (117b); simulator (117d); orchestrator `W2bFlow` with a hold, bank routing V18, app `transfer-to-bank` preview/confirm and add money from a linked account (`linkedAccountId`, 117c); USSD Transfer to Bank menu and suite open (117c follow-up, 117e) |
+| `UC-14` add money from bank (C2W) | done: c2wbank (folder 08) and from a linked account on the bank-<code> profiles (folder 55, 117e); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
+| `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts (117b); simulator (117d); orchestrator `W2bFlow` with a hold, bank routing V18, app `transfer-to-bank` preview/confirm and add money from a linked account (`linkedAccountId`, 117c); API suite folder `55-bank-avl-w2b` T1-T4, T6-T10 on a REST and a SOAP bank, bank callbacks through the APISIX route `partner-bank-callback` with a shared dev secret, account-number rule in `scripts/log-scan.sh` (117e); USSD Transfer to Bank stays app-only (user decision 2026-11-20; the USSD 'use the app' screen is open) |
 | `UC-16` remittance | USSD status by Upay txn id is core WAL-13 (109c); inbound credit is ticket 119 |
 | `UC-17` ATM | partial: inbound SOAP (verify, confirm, reversal, cash-in) and UcbAtmMock (120a); token issue, orchestrator flows and the suite remain ticket 120 |
-| `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
+| `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122; 121a built the `mw-adapter-interop` module (family `interop`) and the NPSB participant list mock; the ISO 20022 wire (121b) and the flows and API (121c) remain |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |
 | `UC-21` AML | ticket 125 |
 | `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports, the exception queue and its maker-checker actions done (tickets 127, 127b); the trust position job and API suite folder `61-recon-reports` done (ticket 127c; open item for Upay: the real core must serve the e-money total endpoint, see REC-07) |
@@ -210,9 +210,9 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-USSD-01 | done | four MNO SMPP binds: gp and bl transceiver, robi and teletalk transmitter plus receiver (`UssdSmppMnoIT`, `UssdSmppClientTest`); dev keeps robi, bl and teletalk on HTTP |
 | CH-USSD-02 | done | mw-ussd SMPP binds: enquire_link 30 s, reconnect with backoff, window (`UssdSmppProperties`) |
 | CH-USSD-03 | done | one TLV adapter per MNO, tags 0x0501 and 0x1383; gp and bl pack the end bit in bit 0, robi and teletalk in bit 7 (`MnoTlvAdapterTest`) |
-| CH-USSD-04 | ticket 133b | menu JSON in the database with maker-checker built (M6); visual tree editor built (133a: add child, move, delete, counters); server preview 133b |
+| CH-USSD-04 | ticket 133 | menu JSON in the database with maker-checker built (M6); visual tree editor built (133a: add child, move, delete, counters); server preview 133b |
 | CH-USSD-05 | done | 30 s per-screen timeout beside the overall session timeout; Redis TTL stays the overall timeout plus grace (mw-ussd) |
-| CH-USSD-06 | ticket 133b | GSM-7 182 and UCS-2 70 built; "0. Next" / "00. Back" pagination built (mw-ussd); browser preview pages per MNO (133a); server preview `POST /admin/v1/ussd/menus/preview` 133b |
+| CH-USSD-06 | ticket 133 | GSM-7 182 and UCS-2 70 built; "0. Next" / "00. Back" pagination built (mw-ussd); browser preview pages per MNO (133a); server preview `POST /admin/v1/ussd/menus/preview` 133b |
 | CH-USSD-07 | done | PIN encrypted on receipt, never logged or kept in the session (spec 18.3, `scripts/log-scan.sh`) |
 | CH-USSD-08 | done | ussd.short_code (code, MNO, root menu, allowed types) and the account type from the core (mw-ussd) |
 | CH-USSD-09 | done | a result that arrives after the session ended goes out by SMS (mw-ussd) |
@@ -241,7 +241,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-06 | ticket 116 | refund bounds enforced in mw-core-mock (`MW-CORE-REFUND_EXCEEDS`, 116a); mw-orchestrator refunds 1..original per request and ends an overshoot REJECTED (116b); checkout refund API built, refusal passed through as 422 (116c) |
 | FL-07 | ticket 118 | card tokens only (card PAN never enters the middleware, root `CLAUDE.md`) |
 | FL-08 | ticket 117 | linked bank accounts with AVL: done (117b: `/app/v1/bank-accounts`, AVL API `/bank/v1/accounts/validate`) |
-| FL-09 | ticket 117 | W2B with AVL and a hold: partial (117c: `W2bFlow` hold until the bank confirms, app API; USSD menu open) |
+| FL-09 | ticket 117 | W2B with AVL and a hold: done for the app (117c: `W2bFlow` hold until the bank confirms, app API; 117e: suite folder 55); USSD app-only (user decision) |
 | FL-10 | ticket 119 | IMT push and lookup |
 | FL-11 | ticket 120 | ATM one-time token: the adapter never stores or logs it (120a); issue, HMAC, expiry and lockout remain ticket 120 |
 | FL-12 | tickets 121, 122 | BanglaQR on-us and off-us |
@@ -269,8 +269,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-09 | done | utility aggregator simulator (billagg): seeded stateful bills `seed/v1/bills/billagg.csv`, reverse, callbacks (ticket 114, `BillAggregatorMockIT`) |
 | EXT-10 | done | four bill aggregators sslcommerz, ekpay, agg3 (SOAP), agg4 as generated route records (`deploy/partner-routes/aggregators/generate.mjs`) and mock profiles (ticket 114; agg4 JSON, not form/XML: open item) |
 | EXT-11 | done | merchant SOAP (115a, 115b): mw-adapter-merchant `merchant-soap`, mw-simulators `MerchantSoapMock`, orchestrator validate + notify |
-| EXT-12 | ticket 117 | partial: 20 bank profiles (REST and SOAP) generated from `deploy/partner-routes/bank/bank-profiles.csv`, AVL/W2B/STATUS/REVERSE routes (117a); mw-simulators bank gateway from the same CSV, seeded accounts, trigger table, mock party `bank-<code>`, health probe (117d); AVL API, W2B flow, suite open |
-| EXT-13 | tickets 121, 122 | NPSB and BanglaQR mock switch |
+| EXT-12 | ticket 117 | partial: 20 bank profiles (REST and SOAP) generated from `deploy/partner-routes/bank/bank-profiles.csv`, AVL/W2B/STATUS/REVERSE routes (117a); mw-simulators bank gateway from the same CSV, seeded accounts, trigger table, mock party `bank-<code>`, health probe (117d); AVL API (117b), W2B flow (117c), bank callbacks at the edge and suite folder 55 (117e) |
+| EXT-13 | tickets 121, 122 | NPSB and BanglaQR mock switch; partial: mw-simulators party `npsb` with the seeded participant list (`NpsbSimulatorIT`, 121a); ISO 20022 transfers remain 121b |
 | EXT-14 | ticket 118 | CyberSource mock |
 | EXT-15 | ticket 119 | UCB IMT mock |
 | EXT-16 | ticket 120 | UCB ATM mock: dispense status in mw-simulators (`UcbAtmSimulatorIT`, 120a); the test-console page remains ticket 120 |
@@ -350,7 +350,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
 | ADM-04 | tickets 98, 132 | API maker-checker for `ROUTING_RULE`, `MSISDN_PREFIX`, `MNP_OVERRIDE` and `MAINTENANCE_MESSAGE` (ticket 98, `RoutingRuleChangeRequestIT`, API folder 35); the console and testing a rule against a sample request stay 132 |
 | ADM-05 | ticket 132 | API done in 113: `GET /admin/v1/billers`, `POST /admin/v1/billers/{code}/change-requests` UPSERT / ENABLE / DISABLE, maker-checker (`BillerChangeRequestIT`) |
-| ADM-06 | ticket 133b | visual tree editor and paged browser preview built (133a); server preview and short code -> root menu 133b |
+| ADM-06 | ticket 133 | visual tree editor and paged browser preview built (133a); server preview and short code -> root menu 133b |
 | ADM-07 | tickets 111, 133 | SMS template editing built; campaigns through maker-checker (`POST /admin/v1/notify-campaigns`, ticket 111); the rule-table editor is 133c, the test send 133d |
 | ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the Error codes tab (131c, `ui/mw-admin-ui`) |
 | ADM-09 | done | transaction search and saga timeline (mw-admin-api, `ui/mw-admin-ui`) |

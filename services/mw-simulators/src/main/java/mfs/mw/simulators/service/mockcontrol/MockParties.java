@@ -73,6 +73,9 @@ public final class MockParties {
               List.of("trigger", "confirm", "status"), List.of("msisdn", "partnerRef")),
           new MockParty("ucbatm", "UCB ATM switch: dispense status of a cardless cash-out",
               List.of("status"), List.of("txnRef")),
+          // ticket 121a: the participant list; the ISO 20022 transfer, status, return and inbound push follow in 121b
+          new MockParty("npsb", "NPSB switch: participant list (ISO 20022 transfers with ticket 121b)",
+              List.of("participants"), List.of("participant", "txnRef")),
           new MockParty("smsc", "SMSC, the SMPP 3.4 server of mw-notify (the DLR is its callback)",
               List.of("bind", "submit"), List.of("systemId", "msisdn"), SMSC_BEHAVIOURS),
           new MockParty("ussdgw", "USSD gateway: SMPP server mw-ussd binds to; dial plays a session (SMPP or HTTP)",

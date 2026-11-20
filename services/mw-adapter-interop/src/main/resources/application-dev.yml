@@ -1,0 +1,13 @@
+# Dev profile only (SPRING_PROFILES_ACTIVE=dev): set by deploy/docker-compose.yml for the dev stack
+# and by the test config. The seed partner (version 0) points at mw-simulators over plain http; the
+# packaged application.yml has none, so a production start has no partners. Plain http still needs
+# MW_PARTNER_INSECURE_HTTP_HOSTS (docker-compose.yml sets it).
+mw:
+  partners:
+    # Dry-runs of new partner versions go to mw-simulators' programmable stub (ticket 83).
+    dry-run:
+      base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
+    # The NPSB switch seed (partner id npsb, ISO 20022 pacs.008 / pacs.028 / camt.056 signed through
+    # mw-crypto, against mw-simulators' NpsbMock) comes with ticket 121b; until then the dev profile seeds
+    # no partner and a request is refused MW-PTR-UNKNOWN-PARTNER.
+    instances: {}

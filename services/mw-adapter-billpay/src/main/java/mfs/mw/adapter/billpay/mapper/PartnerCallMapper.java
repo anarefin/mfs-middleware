@@ -72,10 +72,19 @@ public class PartnerCallMapper {
    * (nothing is paid, so there is nothing for the partner to deduplicate) and no txnId.
    */
   public PartnerCall fetchCall(String partnerId, String billerCode, String billNumber, String correlationId) {
+    return fetchCall(partnerId, billerCode, billNumber, null, correlationId);
+  }
+
+  /**
+   * As above, with the bill month (YYYYMM) the customer picked as {@code input.billMonth} (M9 review,
+   * FRS FL-04); absent when not given, so a JSONata mapping that names it leaves the key out.
+   */
+  public PartnerCall fetchCall(String partnerId, String billerCode, String billNumber, String billMonth, String correlationId) {
     Map<String, Object> input = new LinkedHashMap<>();
     input.put("txnType", "BILL_PAY");
     input.put("creditParty", Map.of("type", "BILLER_ACCOUNT", "id", billNumber));
     input.put("partner", Map.of("partnerId", partnerId, "billerCode", billerCode));
+    put(input, "billMonth", billMonth == null || billMonth.isBlank() ? null : billMonth);
     return new PartnerCall(partnerId, INQUIRY, "BILL_PAY", null, correlationId, null, input);
   }
 
