@@ -16,3 +16,8 @@ mw:
       - classpath:partner-seeds/dev/bl-ocs.json
       - classpath:partner-seeds/dev/billagg.json
       - classpath:partner-seeds/dev/c2wbank.json
+  # The dev biller catalogue (ticket 113): stored and published at version 1 for every code not in
+  # the catalogue yet (scheduler/BillerSeedJob).
+  billers:
+    seeds:
+      - classpath:biller-seeds/dev/billers.csv

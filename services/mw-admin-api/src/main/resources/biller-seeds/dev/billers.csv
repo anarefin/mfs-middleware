@@ -1,0 +1,62 @@
+# Dev biller catalogue (ticket 113): 17 UTILITY and 40 OTHER billers, loaded by mw-admin-api
+# BillerSeedJob (dev profile) at start-up; a code already in the catalogue is skipped. Versioned:
+# change a biller through a change request, add new codes here. Aggregators sslcommerz, ekpay,
+# agg3 and agg4 go live in ticket 114. Amounts in poisha.
+code;category;nameEn;nameBn;primaryAggregator;fallbackAggregator;amountRule;minAmountMinor;maxAmountMinor;billMonthRequired;fieldName;labelEn;labelBn;regex
+BREB;UTILITY;Bangladesh Rural Electrification Board (Palli Bidyut);বাংলাদেশ পল্লী বিদ্যুতায়ন বোর্ড;billagg;ekpay;FIXED;;;true;accountNo;Account number;হিসাব নম্বর;^[0-9]{6,14}$
+BTCL;UTILITY;Bangladesh Telecommunications Company;বাংলাদেশ টেলিকমিউনিকেশনস কোম্পানি;billagg;ekpay;FIXED;;;true;phoneNo;Phone number;ফোন নম্বর;^0[0-9]{9,10}$
+CWASA;UTILITY;Chattogram WASA;চট্টগ্রাম ওয়াসা;billagg;ekpay;FIXED;;;true;accountNo;Account number;হিসাব নম্বর;^[0-9]{6,14}$
+DESCO;UTILITY;Dhaka Electric Supply Company;ঢাকা ইলেকট্রিক সাপ্লাই কোম্পানি;billagg;ekpay;FIXED;;;true;accountNo;Account number;হিসাব নম্বর;^[0-9]{6,14}$
+DPDC;UTILITY;Dhaka Power Distribution Company;ঢাকা পাওয়ার ডিস্ট্রিবিউশন কোম্পানি;billagg;ekpay;FIXED;;;true;accountNo;Account number;হিসাব নম্বর;^[0-9]{6,14}$
+JGTDSL;UTILITY;Jalalabad Gas Transmission and Distribution System;জালালাবাদ গ্যাস;billagg;ekpay;FIXED;;;true;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+KGDCL;UTILITY;Karnaphuli Gas Distribution Company;কর্ণফুলী গ্যাস;billagg;ekpay;FIXED;;;true;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+LINK3;UTILITY;Link3 Technologies;লিংক৩ টেকনোলজিস;billagg;sslcommerz;FIXED;;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+TITAS;UTILITY;Titas Gas;তিতাস গ্যাস;billagg;ekpay;FIXED;;;true;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+WASA;UTILITY;Dhaka WASA;ঢাকা ওয়াসা;billagg;ekpay;FIXED;;;true;accountNo;Account number;হিসাব নম্বর;^[0-9]{6,14}$
+NESCO;UTILITY;Northern Electricity Supply Company;নর্দার্ন ইলেকট্রিসিটি সাপ্লাই কোম্পানি;ekpay;billagg;FIXED;;;true;accountNo;Account number;হিসাব নম্বর;^[0-9]{6,14}$
+WZPDCL;UTILITY;West Zone Power Distribution Company;ওয়েস্ট জোন পাওয়ার ডিস্ট্রিবিউশন কোম্পানি;ekpay;billagg;FIXED;;;true;accountNo;Account number;হিসাব নম্বর;^[0-9]{6,14}$
+BPDB;UTILITY;Bangladesh Power Development Board;বাংলাদেশ বিদ্যুৎ উন্নয়ন বোর্ড;ekpay;billagg;FIXED;;;true;accountNo;Account number;হিসাব নম্বর;^[0-9]{6,14}$
+DESCO_PRE;UTILITY;DESCO Prepaid;ডেসকো প্রিপেইড;ekpay;billagg;OPEN;10000;5000000;false;meterNo;Meter number;মিটার নম্বর;^[0-9]{8,13}$
+BGDCL;UTILITY;Bakhrabad Gas Distribution Company;বাখরাবাদ গ্যাস;ekpay;billagg;FIXED;;;true;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+PGCL;UTILITY;Paschimanchal Gas Company;পশ্চিমাঞ্চল গ্যাস কোম্পানি;ekpay;billagg;FIXED;;;true;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+KWASA;UTILITY;Khulna WASA;খুলনা ওয়াসা;ekpay;billagg;FIXED;;;true;accountNo;Account number;হিসাব নম্বর;^[0-9]{6,14}$
+AMBERIT;OTHER;Amber IT;অ্যাম্বার আইটি;sslcommerz;billagg;MINIMUM;10000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+CARNIVAL;OTHER;Carnival Internet;কার্নিভাল ইন্টারনেট;sslcommerz;billagg;MINIMUM;10000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+DOTINT;OTHER;Dot Internet;ডট ইন্টারনেট;sslcommerz;billagg;MINIMUM;10000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+SAMONLINE;OTHER;Sam Online;স্যাম অনলাইন;sslcommerz;billagg;MINIMUM;10000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+BDCOM;OTHER;BDCOM Online;বিডিকম অনলাইন;sslcommerz;billagg;MINIMUM;10000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+ISPAHAN;OTHER;Ispahani Online;ইস্পাহানি অনলাইন;sslcommerz;billagg;MINIMUM;10000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+AKASH;OTHER;Akash DTH;আকাশ ডিটিএইচ;sslcommerz;billagg;MINIMUM;10000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+BTV_CABLE;OTHER;Dhaka Cable Network;ঢাকা ক্যাবল নেটওয়ার্ক;sslcommerz;billagg;MINIMUM;10000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+DU;OTHER;University of Dhaka;ঢাকা বিশ্ববিদ্যালয়;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+BUET;OTHER;Bangladesh University of Engineering and Technology;বাংলাদেশ প্রকৌশল বিশ্ববিদ্যালয়;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+NSU;OTHER;North South University;নর্থ সাউথ বিশ্ববিদ্যালয়;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+BRACU;OTHER;BRAC University;ব্র্যাক বিশ্ববিদ্যালয়;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+AIUB;OTHER;American International University-Bangladesh;আমেরিকান ইন্টারন্যাশনাল ইউনিভার্সিটি-বাংলাদেশ;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+EWU;OTHER;East West University;ইস্ট ওয়েস্ট বিশ্ববিদ্যালয়;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+IUB;OTHER;Independent University, Bangladesh;ইন্ডিপেন্ডেন্ট ইউনিভার্সিটি, বাংলাদেশ;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+DIU;OTHER;Daffodil International University;ড্যাফোডিল ইন্টারন্যাশনাল ইউনিভার্সিটি;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+NU;OTHER;National University;জাতীয় বিশ্ববিদ্যালয়;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+BOU;OTHER;Bangladesh Open University;বাংলাদেশ উন্মুক্ত বিশ্ববিদ্যালয়;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+DHAKA_BOARD;OTHER;Board of Intermediate and Secondary Education, Dhaka;মাধ্যমিক ও উচ্চ মাধ্যমিক শিক্ষা বোর্ড, ঢাকা;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+VNSC;OTHER;Viqarunnisa Noon School and College;ভিকারুননিসা নূন স্কুল অ্যান্ড কলেজ;agg3;ekpay;FIXED;;;true;studentId;Student ID;শিক্ষার্থী আইডি;^[A-Za-z0-9-]{4,20}$
+METLIFE;OTHER;MetLife Bangladesh;মেটলাইফ বাংলাদেশ;agg4;sslcommerz;MINIMUM;50000;;false;policyNo;Policy number;পলিসি নম্বর;^[A-Za-z0-9/-]{5,20}$
+PRAGATI;OTHER;Pragati Life Insurance;প্রগতি লাইফ ইন্স্যুরেন্স;agg4;sslcommerz;MINIMUM;50000;;false;policyNo;Policy number;পলিসি নম্বর;^[A-Za-z0-9/-]{5,20}$
+DELTA;OTHER;Delta Life Insurance;ডেল্টা লাইফ ইন্স্যুরেন্স;agg4;sslcommerz;MINIMUM;50000;;false;policyNo;Policy number;পলিসি নম্বর;^[A-Za-z0-9/-]{5,20}$
+GUARDIAN;OTHER;Guardian Life Insurance;গার্ডিয়ান লাইফ ইন্স্যুরেন্স;agg4;sslcommerz;MINIMUM;50000;;false;policyNo;Policy number;পলিসি নম্বর;^[A-Za-z0-9/-]{5,20}$
+JIBONBIMA;OTHER;Jiban Bima Corporation;জীবন বীমা কর্পোরেশন;agg4;sslcommerz;MINIMUM;50000;;false;policyNo;Policy number;পলিসি নম্বর;^[A-Za-z0-9/-]{5,20}$
+NATIONAL_LIFE;OTHER;National Life Insurance;ন্যাশনাল লাইফ ইন্স্যুরেন্স;agg4;sslcommerz;MINIMUM;50000;;false;policyNo;Policy number;পলিসি নম্বর;^[A-Za-z0-9/-]{5,20}$
+SANDHANI;OTHER;Sandhani Life Insurance;সন্ধানী লাইফ ইন্স্যুরেন্স;agg4;sslcommerz;MINIMUM;50000;;false;policyNo;Policy number;পলিসি নম্বর;^[A-Za-z0-9/-]{5,20}$
+POPULAR_LIFE;OTHER;Popular Life Insurance;পপুলার লাইফ ইন্স্যুরেন্স;agg4;sslcommerz;MINIMUM;50000;;false;policyNo;Policy number;পলিসি নম্বর;^[A-Za-z0-9/-]{5,20}$
+PASSPORT;OTHER;Department of Immigration and Passports;ইমিগ্রেশন ও পাসপোর্ট অধিদপ্তর;ekpay;agg3;FIXED;;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+BRTA;OTHER;Bangladesh Road Transport Authority;বাংলাদেশ সড়ক পরিবহন কর্তৃপক্ষ;ekpay;agg3;FIXED;;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+LAND_TAX;OTHER;Land Development Tax;ভূমি উন্নয়ন কর;ekpay;agg3;FIXED;;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+DNCC;OTHER;Dhaka North City Corporation;ঢাকা উত্তর সিটি কর্পোরেশন;ekpay;agg3;FIXED;;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+DSCC;OTHER;Dhaka South City Corporation;ঢাকা দক্ষিণ সিটি কর্পোরেশন;ekpay;agg3;FIXED;;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+CCC;OTHER;Chattogram City Corporation;চট্টগ্রাম সিটি কর্পোরেশন;ekpay;agg3;FIXED;;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+ETAX;OTHER;National Board of Revenue e-Return;জাতীয় রাজস্ব বোর্ড ই-রিটার্ন;ekpay;agg3;OPEN;100;100000000;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+ZAKAT;OTHER;Islamic Foundation Zakat Fund;ইসলামিক ফাউন্ডেশন যাকাত তহবিল;ekpay;agg3;OPEN;1000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+ANJUMAN;OTHER;Anjuman Mufidul Islam;আঞ্জুমান মুফিদুল ইসলাম;ekpay;agg3;OPEN;1000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+BRAC_DONATE;OTHER;BRAC Donation;ব্র্যাক অনুদান;ekpay;agg3;OPEN;1000;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+BASUNDHARA_TV;OTHER;Bashundhara Housing Service Charge;বসুন্ধরা হাউজিং সার্ভিস চার্জ;ekpay;agg3;FIXED;;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$
+RAJUK;OTHER;Rajdhani Unnayan Kartripakkha;রাজধানী উন্নয়ন কর্তৃপক্ষ;ekpay;agg3;FIXED;;;false;customerId;Customer ID;গ্রাহক আইডি;^[A-Za-z0-9-]{4,20}$

@@ -578,6 +578,7 @@ public class ChangeRequestService {
     if (operator.hasAny(AdminRole.READ_PARTNERS)) {
       out.add(Partner.RESOURCE_TYPE);
       out.add(PartnerConfigService.ERROR_MAP_RESOURCE_TYPE);
+      out.add(BillerCatalogService.RESOURCE_TYPE);
     }
     if (operator.hasAny(AdminRole.READ_CREDENTIALS)) {
       out.add(mfs.mw.admin.api.entity.CredentialMeta.RESOURCE_TYPE);
