@@ -16,7 +16,9 @@
 #   - a coverage item the MVP acceptance criteria demand is claimed by no request;
 #   - (ticket 76) a row's optional fifth column holds something that is not a spec requirement id
 #     (FR-nn, SEC-nn, NFR-nn), or a request with a security tag (auth, pin, lock, assertion, crypto)
-#     names none.
+#     names none;
+#   - (ticket 104) the "## FRS UC x T1-T12" matrix is missing, a UC-01..UC-22 row is missing or
+#     repeated, or a cell is not "n/a" plus a reason and not the name of a request in the collection.
 # Run by scripts/contracts-lint.sh (./gradlew :contractsLint); self-test scripts/test/test_api_traceability.sh.
 set -eu
 . "$(dirname "$0")/lib/common.sh"
@@ -41,7 +43,7 @@ import json, re, sys
 TAGS = {"health", "seed", "p2p", "device", "cash", "merchant", "topup", "billpay", "callback", "addmoney", "c2w",
         "checkout", "ipn", "notify", "tsq", "reversal", "admin", "operator", "partner-config", "wallet-unlock",
         "ussd", "smpp", "bulk", "sp-query", "dlq", "auth", "edge", "pin", "lock", "assertion", "crypto",
-        "history", "balance", "docs", "mock", "audit", "credentials"}
+        "history", "balance", "docs", "mock", "audit", "credentials", "frs"}
 # ticket 76: a request with one of these tags proves a security requirement and names its ids
 SECURITY_TAGS = {"auth", "pin", "lock", "assertion", "crypto"}
 REQ_ID = re.compile(r"^(FR|SEC|NFR)-\d\d$")
@@ -140,6 +142,55 @@ for num, name, crit, covers in rows:
 for item in required:
     if item not in claimed:
         errors.append("coverage item claimed by no request: " + item)
+
+# Ticket 104: every use case UC-01..UC-22 against T1..T12. A cell names a request of this collection,
+# or starts with "n/a" and gives a reason (the scenarios that do not exist yet).
+table_text = open(sys.argv[2], encoding="utf-8").read()
+heading = "## FRS UC x T1-T12"
+names = {name for _, name in requests}
+at = table_text.find(heading)
+if at < 0:
+    errors.append("no %s matrix" % heading)
+else:
+    block = table_text[at + len(heading):]
+    nxt = block.find("\n## ")
+    if nxt >= 0:
+        block = block[:nxt]
+    header = None
+    seen = []
+    for line in block.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if cells and set("".join(cells)) <= set("-: "):
+            continue
+        if header is None:
+            header = cells
+            if header != ["UC"] + ["T%d" % i for i in range(1, 13)]:
+                errors.append("matrix header must be UC, T1..T12")
+                header = None
+                break
+            continue
+        if not re.fullmatch(r"UC-\d\d", cells[0] if cells else ""):
+            continue
+        if len(cells) != 13:
+            errors.append("matrix row has %d cells, want 13: %s" % (len(cells), cells[0] if cells else "?"))
+            continue
+        uc = cells[0]
+        seen.append(uc)
+        for i, cell in enumerate(cells[1:], start=1):
+            if cell == "n/a" or cell.startswith("n/a ") or cell.startswith("n/a:"):
+                if not cell[3:].strip(" :"):
+                    errors.append("%s T%d is n/a without a reason" % (uc, i))
+                continue
+            if cell not in names:
+                errors.append("matrix cell names no request: %s T%d %s" % (uc, i, cell))
+    if header is not None:
+        for n in range(1, 23):
+            uc = "UC-%02d" % n
+            count = seen.count(uc)
+            if count != 1:
+                errors.append("matrix must name %s once, found %d" % (uc, count))
 
 if errors:
     for e in errors:

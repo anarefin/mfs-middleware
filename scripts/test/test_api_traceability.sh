@@ -32,6 +32,7 @@ rows.append("| 00 | [health] edge answers | - | |")
 json.dump({"info": {"name": "t"}, "item": [health, {"name": "01 Flows", "item": items}]}, open(sys.argv[1], "w"))
 open(sys.argv[2], "w").write("# t\n\n| Folder | Request | Criteria | Covers |\n| --- | --- | --- | --- |\n" + "\n".join(rows) + "\n")
 EOF
+  plant_matrix ""
 }
 
 run_check() { OUT="$("$CHECK" "$PWD/collection.json" "$PWD/TRACEABILITY.md" 2>&1)"; }
@@ -124,4 +125,43 @@ test_a_malformed_requirement_id_fails() {
   plant_security_row "SEC-9"
   assert_fails run_check
   assert_out_contains "'SEC-9' of 01 [auth pin] a PIN change needs the current PIN is not a requirement id"
+}
+
+# Ticket 104: UC-01..UC-22 x T1..T12. A cell is a request name, or "n/a" plus a reason.
+# plant_matrix BAD: appends the matrix; UC-04 T1 is the real "[p2p] P2P app success" request,
+# or BAD when that cell should name a request the collection does not have.
+plant_matrix() {
+  python3 - "$PWD/TRACEABILITY.md" "$1" <<'PY'
+import sys
+path, bad = sys.argv[1], sys.argv[2]
+head = ["", "## FRS UC x T1-T12", "",
+        "| UC | " + " | ".join("T%d" % i for i in range(1, 13)) + " |",
+        "| --- | " + " | ".join("---" for _ in range(12)) + " |"]
+rows = []
+for n in range(1, 23):
+    cells = []
+    for t in range(1, 13):
+        if n == 4 and t == 1:
+            cells.append(bad if bad else "[p2p] P2P app success")
+        else:
+            cells.append("n/a later ticket")
+    rows.append("| UC-%02d | " % n + " | ".join(cells) + " |")
+open(path, "a").write("\n".join(head + rows) + "\n")
+PY
+}
+
+test_a_matrix_cell_that_names_no_request_fails() {
+  plant_suite
+  python3 - "$PWD/TRACEABILITY.md" <<'PY'
+import sys
+p = sys.argv[1]
+t = open(p, encoding="utf-8").read()
+old = "| UC-04 | [p2p] P2P app success |"
+new = "| UC-04 | [p2p frs] this request does not exist |"
+if old not in t:
+    raise SystemExit("planted matrix has no UC-04 T1 cell")
+open(p, "w").write(t.replace(old, new, 1))
+PY
+  assert_fails run_check
+  assert_out_contains "names no request: UC-04 T1 [p2p frs] this request does not exist"
 }

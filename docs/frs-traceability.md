@@ -373,16 +373,16 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | MCT-06 | done | `GET` and `DELETE /mock-control/{party}/journal`, DELETE resets the party's state (ticket 102) |
 | MCT-07 | done | `POST /mock-control/reset` on mw-simulators: every local party plus mw-core-mock's ledger back to the seed, one line per party; test route `/test/mock-control/*` (ticket 103, `GlobalResetIT`, `MockControlResetIT`) |
 | MCT-08 | ticket 135 | profile `mock-control` only on the test doubles: start guard with `MW_ENV=prod` (`ProdGuardTest`), `scripts/check-mock-control-prod.sh` under the root `check` (ticket 103); the UI part in 135 |
-| T1 | tickets 104, 137 | happy path: P2P in 104, every financial use case in 137 |
-| T2 | tickets 104, 137 | partner business rejection |
-| T3 | tickets 104, 137 | timeout, success on inquiry |
-| T4 | tickets 104, 137 | timeout, failure on inquiry |
-| T5 | tickets 96, 104, 137 | never answers, `MANUAL_REVIEW` with alert |
-| T6 | tickets 104, 137 | same Idempotency-Key twice |
-| T7 | tickets 104, 137 | duplicate partner callback |
-| T8 | tickets 98, 114, 137 | circuit open, failover |
-| T9 | tickets 104, 137 | insufficient balance / limit |
-| T10 | tickets 104, 137 | restart mid-saga (`scripts/chaos.sh` covers the restart today) |
+| T1 | tickets 104, 137 | happy path: P2P in `tests/api/src/41-p2p-frs` (ticket 104); every financial use case in 137 |
+| T2 | tickets 104, 137 | partner business rejection: P2P core refusal with en/bn text in folder 41 |
+| T3 | tickets 104, 137 | timeout, success on inquiry: P2P core `TIMEOUT` nextN in folder 41 |
+| T4 | tickets 104, 137 | timeout, failure on inquiry: P2P lost refusal in folder 41 |
+| T5 | tickets 96, 104, 137 | never answers, `MANUAL_REVIEW` with alert: P2P in `tests/api/src/90-slow/p2p-frs.js` |
+| T6 | tickets 104, 137 | same Idempotency-Key twice: P2P in folder 41 |
+| T7 | tickets 104, 137 | duplicate partner callback: P2P `DUPLICATE_CALLBACK` on the core in folder 41 |
+| T8 | tickets 98, 114, 137 | circuit open, failover: partner failover stays 98 and 114; P2P fast fail is the core switch DOWN in folder 41 |
+| T9 | tickets 104, 137 | insufficient balance / limit: P2P limit before any transfer, and a short balance, in folder 41 |
+| T10 | tickets 104, 137 | restart mid-saga (`scripts/chaos.sh` `CHAOS_TARGETS=mw-orchestrator` checks the ledger; folder 41 checks the same identity on a completed P2P) |
 | T11 | tickets 125, 137 | AML HOLD |
 | T12 | tickets 127, 137 | reconciliation next day |
 
