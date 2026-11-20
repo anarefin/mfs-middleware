@@ -1,0 +1,4 @@
+{
+  "name": "67 Admin USSD editor and templates",
+  "description": "Ticket 133 (FRS ADM-06, CH-USSD-06). 133b: the server preview of a draft USSD menu (POST /admin/v1/ussd/menus/preview): mw-admin-api's MenuValidator, then the screens paged at the MNO's limits, with the short code and the root menu it opens. Nothing is stored. 133c / 133d add the notify rules and the template test send."
+}

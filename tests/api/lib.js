@@ -639,6 +639,8 @@
     async askPartner(user, p, body) { return http('POST', '/admin/v1/partners/' + p + '/change-requests', { headers: await ops(user), json: body }); },
     async partner(user, p) { return http('GET', '/admin/v1/partners/' + p, { headers: await ops(user) }); },
     async proposeMenu(user, menuId, body) { return http('POST', '/admin/v1/ussd-menus/' + menuId + '/change-requests', { headers: await ops(user), json: body }); },
+    // ticket 133b: a draft tree checked and walked screen by screen, nothing stored
+    async previewMenu(user, body) { return http('POST', '/admin/v1/ussd/menus/preview', { headers: await ops(user), json: body }); },
     async proposeTemplate(user, code, ch, loc, body) { return http('POST', '/admin/v1/notify-templates/' + code + '/' + ch + '/' + loc + '/change-requests', { headers: await ops(user), json: body }); },
     async proposeCampaign(user, body) { return http('POST', '/admin/v1/notify-campaigns', { headers: await ops(user), json: body }); },
     async proposeRoutingRule(user, id, body) { return http('POST', '/admin/v1/routing-rules/' + id + '/change-requests', { headers: await ops(user), json: body }); },
