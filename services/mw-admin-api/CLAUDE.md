@@ -443,7 +443,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   regex compiles **and fits a strict whitelist grammar** (`BillerRules.safe`, security review, ReDoS:
   optional `^`, atoms, optional `$`; an atom is a literal (punctuation escaped), a class `[...]`, `\d`,
   `\w`, `\s` or `.`, with at most one quantifier `?` `*` `+` `{n}` `{m,n}` (n <= 64); no groups,
-  alternation, backreferences, lookarounds or other escapes; at most 8 quantifiers; the channels
+  alternation, backreferences, lookarounds or other escapes; at most 8 quantifiers, at most one of
+  them variable-width (`?` `*` `+` `{m,n}` with m != n; the rest `{n}`); the channels
   match customer input of at most 64 characters against it), amount rule FIXED|MINIMUM|OPEN
   (MINIMUM needs `minAmountMinor`, max >= min), a disabled biller needs bn and en maintenance text;
   nothing changed `409 MW-VAL-030`. Dev seed: `mw.billers.seeds` (`config/BillerSeedProperties`, only

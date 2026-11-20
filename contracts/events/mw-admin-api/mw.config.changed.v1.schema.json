@@ -61,7 +61,7 @@
               "name": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9]{0,31}$" },
               "labelEn": { "type": "string", "minLength": 1, "maxLength": 100 },
               "labelBn": { "type": "string", "minLength": 1, "maxLength": 100 },
-              "regex": { "type": "string", "minLength": 1, "maxLength": 200, "description": "Java regex in a strict grammar checked by mw-admin-api: optional ^, atoms (literal, [class], \\d, \\w, \\s, .) each with at most one quantifier (?, *, +, {n}, {m,n} with n <= 64), optional $; no groups, alternation, backreferences or lookarounds; at most 8 quantifiers. Consumers match at most 64 characters of input." },
+              "regex": { "type": "string", "minLength": 1, "maxLength": 200, "description": "Java regex in a strict grammar checked by mw-admin-api: optional ^, atoms (literal, [class], \\d, \\w, \\s, .) each with at most one quantifier (?, *, +, {n}, {m,n} with n <= 64), optional $; no groups, alternation, backreferences or lookarounds; at most 8 quantifiers, at most one of them variable-width (the rest {n}). Consumers match at most 64 characters of input." },
               "required": { "type": "boolean" }
             }
           }

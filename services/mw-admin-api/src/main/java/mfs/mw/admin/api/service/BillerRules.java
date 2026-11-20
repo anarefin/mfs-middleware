@@ -106,12 +106,16 @@ final class BillerRules {
    * {@code \d \w \s} or escaped punctuation inside, no nesting), {@code \d}, {@code \w}, {@code \s}
    * or {@code .}, with at most one quantifier: {@code ?}, {@code *}, {@code +}, {@code {n}} or
    * {@code {m,n}} with n at most 64. No groups, alternation, backreferences, lookarounds or other
-   * escapes; at most 8 quantifiers in all. Called after the pattern compiled.
+   * escapes; at most 8 quantifiers in all, and at most ONE of them variable-width ({@code ?},
+   * {@code *}, {@code +}, {@code {m,n}} with m != n; the others {@code {n}}), so with the
+   * consumers' 64-character input cap the worst case is O(n^2) (no polynomial backtracking such as
+   * {@code \d*\d*\d*}). Called after the pattern compiled.
    */
   static boolean safe(String regex) {
     int i = 0;
     int n = regex.length();
     int quantifiers = 0;
+    int variable = 0;
     if (i < n && regex.charAt(i) == '^') {
       i++;
     }
@@ -142,15 +146,20 @@ final class BillerRules {
         if (q == '?' || q == '*' || q == '+') {
           i++;
           quantifiers++;
+          variable++;
         } else if (q == '{') {
           int end = regex.indexOf('}', i);
-          if (end < 0 || !boundAllowed(regex.substring(i + 1, end))) {
+          String body = end < 0 ? "" : regex.substring(i + 1, end);
+          if (end < 0 || !boundAllowed(body)) {
             return false;
           }
           i = end + 1;
           quantifiers++;
+          if (!fixedWidth(body)) {
+            variable++;
+          }
         }
-        if (quantifiers > MAX_QUANTIFIERS) {
+        if (quantifiers > MAX_QUANTIFIERS || variable > 1) {
           return false;
         }
       }
@@ -161,6 +170,12 @@ final class BillerRules {
   /** {@code \d \w \s} or an escaped punctuation character. */
   private static boolean escapeAllowed(char e) {
     return e == 'd' || e == 'w' || e == 's' || (e < 128 && !Character.isLetterOrDigit(e) && !Character.isWhitespace(e));
+  }
+
+  /** {@code n}, or {@code m,n} with m == n: the quantifier matches a fixed width. */
+  private static boolean fixedWidth(String body) {
+    String[] parts = body.split(",");
+    return parts.length == 1 || parts[0].equals(parts[1]);
   }
 
   /** {@code n} or {@code m,n} with m <= n <= 64. */
