@@ -58,6 +58,9 @@ function Resource({ cr }: { cr: ChangeRequest }) {
     const q = new URLSearchParams({ code: code ?? "", channel: channel ?? "", locale: locale ?? "" });
     return <Link className="font-mono text-xs" href={`/templates?${q}`}>notify_template {cr.resourceId}</Link>;
   }
+  if (cr.resourceType === "notify-rule") {
+    return <Link className="font-mono text-xs" href={`/templates?tab=rules&rule=${encodeURIComponent(cr.resourceId)}`}>notify-rule {cr.resourceId}</Link>;
+  }
   if (cr.resourceType === "key") {
     // ticket 75: a ceremony links to its wizard, the other key requests to the keys page
     return cr.action === "KEY_CEREMONY"
@@ -90,6 +93,10 @@ function Payload({ cr }: { cr: ChangeRequest }) {
     parts.push(`${cr.status === "APPROVED" ? "published" : "version"} v${p.version}`);
   }
   if (cr.resourceType === "notify_template" && typeof p.body === "string") parts.push(p.body);
+  if (cr.resourceType === "notify-rule" && Array.isArray(p.channels)) {
+    parts.push(`${cr.status === "APPROVED" ? "published" : "version"} v${String(p.version)}`);
+    parts.push(`${String(p.eventType)} ${String(p.outcome)} ${String(p.customerType)} -> ${p.channels.join("+")} ${String(p.templateCode)}${p.enabled === false ? " (disabled)" : ""}`);
+  }
   if (cr.resourceType === "key") {
     if (Array.isArray(p.shares)) parts.push(`${p.shares.length}/2 components`);
     if (typeof p.checkValue === "string") parts.push(`KCV ${p.checkValue}`);

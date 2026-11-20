@@ -126,8 +126,8 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     UssdEngine's back stack. "Check on server" (ticket 133b; ops-maker / ops-checker only, the `check` prop,
     server action `previewMenuOnServer`) posts the edited tree to `POST /admin/v1/ussd/menus/preview` with the
     picked MNO and language and shows `serverVerdict`: accepted with the short code and the root menu it opens
-    (`data-testid=server-verdict`, `data-ok`), or MenuValidator's problems one per line. Notify rules and the
-    template test send: tickets 133c-d (`.scratch/bits-mfs-middleware/issues/133-split-decisions.md`).
+    (`data-testid=server-verdict`, `data-ok`), or MenuValidator's problems one per line. Notify rules: the
+    Rules tab below (133c); the template test send: ticket 133d (`.scratch/bits-mfs-middleware/issues/133-split-decisions.md`).
   - `/console/templates?code&channel&locale`: picker (codes mw-notify seeds as suggestions,
     `lib/templates.ts` `KNOWN_CODES`; any contract-valid code accepted), versions, the live text of the
     newest PUBLISHED version, and the editor (`templates/template-editor.tsx`, client; body with
@@ -138,6 +138,15 @@ root `contracts/` (read by `src/lib/contract.test.ts` only, `MW_CONTRACTS_DIR`, 
     with `****` kept); SMS size GSM-7 / UCS-2 (`smsInfo`); `templateProblems` is a copy of
     mw-admin-api's TemplateValidator and blocks the submit (own `MW-VAL-040`). Anyone may type in the
     editor to preview; only an ops-maker gets the submit.
+  - `/console/templates?tab=rules[&rule=<ruleId>]` (ticket 133c, FRS NOT-01; tabs Templates / Rules,
+    `lib/notify-rules.ts` `TEMPLATES_TABS`, `templates/rules-tab.tsx`): the live rules made in the console
+    (`GET /admin/v1/notify-rules`; when = `ruleCondition`, e.g. `P2P: COMPLETED`, customer type, recipient,
+    channels, template, version, approver) and a rule editor (new, or the picked rule filled from its live version;
+    rule id read-only then): event type (txnType), outcome SUCCESS / FAILURE / PROCESSING, customer type (`*` any),
+    recipient, channel checkboxes SMS / EMAIL / PUSH, template code, enabled, reason; action `proposeNotifyRule`
+    (`parseRuleForm` is a copy of mw-admin-api's checks) -> approvals inbox (resource `notify-rule`, payload shown as
+    `<eventType> <outcome> <customerType> -> <channels> <template>`, linked back to the rule). Only an ops-maker with
+    no open request on the rule gets the submit. The seeded rules live in mw-notify and are not listed.
   - Decisions (no product owner): integration-maker / -checker see Partners like the API allows;
     partner UPSERT of the old shape, the ops-emergency direct change, and maker withdrawal are not offered;
     go-live / valid-from inputs are UTC like every time in the console; the menu check in the UI only
@@ -245,7 +254,9 @@ html, junit `test-results/junit.xml`). `e2e/support/`:
 - Specs: `00-smoke` (`@smoke`), `10-console` (`@console`), `20-approvals` (`@approvals`),
   `30-partners` (`@partners`), `31-partner-route` (`@partners`), `40-ussd` (`@ussd`), `41-ussd-editor`
   (`@ussd`: add a child, counters, robi paging with 0 / 00 in the preview, delete, file, approve; ticket 133a), `50-templates`
-  (`@templates`), `60-keys` (`@keys`: a ceremony with two custodians and the KCV computed in the test
+  (`@templates`), `51-notify-rules` (`@templates`: propose a channel set on the e2e-only rule `e2e-rule-pay-success`
+  (event type `E2E_RULE_PAY`, matches no transaction; each run flips the set), approve as the checker, the Rules
+  tab shows it; a rejected change is never live; ticket 133c, written, not yet run live), `60-keys` (`@keys`: a ceremony with two custodians and the KCV computed in the test
   from the two components, then a rotation; a key id of its own per run), `70-partner-credentials`
   (`@partners` `@credentials`: maintenance window, mock/real endpoint, error map, credential metadata
   and the expiring card; the upload form itself is the Vitest test, because upload is integration-maker).

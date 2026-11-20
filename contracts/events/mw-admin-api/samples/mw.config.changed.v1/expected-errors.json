@@ -1,5 +1,6 @@
 {
   "invalid-biller-category.json": ["/value/category must be equal to one of the allowed values"],
+  "invalid-notify-rule-channel.json": ["/value/channels/0 must be equal to one of the allowed values"],
   "invalid-partner-dry-run-operation.json": ["/value/dryRun/operation must be equal to one of the allowed values"],
   "invalid-partner-legacy-template.json": ["/value must NOT be valid"],
   "invalid-upsert-without-value.json": ["/ must have required property 'value'"],

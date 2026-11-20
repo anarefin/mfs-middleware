@@ -105,6 +105,17 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   subject, a placeholder that is not a plain `{{name}}`) is logged `notify.template.rejected` and
   dropped. Events `notify.template.published`, `notify.template.publish_skipped`
   (`TemplatePublisherIT`, on test-only codes `IT_TPL_*`).
+- Published rules (ticket 133c, FRS NOT-01): `service/NotifyRulePublisher` (same listener) takes configType
+  NOTIFY_RULE (configKey `notify-rule/<ruleId>`, value `{ruleId, eventType, outcome, customerType, recipient,
+  channels, templateCode, enabled}`): one `notify.rule` row per channel, `admin-<ruleId>-<sms|email|push>`, on
+  `mw.txn.status.v1`, condition `<outcome> and txnType == '<eventType>'` (SUCCESS `status == 'COMPLETED'`, FAILURE
+  FAILED|REJECTED, PROCESSING UNKNOWN|MANUAL_REVIEW), priority TXN, sort_order 500; a channel the version leaves
+  out, `enabled false` and a DELETE disable the row (never deleted: rule-built message ids name it). The admin
+  version is `rule.config_version` (V21): a redelivered or older record changes nothing
+  (`notify.rule.publish_skipped`). The value is checked against the contract's patterns before the condition is
+  built (`notify.rule.rejected`, dropped). Rules are read per event, so the next matching event uses the new set
+  without a restart (`NotifyRuleChangeIT`, over Kafka, test-only event type `IT_RULE_PAY`). Event
+  `notify.rule.published`.
 - Encoding (`service/SmsEncoder`): GSM-7 (GSM 03.38 + extension table, unpacked, data_coding 0)
   when every character fits, else UCS-2 (data_coding 8); one SMS up to 160 septets / 70 units,
   else parts of 153 / 67 with the UDH `05 00 03 ref total seq` (esm_class UDHI); escape and

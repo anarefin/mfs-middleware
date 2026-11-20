@@ -47,7 +47,8 @@ public record ConfigChangedEvent(
     MSISDN_PREFIX,
     MNP_OVERRIDE,
     MAINTENANCE_MESSAGE,
-    BILLER
+    BILLER,
+    NOTIFY_RULE
   }
 
   public enum Change {

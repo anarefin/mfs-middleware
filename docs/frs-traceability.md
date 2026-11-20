@@ -309,7 +309,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| NOT-01 | tickets 111, 133 | transaction notifications on SMS, email and push (ticket 110) built; customer type on `notify.rule` matched to `debitParty.walletType`, and LOCK/UNLOCK notices from `auth.wallet-lock.v1` (ticket 111); the rule-table editor is 133 |
+| NOT-01 | done | transaction notifications on SMS, email and push (ticket 110) built; customer type on `notify.rule` matched to `debitParty.walletType`, and LOCK/UNLOCK notices from `auth.wallet-lock.v1` (ticket 111); rule-table editing (133c): resource `notify-rule` through maker-checker (`POST /admin/v1/notify-rules/{ruleId}/change-requests`, `GET /admin/v1/notify-rules`, the Rules tab of `/templates`), `mw.config.changed.v1` configType NOTIFY_RULE applied by mw-notify without a restart (`NotifyRuleChangeIT`) |
 | NOT-02 | done | SMS, email and push templates (title + body, `PUSH_TXN_COMPLETED` / `PUSH_TXN_FAILED`, ticket 110) in Bangla and English in `notify.template` |
 | NOT-03 | done | mw-notify SMPP: GSM-7 / UCS2, concatenation, sender id (`SmsEncoder`) |
 | NOT-04 | done | delivery receipts update the message status (`DeliveryReport`) |
@@ -351,7 +351,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ADM-04 | tickets 98, 132 | API maker-checker for `ROUTING_RULE`, `MSISDN_PREFIX`, `MNP_OVERRIDE` and `MAINTENANCE_MESSAGE` (ticket 98, `RoutingRuleChangeRequestIT`, API folder 35); the console and testing a rule against a sample request stay 132 |
 | ADM-05 | ticket 132 | API done in 113: `GET /admin/v1/billers`, `POST /admin/v1/billers/{code}/change-requests` UPSERT / ENABLE / DISABLE, maker-checker (`BillerChangeRequestIT`) |
 | ADM-06 | done | visual tree editor and paged browser preview built (133a); server preview with the MenuValidator verdict and short code -> root menu per MNO (`mw.content.ussd.<mno>`, 133b; "Check on server" in the console's preview) |
-| ADM-07 | tickets 111, 133 | SMS template editing built; campaigns through maker-checker (`POST /admin/v1/notify-campaigns`, ticket 111); the rule-table editor is 133c, the test send 133d |
+| ADM-07 | tickets 111, 133 | SMS template editing built; campaigns through maker-checker (`POST /admin/v1/notify-campaigns`, ticket 111); the rule-table editor is built (133c, see NOT-01), the test send is 133d |
 | ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the Error codes tab (131c, `ui/mw-admin-ui`) |
 | ADM-09 | done | transaction search and saga timeline (mw-admin-api, `ui/mw-admin-ui`) |
 | ADM-10 | ticket 134 | TSQ, force complete and reversal with maker-checker built; resend notification and release hold in 134 |

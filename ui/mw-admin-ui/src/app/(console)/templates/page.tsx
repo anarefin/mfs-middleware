@@ -13,15 +13,18 @@ import { canMake } from "@/lib/approvals";
 import { formatTime } from "@/lib/format";
 import { adminApi, operatorToken } from "@/lib/server/admin";
 import { BASE_PATH } from "@/lib/server/env";
+import { templatesTab } from "@/lib/notify-rules";
 import { KNOWN_CODES, parseTemplateKey, type TemplateTexts } from "@/lib/templates";
-import { proposeTemplate } from "../actions";
+import { proposeNotifyRule, proposeTemplate } from "../actions";
 import { ApiError } from "../api-error";
 import { openRequest, PendingNotice } from "../pending-notice";
+import { RulesPanel, TemplatesTabNav } from "./rules-tab";
 import { TemplateEditor } from "./template-editor";
 
 // Notification templates (spec 10.3, 15.2, tickets 39 / 42): one template is code + channel +
 // locale. The versions made in the console, an editor (Bangla input) with a live preview on sample
-// params (masked as mw-notify masks them), and the proposal as a change request.
+// params (masked as mw-notify masks them), and the proposal as a change request. The Rules tab
+// (ticket 133c) edits the notification rules the same way.
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -34,6 +37,7 @@ function texts(value: Record<string, unknown> | undefined): TemplateTexts {
 
 export default async function TemplatesPage({ searchParams }: Props) {
   const sp = await searchParams;
+  if (templatesTab(one(sp.tab)) === "rules") return <RulesPage ruleId={one(sp.rule)} />;
   const code = one(sp.code);
   const channel = one(sp.channel) ?? "SMS";
   const locale = one(sp.locale) ?? "bn";
@@ -57,6 +61,7 @@ export default async function TemplatesPage({ searchParams }: Props) {
     return (
       <>
         <PageHeader title="Notification templates" description="Pick a template by code, channel and locale to see its versions and edit it." />
+        <TemplatesTabNav tab="templates" />
         {picker}
         {code ? (
           <Alert variant="destructive" className="error" role="alert">
@@ -81,6 +86,7 @@ export default async function TemplatesPage({ searchParams }: Props) {
   return (
     <>
       <PageHeader title={<>Template <span className="font-mono">{resourceId}</span></>} />
+      <TemplatesTabNav tab="templates" />
       {picker}
       <Card className="overflow-hidden">
         <CardHeader><CardTitle><History />Versions</CardTitle></CardHeader>
@@ -116,6 +122,25 @@ export default async function TemplatesPage({ searchParams }: Props) {
         initial={texts(value)}
         action={maker ? proposeTemplate.bind(null, key) : null}
       />
+    </>
+  );
+}
+
+async function RulesPage({ ruleId }: { ruleId: string | undefined }) {
+  const session = await auth();
+  const token = await operatorToken();
+  if (!token) redirect("/login?error=SessionExpired");
+  const rules = await adminApi().listNotifyRules(token);
+  const items = rules.ok ? rules.data.items : [];
+  const selected = ruleId ? items.find((r) => r.ruleId === ruleId) : undefined;
+  const open = ruleId ? await openRequest(token, "notify-rule", ruleId) : undefined;
+  const maker = canMake(session?.roles ?? []) && !open;
+  return (
+    <>
+      <PageHeader title="Notification rules" description="Event type and outcome, customer type, to channels and a template. An approved change is used by the next matching event." />
+      <TemplatesTabNav tab="rules" />
+      {!rules.ok ? <ApiError status={rules.status} error={rules.error} /> : null}
+      <RulesPanel rules={items} selected={selected} open={open} action={maker ? proposeNotifyRule : null} />
     </>
   );
 }

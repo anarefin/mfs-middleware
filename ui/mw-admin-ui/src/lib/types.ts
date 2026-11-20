@@ -96,7 +96,7 @@ export type ErrorMapAction = "SET_ERROR_MAP";
 export type ContentAction = "PUBLISH";
 export type KeyAction = "KEY_GENERATE" | "KEY_ROTATE" | "KEY_RETIRE" | "KEY_CEREMONY";
 export type ResourceType =
-  | "transaction" | "wallet" | "pin_reset" | "partner" | "ussd_menu" | "notify_template" | "key"
+  | "transaction" | "wallet" | "pin_reset" | "partner" | "ussd_menu" | "notify_template" | "notify-rule" | "key"
   | "partner_credential" | "partner_error_map";
 
 /**

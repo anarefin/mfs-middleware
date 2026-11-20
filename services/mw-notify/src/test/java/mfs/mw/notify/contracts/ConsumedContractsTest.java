@@ -29,6 +29,7 @@ import mfs.mw.notify.service.PushDeviceService;
 import mfs.mw.notify.service.WalletLockService;
 import mfs.mw.notify.messaging.TxnStatusListener;
 import mfs.mw.notify.service.NotificationService;
+import mfs.mw.notify.service.NotifyRulePublisher;
 import mfs.mw.notify.service.TemplatePublisher;
 import mfs.mw.notify.service.TxnStatusService;
 import org.junit.jupiter.api.DynamicTest;
@@ -101,7 +102,7 @@ class ConsumedContractsTest {
   static ConfigChangedEvent readConfig(String body) {
     TemplatePublisher service = mock(TemplatePublisher.class);
     CampaignService campaigns = mock(CampaignService.class);
-    new ConfigChangedListener(service, campaigns, JSON).handle(record(body), ACK);
+    new ConfigChangedListener(service, campaigns, mock(NotifyRulePublisher.class), JSON).handle(record(body), ACK);
     ArgumentCaptor<ConfigChangedEvent> captor = ArgumentCaptor.forClass(ConfigChangedEvent.class);
     verify(service).onConfigChanged(captor.capture());
     return captor.getValue();
