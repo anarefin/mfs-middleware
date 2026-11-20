@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.14.0
+  version: 1.15.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -52,6 +52,10 @@ info:
     MW-SYS-BILLER_DISABLED with its maintenance text (message, messageBn). A bill-pay preview of a bill
     this wallet fetched carries the fetched amount to the payment; a FIXED biller's payment must equal
     it.
+
+    Transfer to bank (1.15.0, ticket 117c, FRS UC-15, FL-09): txnType W2B and group transfer-to-bank
+    pay one of the caller's linked bank accounts, named by `linkedAccountId` (ADD_MONEY_BANK may name
+    one too); the account number is taken from the stored account, never from the request.
 
     Linked bank accounts (1.13.0, ticket 117b, FRS FL-08): POST /app/v1/bank-accounts {bankCode,
     accountNumber} runs the bank's account validation (AVL, mw-adapter-bank) first and links the
@@ -876,7 +880,7 @@ components:
       description: >-
         The transaction group: send-money (P2P), cash-in (CASH_IN), cash-out (CASH_OUT), payment
         (MERCHANT_PAY), bill-pay (BILL_PAY), top-up (TOPUP), add-money (ADD_MONEY_BANK),
-        transfer-to-bank (W2B, 1.14.0), b2b (B2B_TRANSFER), disburse (BULK_DISBURSE)
+        transfer-to-bank (W2B, 1.15.0), b2b (B2B_TRANSFER), disburse (BULK_DISBURSE)
       schema: { type: string, enum: [send-money, cash-in, cash-out, payment, bill-pay, top-up, add-money, transfer-to-bank, b2b, disburse] }
     DeviceId:
       name: X-Device-Id
@@ -1023,7 +1027,7 @@ components:
             MW-VAL-001); nothing is held, the bank confirms the debit (usually by callback) and
             the wallet is credited; a refusal by the bank is 502 MW-PTR-<BANK>-<reason> with
             nothing moved, an outcome not known in time is 202 PROCESSING (status inquiry).
-            Since 1.14.0 (ticket 117c) ADD_MONEY_BANK may name `linkedAccountId` instead of
+            Since 1.15.0 (ticket 117c) ADD_MONEY_BANK may name `linkedAccountId` instead of
             `debitParty` and `partner`. W2B (transfer to bank, FRS UC-15) pays the caller's linked
             bank account `linkedAccountId` (required; `creditParty`, `debitParty` and `partner` are
             refused, 400 MW-VAL-001): the funds are held, the bank credits the account and the hold
@@ -1033,7 +1037,7 @@ components:
           type: string
           format: uuid
           description: >-
-            W2B (required) and ADD_MONEY_BANK (optional, instead of debitParty and partner; 1.14.0,
+            W2B (required) and ADD_MONEY_BANK (optional, instead of debitParty and partner; 1.15.0,
             ticket 117c): the id of one of the caller's linked bank accounts (GET
             /app/v1/bank-accounts). The middleware takes the bank and the account number from the
             stored account, never from the request; an id that is not the caller's is 404

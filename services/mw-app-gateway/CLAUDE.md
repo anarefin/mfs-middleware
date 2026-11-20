@@ -127,7 +127,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   here). Forwarded as debit party `{type: BANK_ACCOUNT, id}`, credit party the token's wallet
   (its PIN authorises), partner `{partnerId, productCode: C2W}` (`RequestMapper.partnerOf`). A
   bank refusal is FAILED `MW-PTR-C2WBANK-*` -> 502; an outcome not known within the budget 202.
-- W2B and add money from a linked account (ticket 117c, app.v1 1.14.0, FRS UC-15, FL-09): body field
+- W2B and add money from a linked account (ticket 117c, app.v1 1.15.0, FRS UC-15, FL-09): body field
   `linkedAccountId` (a UUID of `GET /app/v1/bank-accounts`). W2B (group `transfer-to-bank`, customer only)
   requires it and refuses `creditParty`, `debitParty` and `partner`; ADD_MONEY_BANK may send it instead of
   `debitParty` + `partner` (then neither is allowed); every other type refuses it (`MW-VAL-001` naming the
