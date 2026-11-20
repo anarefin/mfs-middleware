@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.7.0
+  version: 1.8.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -39,6 +39,10 @@ info:
     Balance (1.6.0, ADR D26): POST /app/v1/balance answers the signed-in wallet's available balance
     from the core after the PIN check; nothing moves and the gateway never stores it (it is not in
     the history).
+
+    Push token (1.8.0, ticket 110): PUT /app/v1/notifications/push-token registers the app's FCM /
+    APNs device token for the signed-in wallet's bound device; mw-notify then pushes transaction
+    notices to it (SMS is always sent too). A new device binding drops the old device's token.
 servers:
   - url: https://localhost
 security:
@@ -271,6 +275,33 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+  /app/v1/notifications/push-token:
+    put:
+      operationId: registerPushToken
+      summary: Register the app's push device token for this wallet and device
+      description: >-
+        Ticket 110 (FRS EXT-04): the FCM (ANDROID) or APNs (IOS) token of the app on the bound device
+        (`X-Device-Id`, live session; nothing moves, so no signature). Handed to mw-notify
+        (`mw.notify.push-token.v1`), which pushes transaction notices to it next to the SMS. One bound
+        device per wallet: the token replaces the wallet's other devices' tokens, and binding another
+        device drops it. Repeat it whenever the platform hands the app a new token. 204 once handed
+        over; 400 MW-VAL-001 on a body that breaks `PushTokenRequest`; 503 MW-SYS-010 (retryable)
+        when it cannot be handed over.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PushTokenRequest" }
+      responses:
+        "204":
+          description: Registered (handed to mw-notify)
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /app/v1/pin-key:
     get:
       operationId: getPinKey
@@ -582,6 +613,13 @@ components:
           maxProperties: 20
           propertyNames: { enum: [reference] }
           additionalProperties: { type: string, maxLength: 256 }
+    PushTokenRequest:
+      type: object
+      required: [token, platform]
+      additionalProperties: false
+      properties:
+        token: { type: string, minLength: 1, maxLength: 4096, description: "The FCM / APNs device token" }
+        platform: { type: string, enum: [ANDROID, IOS] }
     BalanceRequest:
       type: object
       required: [encryptedPin]

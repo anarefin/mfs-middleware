@@ -40,6 +40,8 @@ public class BodySchema {
   public static final String BALANCE = "derived-schemas/app-v1-balance-request.json";
   /** {@code POST /app/v1/billers/{code}/fetch-bill}, from {@code FetchBillRequest}. */
   public static final String FETCH_BILL = "derived-schemas/app-v1-fetch-bill-request.json";
+  /** {@code PUT /app/v1/notifications/push-token}, from {@code PushTokenRequest} (ticket 110). */
+  public static final String PUSH_TOKEN = "derived-schemas/app-v1-push-token-request.json";
 
   private final ObjectReader reader;
   private final Schema schema;

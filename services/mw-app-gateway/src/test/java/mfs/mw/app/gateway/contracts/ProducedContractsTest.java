@@ -39,7 +39,24 @@ class ProducedContractsTest {
 
   /** Fixtures per manifest entry: the messages the publisher sends on that topic. */
   static final Map<String, Supplier<List<Object>>> FIXTURES =
-      Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests);
+      Map.of("events/mw-orchestrator/mw.txn.request.v1.schema.json", ProducedContractsTest::txnRequests,
+          "events/mw-notify/mw.notify.push-token.v1.schema.json", ProducedContractsTest::pushTokens);
+
+  /** {@code PushTokenService.register} (ticket 110): what it hands the publisher, Android and iOS. */
+  static List<Object> pushTokens() {
+    List<Object> out = new java.util.ArrayList<>();
+    for (String platform : List.of("ANDROID", "IOS")) {
+      mfs.mw.app.gateway.messaging.EventPublisher publisher =
+          org.mockito.Mockito.mock(mfs.mw.app.gateway.messaging.EventPublisher.class);
+      new mfs.mw.app.gateway.service.PushTokenService(publisher, java.time.Clock.fixed(NOW, java.time.ZoneOffset.UTC))
+          .register(CUSTOMER, "dev-0001", new mfs.mw.app.gateway.dto.PushTokenRequest("fcm-test-token-abc123", platform));
+      org.mockito.ArgumentCaptor<Object> payload = org.mockito.ArgumentCaptor.forClass(Object.class);
+      org.mockito.Mockito.verify(publisher).publish(org.mockito.ArgumentMatchers.eq("mw.notify.push-token.v1"),
+          org.mockito.ArgumentMatchers.eq("01711000001"), org.mockito.ArgumentMatchers.any(), payload.capture());
+      out.add(payload.getValue());
+    }
+    return out;
+  }
 
   /** mw-auth's assertion (a compact JWS) as {@code TransactionService.submit} adds it (ticket 72). */
   static final String ASSERTION = "eyJhbGciOiJFUzI1NiIsInR5cCI6InR4bi1hc3NlcnRpb24rand0In0.eyJqdGkiOiJ4In0.c2lnbmF0dXJl";

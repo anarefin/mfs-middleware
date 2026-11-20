@@ -226,6 +226,12 @@ seeder's persona wallets keep their opening balance), and answers one line per p
 `{"seedVersion":"v1"}` picks the core's seed files. It leaves the other stores alone (transactions in
 mw-orchestrator, PIN state in mw-auth): use it to start a run from known balances, not as a full reset.
 
+Push notifications (ticket 110): mw-notify pushes transaction notices to the app's registered device
+token (`PUT /app/v1/notifications/push-token`) next to the SMS. In the dev stack they go to the push
+mock of mw-simulators (mock party `push`, API key `PUSH_API_KEY` of `deploy/.env`, synced into Vault by
+the `provision` one-shot); what it received is `GET /test/sim/push/messages?token=` through APISIX
+(test-only route); API suite folder `43-notify-push`.
+
 ## Build and test
 
 There is no CI/CD in the MVP and no Makefile: the root Gradle build is the gate. The root is one
@@ -443,7 +449,7 @@ Recovery and operations in depth: [docs/runbook.md](docs/runbook.md).
 | Core flow | `mw-orchestrator` (saga, idempotency, TSQ, reversal), `mw-core-mock` (ledger, fault injection) |
 | Partners | `mw-adapter-telco`, `mw-adapter-billpay`, `mw-adapter-bank` |
 | Security | `mw-auth` (wallet authentication: OTP, device binding, login and RS256 tokens, PIN custody and lockout, resets, the ES256 transaction assertion; public `/auth/v1`, mTLS internal API), `mw-crypto` (the HSM gateway: the only process that talks to an HSM, SoftHSM over PKCS#11 and the payShield simulator in dev; mTLS internal API only), `softhsm` |
-| Support | `mw-notify` (SMS over SMPP, email), `mw-audit-dw` (hash-chained audit trail, signed daily anchor), `mw-admin-api` (also key management and the key ceremony), `mw-admin-ui` (console at `/console`) |
+| Support | `mw-notify` (SMS over SMPP, email, push to the app), `mw-audit-dw` (hash-chained audit trail, signed daily anchor), `mw-admin-api` (also key management and the key ceremony), `mw-admin-ui` (console at `/console`) |
 | Platform | `kafka` (KRaft), `postgres` (18), `redis`, `keycloak`, `vault`, one-shots `kafka-init` and `provision` (every service's secret, database role and AppRole, `deploy/provision`), `softhsm` (dev/test PKCS#11 tokens, profiles `minimal` and `core`, `deploy/softhsm`) |
 | Test | `mw-simulators` (OCS, bill aggregator, C2W bank, SMSC, USSD gateway), `greenmail`, `mw-seeder` (profile `seed`), `mw-test-console` (profile `tester`) |
 

@@ -27,9 +27,12 @@ import org.springframework.transaction.annotation.Transactional;
  * channel, keyed (messageId, channel), so a repeated {@code messageId} is dropped. A message
  * already past {@code expiresAt} (default by priority) is recorded EXPIRED; otherwise the channel's
  * template is rendered with masked params and the message is queued for the dispatcher. SMS needs
- * an MSISDN, EMAIL an address (subject, text part and optional HTML part); a channel without its
- * address, PUSH (not built) or a template that cannot be rendered is recorded FAILED. Nothing is
- * sent here, so a Kafka listener thread never waits on the SMSC or the mail server.
+ * an MSISDN, EMAIL an address (subject, text part and optional HTML part), PUSH a device token (the
+ * recipient's {@code pushToken}, else the token registered for its wallet: {@code msisdn}, then {@code
+ * subjectId}; title = the template's subject); a channel without its address or a template that cannot be
+ * rendered is recorded FAILED. mw-auth's {@code DEVICE_BOUND} notice with param {@code deviceId} also
+ * revokes the push tokens of the wallet's other devices (ticket 110), once per new message. Nothing is
+ * sent here, so a Kafka listener thread never waits on the SMSC, the mail server or the push server.
  */
 @Service
 public class NotificationService {
@@ -42,9 +45,11 @@ public class NotificationService {
   private final StatusEvents statuses;
   private final NotifyProperties props;
   private final Clock clock;
+  private final PushDeviceService pushDevices;
 
   public NotificationService(MessageRepository messages, TemplateRepository templates, TemplateRenderer renderer,
-      StatusEvents statuses, NotifyProperties props, Clock clock) {
+      StatusEvents statuses, NotifyProperties props, Clock clock, PushDeviceService pushDevices) {
+    this.pushDevices = pushDevices;
     this.messages = messages;
     this.templates = templates;
     this.renderer = renderer;
@@ -69,7 +74,7 @@ public class NotificationService {
       Instant next = "QUEUED".equals(p.status) ? latest(now, r.sendAt()) : null;
       MessageRecord m = new MessageRecord(r.messageId(), r.txnId(), r.correlationId(), channel.name(), p.msisdn,
           r.templateCode(), p.version, locale, priority.name(), p.sender, p.body, p.ref, p.segments, p.status, 0,
-          next, expiresAt, p.error, p.email, p.subject, p.html);
+          next, expiresAt, p.error, p.email, p.subject, p.html, p.pushToken);
       if (!messages.insertIfAbsent(m, priority.rank())) {
         continue;
       }
@@ -80,7 +85,9 @@ public class NotificationService {
         default -> statuses.publish(m, NotifyStatus.FAILED, true, 1, null, p.error, now);
       }
     }
-    if (!inserted) {
+    if (inserted) {
+      revokeOnRebind(r);
+    } else {
       log.atInfo()
           .addKeyValue("event", "notify.duplicate")
           .addKeyValue("messageId", r.messageId())
@@ -88,6 +95,16 @@ public class NotificationService {
           .log("duplicate messageId dropped");
     }
     return inserted;
+  }
+
+  /** mw-auth's "a new device was bound" notice names the new device: the other devices' tokens go. */
+  private void revokeOnRebind(NotificationRequest r) {
+    String device = r.params().get(PushDeviceService.DEVICE_PARAM);
+    String wallet = r.recipient() == null ? null : blankToNull(r.recipient().msisdn());
+    if (PushDeviceService.DEVICE_BOUND_TEMPLATE.equals(r.templateCode()) && wallet != null && device != null
+        && !device.isBlank()) {
+      pushDevices.deviceBound(wallet, device);
+    }
   }
 
   private void queued(MessageRecord m, Priority priority) {
@@ -112,11 +129,12 @@ public class NotificationService {
     NotificationRequest.Recipient to = r.recipient();
     p.msisdn = to == null || channel != Channel.SMS ? null : blankToNull(to.msisdn());
     p.email = to == null || channel != Channel.EMAIL ? null : blankToNull(to.email());
+    p.pushToken = channel == Channel.PUSH ? pushToken(to) : null;
     p.sender = channel == Channel.SMS ? props.defaultSender() : null;
     boolean addressed = switch (channel) {
       case SMS -> p.msisdn != null;
       case EMAIL -> p.email != null;
-      case PUSH -> false;
+      case PUSH -> p.pushToken != null;
     };
     if (!addressed) {
       p.status = "FAILED";
@@ -140,10 +158,11 @@ public class NotificationService {
         p.segments = SmsEncoder.segmentCount(p.body);
       } else {
         if (template.subject() == null || template.subject().isBlank()) {
-          throw new TemplateException("email template without subject");
+          throw new TemplateException(channel == Channel.PUSH ? "push template without title" : "email template without subject");
         }
         p.subject = renderer.render(template.subject(), r.params());
-        p.html = template.htmlBody() == null ? null : renderer.renderHtml(template.htmlBody(), r.params());
+        p.html = template.htmlBody() == null || channel == Channel.PUSH ? null
+            : renderer.renderHtml(template.htmlBody(), r.params());
       }
       p.status = "QUEUED";
     } catch (TemplateException e) {
@@ -173,9 +192,22 @@ public class NotificationService {
     String body;
     String subject;
     String html;
+    String pushToken;
     Integer version;
     Integer ref;
     Integer segments;
+  }
+
+  /** The request's token, else the one registered for the recipient's wallet (msisdn, then subjectId). */
+  private String pushToken(NotificationRequest.Recipient to) {
+    if (to == null) {
+      return null;
+    }
+    if (blankToNull(to.pushToken()) != null) {
+      return to.pushToken();
+    }
+    String wallet = blankToNull(to.msisdn()) != null ? to.msisdn() : blankToNull(to.subjectId());
+    return pushDevices.tokenOf(wallet).orElse(null);
   }
 
   private static String blankToNull(String s) {

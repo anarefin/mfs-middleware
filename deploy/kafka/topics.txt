@@ -31,6 +31,8 @@ mw.partner.reply.v1            48 3d retry=mw-orchestrator
 mw.partner.inbound.v1          24 7d retry=mw-orchestrator
 mw.notify.request.v1           24 3d retry=mw-notify
 mw.notify.status.v1            12 7d
+# ticket 110: push device tokens from mw-app-gateway, kept by mw-notify (key walletId)
+mw.notify.push-token.v1        12 7d retry=mw-notify
 mw.audit.event.v1              24 7d retry=mw-audit-dw
 mw.config.changed.v1            6 compact retry=mw-ussd,mw-notify
 mw.partner.route.status.v1      6 7d retry=mw-admin-api

@@ -79,7 +79,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - Validation: body schema first (`service/BodySchema` via `filter/BodySchemaInterceptor`, one per endpoint,
   `config/BodySchemaConfig`; after the JWT, before the device gate; ticket 29 and review A6, APISIX validates no
   body): `derived-schemas/app-v1-transaction-request.json` (`TransactionRequest`),
-  `app-v1-balance-request.json` (`BalanceRequest`, ADR D26) and `app-v1-fetch-bill-request.json` (`FetchBillRequest`), derived from the contract by
+  `app-v1-balance-request.json` (`BalanceRequest`, ADR D26), `app-v1-fetch-bill-request.json` (`FetchBillRequest`) and
+  `app-v1-push-token-request.json` (`PushTokenRequest`, ticket 110), derived from the contract by
   `scripts/derived-schemas.sh --write` (`./gradlew :contractsLint` fails on drift; a new JSON body endpoint needs its
   schema registered in `BodySchemaConfig`; the device bodies moved to mw-auth in ticket 68), validated
   with json-schema-validator (runtime dependency, on Boot's Jackson) on the cached bytes; duplicate keys,
@@ -227,6 +228,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   self-contained: `GET /app/v1/transactions/{txnId}` still serves only the caller's own app submissions.
   Tests: `TransactionHistoryServiceTest`, `HistoryMapperTest`, `TransactionControllerTest`,
   `client/OrchestratorQueryClientIT` (WireMock, no Docker), `ApiContractsTest`.
+- Push token (ticket 110, app.v1 1.8.0, FRS EXT-04; `controller/PushTokenController`, `service/PushTokenService`,
+  `dto/PushTokenRequest`, `dto/PushTokenMessage`): `PUT /app/v1/notifications/push-token {token (1..4096),
+  platform ANDROID|IOS}`, session level (bound device, live session, no signature), any app role; body schema
+  `derived-schemas/app-v1-push-token-request.json` (the body cache and schema check now take PUT too). Publishes
+  `mw.notify.push-token.v1 {walletId = msisdn claim, deviceId = X-Device-Id, token, platform, registeredAt,
+  correlationId}` (key the wallet; contract owned by mw-notify, its consumer) straight to Kafka (nothing stored
+  here); 204; Kafka refusing `503 MW-SYS-010`. The token is never logged. APISIX route `app-v1` takes PUT since.
+  Tests: `PushTokenControllerTest`, `contracts/ProducedContractsTest` (fixture through the real service).
 - Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password; `spring.data.redis.password`
   synced from `REDIS_PASSWORD`; `mw.app-gateway.auth.client-secret` from `KC_MW_APP_GATEWAY_SECRET`), AppRole, PKI
@@ -250,6 +259,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
 - `api/mw-orchestrator/txn-query.v1.openapi.yaml` (client, 1.3.0, ADR D25: `GET /internal/v1/transactions` with
   `walletId`, as the wallet-scoped caller; own types `dto/QueryTxnPage`, `dto/QueryTxn`; a contract-shaped page
   is validated and read in `ApiContractsTest`).
+- `events/mw-notify/mw.notify.push-token.v1` (produced, ticket 110; own type `dto/PushTokenMessage`).
 - `events/mw-orchestrator/mw.txn.request.v1` (produced; own type `dto/TxnRequest`, validated
   against the schema in `RequestMapperTest` and `SyncReplyIT`).
 - `api/mw-auth/auth-internal.v1.openapi.yaml` (client, ticket 68: `GET /internal/v1/devices/{deviceId}`, `GET

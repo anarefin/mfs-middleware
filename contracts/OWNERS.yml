@@ -34,6 +34,8 @@ files:
   events/mw-core-mock/core.event.v1.schema.json: mw-core-mock
   events/mw-notify/mw.notify.request.v1.schema.json: mw-notify
   events/mw-notify/mw.notify.status.v1.schema.json: mw-notify
+  # push device tokens (ticket 110): owned by its consumer mw-notify, produced by mw-app-gateway
+  events/mw-notify/mw.notify.push-token.v1.schema.json: mw-notify
   events/mw-audit-dw/mw.audit.event.v1.schema.json: mw-audit-dw
   events/mw-admin-api/mw.config.changed.v1.schema.json: mw-admin-api
   events/mw-admin-api/mw.txn.action.v1.schema.json: mw-admin-api

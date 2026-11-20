@@ -22,6 +22,8 @@ mw:
       enabled: false
     email:
       enabled: false
+    push:
+      enabled: false
     dispatch:
       enabled: false
     consumers:

@@ -167,4 +167,52 @@ class RuleEngineTest {
     assertThat(unknown).isEmpty();
     assertThat(engine.requestsFor(addMoney("COMPLETED", "01711000001"), List.of(email))).isEmpty();
   }
+
+  static final RuleRecord PUSH_COMPLETED = new RuleRecord("push-txn-completed", "mw.txn.status.v1",
+      "status == 'COMPLETED' and txnType matches 'P2P|CASH_IN|CASH_OUT|TOPUP|BILL_PAY|MERCHANT_PAY|ADD_MONEY_BANK'",
+      "PUSH_TXN_COMPLETED", "INITIATOR", "PUSH", "TXN");
+
+  /** A wallet with a registered device token. */
+  static RuleEngine.ContactLookup tokens(Map<String, String> byWallet) {
+    return new RuleEngine.ContactLookup() {
+      @Override
+      public Optional<String> emailOf(String partyId) {
+        return Optional.empty();
+      }
+
+      @Override
+      public Optional<String> pushTokenOf(String partyId) {
+        return Optional.ofNullable(byWallet.get(partyId));
+      }
+    };
+  }
+
+  @Test
+  void aPushRuleGoesToTheRecipientsRegisteredDeviceTokenOnly() {
+    RuleEngine.ContactLookup lookup = tokens(Map.of("01711000001", "tok-device-abc123"));
+
+    List<NotificationRequest> known =
+        engine.requestsFor(p2p("COMPLETED", "01711000001", "01811000002"), List.of(PUSH_COMPLETED), lookup);
+    List<NotificationRequest> unknown =
+        engine.requestsFor(p2p("COMPLETED", "01711000009", "01811000002"), List.of(PUSH_COMPLETED), lookup);
+
+    assertThat(known).singleElement().satisfies(r -> {
+      assertThat(r.messageId()).isEqualTo(TXN + ":push:push-txn-completed");
+      assertThat(r.channels()).containsExactly(Channel.PUSH);
+      assertThat(r.recipient().pushToken()).isEqualTo("tok-device-abc123");
+      assertThat(r.recipient().msisdn()).isEqualTo("01711000001");
+      assertThat(r.params()).containsEntry("amount", "500.00").containsEntry("txnType", "P2P");
+    });
+    assertThat(unknown).isEmpty();
+  }
+
+  @Test
+  void thePushRuleSkipsTxnsThatMoveNoMoney() {
+    RuleEngine.ContactLookup lookup = tokens(Map.of("01711000001", "tok-device-abc123"));
+    TxnStatusEvent balance = new TxnStatusEvent(TXN, "corr-1", "CUSTOMER_APP", "BALANCE", "COMPLETED",
+        new Party("MSISDN", "01711000001", null), new Party("WALLET", "01711000001", "CUSTOMER"),
+        new Party("WALLET", "01711000001", "CUSTOMER"), new Amount(0, "BDT"), null, null, null, "en", null, null);
+
+    assertThat(engine.requestsFor(balance, List.of(PUSH_COMPLETED), lookup)).isEmpty();
+  }
 }

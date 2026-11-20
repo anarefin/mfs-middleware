@@ -35,7 +35,7 @@ public record NotificationRequest(
   public record Recipient(
       @Sensitive(SensitiveType.MSISDN) String msisdn,
       @Sensitive(SensitiveType.SECRET) String email,
-      @Sensitive(SensitiveType.SECRET) String pushToken,
+      @Sensitive(SensitiveType.PUSH_TOKEN) String pushToken,
       String subjectId) {}
 
   public NotificationRequest {

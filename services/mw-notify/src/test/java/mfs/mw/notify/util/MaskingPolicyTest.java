@@ -46,6 +46,12 @@ class MaskingPolicyTest {
   }
 
   @Test
+  void pushTokenKeepsLastSixOnly() {
+    assertThat(MaskingPolicy.mask(SensitiveType.PUSH_TOKEN, "tok-device-abc123")).isEqualTo("****abc123");
+    assertThat(MaskingPolicy.mask(SensitiveType.PUSH_TOKEN, "abc123")).isEqualTo("****");
+  }
+
+  @Test
   void shortOrEmptyValuesNeverLeakDigits() {
     assertThat(MaskingPolicy.mask(SensitiveType.MSISDN, "12345")).isEqualTo("****");
     assertThat(MaskingPolicy.mask(SensitiveType.NID, "12")).isEqualTo("****");
