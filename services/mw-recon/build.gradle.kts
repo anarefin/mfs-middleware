@@ -68,6 +68,9 @@ dependencies {
     implementation("com.hierynomus:sshj:0.41.2")
     implementation("com.prowidesoftware:pw-swift-core:SRU2025-10.3.20")
     // Prowide's MtSwiftMessage carries JPA annotations; their classes on the compile path keep -Werror quiet.
+    // Recon reports (ticket 127, FRS REC-05, REC-06): XLSX through Apache POI, PDF through OpenPDF; CSV by hand.
+    implementation("org.apache.poi:poi-ooxml:6.0.0")
+    implementation("com.github.librepdf:openpdf:3.0.5")
     compileOnly("jakarta.persistence:jakarta.persistence-api")
     testCompileOnly("jakarta.persistence:jakarta.persistence-api")
 
