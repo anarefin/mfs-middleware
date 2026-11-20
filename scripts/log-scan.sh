@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Container log scan (spec 18.3, 21.1, WP29, tickets 46, 72, 87): no PIN (plain or ciphertext), no
-# assertion, no unmasked MSISDN, no unmasked NID and no partner credential in any log line.
+# assertion, no unmasked MSISDN, no unmasked NID or bank account number and no partner credential in any log line.
 # Usage: scripts/log-scan.sh            every container log of the MVP project (run after scripts/api-test.sh)
 #        scripts/log-scan.sh FILE...    the given files ('-' = stdin), e.g. saved logs
 # Exit 1 on a finding. A finding is printed with its source and line number and the matched
@@ -12,6 +12,9 @@
 #              set aside first: a whole UUID (8-4-4-4-12 hex) anywhere, a traceparent value, a
 #              32/16-hex value of a traceId/spanId field. Digits next to such an id still count.
 #   nid        a field named nid / nationalId / national_id / nidNumber holding 10-17 digits
+#   account    (ticket 117e) a field named account / accountNumber / accountNo / account_number /
+#              bankAccount / debitAccount / creditAccount holding 6+ digits, or a party
+#              {"type":"BANK_ACCOUNT","id":"<6+ digits>"} (masking leaves ****1234)
 #   pin        a field named pin / newPin / oldPin / pinBlock holding anything but stars or
 #              [REDACTED]; also a field named encryptedPin / pinCiphertext / ciphertext with any value
 #   ciphertext a base64 run of 340+ characters (RSA-2048 OAEP ciphertext is 344, the RSA-3072
@@ -74,6 +77,10 @@ scan() { # scan SOURCE-LABEL < lines
       plain = systemids(line)
       if (match(plain, /(^|[^0-9])(\+?880|0)1[3-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]([^0-9]|$)/)) report("msisdn", substr(plain, RSTART, RLENGTH))
       if (match(lower, /(^|[^a-z])"?(nid|nationalid|national_id|nidnumber)"?[ ]*[:=][ ]*"?[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]/)) report("nid", substr(line, RSTART, RLENGTH))
+      # bank account number (ticket 117e): an account field, or a BANK_ACCOUNT party id, with 6+ digits
+      if (match(lower, /(^|[^a-z_])"?(account|accountnumber|accountno|account_number|account_no|bankaccount|debitaccount|creditaccount)"?[ ]*[:=][ ]*"?[0-9][0-9][0-9][0-9][0-9][0-9]/)) report("account", substr(line, RSTART, RLENGTH))
+      else if (match(lower, /"type"[ ]*:[ ]*"bank_account"[ ]*,[ ]*"id"[ ]*:[ ]*"[0-9][0-9][0-9][0-9][0-9][0-9]/)) report("account", substr(line, RSTART, RLENGTH))
+      else if (match(lower, /"id"[ ]*:[ ]*"[0-9][0-9][0-9][0-9][0-9][0-9][0-9]*"[ ]*,[ ]*"type"[ ]*:[ ]*"bank_account"/)) report("account", substr(line, RSTART, RLENGTH))
       # (a value never starts with ':': "encrypted_pin::text" is a SQL cast in a logged statement)
       if (match(lower, /(^|[^a-z])"?(pin|newpin|oldpin|pinblock)"?[ ]*[:=][ ]*"?[^"*,} \[:][^"*,} \[]*/)) {
         v = substr(lower, RSTART, RLENGTH); if (v !~ /(null|redacted)$/) report("pin", substr(line, RSTART, RLENGTH))
@@ -110,8 +117,8 @@ else
   done
 fi
 if [ "$rc" -ne 0 ]; then
-  printf 'log-scan FAILED: PIN, ciphertext, assertion, unmasked MSISDN/NID or a credential in the logs above\n' >&2
+  printf 'log-scan FAILED: PIN, ciphertext, assertion, unmasked MSISDN/NID/account number or a credential in the logs above\n' >&2
 else
-  info "log-scan: no PIN, PIN ciphertext, unmasked MSISDN, NID or credential found"
+  info "log-scan: no PIN, PIN ciphertext, unmasked MSISDN, NID, account number or credential found"
 fi
 exit "$rc"

@@ -19,8 +19,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.card`. Follow
 ## Responsibilities
 
 - Card acquiring adapter (ticket 118a, FRS UC-13, EXT-14, FL-07, PLT-014; ADR D32 decision 5: one service
-  per party). Copied from mw-adapter-merchant (itself the bank copy; the engine's callback support stays in
-  the copy unused: the 3-D Secure webhook endpoint comes with ticket 118b). Consumes
+  per party). Copied from mw-adapter-merchant (itself the bank copy). Consumes
   `mw.partner.request.card.v1` (`messaging/CardRequestHandler`, a Spring Kafka listener, retry topics +
   DLQ, `mw.card.request-consumer.enabled`), checks the request (`mapper/PartnerCallMapper`: family `card`,
   txnType `ADD_MONEY_CARD`, a partner, credit party the customer's `WALLET`, a positive amount except for
@@ -38,6 +37,26 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.card`. Follow
   telco's/billpay's (see mw-adapter-billpay CLAUDE.md): FAILED `MW-PTR-CYBERSOURCE-<suffix>` from the
   record's `error-map`, FAILED `MW-SYS-PARTNER_*` when nothing left, UNKNOWN `MW-TMO-PARTNER_*`, a PAY past
   its `deadlineAt` refused unsent, `MW-PTR-UNKNOWN-PARTNER` for an unknown partner id (no aliases).
+- 3-D Secure webhook (ticket 118b, FRS UC-13, PLT-014; copy of mw-adapter-bank's ticket 22 callback path):
+  `POST /partner/{partnerId}/callback/**` (`controller/PartnerCallbackController`; outside only through the
+  APISIX route `partner-cybersource-callback`, `/partner/cybersource/callback/*`). The acquirer posts
+  `{clientReference, sessionId, transientToken, status AUTHENTICATED|FAILED, code}` after the hosted page.
+  `service/PartnerCallbackService`: the URL's partner must have a record of its own; the engine
+  (`PartnerGateway.inbound`) verifies the hmac-sha256 signature over method, path, timestamp, nonce and
+  body (300 s skew) and the nonce once per partner (`partner/auth/CallbackNonces`, table `callback_nonce`,
+  ticket 99), then maps the body with the record's `CALLBACK.response` (AUTHENTICATED with a token ->
+  SUCCESS, `partnerRef` the session id, `attributes {sessionId, transientToken}`; FAILED with a code ->
+  FAILED `MW-PTR-CYBERSOURCE-<suffix>`, no token; anything else 400 `MW-VAL-002`); `clientReference` must
+  be a reference this adapter issued for that partner (else 404 `MW-VAL-003`); bad signature, stale
+  timestamp or reused nonce 401 `MW-AUTH-001`. Dedup (PLT-014): `inboundId` = name UUID of partner + our
+  reference + outcome (`mapper/PartnerInboundMapper`), inbox row and the synchronous publish on
+  `mw.partner.inbound.v1` (family `card`, kind `CALLBACK`) in one transaction; 200 `{ACCEPTED, inboundId,
+  duplicate}` only once the event is on Kafka (Kafka down: 503, the acquirer sends again); a duplicate
+  webhook is acknowledged `duplicate: true` without a second record. The transient token travels to the
+  orchestrator in `attributes` (it comes back on AUTHORISE_CAPTURE); never logged. Tests
+  `controller/PartnerCallbackIT`, `controller/CallbackReplayIT`, `service/PartnerCallbackServiceTest`,
+  `mapper/PartnerInboundMapperTest`. The orchestrator consumes the card family with the
+  `AddMoneyCardFlow` (ticket 118b part 2).
 - Stable partner reference (`service/PartnerReferenceService`, table `partner_reference` in own schema
   `card_ref`): `BITS` + txnId hex, stored on first use (the acquirer's `clientReference`).
 - The partner call runs on a virtual-thread executor (`cardCallExecutor`), never on the Kafka consumer thread.
@@ -67,7 +86,9 @@ adapters apart from the package (`scripts/test/test_partner_engine_copies.sh`): 
   THREE_DS_FAILED, `4003` INSUFFICIENT_FUNDS, `4004` REFUND_REFUSED, `4005` SESSION_EXPIRED; `9876`
   ambiguous); anything else UNKNOWN. Base URL `CYBERSOURCE_BASE_URL`, hosts `MW_CYBERSOURCE_ALLOWED_HOSTS`
   (floor in `application.yml`), timeout 10 s, resilience4j instance `cybersource` (8 s slow call, bulkhead
-  100). Test: `route/CybersourceRouteIT` (WireMock). mw-admin-api's copy of the seed comes with 118b.
+  100). Test: `route/CybersourceRouteIT` (WireMock). `CALLBACK.response` reads the 3-D Secure webhook
+  (above). mw-admin-api's copy of the seed: `partner-seeds/dev/cybersource.json` (ticket 118b; the simulator
+  URL written into the route; keep identical).
 - **Test-only partner** `c2wbank` (`src/test/resources/config/application-dev.yml`): the REST
   async-callback record of mw-adapter-bank, kept so the shared engine tests and `CardRequestRouteIT`
   (request handling, outcomes, circuit breaker, audit) run unchanged.
@@ -86,6 +107,8 @@ adapters apart from the package (`scripts/test/test_partner_engine_copies.sh`): 
   `samples/mw.partner.request.v1/card`) in; own type `dto/PartnerRequest`. The orchestrator produces it
   with ticket 118b.
 - `events/mw-orchestrator/mw.partner.reply.v1` (family `card`) out; own type `dto/PartnerReply`.
+- `events/mw-orchestrator/mw.partner.inbound.v1` (family `card`, added by ticket 118b; samples
+  `samples/mw.partner.inbound.v1/card`) out; own type `dto/PartnerInbound`.
 - `events/mw-audit-dw/mw.audit.event.v1` out (`partner.call.completed`).
 - `events/mw-admin-api/mw.config.changed.v1` in (PARTNER route records, family `card`).
 - `events/mw-adapter-billpay/mw.partner.route.status.v1` and `mw.partner.recon.v1` out (owner
