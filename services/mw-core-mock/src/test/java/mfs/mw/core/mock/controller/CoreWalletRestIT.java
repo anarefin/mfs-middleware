@@ -552,6 +552,55 @@ class CoreWalletRestIT {
     assertThat(total(PAYER)).isEqualTo(SEED - 5200);
   }
 
+  // --- e-money total (ticket 127c, REC-07: mw-recon's trust position job) ---
+
+  private MvcTestResult getAs(String client, String uri) {
+    return mvc.get().uri(uri).header("Authorization", InternalTokens.bearer(client)).exchange();
+  }
+
+  @Test
+  void theEmoneyTotalSumsEveryHolderWalletWithHeldMoneyAndLeavesSystemWalletsOut() {
+    jdbc.update("update wallet set balance_minor = 0, held_minor = 0");
+    jdbc.update("update wallet set balance_minor = 100000, held_minor = 30000 where id = ?", PAYER);
+    jdbc.update("update wallet set balance_minor = 25000, status = 'LOCKED' where id = ?", PAYEE);
+    jdbc.update("insert into wallet (id, msisdn, type, balance_minor) values ('T-AGENT-127C', null, 'AGENT', 70000)");
+    jdbc.update("insert into wallet (id, msisdn, type, balance_minor) values ('T-DSO-127C', null, 'DSO', 5)");
+    jdbc.update("insert into wallet (id, msisdn, type, balance_minor) values ('T-SYS-127C', null, 'SYSTEM', 999999)");
+    try {
+      JsonNode total = served(getAs("mw-recon", "/core/v1/reports/emoney-total"), "/core/v1/reports/emoney-total", "get", 200);
+
+      assertThat(total.path("total").path("valueMinor").asLong()).isEqualTo(195005);
+      assertThat(total.path("asOf").asString()).isNotBlank();
+      java.util.Map<String, Long> byType = new java.util.HashMap<>();
+      total.path("byType").forEach(t -> byType.put(t.path("type").asString(), t.path("total").path("valueMinor").asLong()));
+      assertThat(byType).containsEntry("CUSTOMER", 125000L).containsEntry("AGENT", 70000L).containsEntry("DSO", 5L)
+          .doesNotContainKey("SYSTEM");
+    } finally {
+      jdbc.update("delete from wallet where id like 'T-%-127C'");
+    }
+  }
+
+  @Test
+  void onlyMwReconMayReadTheEmoneyTotal() {
+    assertThat(getAs("mw-orchestrator", "/core/v1/reports/emoney-total")).hasStatus(403);
+    assertThat(getAs("mw-admin-api", "/core/v1/reports/emoney-total")).hasStatus(403);
+    assertThat(mvc.get().uri("/core/v1/reports/emoney-total").exchange()).hasStatus(401);
+  }
+
+  @Test
+  void aMwReconTokenReadsTheReportAndNothingElse() {
+    long before = total(PAYER);
+    Signed s = signed(CoreCommandsTestSupport.txnId(), "P2P", PAYER, "WALLET", PAYEE, 1000);
+    assertThat(mvc.post().uri("/core/v1/transfers").header("Authorization", InternalTokens.bearer("mw-recon"))
+        .header("X-Txn-Assertion", s.assertion()).contentType(MediaType.APPLICATION_JSON).content(s.body()).exchange())
+        .hasStatus(403);
+    assertThat(postAs("mw-recon", "/core/v1/credits", "{}")).hasStatus(403);
+    assertThat(getAs("mw-recon", "/core/v1/balance/" + PAYER)).hasStatus(403);
+    assertThat(getAs("mw-recon", "/core/v1/accounts/" + PAYER)).hasStatus(403);
+    assertThat(total(PAYER)).isEqualTo(before);
+    assertThat(getAs("mw-recon", "/core/v1/reports/emoney-total")).hasStatus(200);
+  }
+
   // --- account unlock and KYC factors (ticket 95b: mw-admin-api and mw-auth over REST) ---
 
   private MvcTestResult postAs(String client, String uri, String body) {

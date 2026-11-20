@@ -5,12 +5,14 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import mfs.mw.core.mock.dto.EmoneyTotalView;
 import mfs.mw.core.mock.dto.AccountActionResult;
 import mfs.mw.core.mock.dto.AccountUnlockRequest;
 import mfs.mw.core.mock.dto.AccountView;
@@ -114,6 +116,21 @@ public class CoreWalletService {
   public AccountView account(String msisdn) {
     Wallet w = wallet(msisdn);
     return new AccountView(w.id(), w.msisdn(), w.type(), w.status(), w.kycLevel(), w.holderName());
+  }
+
+  /** REC-07 (ticket 127c): every e-money wallet's balance summed, by type; changes nothing. */
+  @Transactional(readOnly = true)
+  public EmoneyTotalView emoneyTotal() {
+    List<WalletRepository.TypeSum> sums = wallets.emoneyByType();
+    long total = 0;
+    long count = 0;
+    List<EmoneyTotalView.TypeTotal> byType = new ArrayList<>();
+    for (WalletRepository.TypeSum t : sums) {
+      total = Math.addExact(total, t.balanceMinor());
+      count += t.walletCount();
+      byType.add(new EmoneyTotalView.TypeTotal(t.type(), t.walletCount(), Amount.bdt(t.balanceMinor())));
+    }
+    return new EmoneyTotalView(clock.instant(), Amount.bdt(total), count, byType);
   }
 
   /** WAL-03: available (total minus held), held and total, as an ops or system read. */

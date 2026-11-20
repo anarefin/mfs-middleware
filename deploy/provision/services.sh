@@ -260,10 +260,12 @@ provision_mw_data_export() {
   db_role data_export_rw data_export
 }
 
-# Trust-bank SFTP password (ticket 126). No mTLS certificate: the service does not call mw-crypto.
+# Trust-bank SFTP password (ticket 126) and the realm services client secret of the trust position job's core
+# e-money total (ticket 127c). No mTLS certificate: the service does not call mw-crypto.
 provision_mw_recon() {
   gen_once spring.datasource.password 40
   sync_env mw.recon.trust.password SFTP_DEV_PASSWORD
+  sync_env mw.recon.core.client-secret KC_MW_RECON_SECRET
   db_role recon_rw recon
 }
 

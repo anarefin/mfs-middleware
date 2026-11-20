@@ -154,7 +154,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |
 | `UC-21` AML | ticket 125 |
-| `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports, the exception queue and its maker-checker actions done (tickets 127, 127b); the trust position job and the API suite folder remain 127c |
+| `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports, the exception queue and its maker-checker actions done (tickets 127, 127b); the trust position job and API suite folder `61-recon-reports` done (ticket 127c; open item for Upay: the real core must serve the e-money total endpoint, see REC-07) |
 
 ## 3. Common platform (FRS 3)
 
@@ -303,6 +303,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | WAL-11 | ticket 116 | `POST /core/v1/reversals` built (ticket 93, full, idempotent, once); partial reversal for refunds built (116a), used by the checkout refund API (116c) |
 | WAL-12 | done | `GET /core/v1/statements` (tickets 93, 94); the app statement `GET /app/v1/statement` (107b, max 90 days, JSON and CSV). USSD mini statement remains ticket 109 |
 | WAL-13 | done | `GET /core/v1/transactions/{txnId}` (ticket 93: status and entries); the orchestrator's HOLDING query, inquiry, reversal query and credit check use it (ticket 95a) |
+| (REC-07) | done, open item | not an FRS 7.2 id: `GET /core/v1/reports/emoney-total` (ticket 127c, user decision 2026-11-20), the sum of every e-money wallet (all types but SYSTEM) for mw-recon's trust position, only client mw-recon. **Open item for Upay:** the real core must provide this endpoint |
 
 ## 8. Supporting services (FRS 8)
 
@@ -323,7 +324,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | REC-04 | done | classes MATCHED, MISSING_IN_PARTNER, MISSING_IN_UPAY, AMOUNT_MISMATCH, STATUS_MISMATCH (`ReconMatchingIT`, ticket 126) |
 | REC-05 | tickets 127, 134 | exception work queue read and explain API built (ticket 127: `GET /internal/v1/recon/exceptions`, suggested action, `POST .../explanations`, `ReconReportsIT`); the `recon_exception` maker-checker action in mw-admin-api (FORCE_COMMIT / REVERSE through the ticket 37 paths, recon-maker / recon-checker) and ACTIONED / RESOLVED in mw-recon built (ticket 127b, `ExceptionActionIT` in both); console 134 |
 | REC-06 | tickets 127, 134 | reports built (ticket 127): `GET /internal/v1/recon/reports` CSV, XLSX, PDF, daily report stored in `recon.report` (`ReportServiceTest`); console download 134 |
-| REC-07 | ticket 127 | trust position computed and stored with an `AMOUNT_MISMATCH`/`TRUST_POSITION` exception on a gap (`TrustPositionService`, `TrustPositionTest`, ticket 127); the scheduled job waits for a core e-money total endpoint (ticket 127 follow-up) |
+| REC-07 | done | trust position computed and stored with an `AMOUNT_MISMATCH`/`TRUST_POSITION` exception on a gap (`TrustPositionService`, `TrustPositionTest`, ticket 127); the scheduled `TrustPositionJob` (00:45 Asia/Dhaka, yesterday) reads the core's `GET /core/v1/reports/emoney-total` with mw-recon's realm services token (`CoreEmoneyClient`, `TrustPositionJobIT`, core-mock `CoreWalletRestIT`, API folder `61-recon-reports`; ticket 127c). **Open item for Upay:** the real core must provide `GET /core/v1/reports/emoney-total` (contract `core-wallet.v1`, ideally its end-of-day snapshot); mw-core-mock answers its ledger as it is at the call |
 | REC-08 | done | file register, filename plus sha256, processed once (`FileRegisterIT`, ticket 126) |
 | CMP-01 | ticket 125 | AML file export |
 | CMP-02 | tickets 125, 134 | HOLD and BLOCK applied (wallet lock built in mw-auth and the core); release in 134 |
