@@ -109,11 +109,21 @@ public final class PayloadScrub {
   }
 
   /**
-   * Blanks the content of every secret element, whole, in one linear pass (no regex, no recursion,
-   * no depth bound): a tokenizer walks the tags; at a secret opening tag it skips to the matching
-   * close by counting nested tags and writes {@code ****} instead. An element that is never closed
-   * blanks everything after its opening tag (fail closed). Comments, CDATA, processing instructions
-   * and declarations are copied as text (the text scrubs still run over them).
+   * Blanks the content of every secret element, whole, in one linear pass that fails closed (no
+   * regex, no recursion, no depth bound):
+   *
+   * <ul>
+   *   <li>comments and CDATA sections are blanked whole ({@code <!--****-->}, {@code
+   *       <![CDATA[****]]>}); declarations ({@code <!DOCTYPE ...>}) and processing instructions other
+   *       than the XML declaration too ({@code <!****>}, {@code <?****?>}); an unterminated one blanks
+   *       the rest of the body;
+   *   <li>a {@code <} that does not start a well-formed tag (a stray {@code <}, an unmatched quote, a
+   *       {@code <} inside an attribute value) is copied as text and the scan goes on right after it;
+   *   <li>at a secret opening tag everything up to the close tag of that very element is blanked:
+   *       nested elements are tracked by name and a close tag that matches neither the innermost open
+   *       element nor the secret element is ignored, so blanking goes on; an element that is never
+   *       closed blanks the rest of the body.
+   * </ul>
    */
   static String xml(String text) {
     if (text.indexOf('<') < 0) {
@@ -129,41 +139,121 @@ public final class PayloadScrub {
         break;
       }
       out.append(text, i, lt);
-      int end = tagEnd(text, lt);
-      if (end < 0) {
-        out.append(text, lt, n);
-        break;
-      }
-      String name = openingName(text, lt, end);
-      if (name != null && isSecretKey(localName(name))) {
-        out.append(text, lt, end + 1).append(STARS);
-        int close = matchingClose(text, end + 1);
-        if (close < 0) {
-          return out.toString(); // never closed: the rest is blanked
+      Markup m = markup(text, lt);
+      switch (m.kind()) {
+        case STRAY -> {
+          out.append('<');
+          i = lt + 1;
         }
-        out.append("</").append(name).append('>');
-        i = close;
-      } else {
-        out.append(text, lt, end + 1);
-        i = end + 1;
+        case UNTERMINATED -> {
+          out.append(m.prefix()).append(STARS);
+          return out.toString();
+        }
+        case BLANKED -> {
+          out.append(m.prefix()).append(STARS).append(m.suffix());
+          i = m.end();
+        }
+        case OPEN -> {
+          out.append(text, lt, m.end());
+          if (isSecretKey(localName(m.name()))) {
+            out.append(STARS);
+            int close = closeOf(text, m.end(), m.name());
+            if (close < 0) {
+              return out.toString(); // never closed: the rest is blanked
+            }
+            out.append("</").append(m.name()).append('>');
+            i = close;
+          } else {
+            i = m.end();
+          }
+        }
+        default -> { // CLOSE, EMPTY, XML_DECL
+          out.append(text, lt, m.end());
+          i = m.end();
+        }
       }
     }
     return out.toString();
   }
 
-  /** Index of the {@code >} that ends the markup starting at {@code lt}, or -1. */
-  private static int tagEnd(String text, int lt) {
+  private enum Kind { STRAY, UNTERMINATED, BLANKED, OPEN, CLOSE, EMPTY, XML_DECL }
+
+  /** One piece of markup at a {@code <}: its kind, element name, end (exclusive) and blanked frame. */
+  private record Markup(Kind kind, String name, int end, String prefix, String suffix) {}
+
+  private static final Pattern XML_DECLARATION =
+      Pattern.compile("<\\?xml(?:\\s+[A-Za-z]+\\s*=\\s*(?:\"[^\"<>]*\"|'[^'<>]*'))*\\s*\\?>");
+
+  private static Markup markup(String text, int lt) {
     if (text.startsWith("<!--", lt)) {
-      int e = text.indexOf("-->", lt + 4);
-      return e < 0 ? -1 : e + 2;
+      return blanked(text, lt, "<!--", "-->");
     }
     if (text.startsWith("<![CDATA[", lt)) {
-      int e = text.indexOf("]]>", lt + 9);
-      return e < 0 ? -1 : e + 2;
+      return blanked(text, lt, "<![CDATA[", "]]>");
     }
+    if (text.startsWith("<?", lt)) {
+      int e = text.indexOf("?>", lt + 2);
+      if (e < 0) {
+        return new Markup(Kind.UNTERMINATED, null, text.length(), "<?", "");
+      }
+      Matcher decl = XML_DECLARATION.matcher(text).region(lt, e + 2);
+      return decl.matches()
+          ? new Markup(Kind.XML_DECL, null, e + 2, "", "")
+          : new Markup(Kind.BLANKED, null, e + 2, "<?", "?>");
+    }
+    if (text.startsWith("<!", lt)) {
+      int e = declarationEnd(text, lt + 2);
+      return e < 0
+          ? new Markup(Kind.UNTERMINATED, null, text.length(), "<!", "")
+          : new Markup(Kind.BLANKED, null, e + 1, "<!", ">");
+    }
+    boolean closing = text.startsWith("</", lt);
+    int nameStart = closing ? lt + 2 : lt + 1;
+    int j = nameStart;
+    while (j < text.length() && isNameChar(text.charAt(j), j == nameStart)) {
+      j++;
+    }
+    if (j == nameStart) {
+      return stray();
+    }
+    String name = text.substring(nameStart, j);
+    int end = tagEnd(text, j);
+    if (end < 0) {
+      return stray();
+    }
+    if (closing) {
+      return new Markup(Kind.CLOSE, name, end + 1, "", "");
+    }
+    return new Markup(text.charAt(end - 1) == '/' ? Kind.EMPTY : Kind.OPEN, name, end + 1, "", "");
+  }
+
+  private static Markup stray() {
+    return new Markup(Kind.STRAY, null, -1, "", "");
+  }
+
+  private static Markup blanked(String text, int lt, String open, String close) {
+    int e = text.indexOf(close, lt + open.length());
+    return e < 0
+        ? new Markup(Kind.UNTERMINATED, null, text.length(), open, "")
+        : new Markup(Kind.BLANKED, null, e + close.length(), open, close);
+  }
+
+  private static boolean isNameChar(char c, boolean first) {
+    return Character.isLetter(c) || c == '_' || c == ':' || (!first && (Character.isDigit(c) || c == '-' || c == '.'));
+  }
+
+  /**
+   * Index of the {@code >} ending the tag whose name ends at {@code from}, or -1 when the tag is not
+   * well formed: a {@code <} before it (XML forbids one in attribute values too) or an unmatched quote.
+   * Stops at the next {@code <}, so the whole scan stays linear.
+   */
+  private static int tagEnd(String text, int from) {
     char quote = 0;
-    for (int j = lt + 1; j < text.length(); j++) {
+    for (int j = from; j < text.length(); j++) {
       char c = text.charAt(j);
+      if (c == '<') {
+        return -1;
+      }
       if (quote != 0) {
         if (c == quote) {
           quote = 0;
@@ -172,27 +262,25 @@ public final class PayloadScrub {
         quote = c;
       } else if (c == '>') {
         return j;
-      } else if (c == '<') {
-        return -1; // not a tag: a stray '<' inside text
       }
     }
     return -1;
   }
 
-  /** The element name of an opening, not self-closing tag {@code text[lt..end]}, else null. */
-  private static String openingName(String text, int lt, int end) {
-    if (lt + 1 >= end || text.charAt(end - 1) == '/') {
-      return null;
+  /** End of a declaration ({@code <!DOCTYPE ... [ ... ]>}), brackets counted; -1 when unterminated. */
+  private static int declarationEnd(String text, int from) {
+    int brackets = 0;
+    for (int j = from; j < text.length(); j++) {
+      char c = text.charAt(j);
+      if (c == '[') {
+        brackets++;
+      } else if (c == ']' && brackets > 0) {
+        brackets--;
+      } else if (c == '>' && brackets == 0) {
+        return j;
+      }
     }
-    char first = text.charAt(lt + 1);
-    if (!(Character.isLetter(first) || first == '_')) {
-      return null; // closing tag, comment, CDATA, declaration, processing instruction
-    }
-    int j = lt + 1;
-    while (j < end && !Character.isWhitespace(text.charAt(j)) && text.charAt(j) != '/') {
-      j++;
-    }
-    return text.substring(lt + 1, j);
+    return -1;
   }
 
   private static String localName(String name) {
@@ -201,29 +289,39 @@ public final class PayloadScrub {
   }
 
   /**
-   * Index just after the closing tag that ends the element whose content starts at {@code from}
-   * (nesting counted over every element), or -1 when it is never closed.
+   * Index just after the close tag of the secret element {@code secret} whose content starts at
+   * {@code from}, or -1 when it is never closed. Nested elements are tracked by name; a close tag that
+   * matches neither the innermost open element nor (with none open) the secret element is ignored.
+   * Comments, CDATA and the rest are skipped; an unterminated one means never closed.
    */
-  private static int matchingClose(String text, int from) {
-    int depth = 1;
+  private static int closeOf(String text, int from, String secret) {
+    java.util.ArrayDeque<String> open = new java.util.ArrayDeque<>();
     int i = from;
     while (true) {
       int lt = text.indexOf('<', i);
       if (lt < 0) {
         return -1;
       }
-      int end = tagEnd(text, lt);
-      if (end < 0) {
-        return -1;
-      }
-      if (text.startsWith("</", lt)) {
-        if (--depth == 0) {
-          return end + 1;
+      Markup m = markup(text, lt);
+      switch (m.kind()) {
+        case STRAY -> i = lt + 1;
+        case UNTERMINATED -> {
+          return -1;
         }
-      } else if (openingName(text, lt, end) != null) {
-        depth++;
+        case OPEN -> {
+          open.push(m.name());
+          i = m.end();
+        }
+        case CLOSE -> {
+          if (!open.isEmpty() && open.peek().equals(m.name())) {
+            open.pop();
+          } else if (open.isEmpty() && m.name().equals(secret)) {
+            return m.end();
+          }
+          i = m.end();
+        }
+        default -> i = m.end();
       }
-      i = end + 1;
     }
   }
 
