@@ -215,6 +215,14 @@ management:
       type: w3c
 
 mw:
+  # Internal account validation API /bank/v1/** (ticket 117b, contract api/mw-adapter-bank/bank.v1):
+  # a Keycloak realm services client-credentials JWT (audience mw-adapter-bank) of an allowed client.
+  # Callbacks and the actuator stay open (they have their own checks / live inside the app network).
+  internal-auth:
+    jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
+    issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
+    audience: mw-adapter-bank
+    allowed-clients: mw-app-gateway
   # Partner engine (ADR D28, package partner): a partner is a record holding its Camel YAML DSL
   # route (built from the mw-* Kamelets in classpath:kamelets), its JSONata mappings, the hosts it may
   # call and its error-code map. These are seeds (version 0); a mw.config.changed.v1 PARTNER record

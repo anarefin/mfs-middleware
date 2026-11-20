@@ -5574,6 +5574,75 @@
       ]
     },
     {
+      "name": "49 Biller catalogue amount rules",
+      "description": "Ticket 113c (FRS FL-04, FL-05). The app biller list comes from the mw-admin-api catalogue (dev seed, 57 billers). mw-orchestrator projects each BILLER record and refuses an amount the biller's rule does not allow (MINIMUM below the minimum, OPEN outside its range, FIXED other than the fetched bill) with MW-VAL-032 before any hold. Folder 06-billpay pays the FIXED billers DESCO and KGDCL without an attached fetched bill and stays green.",
+      "item": [
+        {
+          "name": "[billpay] the app biller list comes from the catalogue and shows its MINIMUM and OPEN billers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay] the app biller list comes from the catalogue and shows its MINIMUM and OPEN billers\", eval(MW.forRun(\";(async (MW, S) => {\\n      const b = S.record(await MW.app.billers('customer01'));\\n      S.status(200);\\n      const billers = (b.body || {}).billers || [];\\n      S.check('the catalogue billers are listed', billers.length >= 57, String(b));\\n      S.check('AMBERIT is listed', billers.some(x => x.code === 'AMBERIT'), String(b));\\n      S.check('DESCO_PRE is listed', billers.some(x => x.code === 'DESCO_PRE'), String(b));\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay] a MINIMUM biller refuses an amount below its minimum before any hold",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay] a MINIMUM biller refuses an amount below its minimum before any hold\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.previewBillPay('customer01', 'AMBERIT', 'AMB-12345', 9999, MW.pin);\\n      S.status(400);\\n      S.code('MW-VAL-032');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay] an OPEN biller refuses an amount below its range before any hold",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay] an OPEN biller refuses an amount below its range before any hold\", eval(MW.forRun(\";(async (MW, S) => {\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      await S.previewBillPay('customer01', 'DESCO_PRE', '12345678', 9999, MW.pin);\\n      S.status(400);\\n      S.code('MW-VAL-032');\\n      await S.noChange();\\n      await S.noHold('01711000001');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "60 Recon matching",
       "description": "Ticket 126, FRS REC-01, REC-04, EXT-06: an injected trust-bank line is classified MISSING_IN_UPAY. The test route is key-auth. partner-sftp is profile tester.",
       "item": [

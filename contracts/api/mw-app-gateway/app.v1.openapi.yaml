@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.12.0
+  version: 1.13.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -43,6 +43,15 @@ info:
     Push token (1.8.0, ticket 110): PUT /app/v1/notifications/push-token registers the app's FCM /
     APNs device token for the signed-in wallet's bound device; mw-notify then pushes transaction
     notices to it (SMS is always sent too). A new device binding drops the old device's token.
+
+    Linked bank accounts (1.13.0, ticket 117b, FRS FL-08): POST /app/v1/bank-accounts {bankCode,
+    accountNumber} runs the bank's account validation (AVL, mw-adapter-bank) first and links the
+    account only when the bank accepts it; GET lists and DELETE /app/v1/bank-accounts/{id} removes the
+    signed-in wallet's own accounts. The number is stored encrypted and never returned: every answer
+    carries its last 4 digits and the holder's first initial only. A bank refusal passes through (502
+    MW-PTR-BANK_<CODE>-<suffix>, 503 MW-SYS-PARTNER_*, 504 MW-TMO-PARTNER_*); 503 MW-SYS-016 (retryable)
+    when the bank adapter cannot be asked. A duplicate is 409 MW-IDEM-001; another wallet's id 404
+    MW-VAL-003. Session level, no signature.
 
     Saved billers, favourites and the inbox (1.10.0, ticket 107a): GET|POST|DELETE
     /app/v1/saved-billers and /app/v1/favourites are the signed-in wallet's own rows, stored by
@@ -729,6 +738,62 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+  /app/v1/bank-accounts:
+    get:
+      operationId: listBankAccounts
+      summary: The signed-in wallet's linked bank accounts
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      responses:
+        "200":
+          description: This wallet's linked accounts, newest first (last 4 digits only)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LinkedBankAccountList" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+    post:
+      operationId: linkBankAccount
+      summary: Validate a bank account with its bank (AVL) and link it to the signed-in wallet
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LinkBankAccountRequest" }
+      responses:
+        "201":
+          description: Validated and linked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LinkedBankAccount" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+        "504": { $ref: "#/components/responses/Error" }
+  /app/v1/bank-accounts/{id}:
+    delete:
+      operationId: unlinkBankAccount
+      summary: Remove one linked bank account of the signed-in wallet
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Removed }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
   /app/v1/notifications:
     get:
       operationId: listNotifications
@@ -1164,6 +1229,31 @@ components:
         favourites:
           type: array
           items: { $ref: "#/components/schemas/Favourite" }
+    LinkBankAccountRequest:
+      type: object
+      required: [bankCode, accountNumber]
+      additionalProperties: false
+      properties:
+        bankCode: { type: string, minLength: 1, maxLength: 41, description: "Bank profile code, e.g. dbbl" }
+        accountNumber: { type: string, minLength: 6, maxLength: 20, description: "Digits only; never returned" }
+    LinkedBankAccount:
+      type: object
+      required: [id, bankCode, accountLast4, holderName, verifiedAt]
+      additionalProperties: false
+      properties:
+        id: { type: string }
+        bankCode: { type: string }
+        accountLast4: { type: string, description: "Last 4 digits of the account number" }
+        holderName: { type: string, description: "The holder's first initial, e.g. R." }
+        verifiedAt: { type: string, format: date-time }
+    LinkedBankAccountList:
+      type: object
+      required: [accounts]
+      additionalProperties: false
+      properties:
+        accounts:
+          type: array
+          items: { $ref: "#/components/schemas/LinkedBankAccount" }
     InboxMessage:
       type: object
       required: [id, channel, msisdn, priority, body, read, createdAt]

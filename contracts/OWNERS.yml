@@ -52,6 +52,8 @@ files:
   api/mw-adapter-billpay/billpay.v1.openapi.yaml: mw-adapter-billpay
   # postpaid bill fetch (ticket 112b); consumed by mw-orchestrator, not routed by APISIX
   api/mw-adapter-telco/telco.v1.openapi.yaml: mw-adapter-telco
+  # account validation (AVL, ticket 117b); consumed by mw-app-gateway (linked accounts), not routed by APISIX
+  api/mw-adapter-bank/bank.v1.openapi.yaml: mw-adapter-bank
   api/mw-ussd/ussd-http.v1.openapi.yaml: mw-ussd
   api/mw-portal-api/portal-org.v1.openapi.yaml: mw-portal-api
   api/mw-orchestrator/txn-query.v1.openapi.yaml: mw-orchestrator

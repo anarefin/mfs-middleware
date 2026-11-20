@@ -271,6 +271,28 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `MW-CORE-*` is passed through. Session level, no signature. Caller `mw-app-gateway` is on the core's
   `allowed-clients` (and the dev compose list) and the Keycloak client has audience `mw-core-mock`. Tests:
   `AccountReadControllerTest`, `client/CoreWalletClientTest`, `contracts/ApiContractsTest`.
+- Linked bank accounts (ticket 117b, app.v1 1.13.0, FRS FL-08, UC-14; owned here, not in mw-auth: the
+  wallet-scoped app data such as saved billers lives here; `controller/BankAccountController`,
+  `service/LinkedAccountService`, `client/BankAccountClient`, `repository/LinkedBankAccountRepository`,
+  `util/AccountCipher`, `config/BankClientProperties` `mw.app-gateway.bank.*` `MW_BANK_BASE_URL`,
+  `config/LinkedAccountProperties`, schema `V11__linked_bank_account.sql`): `POST /app/v1/bank-accounts
+  {bankCode, accountNumber}` first asks mw-adapter-bank `POST /bank/v1/accounts/validate` (AVL; contract
+  `api/mw-adapter-bank/bank.v1.openapi.yaml`; the same `ServiceTokenClient` token, audience
+  `mw-adapter-bank`; a 401 refreshes the token once; no retry, every call is a partner INQUIRY) and stores the
+  account only when the bank accepts it: `account_ciphertext` AES-256-GCM (`v1:` + base64, random IV, the
+  wallet id as associated data), `account_lookup` HMAC-SHA256 of `bankCode|number` (unique per wallet: a repeat
+  is 409 `MW-IDEM-001`), `account_last4`, `holder_name` (first initial), `verified_at`. Both keys derive from
+  `mw.app-gateway.linked-accounts.encryption-key` (Vault `secret/mw-app-gateway`, created once by the dev
+  provisioning; never in a config file; at most `max-per-wallet` 5 accounts). The local key instead of the
+  mw-crypto envelope: mw-crypto's `KEK_COLUMN` allows mw-auth only and this service has no mw-crypto client;
+  moving to the envelope is an open item. Answers carry `accountLast4` and the initial only, never the number.
+  The adapter's envelope passes through (502 `MW-PTR-BANK_<CODE>-*`, 503 `MW-SYS-PARTNER_*`, 504
+  `MW-TMO-PARTNER_*`, 400); unreachable / other answers 503 `MW-SYS-016` (retryable); nothing is stored then.
+  `GET /app/v1/bank-accounts`, `DELETE /app/v1/bank-accounts/{id}` (another wallet's id 404 `MW-VAL-003`).
+  Session level, no signature; body schema `derived-schemas/app-v1-link-bank-account-request.json`. The
+  Keycloak client `mw-app-gateway` has the audience mapper `aud-mw-adapter-bank`. Tests
+  `service/LinkBankAccountIT` (PostgreSQL + WireMock adapter), `controller/BankAccountControllerTest`,
+  `util/AccountCipherTest`, `contracts/ApiContractsTest`.
 - Dev provisioning (`provision_mw_app_gateway` in `deploy/provision/services.sh`, run by the one-shot `provision` on every `docker compose up`, idempotent, dev only): role
   `app_gateway_rw`, schema `app_gateway`, `secret/mw-app-gateway` (DB password; `spring.data.redis.password`
   synced from `REDIS_PASSWORD`; `mw.app-gateway.auth.client-secret` from `KC_MW_APP_GATEWAY_SECRET`;
@@ -295,6 +317,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   event built by the real mapper validates), `contracts/ConsumedContractsTest` (every valid sample reads into
   the own DTO) and `contracts/ApiContractsTest` (app API responses, the billpay client's requests and mw-auth's answers).
 - `api/mw-adapter-billpay/billpay.v1.openapi.yaml` (client; own types `dto/Biller`, `dto/Bill`).
+- `api/mw-adapter-bank/bank.v1.openapi.yaml` (client, ticket 117b: `POST /bank/v1/accounts/validate`; own type
+  `dto/BankAccountValidation`).
 - `api/mw-notify/notify-internal.v1.openapi.yaml` (client, ticket 107a: `GET /internal/v1/inbox` and
   `POST /internal/v1/inbox/{id}/read` for the token's MSISDN; own type `dto/InboxMessage`).
 - `api/mw-core-mock/core-wallet.v1.openapi.yaml` (client, ticket 107b: WAL-01, WAL-05, WAL-12 for the

@@ -160,6 +160,9 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 48 | [p2p] a SOAP confirm and a REST confirm with the same idempotency key move the money once | 2 | P2P app idempotent |
 | 48 | [p2p] a SOAP request that is not the schema is MW-VAL-001 and does not echo the MSISDN | - | |
 | 48 | [docs] the app SOAP WSDL is listed on the dev docs page | - | |
+| 49 | [billpay] the app biller list comes from the catalogue and shows its MINIMUM and OPEN billers | - | |
+| 49 | [billpay] a MINIMUM biller refuses an amount below its minimum before any hold | 1 | BILL_PAY app failure |
+| 49 | [billpay] an OPEN biller refuses an amount below its range before any hold | 1 | BILL_PAY app failure |
 | 01 | [p2p] a P2P completes and moves the money once | 1 | P2P app success |
 | 01 | [p2p] a wrong PIN is refused by mw-auth at once, nothing published, no money moves | 1 | P2P app failure |
 | 01 | [p2p] a core rejection (over per-txn limit) moves no money | 1 | P2P app failure |

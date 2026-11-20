@@ -91,6 +91,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   productCode: BILL, billerCode}` and credit party `BILLER_ACCOUNT` as the app gateway sets them;
   same 30 s partner deadline, TSQ on UNKNOWN and NOT_FOUND rules as TOPUP; the sync bill fetch
   never reaches the orchestrator: mw-app-gateway asks mw-adapter-billpay over HTTP).
+  Biller amount rule (ticket 113c, FRS FL-04/FL-05): `messaging/ConfigChangedListener` also hands every
+  `mw.config.changed.v1` BILLER record (key `biller/<code>`, owner mw-admin-api) to `service/BillerRules`, which keeps
+  only the amount rule and its bounds in `txn.biller_rule` (V17, `repository/BillerRuleRepository`; an older version is
+  ignored, DELETE removes the row, a value without a known rule is logged `biller.config_refused` and skipped). At intake,
+  before routing and before any hold, `BillPayFlow.amountRefusal` refuses `MW-VAL-032` (bn and en): MINIMUM below
+  `minAmountMinor`, OPEN outside `minAmountMinor..maxAmountMinor` (both inclusive, each optional), FIXED other than the
+  fetched bill in `attributes.billOutstandingMinor`. FIXED without a fetched bill attached is left to the aggregator
+  (the channels do not attach it yet; folder `06-billpay` pays DESCO that way); a biller with no row is not checked.
+  `BillPayFlowTest`, `BillerAmountRuleIT`, API folder `49-biller-catalogue`. A stack whose orchestrator group already
+  committed the BILLER records before V17 gets each rule on the biller's next change (or a fresh stack).
   `AddMoneyBankFlow` (ticket 23, ADD_MONEY_BANK / C2W, WP16) is inbound money: `needsHold()` false,
   `creditsWallet()` true, steps VALIDATE + CALL_PARTNER + COMMIT, `PartnerCall` bank on
   `mw.partner.request.bank.v1` (partner `{partnerId: c2wbank, productCode: C2W}`, debit party
@@ -387,7 +397,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - Core reason -> error: `MW-CORE-<reasonCode>` (same pattern as the status contract), message
   English + Bengali for the reasons mw-core-mock gives (`mapper/CoreReplyMapper`), not retryable.
   Other codes used: `MW-VAL-010` unsupported txn type (a contract type without a flow, e.g. NPSB_OUT, NPSB_IN until their tickets; `SagaServiceIT`), `MW-VAL-011` amount <= 0, `MW-VAL-012`
-  partner missing for a flow with a partner leg, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`,
+  partner missing for a flow with a partner leg, `MW-VAL-030`/`MW-VAL-031` top-up amount, `MW-VAL-032` biller amount rule, `MW-IDEM-001`, `MW-TMO-001`, `MW-TMO-002`,
   `MW-TMO-003` (not found by inquiry, retryable), `MW-TMO-004` (inquiry exhausted),
   `MW-TMO-005` (conflicting inquiry answer), reversal `MW-VAL-020..022`, operator action not allowed `MW-VAL-023`, `MW-AUTH-020`, `MW-TMO-020`, bulk channel `MW-AUTH-021`;
   partner codes come from the adapter's reply.
@@ -410,7 +420,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   for a repeated request, taken from the repeated request). Stored in `transaction.reply_to`.
 - Schema `txn` (role `orchestrator_rw`): `transaction`, `saga_step`, `saga_timer`, `idempotency`
   (+ `outbox`, `inbox`, `shedlock`, `partner_call`, `core_call`, `wallet_txn`, `routing_rule`, `msisdn_prefix`,
-  `mnp_override`, `maintenance_message`); migrations V1..V14 (V14 routing tables and the prefix and partner
+  `mnp_override`, `maintenance_message`, `biller_rule`); migrations V1..V17 (V17 `biller_rule`, ticket 113c; V14 routing tables and the prefix and partner
   seeds, ticket 98; V12 `wallet_txn`,
   V13 = Java migration `repository/WalletPartyMigration` filling it for older rows, ADR D25, `WalletPartyMigrationIT`;
   V11 drops `transaction.encrypted_pin`, ticket 72; V6 `reversal_txn_id`, V7 drops
@@ -535,8 +545,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   the OpenAPI component schemas; also the test API's bodies). A new event type or family goes into
   `contracts.yml` and gets a fixture there. `mw.txn.request.v1` is consumed and, by the test-only
   reversal only, produced (fixture: the REVERSAL `TestApiService` publishes).
-- `dto/ConfigChangedEvent` (`mw.config.changed.v1`) exists with its schema tests, but no route
-  consumes the topic yet, so it is not in `contracts.yml`.
+- `dto/ConfigChangedEvent` (`mw.config.changed.v1`, owner mw-admin-api): routing resources (ticket 98) and BILLER
+  amount rules (ticket 113c), consumed by `messaging/ConfigChangedListener`.
 - `events/mw-core-mock/core.event.v1.schema.json`: own type `dto/CoreEvent` (payload read as a
   tree per `eventType`), read by `CoreEventListener`. Result events of the REST calls are ignored
   (ticket 95a). `HoldExpired` and `WalletStateChanged` are consumed (ticket 95c; `ConsumedContractsTest`).

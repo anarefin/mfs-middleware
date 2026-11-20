@@ -1,0 +1,4 @@
+{
+  "name": "49 Biller catalogue amount rules",
+  "description": "Ticket 113c (FRS FL-04, FL-05). The app biller list comes from the mw-admin-api catalogue (dev seed, 57 billers). mw-orchestrator projects each BILLER record and refuses an amount the biller's rule does not allow (MINIMUM below the minimum, OPEN outside its range, FIXED other than the fetched bill) with MW-VAL-032 before any hold. Folder 06-billpay pays the FIXED billers DESCO and KGDCL without an attached fetched bill and stays green."
+}

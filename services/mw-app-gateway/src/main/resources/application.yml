@@ -333,6 +333,19 @@ mw:
       base-url: ${MW_CORE_BASE_URL:http://mw-core-mock:8080}
       connect-timeout: 1s
       read-timeout: 2s
+    # mw-adapter-bank's account validation (ticket 117b, client/BankAccountClient): POST
+    # /bank/v1/accounts/validate before a bank account is linked, with the client-credentials token of
+    # client mw-app-gateway (audience mw-adapter-bank). Read timeout above the bank's 25 s partner limit.
+    bank:
+      base-url: ${MW_BANK_BASE_URL:http://mw-adapter-bank:8080}
+      connect-timeout: 1s
+      read-timeout: 28s
+    # Linked bank accounts (ticket 117b, FRS FL-08; service/LinkedAccountService): the account number
+    # is stored encrypted (AES-256-GCM under a key derived from encryption-key, which comes from Vault
+    # only: secret/mw-app-gateway, created once by the dev provisioning; >= 32 chars) with a keyed hash
+    # for uniqueness and its last 4 digits; responses and logs show the last 4 only.
+    linked-accounts:
+      max-per-wallet: 5
     # Preview and confirm (ticket 105, FRS CH-APP-05, PLT-026; service/PreviewService): a preview is kept
     # in Redis preview:<id> for ttl; its previewId is signed with HMAC-SHA256 under signing-key, which
     # comes from Vault only (secret/mw-app-gateway, created once by the dev provisioning; >= 32 chars).
