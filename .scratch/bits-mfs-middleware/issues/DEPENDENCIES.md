@@ -165,7 +165,12 @@
 127b-recon-exception-actions                127a              done     34m      62 files +2139 −41     29d8922b,da80afa9  (recon /internal needs mw-admin-api service JWT; open: post-approval recon call not retried; FORCE_COMMIT that fails stays ACTIONED; data-export DW schema needs txnId)
 127c-trust-job-suite                        127b              done     32m      37 files +991 −14      cf16db41,0f015d57  (core GET /core/v1/reports/emoney-total, report-clients mw-recon only; e-money total = every wallet type but SYSTEM; Newman 61 not run live; T12 + mock business day -> 137)
 128-mw-data-export                          123               done     -        189 files +12102 −46   9a1ccad6
-129-portal-bulk-sp                          95,116            open
+129-portal-bulk-sp                          95,116            split (129-split-decisions.md, 1 h cap)
+129a-bulk-xlsx-upload                       95,116            done     75m      18 files +1013 −114    a1acfbd1,fba3ae6b  (poi-ooxml 6.0.0; bounded zip/shared strings/number reader; path stays /bulk/batches)
+129b-bulk-preview                           129a              open
+129c-bulk-balance-retry                     129b              open   (check orchestrator replay of a FAILED idempotency key before retry; a row must never pay twice)
+129d-sp-portal                              129a              open
+129e-bulk-suite                             129b,129c,129d    open   (Newman 65)
 130-audit-frs                               97                done     90m      60 files +3231 −118    e8cfafea,ddb88b1f
 130b-audit-hops-channels-core-notify        130               open   (CHANNEL_IN in channels, CORE_CALL in orchestrator, NOTIFICATION in mw-notify; closes AUD-01/AUD-04 with 135)
 # --- M12 gate: UC-01, UC-20..22
