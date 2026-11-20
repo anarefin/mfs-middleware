@@ -7,7 +7,7 @@
   "required": ["schemaVersion", "family", "requestId", "txnId", "correlationId", "issuedAt", "deadlineAt", "payload"],
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
-    "family": { "enum": ["telco", "billpay", "bank", "interop", "compliance", "merchant", "card"] },
+    "family": { "enum": ["telco", "billpay", "bank", "interop", "compliance", "merchant", "card", "remit", "atm"] },
     "requestId": { "type": "string", "format": "uuid", "description": "Unique per request; echoed on the reply." },
     "txnId": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId" },
     "correlationId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CorrelationId" },
@@ -44,6 +44,12 @@
     },
     {
       "properties": { "family": { "const": "card" }, "payload": { "$ref": "mw.partner.request.v1/shared.payload.schema.json" } }
+    },
+    {
+      "properties": { "family": { "const": "remit" }, "payload": { "$ref": "mw.partner.request.v1/shared.payload.schema.json" } }
+    },
+    {
+      "properties": { "family": { "const": "atm" }, "payload": { "$ref": "mw.partner.request.v1/shared.payload.schema.json" } }
     }
   ]
 }

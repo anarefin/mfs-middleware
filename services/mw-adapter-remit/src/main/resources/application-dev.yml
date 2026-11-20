@@ -1,0 +1,81 @@
+# Dev profile only (SPRING_PROFILES_ACTIVE=dev): set by deploy/docker-compose.yml for the dev stack
+# and by the test config. The seed partner (version 0) points at mw-simulators over plain http; the
+# packaged application.yml has none, so a production start has no partners. Plain http still needs
+# MW_PARTNER_INSECURE_HTTP_HOSTS (docker-compose.yml sets it).
+mw:
+  partners:
+    # Dry-runs of new partner versions go to mw-simulators' programmable stub (ticket 83).
+    dry-run:
+      base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
+    instances:
+      # UCB IMT inbound international remittance (ticket 119, FRS UC-16 / EXT-15 / FL-10 / PLT-014;
+      # mw-simulators UcbImtMock). The partner calls the middleware: POST /remit/v1/credits and
+      # GET /remit/v1/credits/{partnerRef} (controller/RemitInboundController), every request signed
+      # hmac-sha256 with a timestamp and a nonce (X-Signature, X-Timestamp, X-Nonce; a replayed nonce
+      # or a stale timestamp is refused 401) with the field hmac-secret of Vault secret
+      # secret/mw-adapter-remit/ucb-imt (dev value UCB_IMT_HMAC_SECRET, deploy/provision/services.sh);
+      # never here. CALLBACK.response reads the verified request body into canonical fields (outcome
+      # PENDING = accepted, not yet credited); service/RemitInboundService checks them, deduplicates on
+      # the partner reference and publishes mw.partner.inbound.v1 (kind REMITTANCE, txnType REMIT_IN).
+      # Outbound (mw.partner.request.remit.v1, used by ticket 119b): PAY = CONFIRM_CREDIT pushes the
+      # credit's final outcome and Upay reference back to the partner; STATUS_QUERY reads it back.
+      ucb-imt:
+        family: remit
+        base-url: ${UCB_IMT_BASE_URL:http://mw-simulators:8080}
+        allowed-hosts: ${MW_UCB_IMT_ALLOWED_HOSTS:mw-simulators}
+        connect-timeout-ms: 3000
+        timeout-ms: 10000
+        read-timeout-ms: 12000
+        inquiry-retries: 1
+        auth:
+          scheme: hmac-sha256
+          credentials-ref: hmac-secret
+        # Raw bodies are audited masked: these fields by rule, everything else by free-text scrubbing.
+        sensitive-fields:
+          beneficiaryMsisdn: MSISDN
+          senderName: NAME
+        error-map:
+          "[4001]": { suffix: UNKNOWN_REMITTANCE, retryable: false }
+        route: |
+          - route:
+              from:
+                uri: direct:partner-ucb-imt
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.ucb-imt.base-url}&method=POST&path=/ucb-imt/v1/remittances/{reference}/confirmation&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=404,422"
+                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                          steps:
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.ucb-imt.base-url}&method=GET&path=/ucb-imt/v1/remittances/{reference}&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          # The verified inbound request, input {headers, body}. A credit names its partnerRef, the
+          # beneficiary wallet, the amount (major units as a string), the currency and the sender; a
+          # status query has no body. The service checks every field (RemitInboundService).
+          "[CALLBACK.response]": |
+            {"outcome": "PENDING", "partnerRef": body.partnerRef,
+             "attributes": {"beneficiaryMsisdn": body.beneficiaryMsisdn, "amount": body.amount,
+                            "currency": body.currency, "senderName": body.senderName,
+                            "senderCountry": body.senderCountry}}
+          # CONFIRM_CREDIT: the credit's outcome (attributes.outcome CREDITED | REJECTED) and our txnId.
+          "[PAY.request]": |
+            {"partnerRef": reference, "upayRef": txnId, "outcome": attributes.outcome}
+          "[PAY.response]": |
+            status = 200 or status = 201
+              ? {"outcome": "SUCCESS", "partnerRef": body.partnerRef}
+            : (status = 404 or status = 422) and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[STATUS_QUERY.response]": |
+            status = 200 and body.confirmed = true
+              ? {"outcome": "SUCCESS", "partnerRef": body.partnerRef}
+            : status = 200
+              ? {"outcome": "PENDING", "partnerRef": body.partnerRef}
+            : status = 404 and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}

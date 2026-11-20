@@ -67,6 +67,10 @@ public final class MockParties {
           new MockParty("merchant", "checkout merchant IPN receiver", List.of("ipn"), List.of("ipnId", "path")),
           new MockParty("cybersource", "card acquirer (CyberSource style): hosted page, 3-D Secure webhook, capture, refund",
               List.of("session", "authenticate", "capture", "status", "refund"), List.of("txnRef", "session")),
+          new MockParty("ucb-imt", "UCB IMT inbound remittance: pushes a signed credit to the middleware on demand",
+              List.of("trigger", "confirm", "status"), List.of("msisdn", "partnerRef")),
+          new MockParty("ucbatm", "UCB ATM switch: dispense status of a cardless cash-out",
+              List.of("status"), List.of("txnRef")),
           new MockParty("smsc", "SMSC, the SMPP 3.4 server of mw-notify (the DLR is its callback)",
               List.of("bind", "submit"), List.of("systemId", "msisdn"), SMSC_BEHAVIOURS),
           new MockParty("ussdgw", "USSD gateway: SMPP server mw-ussd binds to; dial plays a session (SMPP or HTTP)",
@@ -109,8 +113,11 @@ public final class MockParties {
   /** The file mocks (ticket 123): run by their scheduler jobs or {@code POST /mock-control/{party}/run}. */
   private static final Set<String> FILE_PARTIES = Set.of("aml", "trustbank", "dw");
 
-  /** Parties whose callback goes back on the caller's own connection (the SMSC's DLR): always on, no URL. */
-  private static final Set<String> IN_BAND_CALLBACKS = Set.of("smsc");
+  /**
+   * Callback dimension is decided without a {@code callbackUrl}: the SMSC's DLR (on the caller's connection)
+   * and UCB IMT's credit push (posted to {@code sim.ucb-imt.credit-url}; duplicate and late re-sends, MCK-06).
+   */
+  private static final Set<String> IN_BAND_CALLBACKS = Set.of("smsc", "ucb-imt");
 
   private static final Pattern SMPP_STATUS = Pattern.compile("0[xX][0-9A-Fa-f]{1,8}|[0-9]{1,10}");
 
@@ -134,7 +141,7 @@ public final class MockParties {
     return find(name).isPresent();
   }
 
-  /** Whether the party's callbacks go on the caller's connection (no {@code callbackUrl} needed). */
+  /** Whether callback scenarios apply without a {@code callbackUrl} (SMSC DLR, UCB IMT credit push). */
   public static boolean callsBackInBand(String name) {
     return IN_BAND_CALLBACKS.contains(name);
   }

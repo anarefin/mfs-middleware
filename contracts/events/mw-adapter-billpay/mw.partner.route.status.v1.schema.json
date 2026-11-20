@@ -9,7 +9,7 @@
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
     "partnerId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$", "description": "The partner id of the config key partner/<id>." },
     "version": { "type": "integer", "minimum": 0, "description": "The mw.config.changed.v1 version this status is about; 0 only in a health report of the adapter's seed." },
-    "family": { "enum": ["telco", "billpay", "bank", "merchant", "card"], "description": "The family of the reporting adapter." },
+    "family": { "enum": ["telco", "billpay", "bank", "merchant", "card", "remit", "atm"], "description": "The family of the reporting adapter." },
     "status": { "enum": ["LIVE", "REJECTED"] },
     "problems": {
       "type": "array",

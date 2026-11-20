@@ -5,7 +5,7 @@
 
 PROVISION_DIR="$REPO_DIR/deploy/provision"
 # the generated .env values the compose block passes in (obviously fake)
-PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t MERCHANT_SOAP_WS_PASSWORD=merchant-ws-t CYBERSOURCE_HMAC_SECRET=cybersource-t PUSH_API_KEY=push-t
+PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t MERCHANT_SOAP_WS_PASSWORD=merchant-ws-t CYBERSOURCE_HMAC_SECRET=cybersource-t UCB_IMT_HMAC_SECRET=ucb-imt-t UCBATM_HMAC_SECRET=ucbatm-t UCBATM_WS_PASSWORD=ucbatm-ws-t PUSH_API_KEY=push-t
   CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_DATA_EXPORT_SECRET=data-export-t KC_MW_AUTH_SECRET=auth-t KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t KC_MW_RECON_SECRET=recon-t KC_MW_SIMULATORS_SECRET=simulators-t SFTP_DEV_PASSWORD=sftp-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t
   USSD_TELETALK_GATEWAY_SECRET=teletalk-t SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
@@ -115,7 +115,7 @@ manifest_services() { (. "$PROVISION_DIR/services.sh"; printf '%s\n' $SERVICES);
 test_every_service_with_an_approle_volume_is_in_the_manifest() {
   local s
   for s in mw-core-mock mw-crypto mw-auth mw-simulators mw-orchestrator mw-audit-dw mw-app-gateway mw-notify mw-ussd \
-    mw-admin-api mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-adapter-merchant mw-adapter-card mw-portal-api mw-checkout mw-data-export mw-recon; do
+    mw-admin-api mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-adapter-merchant mw-adapter-card mw-adapter-remit mw-adapter-atm mw-portal-api mw-checkout mw-data-export mw-recon; do
     manifest_services | grep -q "^$s:" || fail "$s missing from deploy/provision/services.sh"
   done
   [ "$(manifest_services | head -1)" = mw-core-mock:core-mock ] \
@@ -137,7 +137,7 @@ test_provision_creates_every_secret_role_and_approle() {
     grep -q "^vault policy write $s -$" .vault-calls || fail "$s: no policy"
     grep -q "^vault write auth/approle/role/$s token_policies=$s " .vault-calls || fail "$s: no AppRole"
   done
-  assert_out_contains "provision: 19 services provisioned"
+  assert_out_contains "provision: 21 services provisioned"
 }
 
 test_provision_writes_the_service_specific_keys() {
@@ -150,11 +150,16 @@ test_provision_writes_the_service_specific_keys() {
   [ "$(kv mw-adapter-billpay/billagg hmac-secret)" = billagg-t ] || fail "billpay hmac"
   [ "$(kv mw-adapter-bank/c2wbank hmac-secret)" = c2w-t ] || fail "bank hmac"
   [ "$(kv mw-adapter-card/cybersource hmac-secret)" = cybersource-t ] || fail "card hmac"
+  [ "$(kv mw-adapter-remit/ucb-imt hmac-secret)" = ucb-imt-t ] || fail "remit hmac"
+  [ "$(kv mw-simulators sim.callback-secrets.ucb-imt)" = ucb-imt-t ] || fail "sim ucb-imt"
+  [ "$(kv mw-adapter-atm mw.atm.inbound.ws-password)" = ucbatm-ws-t ] || fail "atm ws-password"
+  [ "$(kv mw-adapter-atm/ucbatm hmac-secret)" = ucbatm-t ] || fail "atm hmac"
   [ "$(kv mw-simulators sim.callback-secrets.billagg)" = billagg-t ] || fail "sim billagg"
   [ "$(kv mw-adapter-billpay/billagg ws-password)" = billagg-ws-t ] || fail "billpay ws-password"
   [ "$(kv mw-simulators sim.billagg.ws-password)" = billagg-ws-t ] || fail "sim billagg ws-password"
   [ "$(kv mw-simulators sim.callback-secrets.c2wbank)" = c2w-t ] || fail "sim c2wbank"
   [ "$(kv mw-simulators sim.callback-secrets.cybersource)" = cybersource-t ] || fail "sim cybersource"
+  [ "$(kv mw-simulators sim.callback-secrets.ucbatm)" = ucbatm-t ] || fail "sim ucbatm"
   local m
   for m in gp robi bl teletalk; do
     [ "$(kv mw-simulators "sim.ussd-gateway.credentials.$m")" = "$m-t" ] || fail "sim ussd $m"
@@ -278,7 +283,7 @@ test_mw_admin_api_may_write_but_never_read_the_adapters_partner_secrets() {
     || fail "mw-admin-api has no credential staging area: $(cat $p)"
   grep -q 'path "secret/metadata/mw-admin-api/staged-credentials/\*" { capabilities = \["delete"\] }' $p \
     || fail "mw-admin-api cannot drop a staged credential"
-  for a in mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-adapter-merchant mw-adapter-card; do
+  for a in mw-adapter-telco mw-adapter-billpay mw-adapter-bank mw-adapter-merchant mw-adapter-card mw-adapter-remit mw-adapter-atm; do
     grep -q "path \"secret/data/$a/\*\" { capabilities = \[\"create\", \"update\", \"patch\"\] }" $p \
       || fail "mw-admin-api cannot write $a's partner secrets: $(cat $p)"
   done

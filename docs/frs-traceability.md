@@ -150,7 +150,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-14` add money from bank (C2W) | done (one bank); USSD uses the same ADD_MONEY_BANK flow (109c); ticket 117 |
 | `UC-15` W2B with AVL | partial: mw-adapter-bank AVL (INQUIRY) and W2B credit on 20 bank profiles (117a); linked accounts (117b); simulator (117d); orchestrator `W2bFlow` with a hold, bank routing V18, app `transfer-to-bank` preview/confirm and add money from a linked account (`linkedAccountId`, 117c); USSD Transfer to Bank menu and suite open (117c follow-up, 117e) |
 | `UC-16` remittance | USSD status by Upay txn id is core WAL-13 (109c); inbound credit is ticket 119 |
-| `UC-17` ATM | ticket 120 |
+| `UC-17` ATM | partial: inbound SOAP (verify, confirm, reversal, cash-in) and UcbAtmMock (120a); token issue, orchestrator flows and the suite remain ticket 120 |
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122 |
 | `UC-20` bulk disbursement | CSV done; ticket 129 |
 | `UC-21` AML | ticket 125 |
@@ -178,7 +178,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-022 | done | a refused commit compensates the partner first, then releases a hold that remains (`PartnerReversalIT`, ticket 96b); a completed TOPUP or BILL_PAY is reversed at the partner before ReverseTransaction, and a partner refusal ends MANUAL_REVIEW without a core reversal (`CompletedPartnerReversalIT`, ticket 96c); API folder 30 |
 | PLT-023 | done | `UNKNOWN` and the inquiry schedule (spec 7.4): default 30 s / 2 min / 10 min / 1 h, `mw.orchestrator.inquiry.schedule`, per-partner list of waits (ticket 96a, `InquiryScheduleTest`, `InquirySagaIT`); a core call without a definite answer (timeout, 5xx) goes UNKNOWN on its step deadline and WAL-13 settles it (ticket 95a, `CoreRestFlowIT`) |
 | PLT-024 | done | `MANUAL_REVIEW` once the last inquiry went unanswered (`answer-wait` 30 s, `MW-TMO-004`); entering MANUAL_REVIEW from any state counts `mw_manual_review_entered_total` and logs `txn.manual_review.entered` (`SagaAlerts`), and mw-notify alerts operations by SMS and email from the status (recipient `OPS`, `mw.notify.ops.*`, V16, `FlowNotificationsIT`; ticket 96a) |
-| PLT-025 | done | partner REVERSE is idempotent (`reverse:<txnId>`) and retried until acknowledged, after a refused commit (`PartnerReversalIT`, ticket 96b) and when reversing a completed TOPUP or BILL_PAY (`CompletedPartnerReversalIT`, ticket 96c); no answer is MANUAL_REVIEW `MW-TMO-022` |
+| PLT-025 | done | partner REVERSE is idempotent (`reverse:<txnId>`) and retried until acknowledged, after a refused commit (`PartnerReversalIT`, ticket 96b) and when reversing a completed TOPUP or BILL_PAY (`CompletedPartnerReversalIT`, ticket 96c); no answer is MANUAL_REVIEW `MW-TMO-022`; an ATM reversal advice is answered once per atmTxnRef (`AtmSoapRouteTest`, ticket 120a) |
 | PLT-026 | done | preview returns the core fee, VAT and commission (`PreviewService`, `POST /app/v1/{group}/preview`, ticket 105) |
 | PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector `client/CoreWalletClient` (connect/read timeouts, breaker `core`, reads retried only; ticket 95a) |
 | PLT-031 | done | no automatic redelivery of a PAY (D28); INQUIRY and STATUS retried |
@@ -190,7 +190,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-041 | done | rules in `txn.routing_rule` (V14), maker-checker in mw-admin-api (V15, `RoutingRuleChangeRequestIT`), applied from `mw.config.changed.v1` and re-read every 30 s (`RoutingRuleReloadIT`) |
 | PLT-042 | done | prefix to MNO (017/013 gp, 018 robi, 015 teletalk, 019/014 banglalink) with an MNP override winning (`MsisdnRoutingTest`) |
 | PLT-043 | done | a maintenance message for a partner or biller is `MW-SYS-PARTNER_DISABLED` with the bn and en text (`MaintenanceMessageIT`, API folder 35); the adapter's own window stays 131b; a disabled catalogue biller is `MW-SYS-BILLER_DISABLED` with its bn/en maintenance text on the bill fetch (ticket 113, `BillerProjectionIT`), and on an app payment and the USSD bill lookup (ticket 113b, mw-app-gateway `BillerProjectionIT`, mw-ussd `UssdMenuWalkTest`) |
-| PLT-050 | done | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); the app SOAP WSDL is generated from `contracts/api/mw-app-gateway/app-soap.v1.xsd` (ticket 108) |
+| PLT-050 | done | `/v1` URI versions; `contracts/api` OpenAPI 3.1 files stay the source of truth, springdoc generates the document from code and `ContractDriftTest` in every REST module fails on drift (ticket 101); the app SOAP WSDL is generated from `contracts/api/mw-app-gateway/app-soap.v1.xsd` (ticket 108); the ATM SOAP WSDL is generated from `contracts/api/mw-adapter-atm/atm-soap.v1.xsd` (ticket 120a) |
 | PLT-051 | done | versioning policy in `contracts/README.md` ("Versioning", ticket 101): breaking change = new `/v2` file and path, `/v1` kept for one release |
 | PLT-052 | done | Swagger UI and `/v3/api-docs` only in profiles `dev`/`test` (off in production, `ApiDocsProductionTest`); test-only APISIX page `/docs/` lists them and the app SOAP WSDL (`deploy/apisix/docs/index.html`, ticket 108) |
 
@@ -243,7 +243,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-08 | ticket 117 | linked bank accounts with AVL: done (117b: `/app/v1/bank-accounts`, AVL API `/bank/v1/accounts/validate`) |
 | FL-09 | ticket 117 | W2B with AVL and a hold: partial (117c: `W2bFlow` hold until the bank confirms, app API; USSD menu open) |
 | FL-10 | ticket 119 | IMT push and lookup |
-| FL-11 | ticket 120 | ATM one-time token |
+| FL-11 | ticket 120 | ATM one-time token: the adapter never stores or logs it (120a); issue, HMAC, expiry and lockout remain ticket 120 |
 | FL-12 | tickets 121, 122 | BanglaQR on-us and off-us |
 | FL-13 | done | each bulk row is its own transaction linked to the batch (mw-portal-api, `BULK_DISBURSE`) |
 | FL-14 | ticket 125 | completion SMS and event built; push next to the SMS (SMS always, push optional) in mw-notify (ticket 110, `PushDispatchIT`); DW stream and daily drop done (ticket 128, `DwStreamIT`); AML feed remains 125 |
@@ -273,7 +273,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-13 | tickets 121, 122 | NPSB and BanglaQR mock switch |
 | EXT-14 | ticket 118 | CyberSource mock |
 | EXT-15 | ticket 119 | UCB IMT mock |
-| EXT-16 | ticket 120 | UCB ATM mock |
+| EXT-16 | ticket 120 | UCB ATM mock: dispense status in mw-simulators (`UcbAtmSimulatorIT`, 120a); the test-console page remains ticket 120 |
 | EXT-17 | done | mock side (ticket 123) and the export (ticket 128): `mw-data-export` writes the daily drop, party `dw` checks `control_<date>.json` (`DwDailyExportIT`, folder 62) |
 | EXT-18 | done | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93), the orchestrator calls it (`client/CoreWalletClient`, ticket 95a), mw-auth checks a PIN reset's KYC factors (`client/CoreClient`) and mw-admin-api unlocks an account (`client/CoreAccountClient`) over it (ticket 95b); the core command topics and `core.command.v1` are retired, the core events stay on Kafka |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |

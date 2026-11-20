@@ -1,0 +1,156 @@
+openapi: 3.1.0
+info:
+  title: Bits inbound remittance API (mw-adapter-remit)
+  version: 1.0.0
+  description: |
+    Partner-initiated API of mw-adapter-remit (ticket 119, FRS UC-16, EXT-15, FL-10 push, PLT-014,
+    PLT-008; reference flow 5.3). An international remittance partner (UCB IMT) pushes a credit to a
+    customer wallet and asks its status. Every request names the partner in `X-Partner-Id` and is
+    signed with the partner's own HMAC secret: `X-Signature` = Base64 HMAC-SHA256 over the lines
+    method, path and query, `X-Timestamp` (epoch seconds, at most 300 s off), `X-Nonce` (16 to 128 of
+    `A-Z a-z 0-9 . _ -`, accepted once) and the lower-case hex SHA-256 of the body. A bad signature,
+    a stale timestamp, a reused nonce or an unknown partner is 401 MW-AUTH-001.
+    A credit is deduplicated on the partner reference: the first one is accepted (202) once it is on
+    Kafka for mw-orchestrator's REMIT_IN flow (beneficiary, KYC, limits, AML, core credit; ticket
+    119b); a re-send answers 200 with the same Upay reference; a re-send that changes beneficiary or
+    amount is 409 MW-IDEM-002. Every error is the 5.3 envelope.
+servers:
+  - url: http://mw-adapter-remit:8080
+security:
+  - partnerHmac: []
+paths:
+  /remit/v1/credits:
+    post:
+      operationId: pushRemittanceCredit
+      summary: Push an inbound remittance to a customer wallet
+      description: >-
+        Errors: 400 MW-VAL-001 (a field is not valid; details name it) or MW-VAL-002 (body not
+        readable); 401 MW-AUTH-001; 409 MW-IDEM-002; 503 MW-SYS-EVENT_NOT_WRITTEN (not recorded,
+        retryable: send it again with a fresh nonce).
+      parameters:
+        - $ref: "#/components/parameters/PartnerId"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreditRequest" }
+      responses:
+        "202":
+          description: Accepted; the credit follows (status ACCEPTED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreditAck" }
+        "200":
+          description: A re-send of an accepted remittance (duplicate true, same upayRef)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreditAck" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /remit/v1/credits/{partnerRef}:
+    get:
+      operationId: getRemittanceStatus
+      summary: The status of a remittance by the partner's reference
+      description: "Errors: 401 MW-AUTH-001; 404 MW-VAL-003 (no remittance with this reference from this partner)."
+      parameters:
+        - name: partnerRef
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/PartnerRef" }
+        - $ref: "#/components/parameters/PartnerId"
+        - $ref: "#/components/parameters/Signature"
+        - $ref: "#/components/parameters/Timestamp"
+        - $ref: "#/components/parameters/Nonce"
+      responses:
+        "200":
+          description: The remittance
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreditAck" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    partnerHmac:
+      type: apiKey
+      in: header
+      name: X-Signature
+      description: HMAC-SHA256 request signature with timestamp and nonce (see the description above).
+  parameters:
+    PartnerId:
+      name: X-Partner-Id
+      in: header
+      required: true
+      schema: { type: string, pattern: "^[a-z0-9][a-z0-9-]{0,63}$", examples: [ucb-imt] }
+    Signature:
+      name: X-Signature
+      in: header
+      required: true
+      schema: { type: string }
+    Timestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      schema: { type: string, pattern: "^[0-9]{1,12}$" }
+    Nonce:
+      name: X-Nonce
+      in: header
+      required: true
+      schema: { type: string, pattern: "^[A-Za-z0-9._-]{16,128}$" }
+  schemas:
+    PartnerRef:
+      type: string
+      pattern: "^[A-Za-z0-9._-]{1,64}$"
+    CreditRequest:
+      type: object
+      required: [partnerRef, beneficiaryMsisdn, amount, currency, senderName, senderCountry]
+      properties:
+        partnerRef: { $ref: "#/components/schemas/PartnerRef" }
+        beneficiaryMsisdn:
+          type: string
+          pattern: "^(\\+?8800?|0)1[3-9][0-9]{8}$"
+          description: The customer wallet to credit
+        amount:
+          type: string
+          pattern: "^[0-9]{1,12}(\\.[0-9]{1,2})?$"
+          description: Positive amount in major units (taka), at most 2 decimals
+        currency: { type: string, enum: [BDT] }
+        senderName: { type: string, minLength: 1, maxLength: 140 }
+        senderCountry: { type: string, pattern: "^[A-Z]{2}$", description: ISO 3166-1 alpha-2 }
+    CreditAck:
+      type: object
+      required: [partnerRef, upayRef, status, duplicate]
+      properties:
+        partnerRef: { $ref: "#/components/schemas/PartnerRef" }
+        upayRef: { type: string, format: uuid, description: The Upay reference (txnId) }
+        status: { type: string, enum: [ACCEPTED, CREDITED, REJECTED, MANUAL_REVIEW] }
+        duplicate: { type: boolean }
+    ErrorEnvelope:
+      type: object
+      required: [code, message, correlationId, retryable, details, timestamp]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        messageBn: { type: string }
+        txnId: { type: string }
+        correlationId: { type: string }
+        retryable: { type: boolean }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              issue: { type: string }
+        timestamp: { type: string, format: date-time }
+  responses:
+    Error:
+      description: The 5.3 error envelope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }

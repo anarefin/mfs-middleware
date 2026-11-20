@@ -49,11 +49,15 @@ files:
   api/mw-app-gateway/app.v1.openapi.yaml: mw-app-gateway
   # SOAP facade (ticket 108): the XSD is the contract; the WSDL is generated from it
   api/mw-app-gateway/app-soap.v1.xsd: mw-app-gateway
+  # UCB ATM inbound SOAP (ticket 120a): the XSD is the contract; the WSDL is generated from it
+  api/mw-adapter-atm/atm-soap.v1.xsd: mw-adapter-atm
   api/mw-adapter-billpay/billpay.v1.openapi.yaml: mw-adapter-billpay
   # postpaid bill fetch (ticket 112b); consumed by mw-orchestrator, not routed by APISIX
   api/mw-adapter-telco/telco.v1.openapi.yaml: mw-adapter-telco
   # account validation (AVL, ticket 117b); consumed by mw-app-gateway (linked accounts), not routed by APISIX
   api/mw-adapter-bank/bank.v1.openapi.yaml: mw-adapter-bank
+  # ticket 119: the inbound remittance API the partner calls
+  api/mw-adapter-remit/remit-inbound.v1.openapi.yaml: mw-adapter-remit
   api/mw-ussd/ussd-http.v1.openapi.yaml: mw-ussd
   api/mw-portal-api/portal-org.v1.openapi.yaml: mw-portal-api
   api/mw-orchestrator/txn-query.v1.openapi.yaml: mw-orchestrator

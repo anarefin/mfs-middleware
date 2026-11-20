@@ -7,7 +7,7 @@
   "required": ["schemaVersion", "family", "inboundId", "txnId", "correlationId", "partnerId", "partnerRef", "receivedAt", "payload"],
   "properties": {
     "schemaVersion": { "$ref": "../../common/defs.v1.schema.json#/$defs/SchemaVersion", "const": 1 },
-    "family": { "enum": ["telco", "billpay", "bank", "interop", "compliance"] },
+    "family": { "enum": ["telco", "billpay", "bank", "interop", "compliance", "remit"] },
     "inboundId": { "type": "string", "format": "uuid" },
     "txnId": { "$ref": "../../common/defs.v1.schema.json#/$defs/TxnId" },
     "correlationId": { "$ref": "../../common/defs.v1.schema.json#/$defs/CorrelationId" },
@@ -35,6 +35,9 @@
     },
     {
       "properties": { "family": { "const": "compliance" }, "payload": { "$ref": "mw.partner.inbound.v1/shared.payload.schema.json" } }
+    },
+    {
+      "properties": { "family": { "const": "remit" }, "payload": { "$ref": "mw.partner.inbound.v1/shared.payload.schema.json" } }
     }
   ]
 }
