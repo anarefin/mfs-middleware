@@ -4,7 +4,7 @@
 // checks it, MW-VAL-040). The preview runs mw-ussd's screen rules on the edited tree; no flow,
 // lookup or PIN leaves the browser (the PIN shows as ****).
 
-import { Braces, CircleCheck, Eye, ListTree, MessageSquareText, Phone, Plus, Send, Trash2, TriangleAlert } from "lucide-react";
+import { ArrowDown, ArrowUp, Braces, CircleCheck, CornerDownRight, Eye, ListTree, MessageSquareText, Phone, Plus, Send, Trash2, TriangleAlert } from "lucide-react";
 import { useActionState, useMemo, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +14,9 @@ import { Field, InlineField } from "@/components/ui/field";
 import { Input, NativeSelect, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
-  ENGINE_MESSAGES, MNOS, NODE_TYPES, menuProblems, parseMenu, startPreview, stepPreview, tree,
-  type ActionOutcome, type Lang, type Menu, type MenuNode, type MenuOption, type Preview, type Text,
+  ENGINE_MESSAGES, MNO_SCREENS, MNOS, NODE_TYPES, addChild, deleteNode, menuProblems, moveNode, moveOption, nodeScreen, parseMenu,
+  startPreview, stepPreview, textCounter, tree,
+  type ActionOutcome, type Lang, type Menu, type MenuNode, type MenuOption, type Mno, type Preview, type Text,
 } from "@/lib/ussd-menu";
 import type { ActionState } from "../actions";
 import { ApiError } from "../api-error";
@@ -33,12 +34,18 @@ const STARTER: Menu = {
   nodes: { main: { type: "END", text: { ...EMPTY } } },
 };
 
+/** Characters typed against the screen limit (GSM-7 182 / UCS-2 70); over the limit pages or cuts. */
+function CharCount({ text }: { text: string }) {
+  const c = textCounter(text);
+  return <span data-testid="char-count" data-over={c.over} className={cn("tabular-nums", c.over && "font-medium text-bad")}>{c.length}/{c.limit} {c.encoding}</span>;
+}
+
 function TextPair({ label, value, onChange }: { label: string; value: Text | undefined; onChange: (t: Text) => void }) {
   const v = value ?? EMPTY;
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      <Field label={`${label} (bn)`}><Textarea lang="bn" dir="auto" rows={2} className="min-h-16" value={v.bn ?? ""} onChange={(e) => onChange({ ...v, bn: e.target.value })} /></Field>
-      <Field label={`${label} (en)`}><Textarea lang="en" rows={2} className="min-h-16" value={v.en ?? ""} onChange={(e) => onChange({ ...v, en: e.target.value })} /></Field>
+      <Field label={`${label} (bn)`} hint={<CharCount text={v.bn ?? ""} />}><Textarea lang="bn" dir="auto" rows={2} className="min-h-16" value={v.bn ?? ""} onChange={(e) => onChange({ ...v, bn: e.target.value })} /></Field>
+      <Field label={`${label} (en)`} hint={<CharCount text={v.en ?? ""} />}><Textarea lang="en" rows={2} className="min-h-16" value={v.en ?? ""} onChange={(e) => onChange({ ...v, en: e.target.value })} /></Field>
     </div>
   );
 }
@@ -61,6 +68,7 @@ export function MenuEditor({ initial, baseLabel, action }: Props) {
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [newId, setNewId] = useState("");
   const [newType, setNewType] = useState<MenuNode["type"]>("MENU");
+  const [moveTo, setMoveTo] = useState("");
 
   const ids = useMemo(() => Object.keys(menu.nodes).sort(), [menu]);
   const problems = useMemo(() => menuProblems(menu), [menu]);
@@ -69,22 +77,29 @@ export function MenuEditor({ initial, baseLabel, action }: Props) {
   const setNode = (id: string, n: MenuNode) => setMenu((m) => ({ ...m, nodes: { ...m.nodes, [id]: n } }));
   const setOption = (i: number, o: MenuOption) => node && setNode(selected, { ...node, options: (node.options ?? []).map((x, j) => (j === i ? o : x)) });
 
+  /** A child of the selected node (an option of a MENU / CONFIRM, the next of an INPUT / DYNAMIC); else a loose node. */
   function addNode() {
     const id = newId.trim();
     if (!/^[A-Za-z0-9._-]{1,64}$/.test(id) || menu.nodes[id]) return;
-    setNode(id, newType === "ACTION" ? { type: "ACTION" } : { type: newType, text: { ...EMPTY } });
+    const linked = addChild(menu, selected, id, newType);
+    setMenu(linked !== menu ? linked : { ...menu, nodes: { ...menu.nodes, [id]: newType === "ACTION" ? { type: "ACTION" } : { type: newType, text: { ...EMPTY } } } });
     setSelected(id);
     setNewId("");
   }
 
+  function move() {
+    if (!moveTo) return;
+    setMenu(moveNode(menu, selected, moveTo));
+    setMoveTo("");
+  }
+
   function removeNode() {
     if (selected === menu.start) return;
-    setMenu((m) => {
-      const { [selected]: _gone, ...rest } = m.nodes;
-      return { ...m, nodes: rest };
-    });
+    setMenu(deleteNode(menu, selected));
     setSelected(menu.start);
   }
+
+  const parents = ids.filter((id) => id !== selected && ["MENU", "CONFIRM", "INPUT", "DYNAMIC"].includes(menu.nodes[id]!.type));
 
   function applyJson() {
     const m = json === null ? null : parseMenu(json);
@@ -130,6 +145,7 @@ export function MenuEditor({ initial, baseLabel, action }: Props) {
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="m-0 font-mono text-sm font-semibold">{selected}{selected === menu.start ? " (start)" : ""}</h3>
                   <Badge tone="outline">{node.type}</Badge>
+                  {node.type !== "ACTION" ? <NodeScreenSize menu={menu} id={selected} /> : null}
                 </div>
                 <Field label="Type" className="max-w-56">
                   <NativeSelect value={node.type} onChange={(e) => setNode(selected, { ...node, type: e.target.value as MenuNode["type"] })}>
@@ -144,6 +160,8 @@ export function MenuEditor({ initial, baseLabel, action }: Props) {
                         <div className="flex flex-wrap items-end gap-3">
                           <Field label="Key" className="w-20"><Input value={o.key} size={2} className="font-mono" onChange={(e) => setOption(i, { ...o, key: e.target.value })} /></Field>
                           <div className="min-w-48 flex-1"><NodeSelect label="Next" value={o.next} ids={ids} onChange={(next) => setOption(i, { ...o, next })} /></div>
+                          <Button type="button" variant="ghost" size="sm" aria-label={`Move option ${o.key} up`} disabled={i === 0} onClick={() => setMenu(moveOption(menu, selected, i, -1))}><ArrowUp /></Button>
+                          <Button type="button" variant="ghost" size="sm" aria-label={`Move option ${o.key} down`} disabled={i === (node.options?.length ?? 0) - 1} onClick={() => setMenu(moveOption(menu, selected, i, 1))}><ArrowDown /></Button>
                           <Button type="button" variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setNode(selected, { ...node, options: (node.options ?? []).filter((_, j) => j !== i) })}><Trash2 />Remove option</Button>
                         </div>
                         <TextPair label={`Option ${o.key} label`} value={o.label} onChange={(label) => setOption(i, { ...o, label })} />
@@ -179,13 +197,24 @@ export function MenuEditor({ initial, baseLabel, action }: Props) {
                     <NodeSelect label="On failure" value={node.onFailure} ids={ids} onChange={(onFailure) => setNode(selected, { ...node, onFailure })} />
                   </div>
                 ) : null}
-                {selected !== menu.start ? <Button type="button" variant="outline-destructive" size="sm" className="self-start" onClick={removeNode}><Trash2 />Delete node</Button> : null}
+                {selected !== menu.start ? (
+                  <div className="flex flex-wrap items-end gap-3">
+                    <Field label="Move under" className="min-w-40">
+                      <NativeSelect aria-label="Move under" className="font-mono text-xs" value={moveTo} onChange={(e) => setMoveTo(e.target.value)}>
+                        <option value="">(pick a parent)</option>
+                        {parents.map((id) => <option key={id} value={id}>{id}</option>)}
+                      </NativeSelect>
+                    </Field>
+                    <Button type="button" variant="outline" size="sm" onClick={move}><CornerDownRight />Move</Button>
+                    <Button type="button" variant="outline-destructive" size="sm" className="ml-auto" onClick={removeNode}><Trash2 />Delete node</Button>
+                  </div>
+                ) : null}
               </>
             ) : <p className="m-0 text-sm text-muted-foreground">Pick a node.</p>}
             <div className="flex flex-wrap items-end gap-3 border-t pt-4">
-              <Field label="New node id" className="min-w-40 flex-1"><Input className="font-mono" value={newId} onChange={(e) => setNewId(e.target.value)} /></Field>
-              <Field label="Type" className="w-36"><NativeSelect value={newType} onChange={(e) => setNewType(e.target.value as MenuNode["type"])}>{NODE_TYPES.map((t) => <option key={t}>{t}</option>)}</NativeSelect></Field>
-              <Button type="button" variant="outline" onClick={addNode}><Plus />Add node</Button>
+              <Field label="New child id" className="min-w-40 flex-1"><Input aria-label="New child id" className="font-mono" value={newId} onChange={(e) => setNewId(e.target.value)} /></Field>
+              <Field label="Type" className="w-36"><NativeSelect aria-label="New child type" value={newType} onChange={(e) => setNewType(e.target.value as MenuNode["type"])}>{NODE_TYPES.map((t) => <option key={t}>{t}</option>)}</NativeSelect></Field>
+              <Button type="button" variant="outline" onClick={addNode}><Plus />Add child</Button>
             </div>
           </div>
         </div>
@@ -224,14 +253,24 @@ export function MenuEditor({ initial, baseLabel, action }: Props) {
   );
 }
 
+/** The node's whole screen (text and options) per language: size and pages on a gp screen. */
+function NodeScreenSize({ menu, id }: { menu: Menu; id: string }) {
+  const part = (lang: Lang) => {
+    const s = nodeScreen(menu, id, lang);
+    return `${lang} ${s.length}/${s.limit}${s.pages > 1 ? `, ${s.pages} pages` : ""}`;
+  };
+  return <span data-testid="node-screen" className="ml-auto text-xs text-muted-foreground tabular-nums">screen {part("bn")} · {part("en")}</span>;
+}
+
 function PreviewPanel({ menu }: { menu: Menu }) {
+  const [mno, setMno] = useState<Mno>("gp");
   const [msisdn, setMsisdn] = useState("01712345678");
   const [lang, setLang] = useState<Lang>("bn");
   const [outcome, setOutcome] = useState<ActionOutcome>("COMPLETED");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [input, setInput] = useState("");
 
-  const dial = () => setPreview(startPreview(menu, { msisdn, lang }));
+  const dial = () => setPreview(startPreview(menu, { msisdn, lang, mno }));
   const send = () => {
     if (!preview) return;
     setPreview(stepPreview(preview, input, outcome));
@@ -246,6 +285,10 @@ function PreviewPanel({ menu }: { menu: Menu }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="grid grid-cols-2 items-end gap-3">
+          <Field label="MNO" hint={<span className="font-mono">{MNO_SCREENS[mno].shortCode}</span>}>
+            <NativeSelect aria-label="MNO" value={mno} onChange={(e) => setMno(e.target.value as Mno)}>{MNOS.map((m) => <option key={m} value={m}>{m}</option>)}</NativeSelect>
+          </Field>
+          <p className="m-0 self-center text-xs text-muted-foreground">{MNO_SCREENS[mno].overflow === "PAGE" ? "long screens page (0 next, 00 back)" : "long screens are cut"}</p>
           <Field label="Dialling MSISDN (sample)" className="col-span-2"><Input inputMode="tel" value={msisdn} onChange={(e) => setMsisdn(e.target.value)} /></Field>
           <Field label="Language"><NativeSelect value={lang} onChange={(e) => setLang(e.target.value as Lang)}><option value="bn">bn</option><option value="en">en</option></NativeSelect></Field>
           <Field label="Action outcome"><NativeSelect value={outcome} onChange={(e) => setOutcome(e.target.value as ActionOutcome)}>
@@ -258,6 +301,7 @@ function PreviewPanel({ menu }: { menu: Menu }) {
             <div className="w-full max-w-sm self-center rounded-2xl border bg-muted p-2 shadow-xs">
               <pre className="m-0 min-h-36 rounded-xl bg-screen p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap break-words text-screen-foreground" lang={preview.lang} data-testid="ussd-screen">{preview.screen}</pre>
             </div>
+            {preview.pages.length > 1 ? <p className="m-0 text-center text-xs text-muted-foreground tabular-nums" data-testid="ussd-page">page {preview.page + 1}/{preview.pages.length}</p> : null}
             {preview.ended ? <p className="m-0 text-center text-sm text-muted-foreground" data-testid="ussd-ended">Session ended.</p> : (
               <form className="flex items-end gap-2" aria-label="Reply to the screen" onSubmit={(e) => { e.preventDefault(); send(); }}>
                 <Field label="Reply" className="flex-1"><Input className="font-mono" value={input} onChange={(e) => setInput(e.target.value)} autoComplete="off" /></Field>
