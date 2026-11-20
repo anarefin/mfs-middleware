@@ -38,8 +38,19 @@ test.describe("@app app flows", () => {
 
   test("a wrong PIN is refused and moves nothing", async ({ page }) => {
     await page.goto("app");
-    await page.getByTestId("pin").fill("97531");
-    const r = await submit(page, "P2P", "01711000002", "10");
+    // FlowForm remounts when the transaction type is chosen and its PIN input then returns to the
+    // seeded PIN. Set the wrong PIN after that, as the last edit before Preview.
+    await page.getByTestId("txn-type").selectOption("P2P");
+    await page.getByTestId("counterparty").fill("01711000002");
+    await page.getByTestId("amount").fill("10");
+    const pin = page.getByTestId("pin");
+    await pin.fill("97531");
+    await expect(pin).toHaveValue("97531");
+    await page.getByTestId("preview").click();
+    await expect(page.getByTestId("preview-quote")).toBeVisible();
+    await expect(pin).toHaveValue("97531");
+    await page.getByTestId("submit").click();
+    const r = page.getByTestId("result").first();
     // ticket 72: mw-auth refuses it before anything is published (no txnId)
     await expect(r.getByTestId("headline")).toContainText("MW-AUTH-040");
     await expect(r.getByTestId("delta-01711000001")).toHaveText("Tk 0.00");

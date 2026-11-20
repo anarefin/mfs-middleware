@@ -6,6 +6,11 @@ export default [
     run: async (MW, S) => {
       await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);
       await S.reject('CommitHold', 'INJECTED_REJECT');
+      // A refused commit of a paid top-up sends partner REVERSE (ticket 96b) and ends REVERSED
+      // when the partner confirms. Hold that reverse unanswered so the saga stops in MANUAL_REVIEW.
+      await MW.mock.clear('ocs');
+      S.after(() => MW.mock.clear('ocs'));
+      await MW.mock.scenario('ocs', { operation: 'reverse', behaviour: 'TIMEOUT', delayMs: 60000 });
       await S.topup('customer01', 'gp', 'PREPAID', '01711000002', 2000, MW.pin);
       await S.appShows('MANUAL_REVIEW', 30);
       S.crFrom(await MW.admin.ask('ops-e2e-maker01', S.txnId(), 'FORCE_COMMIT', 'OCS confirmed the top-up'));

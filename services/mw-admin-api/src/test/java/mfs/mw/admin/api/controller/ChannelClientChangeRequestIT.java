@@ -205,6 +205,11 @@ class ChannelClientChangeRequestIT {
   @Test
   void anApprovedClientIsStoredAuditedAndWrittenToApisixAfterTheCommit() {
     String id = asked("ussd-gp", GATEWAY);
+    MvcTestResult listed = mvc.get()
+        .uri("/admin/v1/change-requests?status=PENDING&limit=200&resourceType=channel_client&resourceId=ussd-gp")
+        .with(CHECKER).exchange();
+    assertThat(listed).hasStatus(200);
+    assertThat(body(listed).path("items").get(0).path("id").asString()).isEqualTo(id);
     assertThat(CALLS).as("nothing reaches APISIX before the approval").isEmpty();
 
     // the maker never decides, even holding the checker role

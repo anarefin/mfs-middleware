@@ -2,7 +2,7 @@
   "name": "test-core-mock",
   "desc": "TEST ONLY (MW_E2E_ROUTES=1): mw-core-mock test/admin API (balances, faults) for the host e2e suite; key-auth (consumer mw-e2e) from private networks only",
   "uri": "/test/core-mock/v1/*",
-  "methods": ["GET", "POST", "DELETE"],
+  "methods": ["GET", "POST", "PUT", "DELETE"],
   "plugins": {
     "ip-restriction": {
       "whitelist": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"]

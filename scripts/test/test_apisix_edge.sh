@@ -202,11 +202,26 @@ test_e2e_flag_applies_the_test_route_behind_key_auth_from_private_networks() {
   [ -f "$r" ] || fail "test route not applied with MW_E2E_ROUTES=1 (have: $(ls out/*))"
   jq -e '.plugins["key-auth"] and .plugins["consumer-restriction"].whitelist == ["mw_e2e"]' "$r" >/dev/null \
     || fail "test route lacks key-auth for mw_e2e: $(jq -c .plugins "$r")"
+  jq -e '.methods | index("PUT")' "$r" >/dev/null \
+    || fail "test-core-mock must allow PUT (wallet seed balance): $(jq -c .methods "$r")"
   jq -e '.plugins["ip-restriction"].whitelist | index("0.0.0.0/0") | not' "$r" >/dev/null \
     || fail "test route open to every address"
   [ "$(jq -r '.plugins["key-auth"].key' "$c")" = k3yFromDotEnv ] || fail "consumer key not from MW_E2E_API_KEY: $(cat "$c")"
   assert_out_lacks "k3yFromDotEnv"
   assert_out_lacks "DELETE /apisix/admin/routes/test-core-mock"
+}
+
+# Ticket 104: P2P FRS drives the core party through /test/mock-control/core/*. That party is
+# mw-core-mock's, so this route must win over test-mock-control (mw-simulators has no core party).
+test_the_core_mock_control_route_beats_the_simulators_route() {
+  MW_E2E_ROUTES=1 MW_E2E_API_KEY=k3yFromDotEnv CHECKOUT_DEMO_MERCHANT_SECRET=s3cretFromDotEnv render || fail "dry run failed: $OUT"
+  local r=out/routes/test-mock-control-core.json
+  [ -f "$r" ] || fail "core mock-control route not applied with MW_E2E_ROUTES=1"
+  jq -e '.uri == "/test/mock-control/core/*" and .priority == 10
+    and (.upstream.nodes | has("mw-core-mock:8080"))
+    and .plugins["key-auth"] and .plugins["consumer-restriction"].whitelist == ["mw_e2e"]
+    and (.plugins["ip-restriction"].whitelist | index("0.0.0.0/0") | not)' "$r" >/dev/null \
+    || fail "core mock-control route: $(jq -c '{uri,priority,upstream,plugins}' "$r")"
 }
 
 # Ticket 58: the audit test API of mw-audit-dw is test-only, GET only, behind the same gate.
@@ -223,6 +238,8 @@ test_the_audit_dw_test_route_is_test_only_behind_key_auth() {
     || fail "audit test route open to every address"
   jq -e '.methods == ["GET"] and .uri == "/test/audit-dw/v1/*" and (.upstream.nodes | has("mw-audit-dw:8080"))' "$r" >/dev/null \
     || fail "audit test route must be GET /test/audit-dw/v1/* to mw-audit-dw: $(jq -c '{methods,uri,upstream}' "$r")"
+  jq -e '.plugins["proxy-rewrite"].headers.set["X-Mw-Operator-Id"] == "$http_x_operator_id"' "$r" >/dev/null \
+    || fail "audit export must copy X-Operator-Id onto X-Mw-Operator-Id after the edge strip: $(jq -c '.plugins["proxy-rewrite"]' "$r")"
 }
 
 # Ticket 76: mw-crypto's dev-only payShield test API (plain port 8082, never the mTLS internal API) is

@@ -38,9 +38,12 @@ export default [
       S.after(async () => { await MW.mock.switchTo('ocs', { state: 'UP' }); });
       await MW.mock.switchTo('ocs', { state: 'DOWN' });
       await S.previewTopup('customer01', 'gp', 'PREPAID', '01711000002', 9803, MW.pin);
-      S.status(500);
-      S.code('MW-SYS-PARTNER_UNAVAILABLE');
-      await S.noHold('01711000001');
+      // DOWN closes the socket with no answer. That is an ambiguous reset, so the preview
+      // returns 202 and the inquiry schedule ends in MANUAL_REVIEW. The hold stays; bringing
+      // the party back UP does not complete the top-up.
+      S.status(202);
+      S.txnStatus('PROCESSING');
+      await S.appShows('MANUAL_REVIEW', 180);
     },
   },
   {

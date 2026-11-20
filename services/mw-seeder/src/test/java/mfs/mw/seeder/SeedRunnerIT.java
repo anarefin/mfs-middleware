@@ -298,7 +298,9 @@ class SeedRunnerIT {
 
   private void stubWallet(String walletId, String type) {
     String path = "/core-mock/v1/wallets/" + walletId;
-    String view = "{\"walletId\":\"" + walletId + "\",\"type\":\"" + type + "\",\"status\":\"ACTIVE\",\"balanceMinor\":1,\"heldMinor\":0,\"availableMinor\":1,"
+    // Core-mock stores ORG as ORGANISATION (ticket 94) and returns that type.
+    String stored = "ORG".equals(type) ? "ORGANISATION" : type;
+    String view = "{\"walletId\":\"" + walletId + "\",\"type\":\"" + stored + "\",\"status\":\"ACTIVE\",\"balanceMinor\":1,\"heldMinor\":0,\"availableMinor\":1,"
         + "\"holderName\":\"Holder\"}";
     wm.stubFor(get(path).inScenario(walletId).whenScenarioStateIs(STARTED)
         .willReturn(aResponse().withStatus(400).withHeader("Content-Type", "application/json")

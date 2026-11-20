@@ -9,6 +9,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import mfs.mw.seeder.client.CoreAccounts;
+import mfs.mw.seeder.config.SeederProperties;
+import mfs.mw.seeder.config.SeederProperties.WalletSpec;
 import mfs.mw.seeder.dto.SeedManifest;
 import mfs.mw.seeder.dto.WalletView;
 import org.junit.jupiter.api.Test;
@@ -16,7 +18,7 @@ import org.junit.jupiter.api.Test;
 class SeedCoreAccountsStepTest {
 
   /** In-memory core-mock seed API: create-if-absent, an existing wallet only gets a holder name it lacks. */
-  static final class FakeCore implements CoreAccounts {
+  static class FakeCore implements CoreAccounts {
     final Map<String, WalletView> wallets = new LinkedHashMap<>();
     final List<String> creates = new ArrayList<>();
 
@@ -33,10 +35,23 @@ class SeedCoreAccountsStepTest {
         }
         return new Seeded(false, false, have);
       }
-      WalletView w = new WalletView(walletId, type, "ACTIVE", openingBalanceMinor, 0, openingBalanceMinor, holderName);
+      WalletView w = new WalletView(walletId, storedType(type), "ACTIVE", openingBalanceMinor, 0, openingBalanceMinor, holderName);
       wallets.put(walletId, w);
       creates.add(walletId);
       return new Seeded(true, false, w);
+    }
+
+    /** Core-mock's seed PUT stores ORG as ORGANISATION (ticket 94). */
+    String storedType(String type) {
+      return type;
+    }
+  }
+
+  /** The real core-mock: a requested ORG comes back as ORGANISATION. */
+  static final class CanonicalCore extends FakeCore {
+    @Override
+    String storedType(String type) {
+      return "ORG".equals(type) ? "ORGANISATION" : type;
     }
   }
 
@@ -78,6 +93,27 @@ class SeedCoreAccountsStepTest {
     assertThat(step.run(new SeedContext())).isEqualTo(StepResult.unchanged(2));
     assertThat(core.creates).isEmpty();
     assertThat(core.wallets.get("01712000001").balanceMinor()).isEqualTo(42);
+  }
+
+  @Test
+  void anOrgRequestMatchesTheOrganisationCoreMockStores() {
+    SeederProperties base = SeedFixtures.props(Path.of("unused"));
+    SeederProperties props = new SeederProperties(
+        base.runOnStartup(), base.stepTimeout(), base.stepTimeouts(), base.initialBackoff(), base.maxBackoff(),
+        base.manifestPath(), base.http(), base.endpoints(), base.readiness(), base.keycloakAdmin(), base.realms(),
+        base.users(), base.importedUsers(), base.operators(),
+        List.of(new WalletSpec("01312000001", "ORG", 100_000_000, "Jamuna Textiles Ltd")),
+        base.partners(), base.channelClients(), base.content(), base.appPins());
+    CanonicalCore orgCore = new CanonicalCore();
+    SeedCoreAccountsStep orgStep = new SeedCoreAccountsStep(orgCore, props);
+    SeedContext ctx = new SeedContext();
+
+    assertThat(orgStep.run(ctx)).isEqualTo(StepResult.created(1));
+    assertThat(orgCore.wallets.get("01312000001").type()).isEqualTo("ORGANISATION");
+    assertThat(ctx.wallets())
+        .containsExactly(new SeedManifest.Wallet("01312000001", "ORG", "Jamuna Textiles Ltd", 100_000_000));
+
+    assertThat(orgStep.run(new SeedContext())).isEqualTo(StepResult.unchanged(1));
   }
 
   @Test

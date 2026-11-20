@@ -41,7 +41,7 @@ public class SeedCoreAccountsStep implements SeedStep {
     List<SeedManifest.Wallet> wallets = new ArrayList<>();
     for (WalletSpec w : props.wallets()) {
       CoreAccounts.Seeded seeded = core.ensureWallet(w.walletId(), w.type(), w.openingBalanceMinor(), w.holderName());
-      if (!w.type().equals(seeded.wallet().type())) {
+      if (!sameType(w.type(), seeded.wallet().type())) {
         throw new IllegalStateException(
             "wallet " + MaskingPolicy.mask(SensitiveType.MSISDN, w.walletId()) + " exists as "
                 + seeded.wallet().type() + ", not " + w.type());
@@ -52,5 +52,17 @@ public class SeedCoreAccountsStep implements SeedStep {
     }
     ctx.wallets().addAll(wallets);
     return result;
+  }
+
+  /**
+   * {@code ORG} is the name this seeder still sends (ticket 57). Core-mock stores and returns
+   * {@code ORGANISATION} (ticket 94). Any other difference is a real type clash.
+   */
+  private static boolean sameType(String requested, String stored) {
+    return canonical(requested).equals(canonical(stored));
+  }
+
+  private static String canonical(String type) {
+    return "ORG".equals(type) ? "ORGANISATION" : type;
   }
 }

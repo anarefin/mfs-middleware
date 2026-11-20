@@ -929,7 +929,8 @@ services:
       <<: *jvm-env
       SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "3"
       # The mock-control engine and API /mock-control (ADR D33, ticket 102): test-only, never production.
-      SPRING_PROFILES_ACTIVE: mock-control
+      # dev turns on springdoc (ticket 101): /v3/api-docs and Swagger UI behind the test-only /docs route.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-dev},mock-control
       # Hold time of a simulated partner timeout (amount fraction .13): above the callers' time
       # limits (timer: dev.env.defaults shortens it with them).
       SIM_TIMEOUTDELAY: ${MW_SIM_TIMEOUT_DELAY:-30s}

@@ -7,8 +7,6 @@ export const helpers = [
   },
 ];
 
-const MSISDN = /01[3-9]\d{8}/;
-
 export default [
   {
     name: '[audit topup] a search by partner and amount range finds the top-up and its partner call',
@@ -43,7 +41,7 @@ export default [
       S.check('hops are in the order they happened', since.every((v, i) => i === 0 || v >= since[i - 1]), since);
       S.eq('the first hop starts the timeline', since[0], 0, since);
       S.check('later hops carry the gap to the previous one', hops.slice(1).every(h => typeof h.gapMs === 'number'), hops);
-      S.check('no clear MSISDN in the timeline', !MSISDN.test(r.raw), r.raw);
+      S.check('no clear MSISDN in the timeline', !/01[3-9]\d{8}/.test(r.raw), r.raw);
     },
   },
   {
@@ -55,7 +53,7 @@ export default [
       await MW.poll(() => auditGet(MW, 'events?txnId=' + id), x => ((x.body || {}).items || []).length >= 2, 60000, 1000);
       const operator = 'ops-e2e-auditor-' + id.slice(0, 8);
       const csv = await MW.http('GET', '/test/audit-dw/v1/audit/search/export.csv?txnId=' + id,
-        { apikey: true, headers: { 'X-Mw-Operator-Id': operator } });
+        { apikey: true, headers: { 'X-Operator-Id': operator } });
       S.status(200, csv);
       const lines = csv.raw.split('\r\n').filter(l => l);
       S.check('a header row and the transaction rows', lines[0].startsWith('at,recordedAt,auditId,txnId') && lines.length >= 3, csv.raw);

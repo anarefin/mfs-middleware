@@ -1,0 +1,23 @@
+{
+  "name": "test-mock-control-core",
+  "desc": "TEST ONLY (MW_E2E_ROUTES=1): mw-core-mock's core party of the mock-control API (ADR D33, ticket 103). Higher priority than test-mock-control so /test/mock-control/core/* reaches the core, not mw-simulators.",
+  "uri": "/test/mock-control/core/*",
+  "priority": 10,
+  "methods": ["GET", "POST", "PUT", "DELETE"],
+  "plugins": {
+    "ip-restriction": {
+      "whitelist": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "::1/128"]
+    },
+    "key-auth": { "header": "apikey", "hide_credentials": true },
+    "consumer-restriction": { "type": "consumer_name", "whitelist": ["mw_e2e"] },
+    "proxy-rewrite": {
+      "regex_uri": ["^/test(/mock-control/.*)$", "$1"]
+    }
+  },
+  "upstream": {
+    "type": "roundrobin",
+    "scheme": "http",
+    "timeout": { "connect": 5, "send": 60, "read": 60 },
+    "nodes": { "mw-core-mock:8080": 1 }
+  }
+}

@@ -19,7 +19,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 - Mock control (tickets 102a/b, ADR D33, FRS MCK-03..07, MCT-01..04, MCT-06; `service/mockcontrol/`,
   `controller/MockControlController`, contract `api/mw-simulators/mock-control.v1.openapi.yaml`): one engine
   for every mock party, only in the Spring profile `mock-control` (`MockControl.PROFILE`; the compose block
-  sets `SPRING_PROFILES_ACTIVE: mock-control`, the test config too). Without the profile `MagicValuesOnly`
+  sets `SPRING_PROFILES_ACTIVE: dev,mock-control` so springdoc is on, the test config `mock-control` too). Without the profile `MagicValuesOnly`
   answers every call by its magic value and no control path, journal or alias exists. MCT-08 (ticket
   103): `config/MockControlProdGuard` refuses to start with the profile and `mw.service.env` (`MW_ENV`)
   `prod`; `scripts/check-mock-control-prod.sh` (`./gradlew :mockControlProdCheck`) fails when anything but

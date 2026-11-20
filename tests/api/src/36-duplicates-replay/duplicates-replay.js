@@ -1,13 +1,14 @@
 // Ticket 99. The dev stack runs with the business-duplicate window off (MW_DUPLICATE_WINDOW=0s) so
 // the other folders may repeat a payment; the duplicate scenarios switch it on through the
-// orchestrator test API and off again afterwards. P2P fee: 500 poisha (mw-core-mock).
+// orchestrator test API and off again afterwards. P2P fee: 500 poisha, VAT-included (ticket 94:
+// 435 to FEE_INCOME, 65 to VAT_PAYABLE, commission 0).
 export default [
   {
     name: '[p2p] the same payment under a new key within the window asks to confirm (MW-VAL-024); the confirmed resend completes',
     run: async (MW, S) => {
       await MW.testApi.duplicateWindow(60);
       S.after(() => MW.testApi.duplicateWindow(0));
-      await S.note(['01711000001', '01711000002', 'FEE-POOL']);
+      await S.note(['01711000001', '01711000002', 'FEE_INCOME', 'VAT_PAYABLE']);
       await S.p2p('customer01', '01711000002', 1234, MW.pin);
       S.status(200);
       S.txnStatus('COMPLETED');
@@ -16,7 +17,7 @@ export default [
       S.status(400);
       S.code('MW-VAL-024');
       S.eq('the prompt is not retryable', S.last().body.retryable, false);
-      await S.changedBy({ '01711000001': -1734, '01711000002': 1234, 'FEE-POOL': 500 });
+      await S.changedBy({ '01711000001': -1734, '01711000002': 1234, 'FEE_INCOME': 435, 'VAT_PAYABLE': 65 });
 
       // the user says yes: the same body with confirmDuplicate, under the key the prompt left unused
       const confirmed = await MW.app.request('P2P', '01711000002', 1234, MW.pin);
@@ -24,7 +25,7 @@ export default [
       await S.submit('customer01', confirmed, S.idem);
       S.status(200);
       S.txnStatus('COMPLETED');
-      await S.changedBy({ '01711000001': -3468, '01711000002': 2468, 'FEE-POOL': 1000 });
+      await S.changedBy({ '01711000001': -3468, '01711000002': 2468, 'FEE_INCOME': 870, 'VAT_PAYABLE': 130 });
     },
   },
   {
@@ -42,7 +43,7 @@ export default [
   {
     name: '[p2p reversal] a key answered 200 replays that very body after a reversal; other content is 409 MW-IDEM-001',
     run: async (MW, S) => {
-      await S.note(['01711000001', '01711000002', 'FEE-POOL']);
+      await S.note(['01711000001', '01711000002', 'FEE_INCOME', 'VAT_PAYABLE']);
       await S.p2p('customer01', '01711000002', 1237, MW.pin);
       S.status(200);
       const first = S.last();
@@ -86,8 +87,10 @@ export default [
   {
     name: '[callback edge] a partner callback replayed with its nonce or a stale timestamp is refused',
     run: async (MW, S) => {
-      // a reference never issued: an authentic callback passes the signature and is then 404
-      const body = MW.callbacks.body(MW.callbacks.reference(MW.uuid()), 'SUCCESS', '000');
+      // a reference never issued: an authentic callback passes the signature and is then 404.
+      // SUCCESS needs paymentRef or the mapping refuses the body (400) before the lookup.
+      const ref = MW.callbacks.reference(MW.uuid());
+      const body = JSON.stringify({ transactionId: ref, status: 'SUCCESS', code: '000', message: 'api callback', paymentRef: 'PAY-' + ref });
       const nonce = 'api-nonce-' + MW.uuid();
       S.record(await MW.callbacks.send(body, MW.v('billaggSecret'), nonce));
       S.status(404);

@@ -35,7 +35,8 @@ this file says what is specific to this module.
      `loginClient`), with no Keycloak call and not counted in the step result.
   3. `seed-core-accounts`: the wallets of `mw.seeder.wallets` in mw-core-mock: GET, and only if unknown
      the test-only `PUT /core-mock/v1/wallets/{walletId}` (create-if-absent, seed PIN, opening balance, no
-     ledger entries; an existing wallet keeps whatever balance tests left).
+     ledger entries; an existing wallet keeps whatever balance tests left). A requested `ORG` matches the
+     `ORGANISATION` core-mock stores (ticket 94); any other stored type fails the step.
      **Billers (ticket 57 lists them) need no seeding, by design:** (a) core-mock has no biller wallet
      type (its seed PUT takes CUSTOMER|AGENT|MERCHANT|ORG): a bill payment's credit party is a
      `BILLER_ACCOUNT` outside the core, validated payer-side only and committed to the `SETTLEMENT`

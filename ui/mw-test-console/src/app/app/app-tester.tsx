@@ -34,6 +34,10 @@ function FlowForm({ type, user, me, users, busy, refreshKey, onPreview, onConfir
 }) {
   const options = counterpartyOptions(type, me, users);
   const [cp, setCp] = useState(() => defaultCounterparty(type, me, users));
+  // Amount and PIN stay what the user typed. Preview submits the form, and the browser then resets
+  // an uncontrolled input to its default (the seeded PIN), so Confirm would pay with that PIN.
+  const [amount, setAmount] = useState(DEFAULT_AMOUNT[type]);
+  const [pin, setPin] = useState(GOOD_PIN);
   const pick = options.some((o) => o.value === cp) ? cp : CUSTOM;
   const chips = scenarios(type, defaultCounterparty(type, me, users));
   const [previewState, preview, previewing] = useActionState(previewTxn, null);
@@ -77,8 +81,8 @@ function FlowForm({ type, user, me, users, busy, refreshKey, onPreview, onConfir
       <Input name="counterparty" value={cp} onChange={(e) => setCp(e.target.value)} data-fill="counterparty" data-testid="counterparty"
         className="font-mono" aria-label="counterparty value" placeholder={type === "BILL_PAY" ? "bill number" : type === "ADD_MONEY_BANK" ? "account number" : "01XXXXXXXXX"} />
       <Row>
-        <Field label="Amount (Tk)"><Input name="amount" defaultValue={DEFAULT_AMOUNT[type]} data-testid="amount" className="tabular-nums" /></Field>
-        <Field label="PIN"><Input name="pin" type="password" defaultValue={GOOD_PIN} autoComplete="off" data-testid="pin" /></Field>
+        <Field label="Amount (Tk)"><Input name="amount" value={amount} onChange={(e) => setAmount(e.target.value)} data-testid="amount" className="tabular-nums" /></Field>
+        <Field label="PIN"><Input name="pin" type="password" value={pin} onChange={(e) => setPin(e.target.value)} autoComplete="off" data-testid="pin" /></Field>
       </Row>
       <Field label="Idempotency-Key (empty = new)"><Input name="idempotencyKey" placeholder="tc-…" className="font-mono" /></Field>
       <input type="hidden" name="previewId" value={quote?.previewId ?? ""} />
