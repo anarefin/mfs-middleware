@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "configKey": "notify-rule/p2p-success-receipt",
+  "configType": "NOTIFY_RULE",
+  "change": "UPSERT",
+  "version": 1,
+  "value": {
+    "ruleId": "p2p-success-receipt",
+    "eventType": "P2P",
+    "outcome": "SUCCESS",
+    "customerType": "*",
+    "recipient": "DEBIT_PARTY",
+    "channels": ["FAX"],
+    "templateCode": "TXN_P2P_SENT",
+    "enabled": true
+  },
+  "changedAt": "2026-11-20T09:00:00Z",
+  "changedBy": "ops-maker01",
+  "approvedBy": "ops-checker01"
+}
