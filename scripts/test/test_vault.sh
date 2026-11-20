@@ -114,7 +114,7 @@ test_dev_unseal_and_provision_work_against_a_real_vault() {
   [ "$(vx kv get -field=value secret/mw/smoke)" = ok ] || fail "no secret/mw/smoke"
   vx auth list | grep -q '^approle/' || fail "approle auth not enabled"
   run_real_provision || fail "provision failed"
-  assert_out_contains "provision: 21 services provisioned"
+  assert_out_contains "provision: 22 services provisioned"
   local entry s d
   for entry in $(. "$REPO_DIR/deploy/provision/services.sh"; printf '%s\n' $SERVICES); do
     s="${entry%%:*}"; d="${entry#*:}"

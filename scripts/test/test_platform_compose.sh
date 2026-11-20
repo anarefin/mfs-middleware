@@ -190,6 +190,7 @@ mw-adapter-merchant:127.0.0.1:8098->8080
 mw-adapter-card:127.0.0.1:8099->8080
 mw-adapter-atm:127.0.0.1:8100->8080
 mw-adapter-remit:127.0.0.1:8101->8080
+mw-adapter-interop:127.0.0.1:8102->8080
 mw-adapter-billpay:127.0.0.1:8090->8080
 mw-adapter-telco:127.0.0.1:8089->8080
 mw-admin-api:127.0.0.1:8088->8080
@@ -394,7 +395,7 @@ test_every_long_running_memory_limit_is_a_knob_with_the_laptop_default() {
   expect="kafka=576 keycloak=608 postgres=320 apisix=384 greenmail=160 vault=128 etcd=64 redis=64 softhsm=48
     mw-admin-ui=64 mw-crypto=320 mw-auth=320 mw-simulators=384 mw-orchestrator=448 mw-audit-dw=448 mw-core-mock=384
     mw-notify=384 mw-app-gateway=384 mw-ussd=384 mw-admin-api=384 mw-adapter-telco=384 mw-adapter-billpay=384
-    mw-adapter-bank=384 mw-adapter-merchant=384 mw-adapter-card=384 mw-adapter-remit=384 mw-adapter-atm=384 mw-portal-api=384 mw-checkout=384 mw-data-export=384 mw-recon=384"
+    mw-adapter-bank=384 mw-adapter-merchant=384 mw-adapter-card=384 mw-adapter-remit=384 mw-adapter-atm=384 mw-adapter-interop=384 mw-portal-api=384 mw-checkout=384 mw-data-export=384 mw-recon=384"
   for s in $expect; do
     want=$(( ${s#*=} * 1048576 ))
     got="$(printf '%s' "$j" | jq -r --arg s "${s%%=*}" '.services[$s].deploy.resources.limits.memory')"
@@ -679,7 +680,7 @@ test_topic_plan_leaves_out_deferred_topics() {
   assert_ok plan
   assert_out_lacks "dw.txn.event.v1"
   assert_out_lacks "mw.compliance.instruction.v1"
-  assert_out_lacks "mw.partner.request.interop.v1"
+  assert_out_contains "mw.partner.request.interop.v1"
 }
 
 test_topic_plan_rejects_a_malformed_line() {

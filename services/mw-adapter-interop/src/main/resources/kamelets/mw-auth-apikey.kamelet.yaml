@@ -1,0 +1,46 @@
+# mw-auth-apikey (ADR D28, ticket 82): the api-key scheme of partner/auth on the request
+# mw-http-call prepared. Called by mw-http-call (auth=apikey).
+apiVersion: camel.apache.org/v1
+kind: Kamelet
+metadata:
+  name: mw-auth-apikey
+  labels:
+    camel.apache.org/kamelet.type: action
+  annotations:
+    camel.apache.org/kamelet.support.level: Stable
+    camel.apache.org/provider: Bits MFS middleware
+spec:
+  definition:
+    title: MW auth API key
+    description: >-
+      Puts the partner's static API key in one header (default X-Api-Key). The key is a field of this
+      partner's own Vault secret, read when the route loaded. Input and output: the prepared request;
+      only headers change.
+    type: object
+    required: [secretField]
+    properties:
+      secretField:
+        title: Secret field
+        description: Field of this partner's own Vault secret holding the API key; a reference, never the value.
+        type: string
+        format: password
+        x-descriptors:
+          - urn:camel:group:credentials
+          - urn:alm:descriptor:com.tectonic.ui:password
+      header:
+        title: Header
+        description: Header carrying the key (empty = X-Api-Key).
+        type: string
+        default: ""
+      keyId:
+        title: Unused
+        description: Not used by this scheme (mw-http-call passes it to every auth Kamelet).
+        type: string
+        default: ""
+  template:
+    from:
+      uri: "kamelet:source"
+      steps:
+        - bean:
+            ref: mwAuth
+            method: "apiKey(${exchange}, '{{secretField}}', '{{header}}')"

@@ -26,6 +26,7 @@ SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:sim
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank mw-adapter-merchant:adapter-merchant
   mw-adapter-card:adapter-card mw-adapter-remit:adapter-remit mw-adapter-atm:adapter-atm
+  mw-adapter-interop:adapter-interop
   mw-portal-api:portal-api mw-checkout:checkout mw-data-export:data-export mw-recon:recon"
 
 # Ledger stand-in. No PIN key since ticket 72 (D22): it verifies mw-auth's assertions with the
@@ -284,6 +285,13 @@ provision_mw_adapter_atm() {
   sync_env hmac-secret UCBATM_HMAC_SECRET
   KV="secret/$SVC"
   db_role adapter_atm_rw atm_ref
+}
+
+# The NPSB interop adapter (ticket 121a): its database role and schema only. Its messages are signed
+# and verified through mw-crypto (XML-DSig, ticket 121b), so it holds no key material of its own.
+provision_mw_adapter_interop() {
+  gen_once spring.datasource.password 40
+  db_role adapter_interop_rw interop_ref
 }
 
 # Realm services client secret: mw-orchestrator's internal query API (M3 gate).
