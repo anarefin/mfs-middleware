@@ -62,7 +62,9 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
             Map.entry(mfs.mw.admin.api.dto.ChannelClientChangeBody.class, new BodySchema(json, BodySchema.CHANNEL_CLIENT_CHANGE)),
             // ticket 131: the credential upload (write-only secrets) and the error map
             Map.entry(mfs.mw.admin.api.dto.CredentialChangeBody.class, new BodySchema(json, BodySchema.CREDENTIAL_CHANGE)),
-            Map.entry(mfs.mw.admin.api.dto.ErrorMapChangeBody.class, new BodySchema(json, BodySchema.ERROR_MAP_CHANGE)));
+            Map.entry(mfs.mw.admin.api.dto.ErrorMapChangeBody.class, new BodySchema(json, BodySchema.ERROR_MAP_CHANGE)),
+            Map.entry(mfs.mw.admin.api.dto.ReconExceptionChangeBody.class,
+                new BodySchema(json, BodySchema.RECON_EXCEPTION_CHANGE)));
   }
 
   @Override

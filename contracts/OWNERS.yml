@@ -85,6 +85,7 @@ files:
   api/mw-data-export/data-export.v1.openapi.yaml: mw-data-export
   api/mw-data-export/data-export-test.v1.openapi.yaml: mw-data-export
   events/mw-recon/mw.recon.result.v1.schema.json: mw-recon
+  events/mw-recon/mw.recon.exception.v1.schema.json: mw-recon
   api/mw-recon/recon.v1.openapi.yaml: mw-recon
   api/mw-recon/recon-test.v1.openapi.yaml: mw-recon
   # customer inbox (ticket 107a); caller mw-app-gateway. Not the admin notification log.

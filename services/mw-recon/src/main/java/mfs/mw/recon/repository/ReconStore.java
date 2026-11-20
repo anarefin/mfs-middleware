@@ -27,7 +27,8 @@ public class ReconStore {
   /** One work-queue exception (ticket 127). */
   public record ExceptionRow(UUID id, String reconClass, String detail, String owner, String partnerId, UUID txnId,
       String partnerRef, String reference, Long fileAmountMinor, Long upayAmountMinor, Long ledgerAmountMinor,
-      String state, Instant createdAt, String explanation, String explainedBy, Instant explainedAt) {}
+      String state, Instant createdAt, String explanation, String explainedBy, Instant explainedAt, String action,
+      UUID changeRequestId, String actionedBy) {}
 
   /** A registered file. */
   public record FileHead(UUID id, String source, String filename, String partnerId, String status, LocalDate businessDate) {}
@@ -288,6 +289,39 @@ public class ReconStore {
         """, explanation, operatorId, Timestamp.from(at), id);
   }
 
+  /**
+   * Records an approved action (ticket 127b) while the exception is OPEN or EXPLAINED and has a transaction: it
+   * becomes ACTIONED and waits for {@code expectedStatus} of its transaction. 0 rows otherwise.
+   */
+  public int markActioned(UUID id, String action, UUID changeRequestId, String actor, String expectedStatus,
+      Instant at) {
+    return jdbc.update("""
+        update recon_exception set state = 'ACTIONED', action = ?, change_request_id = ?, actioned_by = ?,
+          actioned_at = ?, expected_status = ?
+        where id = ? and state in ('OPEN', 'EXPLAINED') and txn_id is not null
+        """, action, changeRequestId, actor, Timestamp.from(at), expectedStatus, id);
+  }
+
+  /** The ACTIONED exceptions of a transaction waiting for that status. */
+  public List<UUID> actionedAwaiting(UUID txnId, String status) {
+    return jdbc.queryForList("""
+        select id from recon_exception where state = 'ACTIONED' and txn_id = ? and expected_status = ? order by id
+        """, UUID.class, txnId, status);
+  }
+
+  /** ACTIONED -> RESOLVED; 0 rows when it is not ACTIONED. */
+  public int resolve(UUID id, Instant at) {
+    return jdbc.update("""
+        update recon_exception set state = 'RESOLVED', resolved_at = ? where id = ? and state = 'ACTIONED'
+        """, Timestamp.from(at), id);
+  }
+
+  /** The projected status of a transaction, or null. */
+  public String txnState(UUID txnId) {
+    return jdbc.query("select state from txn_view where txn_id = ?", (rs, n) -> rs.getString(1), txnId).stream()
+        .findFirst().orElse(null);
+  }
+
   /** A run-less exception (the trust position, REC-07). */
   public void insertStandaloneException(UUID id, String reconClass, String detail, String owner, String partnerId,
       Long fileAmountMinor, Long upayAmountMinor, Instant at) {
@@ -324,14 +358,16 @@ public class ReconStore {
 
   private static final String EXCEPTION_COLUMNS = """
       select id, class, detail, owner, partner_id, txn_id, partner_ref, reference, file_amount_minor,
-        upay_amount_minor, ledger_amount_minor, state, created_at, explanation, explained_by, explained_at
+        upay_amount_minor, ledger_amount_minor, state, created_at, explanation, explained_by, explained_at,
+        action, change_request_id, actioned_by
       from recon_exception""";
 
   private static ExceptionRow exception(ResultSet rs) throws SQLException {
     return new ExceptionRow(rs.getObject(1, UUID.class), rs.getString(2), rs.getString(3), rs.getString(4),
         rs.getString(5), rs.getObject(6, UUID.class), rs.getString(7), rs.getString(8), rs.getObject(9, Long.class),
         rs.getObject(10, Long.class), rs.getObject(11, Long.class), rs.getString(12), rs.getTimestamp(13).toInstant(),
-        rs.getString(14), rs.getString(15), rs.getTimestamp(16) == null ? null : rs.getTimestamp(16).toInstant());
+        rs.getString(14), rs.getString(15), rs.getTimestamp(16) == null ? null : rs.getTimestamp(16).toInstant(),
+        rs.getString(17), rs.getObject(18, UUID.class), rs.getString(19));
   }
 
   private static FileHead head(ResultSet rs) throws SQLException {

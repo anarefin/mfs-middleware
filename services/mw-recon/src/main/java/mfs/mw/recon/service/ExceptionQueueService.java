@@ -34,8 +34,10 @@ public class ExceptionQueueService {
   private final ReconStore store;
   private final OutboxWriter outbox;
   private final Clock clock;
+  private final ExceptionEvents events;
 
-  public ExceptionQueueService(ReconStore store, OutboxWriter outbox, Clock clock) {
+  public ExceptionQueueService(ReconStore store, OutboxWriter outbox, Clock clock, ExceptionEvents events) {
+    this.events = events;
     this.store = store;
     this.outbox = outbox;
     this.clock = clock;
@@ -74,9 +76,48 @@ public class ExceptionQueueService {
     String auditId = UUID.randomUUID().toString();
     outbox.append(ReconTopics.AUDIT, operatorId, new EventMetadata(correlation, id.toString(), "explain-" + auditId, 1),
         audit(auditId, correlation, id, operatorId, now));
+    events.changed(id, operatorId, now);
     log.atInfo().addKeyValue("event", "recon.exception.explained").addKeyValue("exceptionId", id.toString())
         .log("recon exception explained");
     return get(id);
+  }
+
+  /**
+   * Records an action a checker approved in mw-admin-api (ticket 127b): OPEN or EXPLAINED -> ACTIONED, waiting for
+   * the transaction to reach COMPLETED (FORCE_COMMIT) or REVERSED (REVERSE) on {@code mw.txn.status.v1}; when the
+   * projection already shows that status it is RESOLVED at once. Idempotent on the change request id; another action
+   * on an ACTIONED or RESOLVED exception, or an exception without a transaction, is refused with 409.
+   */
+  @Transactional
+  public ExceptionView action(UUID id, String action, UUID changeRequestId, String operatorId) {
+    ReconStore.ExceptionRow row = require(id);
+    if (changeRequestId.equals(row.changeRequestId())) {
+      return get(id);
+    }
+    Instant now = clock.instant();
+    String expected = expectedStatus(action);
+    if (store.markActioned(id, action, changeRequestId, operatorId, expected, now) == 0) {
+      throw new MwException(ErrorCodes.VAL_STATE_CONFLICT, row.txnId() == null
+          ? "the exception has no transaction to act on" : "the exception is already actioned or resolved")
+          .withStatus(HttpStatus.CONFLICT);
+    }
+    events.changed(id, operatorId, now);
+    log.atInfo().addKeyValue("event", "recon.exception.actioned").addKeyValue("exceptionId", id.toString())
+        .addKeyValue("action", action).addKeyValue("changeRequestId", changeRequestId.toString())
+        .log("recon exception actioned");
+    if (expected.equals(store.txnState(row.txnId())) && store.resolve(id, now) == 1) {
+      events.changed(id, null, now);
+    }
+    return get(id);
+  }
+
+  /** The transaction status that shows an action worked. */
+  static String expectedStatus(String action) {
+    return switch (action) {
+      case "FORCE_COMMIT" -> "COMPLETED";
+      case "REVERSE" -> "REVERSED";
+      default -> throw new MwException(ErrorCodes.VAL_INVALID, "unknown action " + action);
+    };
   }
 
   private static Map<String, Object> audit(String auditId, String correlation, UUID id, String operatorId,
@@ -124,7 +165,8 @@ public class ExceptionQueueService {
     return new ExceptionView(row.id().toString(), row.reconClass(), row.detail(), row.owner(), row.partnerId(),
         row.txnId() == null ? null : row.txnId().toString(), row.partnerRef(), row.reference(), row.fileAmountMinor(),
         row.upayAmountMinor(), row.ledgerAmountMinor(), row.state(), row.createdAt(), age,
-        suggestedAction(row.reconClass(), row.detail()), row.explanation(), row.explainedBy(), row.explainedAt());
+        suggestedAction(row.reconClass(), row.detail()), row.explanation(), row.explainedBy(), row.explainedAt(),
+        row.action(), row.changeRequestId() == null ? null : row.changeRequestId().toString(), row.actionedBy());
   }
 
   private static String blankToNull(String value) {

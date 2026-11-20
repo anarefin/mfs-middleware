@@ -24,4 +24,7 @@ public record ExceptionView(
     String suggestedAction,
     String explanation,
     String explainedBy,
-    Instant explainedAt) {}
+    Instant explainedAt,
+    String action,
+    String changeRequestId,
+    String actionedBy) {}

@@ -1,0 +1,5 @@
+{
+  "invalid-unknown-state.json": [
+    "/state must be equal to one of the allowed values"
+  ]
+}

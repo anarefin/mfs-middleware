@@ -229,6 +229,46 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/recon-exceptions/{exceptionId}/change-requests:
+    post:
+      operationId: requestReconExceptionAction
+      summary: Ask for an action on a reconciliation exception (maker)
+      description: >-
+        Role `recon-maker` (ticket 127b, UC-22). The exception (mw-recon's work queue) must be OPEN or
+        EXPLAINED and carry a transaction, and the action must fit the transaction's status as for a
+        transaction change request (FORCE_COMMIT in MANUAL_REVIEW, REVERSE of a COMPLETED, unreversed,
+        non-REVERSAL one; else 409 MW-VAL-030). Nothing moves until a different user (`recon-checker`)
+        approves: the approval sends FORCE_COMMIT on `mw.txn.action.v1` or a REVERSAL on
+        `mw.txn.request.v1` (the ticket 37 paths) in the decision transaction, then tells mw-recon,
+        which marks the exception ACTIONED and RESOLVED when the transaction's outcome arrives.
+        `resourceType` `recon_exception`, `resourceId` the exception id; one open request per exception.
+        mw-recon or mw-orchestrator unreachable: 503 MW-SYS-040.
+      parameters:
+        - { name: exceptionId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, reason]
+              additionalProperties: false
+              properties:
+                action: { type: string, enum: [FORCE_COMMIT, REVERSE] }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /admin/v1/keys:
     get:
       operationId: listKeys
@@ -1431,7 +1471,7 @@ components:
     ResourceType:
       type: string
       enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template, notify-campaign, key, channel_client,
-        partner_credential, partner_error_map]
+        partner_credential, partner_error_map, recon_exception]
     KeyAction:
       type: string
       description: Key changes and the key ceremony (ticket 75)

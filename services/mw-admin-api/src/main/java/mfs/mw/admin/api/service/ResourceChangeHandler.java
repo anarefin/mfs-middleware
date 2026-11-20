@@ -91,6 +91,13 @@ public interface ResourceChangeHandler {
   Approval prepare(ChangeRequest cr, Operator checker, Instant now, String correlationId);
 
   /**
+   * Called after the approval's transaction committed (ticket 127b: tell mw-recon), never before the decision, so
+   * a reject or expiry that wins the race leaves nothing to undo. Must not throw: a failure is logged. Nothing by
+   * default.
+   */
+  default void afterApproved(ChangeRequest cr, Map<String, Object> payload, Operator checker) {}
+
+  /**
    * Called inside the decision transaction when a request of this type is rejected or expires
    * (ticket 39: the PENDING content version is marked so). Nothing by default.
    *

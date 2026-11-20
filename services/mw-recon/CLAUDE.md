@@ -34,10 +34,23 @@ Statement and settlement reconciliation (spec 13, ticket 126, FRS REC-01..04, RE
   `MW-VAL-006`; FRS 10.4 #7: every difference resolved or explained). The operator comes from
   `X-Mw-Operator-Id` as for reprocess (no caller authentication in this module yet). Exception states: OPEN, EXPLAINED, ACTIONED,
   RESOLVED. An action is never taken here: it is a maker-checker change request in mw-admin-api.
+- Exception actions (ticket 127b): mw-admin-api's `recon_exception` change request, once a recon-checker
+  approved it and mw-admin-api sent the ticket 37 message (FORCE_COMMIT on `mw.txn.action.v1`, REVERSE as a
+  REVERSAL on `mw.txn.request.v1`), calls `POST /internal/v1/recon/exceptions/{id}/actions {action,
+  changeRequestId}` (operator header = the checker; idempotent on changeRequestId): OPEN or EXPLAINED with a
+  transaction -> ACTIONED (`V6`: action, change_request_id, actioned_by/at, expected_status COMPLETED for
+  FORCE_COMMIT, REVERSED for REVERSE); anything else 409 `MW-VAL-006`. `ReconService.resolveAwaiting`: the
+  transaction reaching the expected status on `mw.txn.status.v1` (or already projected so when the action
+  arrives) -> RESOLVED (`resolved_at`). Another status leaves it ACTIONED.
+- Events (ticket 127b, FRS DAT-01 `recon.exception`): `service/ExceptionEvents` writes one
+  `mw.recon.exception.v1` per state change (OPEN when raised by a run or the trust position, EXPLAINED,
+  ACTIONED, RESOLVED) to the outbox in the same transaction, key the exception id. Consumers mw-audit-dw (audit
+  trail) and mw-data-export (DW, local shape).
 
 ## Contracts owned
 
 - `contracts/events/mw-recon/mw.recon.result.v1.schema.json`
+- `contracts/events/mw-recon/mw.recon.exception.v1.schema.json` (ticket 127b)
 - `contracts/api/mw-recon/recon.v1.openapi.yaml`
 - `contracts/api/mw-recon/recon-test.v1.openapi.yaml`
 

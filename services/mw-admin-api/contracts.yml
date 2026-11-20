@@ -9,6 +9,8 @@
 # REVERSAL on mw.txn.request.v1 (mw-orchestrator's contract).
 # Ticket 52: an approved wallet unlock lifts the core's lock; since ticket 95b (ADR D31) over REST
 # (core-wallet.v1 POST /core/v1/accounts/{walletId}/unlock, client/CoreAccountClient), no Kafka command.
+# Ticket 127b: an approved recon_exception action is a ticket 37 message (mw.txn.action.v1 FORCE_COMMIT or a
+# REVERSAL on mw.txn.request.v1), then recorded at mw-recon (recon.v1 POST .../exceptions/{id}/actions).
 produces:
   events:
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
@@ -27,4 +29,6 @@ consumes:
   # ticket 75: the key list, approved key changes and the key ceremony at mw-crypto
   apis:   [api/mw-orchestrator/txn-query.v1.openapi.yaml, api/mw-audit-dw/audit-query.v1.openapi.yaml,
            api/mw-crypto/crypto-internal.v1.openapi.yaml,
-           api/mw-core-mock/core-wallet.v1.openapi.yaml]
+           api/mw-core-mock/core-wallet.v1.openapi.yaml,
+           # ticket 127b: the recon exception (read) and the record of an approved action
+           api/mw-recon/recon.v1.openapi.yaml]

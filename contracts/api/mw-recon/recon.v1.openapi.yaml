@@ -60,7 +60,7 @@ paths:
       description: >
         The exception work queue (ticket 127, UC-22), oldest first. Every filter is optional; minAgeHours
         keeps exceptions at least that old. An action on an exception is a maker-checker change request in
-        mw-admin-api, never a call to mw-recon.
+        mw-admin-api (RECON_EXCEPTION, ticket 127b); mw-recon only records the approved action (POST .../actions).
       parameters:
         - name: class
           in: query
@@ -124,6 +124,42 @@ paths:
           description: No such exception (MW-VAL-003).
         "409":
           description: The exception is ACTIONED or RESOLVED and is not rewritten (MW-VAL-006).
+  /internal/v1/recon/exceptions/{id}/actions:
+    post:
+      operationId: recordExceptionAction
+      description: >
+        Ticket 127b. mw-admin-api records an action a checker approved on its RECON_EXCEPTION change request,
+        after it sent the action to mw-orchestrator (FORCE_COMMIT on mw.txn.action.v1, REVERSE as a REVERSAL).
+        OPEN or EXPLAINED becomes ACTIONED; the exception becomes RESOLVED when its transaction reaches
+        COMPLETED (FORCE_COMMIT) or REVERSED (REVERSE) on mw.txn.status.v1, at once when that status was
+        already seen. Each state change is published on mw.recon.exception.v1. Idempotent on changeRequestId.
+        mw-recon itself moves no money.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: X-Mw-Operator-Id, in: header, required: true, schema: { type: string, minLength: 1 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, changeRequestId]
+              additionalProperties: false
+              properties:
+                action: { type: string, enum: [FORCE_COMMIT, REVERSE] }
+                changeRequestId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The actioned (or already resolved) exception.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReconException" }
+        "400":
+          description: An unknown action or a missing operator header (MW-VAL-001).
+        "404":
+          description: No such exception (MW-VAL-003).
+        "409":
+          description: The exception is already ACTIONED or RESOLVED by another change request, or has no transaction (MW-VAL-006).
 components:
   schemas:
     ReconException:
@@ -148,3 +184,6 @@ components:
         explanation: { type: [string, "null"] }
         explainedBy: { type: [string, "null"] }
         explainedAt: { type: [string, "null"], format: date-time }
+        action: { type: [string, "null"], enum: [FORCE_COMMIT, REVERSE, null] }
+        changeRequestId: { type: [string, "null"], format: uuid }
+        actionedBy: { type: [string, "null"] }

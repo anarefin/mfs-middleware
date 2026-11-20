@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import mfs.mw.audit.dw.dto.AuditEvent;
+import mfs.mw.audit.dw.dto.ReconExceptionEvent;
 import mfs.mw.audit.dw.dto.TxnStatusEvent;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -58,6 +59,16 @@ class ConsumedContractsTest {
             assertThat(e.amount()).isNotNull();
             assertThat(e.amount().valueMinor()).isNotNull();
             assertThat(e.updatedAt()).isNotNull();
+          },
+          // ticket 127b: recon exception state changes into the audit trail (service/ReconExceptionAudit)
+          "events/mw-recon/mw.recon.exception.v1.schema.json",
+          body -> {
+            ReconExceptionEvent e = JSON.readValue(body, ReconExceptionEvent.class);
+            assertThat(e.eventId()).isNotNull();
+            assertThat(e.exceptionId()).isNotNull();
+            assertThat(e.state()).isNotBlank();
+            assertThat(e.changedAt()).isNotNull();
+            assertThat(e.correlationId()).isNotBlank();
           });
 
   static final ContractManifest MANIFEST = ContractManifest.load();
