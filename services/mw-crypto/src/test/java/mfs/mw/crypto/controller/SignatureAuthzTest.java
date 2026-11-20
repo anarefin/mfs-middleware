@@ -46,8 +46,8 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
 /**
  * Per-operation authorisation of the ticket 65 endpoints (security/CallerPolicy): with the shipped
- * {@code mw.crypto.authz} nobody may sign or verify XML-DSig or HTTP signatures (no adapter is bound
- * yet), whatever the key is named by; binding a purpose to a client (here HTTP_SIGN_EC to
+ * {@code mw.crypto.authz} only mw-adapter-interop may sign or verify XML-DSig (ticket 121b) and nobody
+ * HTTP signatures (no adapter is bound yet), whatever the key is named by; binding a purpose to a client (here HTTP_SIGN_EC to
  * mw-admin-api, a test-only override) opens it to that client only. A partner PEM is bound by its
  * key type.
  */
@@ -144,6 +144,20 @@ class SignatureAuthzTest {
       forbidden(post(client, "/internal/v1/xmldsig/verify", "{\"keyId\":\"xmldsig\",\"xml\":\"" + XML + "\"}"));
       forbidden(post(client, "/internal/v1/xmldsig/verify", "{\"certificatePem\":\"" + rsaPem + "\",\"xml\":\"" + XML + "\"}"));
     }
+  }
+
+  @Test
+  void xmlDsigIsOpenToTheInteropAdapterOnly() throws Exception {
+    // ticket 121b: the shipped config binds XMLDSIG to mw-adapter-interop (the NPSB ISO 20022 wire)
+    String rsaPem = pem(((KeyPair) hsm.key("http-sign-rsa.v1")).getPublic());
+    assertThat(post("mw-adapter-interop", "/internal/v1/xmldsig/sign", "{\"keyId\":\"xmldsig\",\"xml\":\"" + XML + "\"}"))
+        .hasStatusOk().bodyJson().extractingPath("$.kid").isEqualTo("xmldsig.v1");
+    assertThat(post("mw-adapter-interop", "/internal/v1/xmldsig/verify",
+        "{\"certificatePem\":\"" + rsaPem + "\",\"xml\":\"" + XML + "\"}"))
+        .hasStatusOk().bodyJson().extractingPath("$.valid").isEqualTo(false);
+    // the interop client gets no other signature purpose
+    forbidden(post("mw-adapter-interop", "/internal/v1/http-signature/sign",
+        "{\"keyId\":\"http-sign-rsa\",\"components\":" + COMPONENTS + "}"));
   }
 
   @Test

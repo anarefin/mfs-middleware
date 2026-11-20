@@ -12,4 +12,6 @@ consumes:
   events:
     - events/mw-orchestrator/mw.partner.request.v1.schema.json#interop
     - events/mw-admin-api/mw.config.changed.v1.schema.json
-  apis: []
+  apis:
+    # ticket 121b: XML-DSig sign / verify of the NPSB ISO 20022 wire (client/CryptoXmlSigner)
+    - api/mw-crypto/crypto-internal.v1.openapi.yaml

@@ -265,7 +265,7 @@ Service module (spec 4.2, 4.3), a subproject of the root build. Package `mfs.mw.
   | `/envelope/encrypt`, `/decrypt` | `purposes.KEK_<purpose>` | `KEK_COLUMN`: `mw-auth`; `KEK_FILE`: nobody |
   | `/hmac/sign`, `/verify` | `purposes.HMAC_<use>` | none yet |
   | `/pinblock/translate`, `/pvv/generate`, `/pvv/verify` (ticket 64) | `purposes.<TPK, ZPK, TPK_AES, ZPK_AES, PVK>` of every key | none yet |
-  | `/xmldsig/sign`, `/verify` (also with a partner PEM) | `purposes.XMLDSIG` | none yet |
+  | `/xmldsig/sign`, `/verify` (also with a partner PEM) | `purposes.XMLDSIG` | `mw-adapter-interop` (ticket 121b, NPSB ISO 20022) |
   | `/http-signature/sign`, `/verify` | the key's purpose (`HTTP_SIGN_RSA`, `HTTP_SIGN_EC`, `HMAC_<use>`); a partner PEM by its key type | none yet |
   | `/jwks/{purpose}`, `/keys`, `/keys/{keyId}/public` | every allowed caller | |
   | generate, rotate | ticket 66 key-admin rule | `mw-admin-api` |
@@ -381,8 +381,8 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
   laughs / size, partner PEM and expired certificate, document KeyInfo ignored),
   `service/HttpSignatureServiceTest` (RFC 9421 B.2.5 hmac-sha256 known answer, ES256 / PS512 / RS256
   checked by the JDK over a hand-written base, component parameters, tamper, time window, bad input),
-  `controller/SignatureControllersTest`, `controller/SignatureAuthzTest` (denied to every caller by
-  default), `contracts/SignatureContractsTest`, `dto/SignatureDtoMaskingTest`, and `client/SignaturesIT`
+  `controller/SignatureControllersTest`, `controller/SignatureAuthzTest` (XML-DSig open to
+  `mw-adapter-interop` only, ticket 121b; HTTP signatures denied to every caller by default), `contracts/SignatureContractsTest`, `dto/SignatureDtoMaskingTest`, and `client/SignaturesIT`
   (keys `xmldsig-it`, `http-sign-rsa-it`, `http-sign-ec-it`, `hmac-sig-it`; `HsmStack` binds the purposes
   to mw-auth for the IT only).
 - `scripts/test/test_softhsm.sh` fails when `src/test/resources/softhsm/` differs from `deploy/softhsm`:
@@ -405,7 +405,8 @@ No PKCS#11 tooling on the host (user decision 2026-11-14): PKCS#11 never runs in
 ## Contracts used
 
 - None (the payShield simulator's host commands are simulator-owned, not in `contracts/`). Callers: `mw-admin-api` (Keycloak realm `services` client, audience mapper `aud-mw-crypto` added
-  here), `mw-auth` (ticket 67) and `mw-audit-dw` (ticket 74) add their own clients; all three are on
+  here), `mw-auth` (ticket 67), `mw-audit-dw` (ticket 74), `mw-data-export` (ticket 128) and
+  `mw-adapter-interop` (ticket 121b, XML-DSig) add their own clients; all are on
   `mw.internal-auth.allowed-clients`, only `mw-admin-api` on `key-admin-clients`. Each also needs its
   Vault certificate (see "mTLS").
 - `contracts.yml` is the machine-readable list, checked by `./gradlew :contractsLint`.

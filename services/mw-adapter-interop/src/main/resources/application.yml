@@ -214,6 +214,23 @@ management:
       type: w3c
 
 mw:
+  interop:
+    # XML-DSig of the NPSB ISO 20022 wire through mw-crypto (ticket 121b, config/CryptoClientProperties,
+    # client/CryptoXmlSigner): purpose XMLDSIG, our key xmldsig, inbound verified under the switch's
+    # certificate. Client secret and switch certificate from Vault secret/mw-adapter-interop
+    # (crypto-client-secret, npsb-certificate-pem); never in a file. Off until the stack wires the
+    # service's Keycloak client and Vault PKI certificate (mw-crypto demands mTLS, ticket 66).
+    crypto:
+      enabled: ${MW_INTEROP_CRYPTO_ENABLED:false}
+      base-url: ${MW_CRYPTO_BASE_URL:https://mw-crypto:8080}
+      token-uri: ${MW_INTERNAL_TOKEN_URI:http://keycloak:8080/realms/services/protocol/openid-connect/token}
+      client-id: ${spring.application.name}
+      client-secret: ${crypto-client-secret:}
+      key-id: xmldsig
+      switch-certificate-pem: ${npsb-certificate-pem:}
+      ssl-bundle: ${MW_INTEROP_CRYPTO_SSL_BUNDLE:}
+      connect-timeout: 2s
+      read-timeout: 3s
   # Partner engine (ADR D28, package partner): a partner is a record holding its Camel YAML DSL
   # route (built from the mw-* Kamelets in classpath:kamelets), its JSONata mappings, the hosts it may
   # call and its error-code map. These are seeds (version 0); a mw.config.changed.v1 PARTNER record

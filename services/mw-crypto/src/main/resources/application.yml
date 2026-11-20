@@ -298,9 +298,11 @@ mw:
         # MW_CRYPTO_AUTHZ_PURPOSES_TPK / _PVK=mw-e2e-crypto (deploy/dev.env.defaults); empty elsewhere.
         TPK: ${MW_CRYPTO_AUTHZ_PURPOSES_TPK:}
         PVK: ${MW_CRYPTO_AUTHZ_PURPOSES_PVK:}
-        # No caller yet (ticket 65 building blocks): XMLDSIG (/xmldsig/**, also verify with a partner
-        # PEM), HTTP_SIGN_RSA and HTTP_SIGN_EC (/http-signature/**, a partner PEM by its key type) and
-        # every HMAC_<use> stay denied until the ATM, interop and merchant SOAP adapter tickets add theirs.
+        # XMLDSIG (/xmldsig/**, also verify with a partner PEM): the NPSB ISO 20022 wire of
+        # mw-adapter-interop (ticket 121b). No caller yet (ticket 65 building blocks): HTTP_SIGN_RSA and
+        # HTTP_SIGN_EC (/http-signature/**, a partner PEM by its key type) and every HMAC_<use> stay
+        # denied until the ATM and merchant SOAP adapter tickets add theirs.
+        XMLDSIG: mw-adapter-interop
   # This service's certificate from Vault PKI (spec 18.2, 18.4, D24; config/TlsProperties,
   # config/ServiceCertificateManager): issued at start through Spring Cloud Vault (AppRole policy:
   # pki_int/issue/mw-crypto only), renewed at two thirds of its life, never written to disk.
@@ -321,7 +323,7 @@ mw:
     jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
     issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
     audience: mw-crypto
-    allowed-clients: mw-admin-api,mw-auth,mw-audit-dw,mw-data-export
+    allowed-clients: mw-admin-api,mw-auth,mw-audit-dw,mw-data-export,mw-adapter-interop
     # Generate (only with bootstrap-keys, until the ceremony of ticket 75) and rotate keys.
     key-admin-clients: mw-admin-api
 
