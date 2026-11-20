@@ -110,7 +110,10 @@
 112a-telco-ocs-profiles                     97,98,102         done     -        38 files +2043 −58     dc7c74e0
 112b-postpaid-amount                        112a              done     -        46 files +1372 −78     b79ccbd9
 112c-topup-matrix                           112b              done     -        31 files +1005 −27     266d341a  (T5 skipped: it only passes by waiting out the inquiry schedule. T11 is ticket 125. T12 is ticket 127)
-113-biller-catalogue                        98                open
+113-biller-catalogue                        98                split (113-split-decisions.md, 2026-11-20)
+113a-biller-catalogue-owner                 98                done     ~45m     43 files +2020 −40     0d0f506d..a79d4435
+113b-biller-channel-projections             113a              open
+113c-biller-amount-rule                     113a              in progress
 114-bill-aggregators                        113,97,102        open
 115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
 115a-merchant-adapter                       97,102            in progress
