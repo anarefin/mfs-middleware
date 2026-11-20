@@ -30,6 +30,35 @@ class BillerRulesTest {
   }
 
   @Test
+  void anUnknownKeyIsRefused() {
+    Map<String, Object> v = biller();
+    v.put("surcharge", 10);
+    assertThat(BillerRules.problems(v)).anyMatch(p -> p.contains("surcharge"));
+    Map<String, Object> w = biller();
+    w.put("fields", List.of(Map.of("name", "accountNo", "labelEn", "A", "labelBn", "B", "regex", "^[0-9]{8}$",
+        "required", true, "hint", "x")));
+    assertThat(BillerRules.problems(w)).anyMatch(p -> p.contains("fields[0].hint"));
+  }
+
+  @Test
+  void fieldNamesAreUnique() {
+    Map<String, Object> v = biller();
+    Map<String, Object> f = Map.of("name", "accountNo", "labelEn", "A", "labelBn", "B", "regex", "^[0-9]{8}$", "required", true);
+    v.put("fields", List.of(f, f));
+    assertThat(BillerRules.problems(v)).anyMatch(p -> p.contains("fields[1].name is used twice"));
+  }
+
+  @Test
+  void theCodeAndTheMaintenanceTextAreKnownKeys() {
+    Map<String, Object> v = biller();
+    v.put("code", "WASA");
+    v.put("maintenanceEn", "Down");
+    v.put("maintenanceBn", "বন্ধ");
+    v.put("fallbackAggregator", "sslcommerz");
+    assertThat(BillerRules.problems(v)).isEmpty();
+  }
+
+  @Test
   void aFieldRegexMustCompile() {
     Map<String, Object> v = biller();
     v.put("fields", List.of(Map.of("name", "accountNo", "labelEn", "A", "labelBn", "B", "regex", "^[0-9", "required", true)));

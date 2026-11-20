@@ -111,10 +111,11 @@ function restMappings() {
       ? {"outcome": "PENDING", "partnerRef": ${b}.bankRef, "code": ${b}.code}`;
   return {
     'INQUIRY.request': '{"accountNumber": account}\n',
-    // the holder name never leaves the adapter whole: first initial only (MaskingPolicy NAME)
+    // the holder name never leaves the adapter whole: first initial only (MaskingPolicy NAME); the whole
+    // name (holderFullName) is only compared with the KYC name inside the adapter (M9 review owner binding)
     'INQUIRY.response': `status = 200 and body.status = "ACTIVE" and $type(body.accountName) = "string" and body.accountName != ""
     and $type(body.verifyRef) = "string" and body.verifyRef != ""
-  ? {"outcome": "SUCCESS", "partnerRef": body.verifyRef, "attributes": {"holderName": ${masked('body.accountName')}}}
+  ? {"outcome": "SUCCESS", "partnerRef": body.verifyRef, "attributes": {"holderName": ${masked('body.accountName')}, "holderFullName": $trim(body.accountName)}}
 : status = 422 and $type(body.code) = "string" and body.code != ""
   ? {"outcome": "FAILED", "code": body.code, "message": body.message}
 : ${fail}\n`,
@@ -158,7 +159,7 @@ function soapMappings() {
     'INQUIRY.response': `body.ValidateAccountResponse.status = "ACTIVE" and $type(body.ValidateAccountResponse.accountName) = "string"
     and body.ValidateAccountResponse.accountName != "" and $type(body.ValidateAccountResponse.verifyRef) = "string"
   ? {"outcome": "SUCCESS", "partnerRef": body.ValidateAccountResponse.verifyRef,
-     "attributes": {"holderName": ${masked('body.ValidateAccountResponse.accountName')}}}
+     "attributes": {"holderName": ${masked('body.ValidateAccountResponse.accountName')}, "holderFullName": $trim(body.ValidateAccountResponse.accountName)}}
 : ${fault}
 : ${fail}\n`,
     'PAY.request': '{"Transfer": {"transactionId": reference, "accountNumber": account, "amount": amount.major, "direction": direction}}\n',

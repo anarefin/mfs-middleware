@@ -330,6 +330,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   moving to the envelope is an open item. Answers carry `accountLast4` and the initial only, never the number.
   The adapter's envelope passes through (502 `MW-PTR-BANK_<CODE>-*`, 503 `MW-SYS-PARTNER_*`, 504
   `MW-TMO-PARTNER_*`, 400); unreachable / other answers 503 `MW-SYS-016` (retryable); nothing is stored then.
+  Owner binding (M9 review, user decision 2026-11-20, app.v1 1.17.0): before the AVL the wallet's KYC name is read
+  from the core (WAL-01, `CoreWalletClient.account`) and sent as `matchName`; mw-adapter-bank compares it with the
+  bank's whole holder name (`util/HolderNameMatch` there) and answers `nameMatch`. Anything but `true` (no KYC name,
+  no answer to the check, someone else) is 422 `MW-VAL-ACCOUNT_HOLDER_MISMATCH`, nothing linked; core out of reach
+  503 `MW-SYS-015`. AVL attempts are counted per wallet in Redis `avl:<wallet>` (`repository/AvlAttemptStore`, INCR
+  with the window's expiry, refused attempts included, fail closed 503 `MW-SYS-012`): more than
+  `linked-accounts.avl-attempts` (5, `MW_APP_LINK_AVL_ATTEMPTS`; 1000 in `dev.env.defaults`) per `avl-window` (1 h)
+  is 429 `MW-SYS-RATE_LIMITED`, nothing asked. No name is logged. A W2B preview (FL-09) runs the AVL again on the
+  stored account (`PreviewService.bankHolder`): a refusal ends the preview with the adapter's code, else
+  `counterparty.name` is the holder's initial.
   `GET /app/v1/bank-accounts`, `DELETE /app/v1/bank-accounts/{id}` (another wallet's id 404 `MW-VAL-003`).
   Session level, no signature; body schema `derived-schemas/app-v1-link-bank-account-request.json`. The
   Keycloak client `mw-app-gateway` has the audience mapper `aud-mw-adapter-bank`. Tests

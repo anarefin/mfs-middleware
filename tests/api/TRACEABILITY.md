@@ -194,6 +194,7 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 52 | [merchant frs] T3 a merchant system 5XX on the notify is retried and the payment stays COMPLETED | - | |
 | 55 | [w2b avl] linking a REST bank account runs AVL and shows only the last 4 digits and the holder initial | - | |
 | 55 | [w2b avl] an account the bank does not know is refused by AVL and nothing is linked | - | |
+| 55 | [w2b avl] an account held by someone else is refused and nothing is linked | - | |
 | 55 | [w2b avl] linking a SOAP bank account runs AVL over SOAP and shows the holder initial | - | |
 | 55 | [w2b frs] T1 a transfer to a linked REST bank account previews, holds, credits the account and completes | - | |
 | 55 | [w2b frs] T1 a transfer to a linked SOAP bank account completes and credits the account | - | |

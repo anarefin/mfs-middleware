@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits app API (mw-app-gateway)
-  version: 1.16.0
+  version: 1.17.0
   description: |
     Mobile apps API v1 (spec 8.2, 9.1), served by mw-app-gateway behind APISIX route `/app/v1/*`.
     Bearer access JWT from mw-auth (spec 18.7, D21; MSISDN + PIN login on a bound device); the payer
@@ -287,7 +287,9 @@ paths:
         "413": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
+        "502": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+        "504": { $ref: "#/components/responses/Error" }
   /app/v1/{group}/confirm:
     post:
       operationId: confirmTransaction
@@ -769,6 +771,11 @@ paths:
     post:
       operationId: linkBankAccount
       summary: Validate a bank account with its bank (AVL) and link it to the signed-in wallet
+      description: >-
+        The account is linked only when the bank's holder is the wallet's owner (the KYC name of the
+        wallet, compared with the bank's holder name; 1.17.0): otherwise 422
+        MW-VAL-ACCOUNT_HOLDER_MISMATCH and nothing is linked. At most 5 validations per wallet per hour,
+        refused ones included; past that 429 MW-SYS-RATE_LIMITED (retryable later).
       parameters:
         - { $ref: "#/components/parameters/DeviceId" }
       requestBody:
@@ -786,6 +793,7 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
         "502": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
@@ -1240,7 +1248,10 @@ components:
         total: { $ref: "#/components/schemas/Money", description: amount + fee (what the payer is debited) }
         counterparty:
           type: object
-          description: The payee, masked (MSISDN `0171****789`, account last 4, name to the initial)
+          description: >-
+            The payee, masked (MSISDN `0171****789`, account last 4, name to the initial). A transfer to
+            bank (W2B, 1.17.0) asks the bank again (AVL) and shows its holder as `name`, the initial
+            only; an account the bank refuses ends the preview with the bank's error (502 MW-PTR-*).
           properties:
             type: { type: string }
             id: { type: string }

@@ -152,7 +152,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-16` remittance | partial: USSD status by Upay txn id is core WAL-13 (109c); inbound push credit built: mw-adapter-remit (signed credit, dedup by partner reference, outbox, keyed fingerprint, status API; 119a, 119b), APISIX route `partner-remit-v1`, orchestrator `RemitInFlow` (validate the beneficiary, CreditWallet from SETTLEMENT_UCB_IMT, refused credit -> MANUAL_REVIEW, outcome back to the adapter; 119b); beneficiary lookup, AML screen (ticket 125) and API suite folder 53 open |
 | `UC-17` ATM | partial: inbound SOAP (verify, confirm, reversal, cash-in) and UcbAtmMock (120a); cash fails closed (`MW-SYS-ATM_CASH_DISABLED`), cash-out state machine and edge route `partner-ucbatm-ws` (120b1); token issue, orchestrator flows and the suite remain tickets 120b2, 120b3 |
 | `UC-18`, `UC-19` BanglaQR, NPSB | tickets 121, 122; 121a built the `mw-adapter-interop` module (family `interop`) and the NPSB participant list mock; the ISO 20022 wire (121b) and the flows and API (121c) remain |
-| `UC-20` bulk disbursement | CSV done; ticket 129 |
+| `UC-20` bulk disbursement | CSV and XLSX done (129a); preview, balance check, retry: ticket 129b-c |
 | `UC-21` AML | ticket 125 |
 | `UC-22` recon and DW export | DW export done (ticket 128); matching and classification done (ticket 126); reports, the exception queue and its maker-checker actions done (tickets 127, 127b); the trust position job and API suite folder `61-recon-reports` done (ticket 127c; open item for Upay: the real core must serve the e-money total endpoint, see REC-07) |
 
@@ -222,7 +222,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CH-WEB-03 | ticket 116 | redirect and signed IPN with retries built; 24 h retry horizon built (1m..24h, 116) |
 | CH-WEB-04 | ticket 116 | create, status and list by date built (116); refund API and refund IPN built (116c) |
 | CH-WEB-05 | done | session expiry `session-ttl: 15m` (mw-checkout `application.yml`) |
-| CH-POR-01 | ticket 129 | CSV upload and row validation built; XLSX and preview with totals in 129 |
+| CH-POR-01 | ticket 129 | 129a done: CSV and XLSX upload (`BulkFileParser`, bounded XLSX reader) and row validation built; preview with totals in 129b |
 | CH-POR-02 | done | bulk maker-checker in mw-portal-api |
 | CH-POR-03 | ticket 129 | async execution, throttle, per-row status, result file built; retry of failed rows in 129 |
 | CH-POR-04 | ticket 129 | balance check before execution |
@@ -240,8 +240,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | FL-05 | tickets 113, 132 | biller catalogue in mw-admin-api (`biller` table V16, 57-biller dev seed, `BillerChangeRequestIT`), published as `mw.config.changed.v1` BILLER; mw-adapter-billpay projection (`BillerProjectionIT`); mw-app-gateway projection (in-memory replay, `GET /app/v1/billers` with fields, labels, amount rule; app.v1 1.14.0) and mw-ussd projection (`ussd.biller_catalog` V7, DYNAMIC billers, bill-number prompt from the field label) (ticket 113b) |
 | FL-06 | ticket 116 | refund bounds enforced in mw-core-mock (`MW-CORE-REFUND_EXCEEDS`, 116a); mw-orchestrator refunds 1..original per request and ends an overshoot REJECTED (116b); checkout refund API built, refusal passed through as 422 (116c) |
 | FL-07 | ticket 118 | card tokens only (card PAN never enters the middleware, root `CLAUDE.md`): the app sends amount and PIN only, the card is typed on the acquirer's hosted page (https on an allowed host, checked by mw-orchestrator); the transient token travels only in the capture request, never on the transaction row, a status, the audit or a log (`AddMoneyCardIT`); a capture is credited only when the acquirer echoes the amount, currency and our reference (118b) |
-| FL-08 | ticket 117 | linked bank accounts with AVL: done (117b: `/app/v1/bank-accounts`, AVL API `/bank/v1/accounts/validate`) |
-| FL-09 | ticket 117 | W2B with AVL and a hold: done for the app (117c: `W2bFlow` hold until the bank confirms, app API; 117e: suite folder 55); USSD app-only (user decision) |
+| FL-08 | ticket 117 | linked bank accounts with AVL: done (117b: `/app/v1/bank-accounts`, AVL API `/bank/v1/accounts/validate`); M9 review: holder bound to the KYC name, AVL 5 per wallet per hour |
+| FL-09 | ticket 117 | W2B with AVL and a hold: done for the app (117c: `W2bFlow` hold until the bank confirms, app API; 117e: suite folder 55; M9 review: AVL again at preview, masked holder shown); USSD app-only (user decision) |
 | FL-10 | ticket 119 | partial: IMT push built in code (119a, 119b; `RemitInFlowIT`, `RemitInboundIT`); lookup and suite folder 53 open |
 | FL-11 | ticket 120 | ATM one-time token: the adapter never stores or logs it (120a); issue, HMAC, expiry and lockout remain ticket 120 |
 | FL-12 | tickets 121, 122 | BanglaQR on-us and off-us |

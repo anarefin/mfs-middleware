@@ -26,6 +26,6 @@ public class AccountValidationController {
 
   @PostMapping("/validate")
   public AccountValidationView validate(@Valid @RequestBody ValidateAccountRequest body) {
-    return service.validate(body.bankCode(), body.accountNumber());
+    return service.validate(body.bankCode(), body.accountNumber(), body.matchName());
   }
 }

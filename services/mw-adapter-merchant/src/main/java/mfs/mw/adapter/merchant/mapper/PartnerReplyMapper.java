@@ -109,6 +109,16 @@ public class PartnerReplyMapper {
         "Merchant call not sent: the request expired before it could be sent", true);
   }
 
+  /**
+   * A NOTIFY (PAY) whose call threw before any answer (M9 review): UNKNOWN, so the orchestrator retries
+   * the notify with backoff and finally dead-letters it instead of waiting for a reply that never comes.
+   */
+  public PartnerReply callFailed(PartnerRequest request, String partnerRef) {
+    return reply(
+        request, partnerRef, "UNKNOWN", null, null, "MW-TMO-PARTNER_CALL_FAILED",
+        "Merchant call could not be completed", false);
+  }
+
   public static boolean isStatusQuery(PartnerRequest request) {
     return request.payload() != null && "STATUS_QUERY".equals(request.payload().operation());
   }
