@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (108 merged; 106 is unblocked; 126 is in flight on ticket/126-recon-matching). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (106 merged; 126 is in flight on ticket/126-recon-matching; M8 is the next gate and is not started). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -26,6 +26,7 @@ Updated: 2026-11-20 (108 merged; 106 is unblocked; 126 is in flight on ticket/12
 103 (core mock-control + global reset),
 104 (P2P FRS harness, Newman folder 41-p2p-frs because 40 was already taken; live Newman and the M7 gate were not run),
 105 (app preview/confirm, Newman folder 46; live suite and tester-e2e not run),
+106 (distributor, DSO and partner apps and B2B float, Newman folder 63; session length, device cap and the first PIN lock follow the app type; B2B float posts like P2P from the caller's own wallet),
 107a (saved billers, favourites and the customer inbox; saved billers and favourites are not encrypted, user decision),
 107b (profile, limits and statement; app-gateway is a core client for profile, limits, and statement; the live suite was not re-run after this merge),
 108 (app SOAP facade on mw-app-gateway, Newman folder 48; the same services as REST),
@@ -44,8 +45,8 @@ Review fix on the earlier salvage: 2308d22e (19 files +342 −57). 88 is superse
 
 ## Next (frontier, in priority order)
 1. **M7 gate (2026-11-20).** Passed: clean build, smoke 60/60, edge 65/65, folder 41 (54), log-scan, ui-e2e 25/25, tester-e2e 40/40. The whole API suite failed 2 of 1386 (folder 13 audit change-request id scrubbed; folder 44 AML journal first WRITE was another file) and was not re-run. The gate fixes are commit 784285bb. The live suite was not re-run after 107 or 109.
-2. **108** is merged. **106** is unblocked (it needs the app gateway and the orchestrator). **126** is in flight on `ticket/126-recon-matching`.
-3. Then 112, 113, 115, 117, 130b, 135, still module-disjoint, max five at once. **M8 gate** after 106 (107, 108 and 109 are in).
+2. **106** is merged. **126** stays in flight on `ticket/126-recon-matching`.
+3. **M8 gate** is next and is not started (106, 107, 108 and 109 are in). Then 112, 113, 115, 117, 130b, 135, still module-disjoint, max five at once.
 4. 118, 119, 120, and 121 are unblocked. 100c stays until M13. 132 can use the routing API from 98.
 
 ## Milestone gate procedure (after the last ticket of a milestone)

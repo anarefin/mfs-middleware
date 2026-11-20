@@ -88,7 +88,7 @@
 104-frs-e2e-harness                         96a,98,103        done     -        10 files +630 −15      524e1bb6  (folder 41-p2p-frs; 40 already taken by mock-reset. Live Newman and the M7 gate were not run)
 # --- M7 gate FAIL (2026-11-20, base 3f68eb02; gate fixes 784285bb): clean build PASS; smoke 60/60; edge-test 65/65; folder 41 54/54; log-scan clean; ui-e2e 25/25; tester-e2e 40/40. Whole suite FAIL 2 of 1386, not re-run (folder 13 audit change-request id scrubbed; folder 44 AML journal first WRITE was another file). The live suite was not re-run after the 107 merge.
 105-app-preview-confirm                     95                done     -        67 files +3346 −158    d735f224
-106-app-types-b2b                           94,105            open
+106-app-types-b2b                           94,105            done     -        69 files, +1127 −120    ed9823a8
 107-app-nonfinancial                        94,105            split (107-split-decisions.md, 2026-11-20)
 107a-app-preferences                        94,105            done     -        65 files +2028 −21     96650ec1  (saved billers and favourites are not encrypted, user decision)
 107b-app-core-reads                         107a              done     -        32 files +1201 −15     ab25b616  (app-gateway is a core client for profile, limits, and statement. The live suite was not re-run after this merge)
