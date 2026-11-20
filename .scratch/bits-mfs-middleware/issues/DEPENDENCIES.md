@@ -73,7 +73,7 @@
 95c-hold-expired-wallet-state               95a,94            open
 97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
 96-orchestrator-saga-frs                    95,97             split (96-split-decisions.md, 2026-11-20)
-96a-inquiry-schedule-ops-alert              95a,97            open
+96a-inquiry-schedule-ops-alert              95a,97            done     75m      26 files +384 −152     1f61e790
 96b-partner-reverse-refused-commit          96a               open
 96c-partner-leg-reversal-folder30           96b               open
 98-routing-module                           96a,97             open
