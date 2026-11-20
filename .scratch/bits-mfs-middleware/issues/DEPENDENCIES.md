@@ -136,7 +136,9 @@
 119-mw-adapter-remit                        95,97,102         split (119-split-decisions.md, 2026-11-20)
 119a-remit-adapter                          95,97,102         in progress
 119b-remit-flow                             119a              open
-120-mw-adapter-atm                          95,97,102         open
+120-mw-adapter-atm                          95,97,102         split (120-split-decisions.md, 2026-11-20)
+120a-atm-adapter-inbound                    95,97,102         in progress
+120b-atm-token-flows                        120a              open
 # --- M10 gate: UC-13..17
 121-mw-adapter-interop                      92,97,102         open
 122-banglaqr                                121               open
