@@ -1,0 +1,122 @@
+# Dev profile only (SPRING_PROFILES_ACTIVE=dev): set by deploy/docker-compose.yml for the dev stack
+# and by the test config. The seed partner (version 0) points at mw-simulators over plain http; the
+# packaged application.yml has none, so a production start has no partners. Plain http still needs
+# MW_PARTNER_INSECURE_HTTP_HOSTS (docker-compose.yml sets it).
+mw:
+  partners:
+    # Dry-runs of new partner versions go to mw-simulators' programmable stub (ticket 83).
+    dry-run:
+      base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
+    instances:
+      # CyberSource-style card acquiring (ticket 118, FRS UC-13 / EXT-14 / FL-07; mw-simulators
+      # CyberSourceMock). Card data never reaches the middleware: the customer types the card on the
+      # acquirer's hosted page, and this route only ever sees the session id and the transient token
+      # the hosted page hands back (attributes.sessionId, attributes.transientToken). REST/JSON, every
+      # call signed hmac-sha256 with the field hmac-secret of Vault secret/mw-adapter-card/cybersource
+      # (dev value CYBERSOURCE_HMAC_SECRET, deploy/provision/services.sh); never here.
+      # Operations on the canonical family operations (mw.partner.request.v1):
+      #   INQUIRY      = CREATE_SESSION     POST /cybersource/v1/sessions; SUCCESS partnerRef = sessionId,
+      #                                     attributes {sessionId, hostedPageUrl}
+      #   PAY          = AUTHORISE_CAPTURE  POST /cybersource/v1/payments (authorise + capture in one call)
+      #   STATUS_QUERY = STATUS_QUERY       GET  /cybersource/v1/payments/{reference}
+      #   REVERSE      = REFUND             POST /cybersource/v1/payments/{reference}/refunds
+      # A decline or a 3-D Secure failure is a 422 with a code: FAILED MW-PTR-CYBERSOURCE-<suffix>, no
+      # money moved. A capture timeout, a 5xx or an unreadable answer is UNKNOWN (status query next),
+      # never a credit.
+      cybersource:
+        family: card
+        base-url: ${CYBERSOURCE_BASE_URL:http://mw-simulators:8080}
+        allowed-hosts: ${MW_CYBERSOURCE_ALLOWED_HOSTS:mw-simulators}
+        connect-timeout-ms: 3000
+        timeout-ms: 10000
+        read-timeout-ms: 12000
+        inquiry-retries: 1
+        auth:
+          scheme: hmac-sha256
+          credentials-ref: hmac-secret
+        # Raw bodies are audited masked: the token is a secret, everything else by free-text scrubbing.
+        sensitive-fields:
+          transientToken: SECRET
+        ambiguous-codes: ["9876"]
+        error-map:
+          "[4001]": { suffix: CARD_DECLINED, retryable: false }
+          "[4002]": { suffix: THREE_DS_FAILED, retryable: false }
+          "[4003]": { suffix: INSUFFICIENT_FUNDS, retryable: false }
+          "[4004]": { suffix: REFUND_REFUSED, retryable: false }
+          "[4005]": { suffix: SESSION_EXPIRED, retryable: false }
+        route: |
+          - route:
+              from:
+                uri: direct:partner-cybersource
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'INQUIRY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=INQUIRY.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.cybersource.base-url}&method=POST&path=/cybersource/v1/sessions&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=400,422"
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.cybersource.base-url}&method=POST&path=/cybersource/v1/payments&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=400,422"
+                        - simple: "${header.mwOperation} == 'STATUS_QUERY'"
+                          steps:
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.cybersource.base-url}&method=GET&path=/cybersource/v1/payments/{reference}&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=STATUS_QUERY.response&definiteStatuses=200,404"
+                        - simple: "${header.mwOperation} == 'REVERSE'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=REVERSE.request"
+                            - to: "kamelet:mw-http-call?url=${mw.partners.instances.cybersource.base-url}&method=POST&path=/cybersource/v1/payments/{reference}/refunds&auth=hmac-sha256&secretField=hmac-secret"
+                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=404,422"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          # CREATE_SESSION: the hosted page session for this amount; the customer's wallet is never sent.
+          "[INQUIRY.request]": |
+            {"clientReference": reference, "amount": amount.major, "currency": amount.currency}
+          "[INQUIRY.response]": |
+            status = 201 or status = 200
+              ? (body.status = "CREATED" and $type(body.sessionId) = "string" and body.sessionId != ""
+                  and $type(body.hostedPageUrl) = "string" and body.hostedPageUrl != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.sessionId,
+                     "attributes": {"sessionId": body.sessionId, "hostedPageUrl": body.hostedPageUrl}}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 400 or status = 422) and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # AUTHORISE_CAPTURE: the session and its transient token (after the 3-D Secure callback).
+          "[PAY.request]": |
+            {"clientReference": reference, "sessionId": attributes.sessionId,
+             "transientToken": attributes.transientToken, "amount": amount.major, "currency": amount.currency}
+          "[PAY.response]": |
+            status = 201 or status = 200
+              ? (body.status = "CAPTURED" and $type(body.paymentId) = "string" and body.paymentId != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.paymentId, "code": body.code}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 400 or status = 422) and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          "[STATUS_QUERY.response]": |
+            status = 200
+              ? (body.status = "CAPTURED" and $type(body.paymentId) = "string" and body.paymentId != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.paymentId, "code": body.code}
+                  : body.status = "DECLINED" and $type(body.code) = "string" and body.code != ""
+                    ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+                  : body.status = "PENDING"
+                    ? {"outcome": "PENDING", "partnerRef": body.paymentId}
+                    : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : status = 404 and body.status = "NOT_FOUND"
+              ? {"outcome": "NOT_FOUND", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}
+          # REFUND: idempotent on the reversal reference (refund:<txnId>).
+          "[REVERSE.request]": |
+            {"refundId": reversalReference, "amount": amount.major, "currency": amount.currency}
+          "[REVERSE.response]": |
+            status = 201 or status = 200
+              ? (body.status = "REFUNDED" and $type(body.refundId) = "string" and body.refundId != ""
+                  ? {"outcome": "SUCCESS", "partnerRef": body.refundId, "code": body.code}
+                  : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"})
+            : (status = 404 or status = 422) and $type(body.code) = "string" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "UNEXPECTED_STATUS"}

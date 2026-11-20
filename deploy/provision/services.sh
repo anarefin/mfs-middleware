@@ -25,6 +25,7 @@ EDGE_SECRETS="ussd-gp:USSD_GP_GATEWAY_SECRET ussd-robi:USSD_ROBI_GATEWAY_SECRET 
 SERVICES="mw-core-mock:core-mock mw-crypto:crypto mw-auth:auth mw-simulators:simulators mw-orchestrator:orchestrator
   mw-audit-dw:audit-dw mw-app-gateway:app-gateway mw-notify:notify mw-ussd:ussd mw-admin-api:admin-api
   mw-adapter-telco:adapter-telco mw-adapter-billpay:adapter-billpay mw-adapter-bank:adapter-bank mw-adapter-merchant:adapter-merchant
+  mw-adapter-card:adapter-card
   mw-portal-api:portal-api mw-checkout:checkout mw-data-export:data-export mw-recon:recon"
 
 # Ledger stand-in. No PIN key since ticket 72 (D22): it verifies mw-auth's assertions with the
@@ -60,6 +61,8 @@ provision_mw_simulators() {
   # the WS-Security UsernameToken password of the billagg SOAP front end (SOAP billers)
   sync_env sim.billagg.ws-password BILLAGG_WS_PASSWORD
   sync_env sim.callback-secrets.c2wbank C2WBANK_HMAC_SECRET
+  # the card acquirer's 3-D Secure webhook (CyberSourceMock, ticket 118)
+  sync_env sim.callback-secrets.cybersource CYBERSOURCE_HMAC_SECRET
   # the push server mock checks the key mw-notify sends (ticket 110)
   sync_env sim.push.api-key PUSH_API_KEY
   sync_env sim.ussd-gateway.credentials.gp USSD_GP_GATEWAY_SECRET
@@ -227,6 +230,16 @@ provision_mw_adapter_merchant() {
   sync_env ws-password MERCHANT_SOAP_WS_PASSWORD
   KV="secret/$SVC"
   db_role adapter_merchant_rw merchant_ref
+}
+
+# The dev card acquirer's HMAC secret (ticket 118), shared with mw-simulators (CyberSourceMock): the
+# field hmac-secret of the partner's own secret secret/mw-adapter-card/cybersource, read by its route.
+provision_mw_adapter_card() {
+  gen_once spring.datasource.password 40
+  KV="secret/$SVC/cybersource"
+  sync_env hmac-secret CYBERSOURCE_HMAC_SECRET
+  KV="secret/$SVC"
+  db_role adapter_card_rw card_ref
 }
 
 # Realm services client secret: mw-orchestrator's internal query API (M3 gate).
