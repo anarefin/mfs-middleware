@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import mfs.mw.auth.client.CryptoClient;
+import mfs.mw.auth.config.AppTypePolicy;
 import mfs.mw.auth.config.TokenProperties;
 import mfs.mw.auth.dto.TokenPair;
 import mfs.mw.auth.entity.AuthWallet;
@@ -30,7 +31,7 @@ import mfs.mw.auth.repository.RefreshTokenRepository;
  *
  * <ul>
  *   <li>Access JWT: RS256 by the mw-crypto key {@code JWT_SIGN} (header {@code typ at+jwt}, {@code
- *       kid <keyId>.v<n>}), {@code exp} = {@code iat} + 5 min; claims {@code iss}, {@code aud}, {@code
+   *       kid <keyId>.v<n>}), {@code exp} = {@code iat} + the app type's access TTL; claims {@code iss}, {@code aud}, {@code
  *       sub} walletId, {@code msisdn}, {@code role} (from the wallet type), {@code deviceId}, {@code amr},
  *       {@code sid} (the refresh family), {@code jti}.
  *   <li>Refresh token: 32 random bytes, base64url; only its SHA-256 (hex) is stored, with its family,
@@ -46,17 +47,20 @@ public class TokenService {
   private static final SecureRandom RANDOM = new SecureRandom();
   private static final Map<String, String> ROLES =
       Map.of("CUSTOMER", "customer", "AGENT", "agent", "MERCHANT", "merchant", "DISTRIBUTOR", "distributor",
-          "DSO", "dso");
+          "DSO", "dso", "PARTNER", "partner");
 
   private final CryptoClient crypto;
   private final RefreshTokenRepository refresh;
   private final TokenProperties props;
+  private final AppTypePolicy appTypes;
   private final Clock clock;
 
-  public TokenService(CryptoClient crypto, RefreshTokenRepository refresh, TokenProperties props, Clock clock) {
+  public TokenService(
+      CryptoClient crypto, RefreshTokenRepository refresh, TokenProperties props, AppTypePolicy appTypes, Clock clock) {
     this.crypto = crypto;
     this.refresh = refresh;
     this.props = props;
+    this.appTypes = appTypes;
     this.clock = clock;
   }
 
@@ -78,6 +82,7 @@ public class TokenService {
   public TokenPair issue(AuthWallet wallet, String msisdn, String deviceId, List<String> amr, UUID family) {
     String role = role(wallet.type());
     Instant now = clock.instant();
+    java.time.Duration accessTtl = appTypes.of(wallet.type()).accessTtl();
     Map<String, Object> claims = new LinkedHashMap<>();
     claims.put("iss", props.issuer());
     claims.put("aud", props.audience());
@@ -89,14 +94,14 @@ public class TokenService {
     claims.put("sid", family.toString());
     claims.put("jti", UUID.randomUUID().toString());
     claims.put("iat", now.getEpochSecond());
-    claims.put("exp", now.plus(props.accessTtl()).getEpochSecond());
+    claims.put("exp", now.plus(accessTtl).getEpochSecond());
     String access = crypto.signJws("JWT_SIGN", "RS256", Map.of("typ", "at+jwt"), claims).jws();
 
     byte[] raw = new byte[32];
     RANDOM.nextBytes(raw);
     String token = Base64.getUrlEncoder().withoutPadding().encodeToString(raw);
     refresh.insert(hash(token), family, wallet.walletId(), deviceId, now.plus(props.refreshTtl()), amr);
-    return new TokenPair(access, "Bearer", props.accessTtl().toSeconds(), token, props.refreshTtl().toSeconds(),
+    return new TokenPair(access, "Bearer", accessTtl.toSeconds(), token, props.refreshTtl().toSeconds(),
         family.toString(), 0, true);
   }
 

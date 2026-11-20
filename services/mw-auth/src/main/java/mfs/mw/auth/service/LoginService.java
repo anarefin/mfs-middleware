@@ -5,7 +5,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import mfs.mw.auth.config.DeviceBindingProperties;
+import mfs.mw.auth.config.AppTypePolicy;
 import mfs.mw.auth.dto.EncryptedPin;
 import mfs.mw.auth.dto.ErrorDetail;
 import mfs.mw.auth.dto.PinHmac;
@@ -50,7 +50,7 @@ public class LoginService {
   static final List<String> OTP_AMR = List.of("otp", "device");
   private static final Map<String, String> CHANNELS =
       Map.of("customer", "CUSTOMER_APP", "agent", "AGENT_APP", "merchant", "MERCHANT_APP",
-          "distributor", "DISTRIBUTOR_APP", "dso", "DSO_APP");
+          "distributor", "DISTRIBUTOR_APP", "dso", "DSO_APP", "partner", "PARTNER_APP");
 
   private final WalletAccess wallets;
   private final DeviceRepository devices;
@@ -64,7 +64,7 @@ public class LoginService {
   private final RefreshTokenRepository refresh;
   private final CredentialRepository credentials;
   private final DeviceSessionStore sessions;
-  private final DeviceBindingProperties props;
+  private final AppTypePolicy appTypes;
   private final PinNotices notices;
   private final java.time.Clock clock;
 
@@ -81,7 +81,7 @@ public class LoginService {
       RefreshTokenRepository refresh,
       CredentialRepository credentials,
       DeviceSessionStore sessions,
-      DeviceBindingProperties props,
+      AppTypePolicy appTypes,
       PinNotices notices,
       java.time.Clock clock) {
     this.wallets = wallets;
@@ -96,7 +96,7 @@ public class LoginService {
     this.refresh = refresh;
     this.credentials = credentials;
     this.sessions = sessions;
-    this.props = props;
+    this.appTypes = appTypes;
     this.notices = notices;
     this.clock = clock;
   }
@@ -131,7 +131,7 @@ public class LoginService {
       amr = OTP_AMR;
     }
     TokenPair pair = tokens.issue(w, msisdn, deviceId, amr);
-    Duration idle = open(w.walletId(), deviceId, role);
+    Duration idle = open(w.walletId(), deviceId, w.type());
     log.atInfo().addKeyValue("event", "auth.login").addKeyValue("channel", channel(role))
         .addKeyValue("amr", String.join(",", amr)).log("Wallet logged in on device {}", deviceId);
     return pair.withSession(idle.toSeconds(), hasPin);
@@ -150,7 +150,7 @@ public class LoginService {
     String role = TokenService.role(w.type());
     wallets.check(w);
     TokenPair pair = tokens.issue(w, wallets.msisdnOf(w), deviceId, current.amr(), current.family());
-    Duration idle = open(w.walletId(), deviceId, role);
+    Duration idle = open(w.walletId(), deviceId, w.type());
     log.atInfo().addKeyValue("event", "auth.refresh").addKeyValue("channel", channel(role))
         .log("Tokens refreshed on device {}", deviceId);
     return pair.withSession(idle.toSeconds(), wallets.hasPin(w.walletId()));
@@ -179,7 +179,7 @@ public class LoginService {
     }
     tokens.revoke(family);
     TokenPair pair = tokens.issue(w, msisdn, deviceId, PIN_AMR);
-    Duration idle = open(walletId, deviceId, role);
+    Duration idle = open(walletId, deviceId, w.type());
     log.atInfo().addKeyValue("event", "auth.pin.set").log("First PIN set on device {}", deviceId);
     return pair.withSession(idle.toSeconds(), true);
   }
@@ -216,14 +216,17 @@ public class LoginService {
     });
     tokens.revoke(family);
     TokenPair pair = tokens.issue(w, msisdn, deviceId, PIN_AMR);
-    Duration idle = open(walletId, deviceId, role);
+    Duration idle = open(walletId, deviceId, w.type());
     log.atInfo().addKeyValue("event", "auth.pin.changed").log("PIN changed on device {}", deviceId);
     return pair.withSession(idle.toSeconds(), true);
   }
 
-  private Duration open(String walletId, String deviceId, String role) {
-    Duration idle = props.idleTimeout(channel(role));
-    sessions.open(walletId, deviceId, idle);
+  private Duration open(String walletId, String deviceId, String walletType) {
+    AppTypePolicy.Settings s = appTypes.of(walletType);
+    Duration idle = s.idleTimeout();
+    for (String ended : sessions.admit(walletId, deviceId, idle, s.maxSessions(), clock.instant())) {
+      refresh.revokeDevice(walletId, ended);
+    }
     return idle;
   }
 

@@ -143,8 +143,7 @@ public class PinResetService {
       throw invalid("nidLast4", "nidLast4 and dateOfBirth go together");
     }
     String walletId = w.walletId();
-    AuthDevice d = devices.findBound(walletId).filter(x -> x.deviceId().equals(deviceId))
-        .orElseThrow(LoginService::deviceMismatch);
+    AuthDevice d = devices.findBoundDevice(walletId, deviceId).orElseThrow(LoginService::deviceMismatch);
     signed.verify(RequestSignatures.parsePublicKey(d.publicKey()), req);
     Instant now = clock.instant();
     resets.open(walletId)
@@ -304,10 +303,10 @@ public class PinResetService {
         .isPresent();
   }
 
-  /** Every refresh token revoked and the bound device's session closed. */
+  /** Every refresh token revoked and every bound device's session closed. */
   void endSessions(String walletId) {
     refresh.revokeWallet(walletId);
-    devices.findBound(walletId).ifPresent(d -> sessions.close(walletId, d.deviceId()));
+    devices.findBoundAll(walletId).forEach(d -> sessions.close(walletId, d.deviceId()));
   }
 
   private PinReset own(UUID id, String deviceId) {

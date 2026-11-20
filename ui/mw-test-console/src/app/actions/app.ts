@@ -70,6 +70,11 @@ function buildBody(type: TxnType, f: FormData, amount: number, encryptedPin: unk
     case "ADD_MONEY_BANK":
       if (!/^\d{6,20}$/.test(cp)) return "the bank account number is 6 to 20 digits";
       return { body: { ...base, debitParty: { type: "BANK_ACCOUNT", id: cp }, partner: { partnerId: str(f, "bank") || "c2wbank" } } };
+    case "B2B_TRANSFER": case "BULK_DISBURSE": {
+      const w = normaliseMsisdn(cp);
+      if (!w) return "the counterparty must be a wallet number (01XXXXXXXXX)";
+      return { body: { ...base, creditParty: { id: w } }, credit: w };
+    }
   }
 }
 

@@ -14,8 +14,7 @@ import org.springframework.stereotype.Component;
  * wallet is the {@code msisdn} claim, the app follows the {@code role} claim (from the wallet type):
  * {@code customer} is the customer app, {@code agent} the agent app, {@code merchant} the merchant
  * app (spec WP20; which role may initiate which {@code txnType} is checked at submit, the merchant
- * collections view by {@code CollectionService}); any other role (distributor, dso: no app here yet)
- * is 403 MW-AUTH-002. Only a PIN session may use the app API: a token whose {@code amr} has no {@code
+ * collections view by {@code CollectionService}); any other role is 403 MW-AUTH-002. Only a PIN session may use the app API: a token whose {@code amr} has no {@code
  * pin} (a first-PIN OTP login) is 403 MW-AUTH-045 until the PIN is set at mw-auth.
  */
 @Component
@@ -46,6 +45,15 @@ public class AppUserResolver {
     }
     if ("merchant".equals(role)) {
       return new AppUser(msisdn, "MERCHANT_APP", "MERCHANT", device);
+    }
+    if ("distributor".equals(role)) {
+      return new AppUser(msisdn, "DISTRIBUTOR_APP", "DISTRIBUTOR", device);
+    }
+    if ("dso".equals(role)) {
+      return new AppUser(msisdn, "DSO_APP", "DSO", device);
+    }
+    if ("partner".equals(role)) {
+      return new AppUser(msisdn, "PARTNER_APP", "PARTNER", device);
     }
     throw forbidden("This app role cannot use this operation");
   }

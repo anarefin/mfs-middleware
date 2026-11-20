@@ -17,7 +17,7 @@ import mfs.mw.core.mock.util.SensitiveType;
  * holds none (ticket 72).
  */
 public record WalletSeedRequest(
-    @NotNull @Pattern(regexp = "CUSTOMER|AGENT|MERCHANT|DISTRIBUTOR|ORG|ORGANISATION") String type,
+    @NotNull @Pattern(regexp = "CUSTOMER|AGENT|MERCHANT|DISTRIBUTOR|DSO|PARTNER|ORG|ORGANISATION") String type,
     @NotNull @PositiveOrZero @Max(100_000_000_000L) Long openingBalanceMinor,
     @Size(min = 1, max = 120) @Pattern(regexp = "(?s).*\\S.*") @Sensitive(SensitiveType.NAME) String holderName,
     @PositiveOrZero @Max(100_000_000_000L) Long balanceMinor) {}

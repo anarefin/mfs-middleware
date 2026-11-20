@@ -13,6 +13,8 @@ export const PREVIEW_GROUP: Record<TxnType, string> = {
   TOPUP: "top-up",
   BILL_PAY: "bill-pay",
   ADD_MONEY_BANK: "add-money",
+  B2B_TRANSFER: "b2b",
+  BULK_DISBURSE: "disburse",
 };
 
 export const previewPath = (type: TxnType) => `/app/v1/${PREVIEW_GROUP[type]}/preview`;

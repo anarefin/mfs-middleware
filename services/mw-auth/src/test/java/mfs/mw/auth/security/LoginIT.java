@@ -204,7 +204,7 @@ class LoginIT {
     MvcTestResult r = login(device, PIN);
     assertThat(r).hasStatus(200);
     assertThat(r).bodyJson().extractingPath("$.tokenType").isEqualTo("Bearer");
-    assertThat(r).bodyJson().extractingPath("$.expiresIn").isEqualTo(300);
+    assertThat(r).bodyJson().extractingPath("$.expiresIn").isEqualTo(900);
     assertThat(r).bodyJson().extractingPath("$.refreshExpiresIn").isEqualTo(2592000);
     assertThat(r).bodyJson().extractingPath("$.idleTimeoutSeconds").isEqualTo(300);
     assertThat(r).bodyJson().extractingPath("$.pinSet").isEqualTo(true);

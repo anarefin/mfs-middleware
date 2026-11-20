@@ -32,6 +32,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import mfs.mw.auth.client.CryptoClient;
+import mfs.mw.auth.config.AppTypePolicy;
 import mfs.mw.auth.config.TokenProperties;
 import mfs.mw.auth.dto.CryptoJwsSigned;
 import mfs.mw.auth.dto.TokenPair;
@@ -53,13 +54,16 @@ class TokenServiceTest {
 
   static final Instant NOW = Instant.parse("2026-11-14T06:00:00Z");
   static final TokenProperties PROPS =
-      new TokenProperties("mw-auth", "mw-app", Duration.ofMinutes(5), Duration.ofDays(30), Duration.ofMinutes(5),
+      new TokenProperties("mw-auth", "mw-app", Duration.ofMinutes(1), Duration.ofDays(30), Duration.ofMinutes(5),
           "http://mw-auth:8080/auth/v1/.well-known/jwks.json");
+  /** The access token lives as long as the app type says, not {@link TokenProperties#accessTtl()}. */
+  static final AppTypePolicy POLICY = new AppTypePolicy(
+      new AppTypePolicy.Settings(Duration.ofMinutes(5), 1, 1, Duration.ofMinutes(5), 5, Duration.ofHours(24)), Map.of());
   static KeyPair rsa;
 
   final CryptoClient crypto = mock(CryptoClient.class);
   final RefreshTokenRepository refresh = mock(RefreshTokenRepository.class);
-  final TokenService tokens = new TokenService(crypto, refresh, PROPS, Clock.fixed(NOW, ZoneOffset.UTC));
+  final TokenService tokens = new TokenService(crypto, refresh, PROPS, POLICY, Clock.fixed(NOW, ZoneOffset.UTC));
 
   static final AuthWallet WALLET =
       new AuthWallet("01711000001", "tok", "tokenise-msisdn.v1", "{}", "AGENT", "ACTIVE", true, null, 3);
@@ -112,7 +116,8 @@ class TokenServiceTest {
   @Test
   void theRoleFollowsTheWalletType() throws Exception {
     cryptoSigns();
-    for (var e : Map.of("CUSTOMER", "customer", "MERCHANT", "merchant", "DISTRIBUTOR", "distributor", "DSO", "dso")
+    for (var e : Map.of("CUSTOMER", "customer", "MERCHANT", "merchant", "DISTRIBUTOR", "distributor", "DSO", "dso",
+        "PARTNER", "partner")
         .entrySet()) {
       AuthWallet w = new AuthWallet("01711000001", "t", "k", "{}", e.getKey(), "ACTIVE", true, null, 1);
       String role = SignedJWT.parse(tokens.issue(w, "01711000001", "device-0001", List.of("pin", "device"))

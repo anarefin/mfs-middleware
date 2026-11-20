@@ -16,7 +16,9 @@
         "MERCHANT_PAY",
         "TOPUP",
         "BILL_PAY",
-        "ADD_MONEY_BANK"
+        "ADD_MONEY_BANK",
+        "B2B_TRANSFER",
+        "BULK_DISBURSE"
       ]
     },
     "creditParty": {

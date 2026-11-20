@@ -113,10 +113,11 @@ class WalletRepositoryIT {
     jdbc.update("insert into pin_reset (id, wallet_id, kind, status, requested_by) "
         + "values (gen_random_uuid(), ?, 'SELF', 'PENDING_KYC', 'self')", "01711000001");
 
-    assertThatThrownBy(() -> jdbc.update(
-            "insert into device (device_id, wallet_id, public_key, bound_at) values ('d2', ?, 'pk', now())", "01711000001"))
-        .as("one bound device per wallet")
-        .isInstanceOf(DataIntegrityViolationException.class);
+    jdbc.update("insert into device (device_id, wallet_id, public_key, bound_at) values ('d2', ?, 'pk', now())", "01711000001");
+    assertThat(jdbc.queryForObject(
+            "select count(*) from device where wallet_id = ? and unbound_at is null", Integer.class, "01711000001"))
+        .as("the cap on bound devices is the app-type policy, not a unique index")
+        .isEqualTo(2);
     assertThatThrownBy(() -> jdbc.update(
             "insert into pin_reset (id, wallet_id, kind, status, requested_by) "
                 + "values (gen_random_uuid(), ?, 'CARE', 'APPROVED', 'ops')", "01711000001"))

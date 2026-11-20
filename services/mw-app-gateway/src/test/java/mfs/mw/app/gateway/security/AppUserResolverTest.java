@@ -36,11 +36,14 @@ class AppUserResolverTest {
     assertThat(resolver.resolve(app("customer"))).isEqualTo(new AppUser("01711000001", "CUSTOMER_APP", "CUSTOMER"));
     assertThat(resolver.resolve(app("agent"))).isEqualTo(new AppUser("01711000001", "AGENT_APP", "AGENT"));
     assertThat(resolver.resolve(app("merchant"))).isEqualTo(new AppUser("01711000001", "MERCHANT_APP", "MERCHANT"));
+    assertThat(resolver.resolve(app("distributor"))).isEqualTo(new AppUser("01711000001", "DISTRIBUTOR_APP", "DISTRIBUTOR"));
+    assertThat(resolver.resolve(app("dso"))).isEqualTo(new AppUser("01711000001", "DSO_APP", "DSO"));
+    assertThat(resolver.resolve(app("partner"))).isEqualTo(new AppUser("01711000001", "PARTNER_APP", "PARTNER"));
   }
 
   @Test
   void aRoleWithoutAnAppHereIsRefused() {
-    for (String role : List.of("distributor", "dso", "ops")) {
+    for (String role : List.of("ops")) {
       assertThatThrownBy(() -> resolver.resolve(app(role)))
           .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.code()).isEqualTo("MW-AUTH-002"));
     }

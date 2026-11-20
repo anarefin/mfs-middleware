@@ -3,7 +3,7 @@
 // seed-customer01, or an MSISDN). Portal users: the realm portals import's users (deploy/keycloak/realms,
 // password + the pre-set TOTP secret).
 
-export type AppRole = "customer" | "agent" | "merchant";
+export type AppRole = "customer" | "agent" | "merchant" | "distributor" | "dso" | "partner";
 export type AppPersona = { user: string; msisdn: string; role: AppRole; name: string; label: string };
 
 // `name` is the wallet's holder name (core-mock's fixtures); `user` and `msisdn` are what the e2e specs select.
@@ -13,6 +13,9 @@ export const APP_PERSONAS: readonly AppPersona[] = [
   { user: "agent01", msisdn: "01811000001", role: "agent", name: "Jamal Hossain", label: "Jamal Hossain, Hossain Telecom (agent01: cash in)" },
   { user: "merchant01", msisdn: "01911000001", role: "merchant", name: "Karim Traders", label: "Karim Traders (merchant01: checkout merchant)" },
   { user: "merchant02", msisdn: "01911000002", role: "merchant", name: "Lalbagh Pharmacy", label: "Lalbagh Pharmacy (merchant02)" },
+  { user: "seed-distributor01", msisdn: "01612000001", role: "distributor", name: "Tangail Distribution House", label: "Tangail Distribution House (seed-distributor01: B2B float)" },
+  { user: "seed-dso01", msisdn: "01512000001", role: "dso", name: "Karim Uddin", label: "Karim Uddin (seed-dso01: DSO float)" },
+  { user: "seed-partner01", msisdn: "01412000001", role: "partner", name: "Padma Payroll", label: "Padma Payroll (seed-partner01: disbursement)" },
 ];
 
 export type PortalPersona = { user: string; name: string; label: string };
@@ -36,14 +39,17 @@ export const SEEDED_WALLETS: readonly { msisdn: string; who: string }[] = [
   ...OTHER_FIXTURES.map((f) => ({ msisdn: f.msisdn, who: `${f.name} (core-mock seeded customer)` })),
 ];
 
-export const TXN_TYPES = ["P2P", "CASH_IN", "CASH_OUT", "MERCHANT_PAY", "TOPUP", "BILL_PAY", "ADD_MONEY_BANK"] as const;
+export const TXN_TYPES = ["P2P", "CASH_IN", "CASH_OUT", "MERCHANT_PAY", "TOPUP", "BILL_PAY", "ADD_MONEY_BANK", "B2B_TRANSFER", "BULK_DISBURSE"] as const;
 export type TxnType = (typeof TXN_TYPES)[number];
 
 /** The money flows each app role may start (the app API's role rules): a merchant only collects. */
 export const FLOWS_BY_ROLE: Record<AppRole, readonly TxnType[]> = {
   customer: ["P2P", "CASH_OUT", "MERCHANT_PAY", "TOPUP", "BILL_PAY", "ADD_MONEY_BANK"],
-  agent: ["CASH_IN"],
+  agent: ["CASH_IN", "B2B_TRANSFER"],
   merchant: [],
+  distributor: ["B2B_TRANSFER"],
+  dso: ["B2B_TRANSFER"],
+  partner: ["BULK_DISBURSE"],
 };
 
 /** What each flow needs, its default counterparty and what to type for the magic outcomes of the simulators. */
@@ -62,4 +68,8 @@ export const FLOW_HELP: Record<TxnType, { title: string; who: string; counterpar
     hint: "Fetch the bill first (due = Tk 100 + last 3 digits). Bill ending 404: not found; 000: already paid; 999: refused by the biller. Amount .13: timeout -> TSQ." },
   ADD_MONEY_BANK: { title: "Add money from bank (C2W)", who: "customer", counterparty: "1234567890123",
     hint: "The bank debits the account and calls back. Account ending 999: refused. Amount .13: bank times out, no callback, the status inquiry resolves it. Needs the c2wbank callback preset (Simulators) unless one is already set." },
+  B2B_TRANSFER: { title: "B2B float", who: "distributor", counterparty: "01812000001",
+    hint: "The signed-in wallet pays the other: a distributor or DSO pays an agent, an agent pays a distributor back. Fee 0." },
+  BULK_DISBURSE: { title: "Disbursement", who: "partner", counterparty: "01712000001",
+    hint: "Partner app only. Preview shows the quote. A posted child still has to be an organisation debit at the core." },
 };

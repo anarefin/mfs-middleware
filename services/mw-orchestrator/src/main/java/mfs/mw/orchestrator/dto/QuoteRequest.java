@@ -19,7 +19,7 @@ import mfs.mw.orchestrator.util.SensitiveType;
  */
 public record QuoteRequest(
     @NotBlank @Pattern(regexp = "01[3-9][0-9]{8}") @Sensitive(SensitiveType.MSISDN) String walletId,
-    @NotBlank @Pattern(regexp = "CUSTOMER|AGENT|MERCHANT|DISTRIBUTOR|ORGANISATION") String walletType,
+    @NotBlank @Pattern(regexp = "CUSTOMER|AGENT|MERCHANT|DISTRIBUTOR|DSO|PARTNER|ORGANISATION") String walletType,
     @NotBlank @Pattern(regexp = "[A-Z][A-Z0-9_]{0,31}") String txnType,
     @Pattern(regexp = "[A-Z][A-Z0-9_]{0,31}") String channel,
     @NotNull @Valid Money amount,

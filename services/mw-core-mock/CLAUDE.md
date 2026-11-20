@@ -221,7 +221,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   The e2e suite reads it (and the faults alias) through the dev-only APISIX route
   `/test/core-mock/v1/*` (`deploy/apisix/routes/test-core-mock.json`).
 - Wallet seed API (ticket 57, test-only, for mw-seeder; contract `api/mw-core-mock/core-mock-seed.v1.openapi.yaml`):
-  `PUT /core-mock/v1/wallets/{walletId}` `{type: CUSTOMER|AGENT|MERCHANT|DISTRIBUTOR|ORG|ORGANISATION (ORG stored as
+  `PUT /core-mock/v1/wallets/{walletId}` `{type: CUSTOMER|AGENT|MERCHANT|DISTRIBUTOR|DSO|PARTNER|ORG|ORGANISATION (ORG stored as
   ORGANISATION, full KYC), openingBalanceMinor}`
   (`controller/WalletSeedController` -> `service/WalletSeedService` -> `WalletRepository.insertIfAbsent`):
   create-if-absent with id = MSISDN (`01[3-9]` + 8 digits, else 400 MW-VAL-001) and the

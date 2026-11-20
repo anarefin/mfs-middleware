@@ -1,6 +1,10 @@
 package mfs.mw.auth.repository;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 import mfs.mw.auth.exception.ErrorCodes;
 import mfs.mw.auth.exception.MwException;
@@ -28,10 +32,51 @@ public class DeviceSessionStore {
     return "sess:" + walletId + ":" + deviceId;
   }
 
+  static String indexKey(String walletId) {
+    return "sessidx:" + walletId;
+  }
+
   public void open(String walletId, String deviceId, Duration idle) {
     call(() -> {
       redis.opsForValue().set(sessionKey(walletId, deviceId), Long.toString(idle.toSeconds()), idle);
       return null;
+    });
+  }
+
+  /**
+   * Opens the session and, when the wallet already has {@code maxSessions} live sessions, ends the oldest
+   * ones. Returns the device ids whose sessions were ended (never the one just opened).
+   */
+  public List<String> admit(String walletId, String deviceId, Duration idle, int maxSessions, Instant now) {
+    return call(() -> {
+      redis.opsForValue().set(sessionKey(walletId, deviceId), Long.toString(idle.toSeconds()), idle);
+      String idx = indexKey(walletId);
+      redis.opsForZSet().add(idx, deviceId, now.toEpochMilli());
+      Set<String> members = redis.opsForZSet().range(idx, 0, -1);
+      if (members != null) {
+        for (String member : members) {
+          if (!Boolean.TRUE.equals(redis.hasKey(sessionKey(walletId, member)))) {
+            redis.opsForZSet().remove(idx, member);
+          }
+        }
+      }
+      List<String> ended = new ArrayList<>();
+      Long size = redis.opsForZSet().zCard(idx);
+      while (size != null && size > maxSessions) {
+        Set<String> oldest = redis.opsForZSet().range(idx, 0, 0);
+        if (oldest == null || oldest.isEmpty()) {
+          break;
+        }
+        String old = oldest.iterator().next();
+        if (old.equals(deviceId)) {
+          break;
+        }
+        redis.opsForZSet().remove(idx, old);
+        redis.delete(sessionKey(walletId, old));
+        ended.add(old);
+        size = redis.opsForZSet().zCard(idx);
+      }
+      return ended;
     });
   }
 
@@ -52,7 +97,11 @@ public class DeviceSessionStore {
   }
 
   public void close(String walletId, String deviceId) {
-    call(() -> redis.delete(sessionKey(walletId, deviceId)));
+    call(() -> {
+      redis.delete(sessionKey(walletId, deviceId));
+      redis.opsForZSet().remove(indexKey(walletId), deviceId);
+      return null;
+    });
   }
 
   /** True the first time this device uses this nonce within {@code ttl}. */

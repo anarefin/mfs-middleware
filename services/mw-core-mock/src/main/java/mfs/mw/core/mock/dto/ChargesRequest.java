@@ -13,4 +13,4 @@ public record ChargesRequest(
     @NotNull @Pattern(regexp = WalletTransferRequest.TXN_TYPE) String txnType,
     @NotNull @Valid Amount amount,
     @Size(max = 32) String channel,
-    @Pattern(regexp = "CUSTOMER|AGENT|MERCHANT|DISTRIBUTOR|ORGANISATION") String customerType) {}
+    @Pattern(regexp = "CUSTOMER|AGENT|MERCHANT|DISTRIBUTOR|DSO|PARTNER|ORGANISATION") String customerType) {}

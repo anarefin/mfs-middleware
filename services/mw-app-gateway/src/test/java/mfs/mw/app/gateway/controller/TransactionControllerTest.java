@@ -240,17 +240,17 @@ class TransactionControllerTest {
     assertThat(noMsisdn).hasStatus(403);
     assertThat(noMsisdn).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
 
-    MvcTestResult distributor =
+    MvcTestResult unserved =
         post(
             jwt()
                 .jwt(
                     j ->
                         j.claim("msisdn", "01911000001")
-                            .claim("role", "distributor").claim("amr", List.of("pin", "device"))),
+                            .claim("role", "ops").claim("amr", List.of("pin", "device"))),
             "k",
             BODY.formatted(100));
-    assertThat(distributor).hasStatus(403);
-    assertThat(distributor).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
+    assertThat(unserved).hasStatus(403);
+    assertThat(unserved).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
     verify(previews, never()).submitOneShot(any(), any(), any());
   }
 

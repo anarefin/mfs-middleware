@@ -31,7 +31,7 @@ import org.springframework.stereotype.Service;
 public class SeedAppPinsStep implements SeedStep {
 
   private static final Logger log = LoggerFactory.getLogger(SeedAppPinsStep.class);
-  private static final Set<String> APP_TYPES = Set.of("CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR");
+  private static final Set<String> APP_TYPES = Set.of("CUSTOMER", "AGENT", "MERCHANT", "DISTRIBUTOR", "DSO", "PARTNER");
 
   private final AuthSeeds auth;
   private final SeederProperties props;

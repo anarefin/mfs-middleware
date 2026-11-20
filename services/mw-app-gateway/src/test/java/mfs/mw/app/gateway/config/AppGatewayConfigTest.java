@@ -73,7 +73,9 @@ class AppGatewayConfigTest {
         .containsEntry("TOPUP", List.of("CUSTOMER"))
         .containsEntry("BILL_PAY", List.of("CUSTOMER"))
         .containsEntry("ADD_MONEY_BANK", List.of("CUSTOMER"))
-        .containsEntry("MERCHANT_PAY", List.of("CUSTOMER"));
+        .containsEntry("MERCHANT_PAY", List.of("CUSTOMER"))
+        .containsEntry("B2B_TRANSFER", List.of("DISTRIBUTOR", "DSO", "AGENT"))
+        .containsEntry("BULK_DISBURSE", List.of("PARTNER"));
     // the merchant app only reads its collections; it initiates nothing (ticket 30)
     props.txnTypeRoles().forEach((type, roles) -> assertThat(roles).as(type).doesNotContain("MERCHANT"));
   }

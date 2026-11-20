@@ -9,7 +9,7 @@
   "properties": {
     "walletId": { "type": "string", "minLength": 1, "maxLength": 64 },
     "msisdn": { "$ref": "../../../common/defs.v1.schema.json#/$defs/Msisdn" },
-    "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "ORG", "ORGANISATION", "DISTRIBUTOR", "DSO"], "description": "ORGANISATION is the core's name of an organisation wallet since ticket 94 (FRS 7.1); ORG is the same type as earlier producers named it." },
+    "walletType": { "enum": ["CUSTOMER", "AGENT", "MERCHANT", "ORG", "ORGANISATION", "DISTRIBUTOR", "DSO", "PARTNER"], "description": "ORGANISATION is the core's name of an organisation wallet since ticket 94 (FRS 7.1); ORG is the same type as earlier producers named it. PARTNER is a partner-app wallet (ticket 106)." },
     "status": {
       "enum": ["ACTIVE", "BLOCKED", "HOLD", "LOCKED", "DORMANT", "CLOSED"],
       "description": "LOCKED = a core-side lock; BLOCKED and HOLD = compliance states; DORMANT = unused for long (cannot pay, can receive) and CLOSED = closed for good (FRS 7.1, ticket 94)."

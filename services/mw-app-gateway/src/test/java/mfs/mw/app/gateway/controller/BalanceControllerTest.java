@@ -169,7 +169,7 @@ class BalanceControllerTest {
 
   @Test
   void anotherRoleIs403() {
-    MvcTestResult r = post(as("distributor"), "bal-7", BODY);
+    MvcTestResult r = post(as("ops"), "bal-7", BODY);
     assertThat(r).hasStatus(403);
     assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-AUTH-002");
     verify(service, never()).check(any(), any(), any());
