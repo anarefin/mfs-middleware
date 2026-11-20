@@ -69,7 +69,7 @@
 94-core-mock-model                          93                done     120m     115 files +2556 −614   7fb7429f
 95-orchestrator-core-rest-client            93                split (95-split-decisions.md, 2026-11-20)
 95a-orchestrator-core-rest                  93                done     60m      70 files +2856 −1135   b43b392f,53c83472
-95b-auth-admin-core-rest-retire-topics      95a               open
+95b-auth-admin-core-rest-retire-topics      95a               done     -        177 files +1816 −2372  70758896,ff3780bc
 95c-hold-expired-wallet-state               95a,94            open
 97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
 96-orchestrator-saga-frs                    95,97             split (96-split-decisions.md, 2026-11-20)
@@ -87,13 +87,13 @@
 103-mock-control-core-and-reset             102,94            done     120m     90 files +3425 −249    8c4ed022
 104-frs-e2e-harness                         96a,98,103         open
 # --- M7 gate: P2P T1-T12 via the app API; clean build; fresh-stack API suite
-105-app-preview-confirm                     95                open
+105-app-preview-confirm                     95                done     -        67 files +3346 −158    d735f224
 106-app-types-b2b                           94,105            open
 107-app-nonfinancial                        94,105            open
 108-app-soap-facade                         105               open
 109-ussd-frs                                94,105            open
 110-notify-push                             102               done     37m      86 files +2628 −75     76ab0c4c,4757e709
-110b-push-binding-epoch                     110               open   (security review: mw-notify stamps re-binds with its own clock; carry mw-auth's authoritative boundAt or a binding epoch in DEVICE_BOUND + token registration, compare versions or with skew margin; test)
+110b-push-binding-epoch                     110               done     -        34 files +438 −131     480b1d76
 111-notify-campaign-optout-log              110               open
 # --- M8 gate: UC-02..07 on app and USSD
 112-telco-four-ocs                          97,98,102         open
@@ -122,7 +122,8 @@
 # --- M12 gate: UC-01, UC-20..22
 131-admin-partner-credentials               91,97             split (131-split-decisions.md, 2026-11-20)
 131a-admin-credentials-backend              91,97             done     135m     59 files +3307 −41     ce25fff7
-131b-maintenance-endpoint-profile           97,131a           open   (run before 115, 118-121; routing part after 98)
+131b-maintenance-endpoint-profile           97,131a           done     -        40 files +1912 −72     6a806373,1b154473  (before 115, 118-121; routing-as-MAINTENANCE waits for 98)
+# --- Salvage DONE (2026-11-20, 2308d22e): 95b, 105, 110b, 131b fast-forwarded onto upay-main. Review fix 19 files +342 −57. NOT RUN: clean build, stack, api-test.sh, tester-e2e. 105 top-up operator resolution waits for 98.
 131c-admin-ui-partner-tabs                  131a,131b         open
 132-admin-routing-billers-clients-ui        98,100a,113        open
 133-admin-ussd-editor-templates             109,111           open

@@ -1,6 +1,6 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (after merging e5af25a4). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (after 2308d22e). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
@@ -13,24 +13,23 @@ Updated: 2026-11-20 (after merging e5af25a4). Kept current after every merge/spl
 
 ## Done and merged on upay-main
 89 (ADRs/traceability), 90 (Redis 8.10.3 AGPL — written OWN-03 approval still open), 91 (HashiCorp Vault 2.2.2), 92 (contracts),
-93 (core-mock /core/v1 REST), 94 (core-mock model), 95a (orchestrator -> core over REST), 97 (adapter REVERSE + health),
+93 (core-mock /core/v1 REST), 94 (core-mock model), 95a (orchestrator -> core over REST),
+95b (mw-auth and mw-admin-api on /core/v1; `core.command.v1` retired; DROP_REPLY and NO_CALLBACK lose the REST answer),
+96a (inquiry schedule + ops alert), 97 (adapter REVERSE + health),
 99 (duplicates/replay), 100a (client registry + APISIX sync), 101 (springdoc + drift tests), 102 (mock-control engine, a+b),
-103 (core mock-control + global reset), 110 (push notifications), 123 (AML/trustbank/DW file mocks), 130 (audit FRS; PayloadScrub after 4 review rounds: markup containing a secret word is stored as `****` whole, user decision).
-88 is superseded by 126/127.
+103 (core mock-control + global reset), 105 (app preview/confirm, Newman folder 46; live suite and tester-e2e not run),
+110 (push notifications), 110b (binding epoch from mw-auth; notify migration V17),
+123 (AML/trustbank/DW file mocks), 130 (audit FRS; PayloadScrub after 4 review rounds: markup containing a secret word is stored as `****` whole, user decision),
+131a (partner credentials backend), 131b (maintenance window + MOCK/REAL endpoint profile; maker-checker actions that leave the route untouched).
+Review fix on that range: 2308d22e (19 files +342 −57). 88 is superseded by 126/127.
 
-## In flight when this file was written (worktrees under `.claude/worktrees/agent-*`, branch per ticket)
-- `ticket/95b-core-rest-retire-topics` — mw-auth/mw-admin-api to /core/v1, unlock endpoint, retire core command topics, legacy DROP_REPLY must also lose the REST answer.
-- `ticket/96-orchestrator-saga-frs` (doing **96a** only) — inquiry schedule 30s/2m/10m/1h -> MANUAL_REVIEW + ops alert (mw-notify migration must be V15+).
-- `ticket/105-app-preview-confirm` — app preview/confirm (API folder 46).
-- `ticket/110b-push-binding-epoch` — security follow-up: binding epoch from mw-auth through the gateway into push-token registrations.
-- `ticket/131-admin-partner-credentials` (doing **131a** only) — credentials backend (API folder 45).
-If an in-flight branch has commits, review its diff, finish it (tests first), merge `upay-main` into it, run `./gradlew :mw-x:build`
-for touched modules, merge into `upay-main`, mark its row done in DEPENDENCIES.md. If it has no commits, restart the ticket.
+## In flight when this file was written
+None. The salvage worktrees for 95b, 105, 110b and 131b are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
 
 ## Next (frontier, in priority order)
-1. 98 (routing, after 96a) -> 104 (FRS e2e harness) -> **M7 gate**.
-2. 95c, 111, 106/107/108/109 (after 105) -> **M8 gate**.
-3. Then M9–M13 per DEPENDENCIES.md (131b before 115/118–121; 100b before 118–121; 130b, 96b/96c, 100c, 131c before M13).
+1. 98 (routing; unblocked, 96a is done) -> 104 -> **M7 gate**. Folder 46 and the test-console preview step are written; the live API suite and tester-e2e were not run. Top-up operator resolution stays in 98.
+2. Unblocked and not started: 95c, 96b, 100b, 106/107/108/109, 111. Then **M8 gate**.
+3. M9–M13 per DEPENDENCIES.md. 131b is done, so 115 and 118–121 no longer wait on the maintenance engine; their routing still waits on 98, and 100b still runs before 118–121. 128, 130b, 131c and 135 are unblocked. 96c waits on 96b; 100c before M13.
 
 ## Milestone gate procedure (after the last ticket of a milestone)
 1. Code review of the milestone range; one fix pass.
@@ -56,7 +55,8 @@ RetryTopicIT (admin-api/notify/telco), AuthClientIT (app-gateway/ussd), CryptoCl
 - Redis AGPL: written approval by the Bits architecture owner (ADR D29).
 - 130: CHANNEL_IN / CORE_CALL / NOTIFICATION audit hops -> 130b; admin timeline UI -> 135.
 - 100a: `$secret://vault` lookup only IT-tested; live edge tests + folder 41 -> 100c.
-- 97: admin `PartnerConfigValue` lacks maintenance/healthCheck -> 131b.
+- 97 / 131b: maintenance and the endpoint profile republish with the live config. Routing that treats the partner as MAINTENANCE waits for 98.
 - 101: WSDL only after 108 (adapters serve no SOAP).
+- 105: top-up operator resolution waits for 98. Live Newman folder 46 and tester-e2e wait for the M7 gate.
 
 - 123: AML file carries clear MSISDNs (watch-list rules); ticket 125 asks for masked/tokenised parties -> ask the user (security) when 125 starts. DW file layout is 123's draft; 128 must match it.
