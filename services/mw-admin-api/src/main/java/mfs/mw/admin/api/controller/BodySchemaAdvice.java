@@ -47,17 +47,20 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
 
   public BodySchemaAdvice(JsonMapper json) {
     this.schemas =
-        Map.of(
-            ChangeRequestBody.class, new BodySchema(json, BodySchema.CHANGE_REQUEST),
-            WalletChangeRequestBody.class, new BodySchema(json, BodySchema.WALLET_CHANGE_REQUEST),
-            RejectBody.class, new BodySchema(json, BodySchema.REJECT),
-            PartnerChangeRequestBody.class, new BodySchema(json, BodySchema.PARTNER_CHANGE_REQUEST),
-            UssdMenuChangeBody.class, new BodySchema(json, BodySchema.USSD_MENU_CHANGE),
-            TemplateChangeBody.class, new BodySchema(json, BodySchema.TEMPLATE_CHANGE),
-            KeyChangeBody.class, new BodySchema(json, BodySchema.KEY_CHANGE),
-            KeyCeremonyBody.class, new BodySchema(json, BodySchema.KEY_CEREMONY),
-            KeyComponentBody.class, new BodySchema(json, BodySchema.KEY_COMPONENT),
-            mfs.mw.admin.api.dto.ChannelClientChangeBody.class, new BodySchema(json, BodySchema.CHANNEL_CLIENT_CHANGE));
+        Map.ofEntries(
+            Map.entry(ChangeRequestBody.class, new BodySchema(json, BodySchema.CHANGE_REQUEST)),
+            Map.entry(WalletChangeRequestBody.class, new BodySchema(json, BodySchema.WALLET_CHANGE_REQUEST)),
+            Map.entry(RejectBody.class, new BodySchema(json, BodySchema.REJECT)),
+            Map.entry(PartnerChangeRequestBody.class, new BodySchema(json, BodySchema.PARTNER_CHANGE_REQUEST)),
+            Map.entry(UssdMenuChangeBody.class, new BodySchema(json, BodySchema.USSD_MENU_CHANGE)),
+            Map.entry(TemplateChangeBody.class, new BodySchema(json, BodySchema.TEMPLATE_CHANGE)),
+            Map.entry(KeyChangeBody.class, new BodySchema(json, BodySchema.KEY_CHANGE)),
+            Map.entry(KeyCeremonyBody.class, new BodySchema(json, BodySchema.KEY_CEREMONY)),
+            Map.entry(KeyComponentBody.class, new BodySchema(json, BodySchema.KEY_COMPONENT)),
+            Map.entry(mfs.mw.admin.api.dto.ChannelClientChangeBody.class, new BodySchema(json, BodySchema.CHANNEL_CLIENT_CHANGE)),
+            // ticket 131: the credential upload (write-only secrets) and the error map
+            Map.entry(mfs.mw.admin.api.dto.CredentialChangeBody.class, new BodySchema(json, BodySchema.CREDENTIAL_CHANGE)),
+            Map.entry(mfs.mw.admin.api.dto.ErrorMapChangeBody.class, new BodySchema(json, BodySchema.ERROR_MAP_CHANGE)));
   }
 
   @Override

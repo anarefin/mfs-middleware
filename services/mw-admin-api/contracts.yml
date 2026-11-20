@@ -17,6 +17,8 @@ produces:
     - events/mw-orchestrator/core.command.v1.schema.json#UnlockWallet
     # ticket 70: the ops unlock also lifts mw-auth's PIN lock
     - events/mw-auth/auth.wallet-lock.v1.schema.json
+    # ticket 131: the ops email of a partner credential expiry alert (template OPS_CREDENTIAL_EXPIRING)
+    - events/mw-notify/mw.notify.request.v1.schema.json
   apis:   [api/mw-admin-api/admin.v1.openapi.yaml]
 consumes:
   # ticket 83: the adapters' LIVE / REJECTED report per partner route version (messaging/PartnerRouteStatusListener)

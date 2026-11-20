@@ -256,6 +256,36 @@ Vault `pki_int` that each service issues itself at start and renews at two third
 3. 403 `MW-AUTH-002` with reason `CERT_MISMATCH` in mw-crypto's or mw-auth's log: the caller's token
    (`azp`) and certificate CN differ, a configuration error (Keycloak client or PKI role), not expiry.
 
+### Partner credential and certificate rotation (ticket 131)
+
+Partner secrets (API keys, HMAC secrets, mTLS client certificates) live only in Vault, as fields of
+the partner's secret `secret/mw-adapter-<family>/<partnerId>` (ADR D28). They are uploaded and rotated
+through the admin API with maker-checker; nobody needs the Vault root token for it.
+
+1. Alert: the ops mailbox gets the email "partner credential ... expires in N days" (template
+   `OPS_CREDENTIAL_EXPIRING`) 30, 7 and 1 days before `notAfter`, once per threshold and credential
+   version; mw-admin-api logs WARN `credential.expiring` at the same time. `GET
+   /admin/v1/credentials/expiring?days=30` (the console's "Credentials expiring" card) lists what
+   expires soon, expired ones included.
+2. Upload the new value as an `integration-maker`: `POST
+   /admin/v1/partners/<partnerId>/credentials/<name>/change-requests` with `type` API_KEY or
+   HMAC_SECRET (`secret`) or CLIENT_CERT (`certificatePem` + PKCS#8 `privateKeyPem`, or `pkcs12` +
+   `pkcs12Password`). The secret is staged in Vault at once (`secret/mw-admin-api/staged-credentials/`)
+   and never stored, returned, logged or audited; the request shows metadata only (kid, fingerprint,
+   subject, notAfter). Keep the same `name`: it is the field `auth.credentialsRef` names, or the TLS
+   context name (`<name>-keystore`, `<name>-keystore-password`).
+3. A different `integration-checker` approves it: the fields are patched into the partner's secret
+   (its other fields stay) and the staged copy is dropped. mw-admin-api can write those secrets but
+   never read them (its Vault policy, `deploy/provision/lib.sh` `credential_upload_policy`), so a
+   value is never shown again; check `GET /admin/v1/credentials` for the new `kid` and `version`.
+   Vault down: 503 `MW-SYS-043`; the approval stays APPROVING and the reconcile job finishes it.
+4. Make the adapter use it: an API key or HMAC secret is read when the partner's route loads, so
+   approve any partner change for it (or restart the adapter, `dc restart mw-adapter-<family>`); a client
+   certificate's TLS context (`mw.partners.tls.contexts`) is read once when the adapter starts, so
+   restart the adapter. Watch the adapter log for `partner.tls_context_registered` (or
+   `partner.tls_context_unavailable`).
+5. Reject or let the request expire to throw an upload away: the staged copy is dropped.
+
 ### Key rotation and the key ceremony (ticket 75)
 
 Keys live in the HSM; mw-crypto keeps only metadata (keyId, versions, states). Every change is
