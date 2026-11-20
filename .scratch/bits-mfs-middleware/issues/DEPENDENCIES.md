@@ -186,7 +186,7 @@
 133-admin-ussd-editor-templates             109,111           split (133-split-decisions.md, 2026-11-20)
 133a-ussd-tree-editor-preview               109,111           done     13m      9 files +641 −35       5022566d,3e420fed  (UI only; live Playwright not run)
 133b-ussd-preview-api                       133a              done     20m      36 files +1254 −19     92295544 (merge 3619db28; short code -> root menu = mw.content.ussd.<mno> config copy in admin-api; operator regex never run in preview; folder 67 started, not run live)
-133c-notify-rules                           133a              open
+133c-notify-rules                           133a              done     36m      71 files +1764 −49     248389b6,52abf59a,78251524,84a6c9d7 (merge 4cb78ed1; NOTIFY_RULE configType in all 23 enums; admin-api V23, notify V21; seeded rules not editable from console; Playwright 51 + folder 67 not run live)
 133d-template-test-send                     133a              open
 134-admin-actions-compliance-recon-ui       125,127,111       open
 135-admin-monitoring-users-audit-mock       103,130           open
