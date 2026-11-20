@@ -55,6 +55,9 @@ public class BodySchema {
   /** {@code POST /admin/v1/notify-campaigns} (ticket 111). */
   public static final String NOTIFY_CAMPAIGN = "derived-schemas/admin-v1-notify-campaign.json";
 
+  /** {@code POST /admin/v1/notify-rules/{ruleId}/change-requests} (ticket 133c). */
+  public static final String NOTIFY_RULE_CHANGE = "derived-schemas/admin-v1-notify-rule-change-request.json";
+
   /** {@code POST /admin/v1/keys/change-requests} (ticket 75). */
   public static final String KEY_CHANGE = "derived-schemas/admin-v1-key-change-request.json";
 
