@@ -1,6 +1,7 @@
 package mfs.mw.orchestrator.messaging;
 
 import mfs.mw.orchestrator.dto.ConfigChangedEvent;
+import mfs.mw.orchestrator.service.BillerRules;
 import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -8,15 +9,17 @@ import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
-/** Consumes {@code mw.config.changed.v1} and applies routing resources (ticket 98, FRS PLT-041). */
+/** Consumes {@code mw.config.changed.v1} and applies routing resources (ticket 98, FRS PLT-041) and biller amount rules (ticket 113c). */
 @Component
 public class ConfigChangedListener {
 
   private final RoutingCatalog catalog;
+  private final BillerRules billers;
   private final JsonMapper json;
 
-  public ConfigChangedListener(RoutingCatalog catalog, JsonMapper json) {
+  public ConfigChangedListener(RoutingCatalog catalog, BillerRules billers, JsonMapper json) {
     this.catalog = catalog;
+    this.billers = billers;
     this.json = json;
   }
 
@@ -35,6 +38,7 @@ public class ConfigChangedListener {
       throw new IllegalArgumentException("config change lacks configKey or configType");
     }
     catalog.apply(event);
+    billers.apply(event);
     ack.acknowledge();
   }
 }

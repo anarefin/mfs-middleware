@@ -26,6 +26,7 @@ import mfs.mw.orchestrator.service.routing.RoutingService;
 import mfs.mw.orchestrator.service.saga.Flow;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.BalanceFlow;
+import mfs.mw.orchestrator.service.saga.BillPayFlow;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
 import mfs.mw.orchestrator.service.saga.Status;
 import mfs.mw.orchestrator.service.saga.Step;
@@ -70,6 +71,7 @@ public class TransactionService {
   private final RoutingCatalog routing;
   private final Clock clock;
   private final TopupProperties topup;
+  private final BillerRules billerRules;
 
   public TransactionService(
       IdempotencyRepository idempotency,
@@ -83,7 +85,8 @@ public class TransactionService {
       OrchestratorProperties properties,
       RoutingCatalog routing,
       Clock clock,
-      TopupProperties topup) {
+      TopupProperties topup,
+      BillerRules billerRules) {
     this.idempotency = idempotency;
     this.transactions = transactions;
     this.requestMapper = requestMapper;
@@ -96,6 +99,7 @@ public class TransactionService {
     this.routing = routing;
     this.clock = clock;
     this.topup = topup;
+    this.billerRules = billerRules;
   }
 
   /**
@@ -329,6 +333,13 @@ public class TransactionService {
       // no PIN on a bulk child: only the org portal (maker-checker) may send one (ticket 34)
       return new ErrorInfo(
           ErrorCodes.AUTH_BULK_CHANNEL, "This channel may not send a bulk disbursement", null, false);
+    }
+    if ("BILL_PAY".equals(req.txnType()) && req.partner() != null && req.amount().valueMinor() > 0) {
+      // the biller's amount rule (ticket 113c) before routing, so a refusal names the amount
+      ErrorInfo bill = BillPayFlow.amountRefusal(req, billerRules.find(req.partner().billerCode()));
+      if (bill != null) {
+        return bill;
+      }
     }
     if (flow.get().partnerCall().isPresent()) {
       ErrorInfo partner = partnerRefusal(req);
