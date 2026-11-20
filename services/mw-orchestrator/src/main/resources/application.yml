@@ -244,8 +244,9 @@ mw:
     # dev stack switches it on, APISIX routes it only with MW_E2E_ROUTES=1.
     test-api:
       enabled: ${MW_ORCHESTRATOR_TEST_API_ENABLED:false}
-    # Channels that may send a BULK_DISBURSE child (ticket 34): the org portal, after maker-checker.
-    bulk-channels: ORG_PORTAL
+    # Channels that may send a BULK_DISBURSE (ticket 34): the org portal after maker-checker,
+    # and the partner app (the core posting is still an organisation wallet to a customer).
+    bulk-channels: ORG_PORTAL,PARTNER_APP
     # Daily MANUAL_REVIEW ageing check (scheduler/ManualReviewAgeingJob, UTC, "-" switches it off).
     manual-review-ageing-cron: "0 0 6 * * *"
     # The core wallet over REST (ADR D31, ticket 95a; client/CoreWalletClient): Keycloak realm services

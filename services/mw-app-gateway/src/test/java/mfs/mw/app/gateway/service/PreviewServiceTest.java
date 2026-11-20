@@ -233,6 +233,20 @@ class PreviewServiceTest {
   }
 
   @Test
+  void aPartnerDisbursementIsQuotedAsAnOrganisationWallet() {
+    when(quotes.quote(any())).thenReturn(quote(true, null));
+    AppUser partner = new AppUser("01412000001", "PARTNER_APP", "PARTNER", "dev-p");
+
+    service.preview(partner, "disburse", p2p("01711000005", 10_000));
+
+    ArgumentCaptor<QuoteRequest> asked = ArgumentCaptor.forClass(QuoteRequest.class);
+    verify(quotes).quote(asked.capture());
+    assertThat(asked.getValue()).isEqualTo(new QuoteRequest(
+        "01412000001", "ORGANISATION", "BULK_DISBURSE", "PARTNER_APP",
+        new Amount(10_000L, "BDT"), new QuoteRequest.Counterparty("WALLET", "01711000005")));
+  }
+
+  @Test
   void anUnknownGroupIsNotFound() {
     assertThatThrownBy(() -> service.preview(USER, "transactions", p2p("01711000002", 1)))
         .isInstanceOfSatisfying(MwException.class, e -> assertThat(e.status()).isEqualTo(HttpStatus.NOT_FOUND));

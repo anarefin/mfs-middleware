@@ -35,7 +35,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.app.gateway`. Follow 
   `MW-AUTH-003` (device gate).
   Role per `txnType` (`mw.app-gateway.txn-type-roles`, checked at submit after the type check):
   P2P, CASH_OUT, MERCHANT_PAY, TOPUP, BILL_PAY and ADD_MONEY_BANK customer only, CASH_IN agent only,
-  B2B_TRANSFER distributor, DSO and agent (the caller pays from their own wallet), BULK_DISBURSE partner only;
+  B2B_TRANSFER distributor, DSO and agent (the caller pays from their own wallet), BULK_DISBURSE partner only
+  (the request posts that wallet as party type ORG, the core's ORGANISATION, to a CUSTOMER; the role stays PARTNER);
   the merchant initiates nothing (`AppGatewayConfigTest` checks no type lists MERCHANT) (switch here, nowhere else). Deny by
   default: a type with no entry is refused for every role; `AppGatewayConfigTest` fails when a
   txnType of the OpenAPI enum has no entry.
