@@ -138,7 +138,7 @@
 119-mw-adapter-remit                        95,97,102         split (119-split-decisions.md, 2026-11-20)
 119a-remit-adapter                          95,97,102         done     -        286 files +26376 −36   bfa47ddf  (admin-api V19 remit; host port 8101. RemitInFlow, Newman 53, lookup -> 119b)
 119b-remit-flow                             119a              done     45m      34 files +647 −57      2323f101  (REMIT_IN flow once per inbound id; adapter outbox; APISIX partner-remit-v1; HMAC fingerprint; core-mock REMIT_IN validate without assertion)
-119c-remit-lookup-suite                     119b              open   (POST /remit/v1/beneficiary-lookup masked; test console Send remittance; REMIT_IN limit row in core-mock limits.csv (mock: 200,000 Tk per txn); Newman 53-remittance-in)
+119c-remit-lookup-suite                     119b              done     60m      53 files +1446 −24     987406f0..37a9818b (merge 43ed7190; REMIT_IN without assertion only SETTLEMENT* -> customer; core account-clients: mw-adapter-remit GET accounts only; KC_MW_ADAPTER_REMIT_SECRET (re-copy .env); Newman 53 not run live)
 120-mw-adapter-atm                          95,97,102         split (120-split-decisions.md, 2026-11-20)
 120a-atm-adapter-inbound                    95,97,102         done     -        283 files +26354 −31   372dceb2  (admin-api V20 atm; host port 8100. Inbound SOAP recorded locally; publish, token, cash flows, Newman 54 -> 120b)
 120b-atm-token-flows                        120a              split (120-split-decisions.md, 1 h cap)
