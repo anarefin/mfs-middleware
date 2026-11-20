@@ -406,6 +406,24 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "429": { $ref: "#/components/responses/Error" }
         "503": { $ref: "#/components/responses/Error" }
+  /app/v1/notifications/opt-out:
+    post:
+      operationId: optOutOfPromotions
+      summary: Opt this wallet out of promotional messages
+      description: >-
+        Ticket 111 (FRS NOT-09). No body. The token's wallet is recorded by mw-notify
+        (`mw.notify.opt-out.v1`) and promotional SMS are skipped. OTP and transactional messages
+        are never opted out. Session level: `X-Device-Id` and a live session, no signature.
+        204 once handed over; 503 MW-SYS-010 (retryable) when it cannot be handed over.
+      parameters:
+        - { $ref: "#/components/parameters/DeviceId" }
+      responses:
+        "204":
+          description: Recorded (handed to mw-notify)
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /app/v1/pin-key:
     get:
       operationId: getPinKey

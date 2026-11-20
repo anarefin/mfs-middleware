@@ -47,10 +47,13 @@ public class NotificationService {
   private final NotifyProperties props;
   private final Clock clock;
   private final PushDeviceService pushDevices;
+  private final OptOutService optOuts;
 
   public NotificationService(MessageRepository messages, TemplateRepository templates, TemplateRenderer renderer,
-      StatusEvents statuses, NotifyProperties props, Clock clock, PushDeviceService pushDevices) {
+      StatusEvents statuses, NotifyProperties props, Clock clock, PushDeviceService pushDevices,
+      OptOutService optOuts) {
     this.pushDevices = pushDevices;
+    this.optOuts = optOuts;
     this.messages = messages;
     this.templates = templates;
     this.renderer = renderer;
@@ -71,7 +74,7 @@ public class NotificationService {
 
     boolean inserted = false;
     for (Channel channel : channels) {
-      Prepared p = prepare(r, channel, locale, now, expiresAt);
+      Prepared p = prepare(r, channel, locale, now, expiresAt, priority);
       Instant next = "QUEUED".equals(p.status) ? latest(now, r.sendAt()) : null;
       MessageRecord m = new MessageRecord(r.messageId(), r.txnId(), r.correlationId(), channel.name(), p.msisdn,
           r.templateCode(), p.version, locale, priority.name(), p.sender, p.body, p.ref, p.segments, p.status, 0,
@@ -82,6 +85,13 @@ public class NotificationService {
       inserted = true;
       switch (p.status) {
         case "QUEUED" -> queued(m, priority);
+        case "SUPPRESSED" -> log.atInfo()
+            .addKeyValue("event", "notify.optout.suppressed")
+            .addKeyValue("messageId", m.messageId())
+            .addKeyValue("priority", priority)
+            .addKeyValue("recipient", m.recipientMsisdn() == null ? null
+                : MaskingPolicy.mask(SensitiveType.MSISDN, m.recipientMsisdn()))
+            .log("promotional message not sent: the recipient opted out");
         case "EXPIRED" -> statuses.publish(m, NotifyStatus.EXPIRED, true, 1, null, null, now);
         default -> statuses.publish(m, NotifyStatus.FAILED, true, 1, null, p.error, now);
       }
@@ -140,7 +150,8 @@ public class NotificationService {
   }
 
   /** What one channel of the request becomes: rendered and QUEUED, EXPIRED or FAILED. */
-  private Prepared prepare(NotificationRequest r, Channel channel, String locale, Instant now, Instant expiresAt) {
+  private Prepared prepare(NotificationRequest r, Channel channel, String locale, Instant now, Instant expiresAt,
+      Priority priority) {
     Prepared p = new Prepared();
     NotificationRequest.Recipient to = r.recipient();
     p.msisdn = to == null || channel != Channel.SMS ? null : blankToNull(to.msisdn());
@@ -181,6 +192,9 @@ public class NotificationService {
             : renderer.renderHtml(template.htmlBody(), r.params());
       }
       p.status = "QUEUED";
+      if (channel == Channel.SMS && optOuts.blocksPromo(priority, p.msisdn)) {
+        p.status = "SUPPRESSED";
+      }
     } catch (TemplateException e) {
       p.status = "FAILED";
       p.error = e.code();

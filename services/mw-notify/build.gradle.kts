@@ -38,6 +38,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-webmvc")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    // Internal notification log (ticket 111): client-credentials JWT on /internal/v1/**.
+    implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
     implementation("org.springframework.boot:spring-boot-micrometer-tracing-brave")
     implementation("io.micrometer:micrometer-tracing-bridge-brave")
     implementation("io.micrometer:micrometer-registry-prometheus")

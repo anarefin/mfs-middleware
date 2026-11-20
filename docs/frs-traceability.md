@@ -308,15 +308,15 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
-| NOT-01 | tickets 111, 133 | transaction notifications on SMS, email and push (ticket 110) built; rule table and system events 111, editor 133 |
+| NOT-01 | tickets 111, 133 | transaction notifications on SMS, email and push (ticket 110) built; customer type on `notify.rule` matched to `debitParty.walletType`, and LOCK/UNLOCK notices from `auth.wallet-lock.v1` (ticket 111); the rule-table editor is 133 |
 | NOT-02 | done | SMS, email and push templates (title + body, `PUSH_TXN_COMPLETED` / `PUSH_TXN_FAILED`, ticket 110) in Bangla and English in `notify.template` |
 | NOT-03 | done | mw-notify SMPP: GSM-7 / UCS2, concatenation, sender id (`SmsEncoder`) |
 | NOT-04 | done | delivery receipts update the message status (`DeliveryReport`) |
 | NOT-05 | done | priority queues, OTP first (`Priority`) |
 | NOT-06 | ticket 134 | retry and DLQ for SMS, email and push built (push: client retry with backoff and breaker, then 2/10/30 s, ticket 110); console view 134 |
-| NOT-07 | ticket 111 | campaigns with throttle |
-| NOT-08 | tickets 111, 134 | notification log search |
-| NOT-09 | ticket 111 | opt-out |
+| NOT-07 | done | campaigns with a per-second throttle on the PROMO bind (ticket 111): `POST /admin/v1/notify-campaigns` through maker-checker, `CampaignRunnerIT` |
+| NOT-08 | tickets 111, 134 | notification log search API built (ticket 111): `GET /internal/v1/notifications`, paged and masked, OTP body always masked; the console view is 134 |
+| NOT-09 | done | promotional opt-out (ticket 111): `POST /app/v1/notifications/opt-out` and SMS keyword STOP, honoured for PROMO only |
 | REC-01 | ticket 126 | MT940/942 pull and parse |
 | REC-02 | ticket 126 | adapters' SFTP ingest to `mw.partner.recon.v1` built (D28); consumer in 126 |
 | REC-03 | ticket 126 | matching with tolerance |
@@ -350,7 +350,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ADM-04 | tickets 98, 132 | routing rules |
 | ADM-05 | tickets 113, 132 | billers |
 | ADM-06 | ticket 133 | USSD menu JSON editing built; visual editor and preview in 133 |
-| ADM-07 | tickets 111, 133 | SMS template editing built; rule table and test send |
+| ADM-07 | tickets 111, 133 | SMS template editing built; campaigns through maker-checker (`POST /admin/v1/notify-campaigns`, ticket 111); the rule-table editor and test send are 133 |
 | ADM-08 | ticket 131 | API built (131a): `partner_error_map` change request, published as the partner's next version (`PartnerConfigApiIT`, API folder 45); the screen in 131c |
 | ADM-09 | done | transaction search and saga timeline (mw-admin-api, `ui/mw-admin-ui`) |
 | ADM-10 | ticket 134 | TSQ, force complete and reversal with maker-checker built; resend notification and release hold in 134 |

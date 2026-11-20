@@ -201,8 +201,27 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
   `scheduler/OutboxRelayScheduler` (`mw.outbox.relay.period`, ShedLock). Conformance:
   `messaging/RetryTopicIT`, `scheduler/OutboxRelaySchedulerIT`; `messaging/ConsumerTopicsIT` checks
   this service's consumed topics, groups and retry/DLQ names.
-- `application.yml`: Resilience4j defaults (19.2), own schema `notify` migrated by Flyway on
+-   `application.yml`: Resilience4j defaults (19.2), own schema `notify` migrated by Flyway on
   start from `db/migration` (16.4); rename the schema to the spec 16.2 name if it has one.
+
+## Campaigns, opt-out and the log (ticket 111)
+
+- Customer type (`V18__campaign_optout.sql`, column `rule.customer_type`): `RuleEngine` matches it
+  to `debitParty.walletType`. `*` matches any party, including one with no type. `ORG` is stored
+  and matches a party whose wallet type is `ORG`. Outcome stays the SpEL condition.
+- Wallet lock (`auth.wallet-lock.v1`, group mw-notify): LOCK and UNLOCK send `WALLET_LOCKED` /
+  `WALLET_UNLOCKED` to recipient `SUBJECT` (the wallet id when it is an MSISDN). PIN_RESET and
+  REVOKE_SESSIONS match nothing (mw-auth already texts a PIN reset). The MANUAL_REVIEW ops alert
+  stays the V16 rules on `mw.txn.status.v1`.
+- Campaigns: an approved `FEATURE_FLAG` whose key starts with `feature/notify-campaign/` is stored
+  (`service/CampaignService`). `scheduler/CampaignRunner` (ShedLock `notify-campaign`,
+  `mw.notify.campaign.period`, default 200ms) queues at most `throttlePerSecond` recipients per
+  second as PROMO. It does not sleep. Quiet hours hold PROMO. The dispatcher still sends OTP first.
+- Opt-out (`notify.opt_out`, SHA-256 of the canonical MSISDN): `POST /app/v1/notifications/opt-out`
+  publishes `mw.notify.opt-out.v1`; an SMS whose text is STOP does the same. Honoured for PROMO
+  SMS only (`SUPPRESSED`, not sent). OTP and transactional messages are never opted out.
+- Log: `GET /internal/v1/notifications` (internal JWT, audience `mw-notify`, client `mw-admin-api`),
+  paged, MSISDN masked, OTP body always `****`.
 
 ## Commands
 

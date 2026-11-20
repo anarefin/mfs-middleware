@@ -230,6 +230,13 @@ mw:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}
     env: ${MW_ENV:local}
+  # The notification log (ticket 111): Keycloak client-credentials JWT of realm `services`.
+  internal-auth:
+    jwk-set-uri: ${MW_INTERNAL_JWK_SET_URI:http://keycloak:8080/realms/services/protocol/openid-connect/certs}
+    issuer: ${MW_INTERNAL_ISSUER:http://keycloak:8080/realms/services}
+    audience: mw-notify
+    allowed-clients: mw-admin-api
+    org-scoped-clients: []
   notify:
     # Transient SMPP errors: retry after 2 s, 10 s, 30 s, then FAILED (spec 10.4).
     retry-backoff: 2s,10s,30s
@@ -256,6 +263,11 @@ mw:
       period: 200ms
     consumers:
       enabled: true
+    campaign:
+      # Scheduled campaigns (ticket 111). The tick queues at most throttle-per-second recipients;
+      # it does not sleep, so OTP dispatch on its own job is never held behind a campaign.
+      enabled: true
+      period: 200ms
     email:
       enabled: ${EMAIL_ENABLED:true}
       from: ${MAIL_FROM:Bits <no-reply@bits.local>}

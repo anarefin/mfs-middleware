@@ -70,7 +70,7 @@ class SmppSmsSenderTest {
 
   private void withStub(Map<Priority, Integer> binds, DeliveryReportHandler handler) throws IOException {
     smsc = new SmscStub();
-    sender = new SmppSmsSender(props(smsc.port(), binds), handler, clock);
+    sender = new SmppSmsSender(props(smsc.port(), binds), handler, InboundSmsHandler.NONE, clock);
   }
 
   @Test
@@ -183,7 +183,7 @@ class SmppSmsSenderTest {
           }
         }
       });
-      sender = new SmppSmsSender(props(refusing.getLocalPort(), Map.of()), reports::add, clock);
+      sender = new SmppSmsSender(props(refusing.getLocalPort(), Map.of()), reports::add, InboundSmsHandler.NONE, clock);
 
       SmsSendException e = catchThrowableOfType(SmsSendException.class, () -> sender.submit(Priority.OTP, part(MSISDN)));
       assertThat(e.isTransient()).isTrue();

@@ -49,6 +49,9 @@ public class BodySchema {
   /** {@code POST /admin/v1/notify-templates/{code}/{channel}/{locale}/change-requests} (ticket 39). */
   public static final String TEMPLATE_CHANGE = "derived-schemas/admin-v1-template-change-request.json";
 
+  /** {@code POST /admin/v1/notify-campaigns} (ticket 111). */
+  public static final String NOTIFY_CAMPAIGN = "derived-schemas/admin-v1-notify-campaign.json";
+
   /** {@code POST /admin/v1/keys/change-requests} (ticket 75). */
   public static final String KEY_CHANGE = "derived-schemas/admin-v1-key-change-request.json";
 

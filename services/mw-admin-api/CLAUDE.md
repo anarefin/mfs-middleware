@@ -60,7 +60,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   approval (moved on: `409 MW-VAL-030`, request stays PENDING); expired: marked EXPIRED + audited,
   `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
   `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]` (`resourceType`
-  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|key|channel_client|partner_credential|partner_error_map; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
+  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|notify-campaign|key|channel_client|partner_credential|partner_error_map; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
   (`READ_CHANGE_REQUESTS`: the transaction readers and integration-maker/checker, ticket 38; an
   operator without `READ_TRANSACTIONS` sees partner requests only: transaction and wallet ones are
   left out of the list, `?resourceType=transaction|wallet` and their detail are 403).

@@ -439,6 +439,10 @@
     async pushToken(user, token, platform) {
       return http('PUT', '/app/v1/notifications/push-token', { headers: await app.headers(user), json: { token, platform: platform || 'ANDROID' } });
     },
+    // promotional opt-out (ticket 111): POST /app/v1/notifications/opt-out, no body, session level
+    async optOut(user) {
+      return http('POST', '/app/v1/notifications/opt-out', { headers: await app.headers(user), raw: '' });
+    },
     // the balance check (ADR D26): POST /app/v1/balance, signed like a submit, a new key per check
     async balance(user, idem, pin) {
       const d = await ready(user);
@@ -582,6 +586,7 @@
     async partner(user, p) { return http('GET', '/admin/v1/partners/' + p, { headers: await ops(user) }); },
     async proposeMenu(user, menuId, body) { return http('POST', '/admin/v1/ussd-menus/' + menuId + '/change-requests', { headers: await ops(user), json: body }); },
     async proposeTemplate(user, code, ch, loc, body) { return http('POST', '/admin/v1/notify-templates/' + code + '/' + ch + '/' + loc + '/change-requests', { headers: await ops(user), json: body }); },
+    async proposeCampaign(user, body) { return http('POST', '/admin/v1/notify-campaigns', { headers: await ops(user), json: body }); },
     async cr(user, id) { return http('GET', '/admin/v1/change-requests/' + id, { headers: await ops(user) }); },
     async approve(user, id) { return http('POST', '/admin/v1/change-requests/' + id + '/approve', { headers: await ops(user), raw: '' }); },
     async reject(user, id, reason) { return http('POST', '/admin/v1/change-requests/' + id + '/reject', { headers: await ops(user), json: { reason } }); },

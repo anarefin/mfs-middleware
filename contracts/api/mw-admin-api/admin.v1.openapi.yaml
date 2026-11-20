@@ -835,6 +835,52 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+  /admin/v1/notify-campaigns:
+    post:
+      operationId: proposeNotifyCampaign
+      summary: Propose a promotional campaign (maker)
+      description: >-
+        Role `ops-maker` (ticket 111, FRS NOT-07). The audience is `msisdns`, a `csv` of the same
+        numbers, a `customerType`, or a combination; at least one is required (400 MW-VAL-001).
+        `throttlePerSecond` is 1 to 1000. A different `ops-checker` approves it with
+        `/admin/v1/change-requests/{id}/approve`, which broadcasts it on `mw.config.changed.v1`
+        as a FEATURE_FLAG keyed `feature/notify-campaign/<id>`. mw-notify sends it on the PROMO
+        bind at that rate. OTP and transactional messages are not delayed and are never opted out.
+      parameters:
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [scheduleAt, throttlePerSecond, text, reason]
+              properties:
+                templateCode: { type: string, minLength: 1, maxLength: 64 }
+                locale: { type: string, enum: [bn, en] }
+                scheduleAt: { type: string, minLength: 1, maxLength: 40 }
+                throttlePerSecond: { type: integer, minimum: 1, maximum: 1000 }
+                customerType:
+                  type: string
+                  enum: [CUSTOMER, AGENT, MERCHANT, DISTRIBUTOR, DSO, ORG]
+                msisdns:
+                  type: array
+                  maxItems: 5000
+                  items: { type: string, minLength: 1, maxLength: 20 }
+                csv: { type: string, minLength: 1, maxLength: 120000 }
+                text: { type: string, minLength: 1, maxLength: 500 }
+                reason: { type: string, minLength: 1, maxLength: 500 }
+      responses:
+        "201":
+          description: The PENDING change request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /admin/v1/notify-templates/{code}/{channel}/{locale}/change-requests:
     post:
       operationId: proposeNotifyTemplate
@@ -1206,8 +1252,8 @@ components:
         offset: { type: integer }
     ResourceType:
       type: string
-      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template, key, channel_client, partner_credential,
-        partner_error_map]
+      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template, notify-campaign, key, channel_client,
+        partner_credential, partner_error_map]
     KeyAction:
       type: string
       description: Key changes and the key ceremony (ticket 75)

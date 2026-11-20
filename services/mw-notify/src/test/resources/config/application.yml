@@ -26,6 +26,8 @@ mw:
       enabled: false
     dispatch:
       enabled: false
+    campaign:
+      enabled: false
     consumers:
       enabled: false
 spring:

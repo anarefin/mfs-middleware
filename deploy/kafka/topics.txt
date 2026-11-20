@@ -20,7 +20,7 @@ mw.txn.request.v1              48 7d retry=mw-orchestrator
 mw.txn.action.v1                6 7d retry=mw-orchestrator
 mw.txn.status.v1               48 7d retry=mw-app-gateway,mw-audit-dw,mw-checkout,mw-notify,mw-portal-api
 core.wallet.event.v1           48 7d retry=mw-orchestrator,mw-auth
-auth.wallet-lock.v1             6 7d retry=mw-auth
+auth.wallet-lock.v1             6 7d retry=mw-auth,mw-notify
 core.payment.event.v1          48 7d retry=mw-orchestrator
 mw.partner.request.telco.v1    24 3d retry=mw-adapter-telco
 mw.partner.request.billpay.v1  24 3d retry=mw-adapter-billpay
@@ -31,6 +31,8 @@ mw.notify.request.v1           24 3d retry=mw-notify
 mw.notify.status.v1            12 7d
 # ticket 110: push device tokens from mw-app-gateway, kept by mw-notify (key walletId)
 mw.notify.push-token.v1        12 7d retry=mw-notify
+# ticket 111: promotional opt-out from the app (POST /app/v1/notifications/opt-out)
+mw.notify.opt-out.v1            12 7d retry=mw-notify
 mw.audit.event.v1              24 7d retry=mw-audit-dw
 mw.config.changed.v1            6 compact retry=mw-ussd,mw-notify
 mw.partner.route.status.v1      6 7d retry=mw-admin-api

@@ -17,8 +17,16 @@ import mfs.mw.notify.dto.TxnStatusEvent;
 import mfs.mw.notify.messaging.ConfigChangedListener;
 import mfs.mw.notify.messaging.NotifyRequestListener;
 import mfs.mw.notify.messaging.PushTokenListener;
+import mfs.mw.notify.dto.OptOutEvent;
 import mfs.mw.notify.dto.PushTokenEvent;
+import mfs.mw.notify.dto.WalletLockEvent;
+import mfs.mw.notify.messaging.OptOutListener;
+import mfs.mw.notify.messaging.PushTokenListener;
+import mfs.mw.notify.messaging.WalletLockListener;
+import mfs.mw.notify.service.CampaignService;
+import mfs.mw.notify.service.OptOutService;
 import mfs.mw.notify.service.PushDeviceService;
+import mfs.mw.notify.service.WalletLockService;
 import mfs.mw.notify.messaging.TxnStatusListener;
 import mfs.mw.notify.service.NotificationService;
 import mfs.mw.notify.service.TemplatePublisher;
@@ -52,6 +60,8 @@ class ConsumedContractsTest {
   static final String TXN_STATUS = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
   static final String CONFIG = "events/mw-admin-api/mw.config.changed.v1.schema.json";
   static final String PUSH_TOKEN = "events/mw-notify/mw.notify.push-token.v1.schema.json";
+  static final String WALLET_LOCK = "events/mw-auth/auth.wallet-lock.v1.schema.json";
+  static final String OPT_OUT = "events/mw-notify/mw.notify.opt-out.v1.schema.json";
 
   /** Invalid samples the listener refuses (under contracts/). */
   static final List<String> REJECTED_BY_LISTENER =
@@ -90,7 +100,8 @@ class ConsumedContractsTest {
 
   static ConfigChangedEvent readConfig(String body) {
     TemplatePublisher service = mock(TemplatePublisher.class);
-    new ConfigChangedListener(service, JSON).handle(record(body), ACK);
+    CampaignService campaigns = mock(CampaignService.class);
+    new ConfigChangedListener(service, campaigns, JSON).handle(record(body), ACK);
     ArgumentCaptor<ConfigChangedEvent> captor = ArgumentCaptor.forClass(ConfigChangedEvent.class);
     verify(service).onConfigChanged(captor.capture());
     return captor.getValue();
@@ -101,6 +112,22 @@ class ConsumedContractsTest {
     new PushTokenListener(service, JSON).handle(record(body), ACK);
     ArgumentCaptor<PushTokenEvent> captor = ArgumentCaptor.forClass(PushTokenEvent.class);
     verify(service).register(captor.capture());
+    return captor.getValue();
+  }
+
+  static WalletLockEvent readWalletLock(String body) {
+    WalletLockService service = mock(WalletLockService.class);
+    new WalletLockListener(service, JSON).handle(record(body), ACK);
+    ArgumentCaptor<WalletLockEvent> captor = ArgumentCaptor.forClass(WalletLockEvent.class);
+    verify(service).onCommand(captor.capture());
+    return captor.getValue();
+  }
+
+  static OptOutEvent readOptOut(String body) {
+    OptOutService service = mock(OptOutService.class);
+    new OptOutListener(service, JSON).handle(record(body), ACK);
+    ArgumentCaptor<OptOutEvent> captor = ArgumentCaptor.forClass(OptOutEvent.class);
+    verify(service).onOptOut(captor.capture());
     return captor.getValue();
   }
 
@@ -138,6 +165,19 @@ class ConsumedContractsTest {
             assertThat(e.platform()).isNotNull();
             assertThat(e.registeredAt()).isNotNull();
             assertThat(e.bindingEpoch()).isPositive();
+          },
+          WALLET_LOCK,
+          body -> {
+            WalletLockEvent e = readWalletLock(body);
+            assertThat(e.commandId()).isNotBlank();
+            assertThat(e.action()).isNotBlank();
+            assertThat(e.walletId()).isNotBlank();
+          },
+          OPT_OUT,
+          body -> {
+            OptOutEvent e = readOptOut(body);
+            assertThat(e.walletId()).isNotBlank();
+            assertThat(e.optedOutAt()).isNotNull();
           });
 
   @TestFactory

@@ -38,6 +38,47 @@ class RuleEngineTest {
   }
 
   @Test
+  void aRuleMatchesTheDebitPartyCustomerTypeAndAStarMatchesEveryType() {
+    RuleRecord customers = new RuleRecord("p2p-customer", "mw.txn.status.v1",
+        "status == 'COMPLETED' and txnType == 'P2P'", "TXN_P2P_SENT", "DEBIT_PARTY", "SMS", "TXN", "CUSTOMER");
+    RuleRecord agents = new RuleRecord("p2p-agent", "mw.txn.status.v1",
+        "status == 'COMPLETED' and txnType == 'P2P'", "TXN_P2P_SENT", "DEBIT_PARTY", "SMS", "TXN", "AGENT");
+    RuleRecord any = new RuleRecord("p2p-any", "mw.txn.status.v1",
+        "status == 'COMPLETED' and txnType == 'P2P'", "TXN_P2P_SENT", "DEBIT_PARTY", "SMS", "TXN", "*");
+    RuleRecord orgs = new RuleRecord("p2p-org", "mw.txn.status.v1",
+        "status == 'COMPLETED' and txnType == 'P2P'", "TXN_P2P_SENT", "DEBIT_PARTY", "SMS", "TXN", "ORG");
+    List<RuleRecord> rules = List.of(customers, agents, any, orgs);
+
+    assertThat(engine.requestsFor(p2p("COMPLETED", "01711000001", "01811000002"), rules))
+        .extracting(NotificationRequest::messageId)
+        .containsExactly(TXN + ":sms:p2p-customer", TXN + ":sms:p2p-any");
+
+    TxnStatusEvent agent = new TxnStatusEvent(TXN, "corr-1", "AGENT_APP", "P2P", "COMPLETED",
+        new Party("MSISDN", "01711000001", null), new Party("WALLET", "01711000001", "AGENT"),
+        new Party("WALLET", "01811000002", "CUSTOMER"), new Amount(50000, "BDT"), new Amount(500, "BDT"),
+        null, null, "en", null, null);
+    assertThat(engine.requestsFor(agent, rules))
+        .extracting(NotificationRequest::messageId)
+        .containsExactly(TXN + ":sms:p2p-agent", TXN + ":sms:p2p-any");
+
+    TxnStatusEvent org = new TxnStatusEvent(TXN, "corr-1", "ORG_PORTAL", "P2P", "COMPLETED",
+        new Party("MSISDN", "01711000001", null), new Party("WALLET", "01711000001", "ORG"),
+        new Party("WALLET", "01811000002", "CUSTOMER"), new Amount(50000, "BDT"), null, null, null, "en",
+        null, null);
+    assertThat(engine.requestsFor(org, rules))
+        .extracting(NotificationRequest::messageId)
+        .containsExactly(TXN + ":sms:p2p-any", TXN + ":sms:p2p-org");
+  }
+
+  @Test
+  void aFailedOutcomeDoesNotMatchACompletedRuleOfTheSameCustomerType() {
+    RuleRecord customers = new RuleRecord("p2p-customer", "mw.txn.status.v1",
+        "status == 'COMPLETED' and txnType == 'P2P'", "TXN_P2P_SENT", "DEBIT_PARTY", "SMS", "TXN", "CUSTOMER");
+
+    assertThat(engine.requestsFor(p2p("FAILED", "01711000001", "01811000002"), List.of(customers))).isEmpty();
+  }
+
+  @Test
   void aCompletedP2pNotifiesSenderAndReceiverWithTheOtherPartyMasked() {
     List<NotificationRequest> requests = engine.requestsFor(p2p("COMPLETED", "01711000001", "01811000002"), RULES);
 

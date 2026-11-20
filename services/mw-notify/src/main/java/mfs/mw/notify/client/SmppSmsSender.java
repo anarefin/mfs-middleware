@@ -66,8 +66,8 @@ public class SmppSmsSender implements SmsSender {
   private final Map<Priority, List<SmppBind>> pools = new EnumMap<>(Priority.class);
   private final Map<Priority, AtomicInteger> cursors = new EnumMap<>(Priority.class);
 
-  public SmppSmsSender(SmppProperties props, DeliveryReportHandler handler, Clock clock) {
-    MessageReceiverListener receiver = new Receiver(handler);
+  public SmppSmsSender(SmppProperties props, DeliveryReportHandler handler, InboundSmsHandler inbound, Clock clock) {
+    MessageReceiverListener receiver = new Receiver(handler, inbound);
     for (Priority p : Priority.values()) {
       List<SmppBind> binds = new ArrayList<>();
       for (int i = 1; i <= props.binds().get(p); i++) {
@@ -134,19 +134,29 @@ public class SmppSmsSender implements SmsSender {
     pools.values().forEach(binds -> binds.forEach(SmppBind::close));
   }
 
-  /** DLRs from the SMSC (deliver_sm with the SMSC delivery receipt flag). */
+  /** DLRs and mobile-originated SMS from the SMSC ({@code deliver_sm}). */
   private static final class Receiver implements MessageReceiverListener {
 
     private final DeliveryReportHandler handler;
+    private final InboundSmsHandler inbound;
 
-    Receiver(DeliveryReportHandler handler) {
+    Receiver(DeliveryReportHandler handler, InboundSmsHandler inbound) {
       this.handler = handler;
+      this.inbound = inbound == null ? InboundSmsHandler.NONE : inbound;
     }
 
     @Override
     public void onAcceptDeliverSm(DeliverSm deliverSm) throws ProcessRequestException {
       if (!MessageType.SMSC_DEL_RECEIPT.containedIn(deliverSm.getEsmClass())) {
-        log.atInfo().addKeyValue("event", "smpp.deliver_sm.ignored").log("mobile-originated SMS ignored");
+        byte[] raw = deliverSm.getShortMessage();
+        String text = raw == null ? "" : new String(raw, java.nio.charset.StandardCharsets.UTF_8);
+        try {
+          inbound.onMessage(deliverSm.getSourceAddr(), text);
+        } catch (RuntimeException e) {
+          log.atError().addKeyValue("event", "smpp.mo.failed").addKeyValue("errorClass", e.getClass().getName())
+              .log("mobile-originated SMS not stored; the SMSC will redeliver it");
+          throw new ProcessRequestException("mobile-originated SMS not stored", SMPPConstant.STAT_ESME_RSYSERR);
+        }
         return;
       }
       DeliveryReceipt receipt;
