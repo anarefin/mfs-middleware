@@ -336,7 +336,8 @@ public class CoreCommandService {
     }
     log.atInfo().addKeyValue("event", "core.balance.reported").addKeyValue("txnId", cmd.txnId())
         .addKeyValue("walletType", w.type()).log("wallet balance reported");
-    return events.balanceReported(cmd, coreRef, w.id(), Amount.bdt(w.availableMinor()));
+    return events.balanceReported(cmd, coreRef, w.id(), Amount.bdt(w.availableMinor()), Amount.bdt(w.heldMinor()),
+        Amount.bdt(w.balanceMinor()));
   }
 
   /** ValidateTransaction and PostTransfer. */

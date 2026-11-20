@@ -232,6 +232,25 @@ mw:
     # after it scheduler/ApprovingReconcileJob resolves the request from mw-crypto's state of the change
     approving-lease: 5m
     approving-reconcile-cron: "0 * * * * *"
+  # The channel client registry's APISIX projection (ticket 100a, service/ApisixConsumerSync): after
+  # an approval commits, a client with a consumer (BASIC) is written to the APISIX Admin API (only
+  # the ops subnet may call it: the stack puts this service on the ops network), and the
+  # ShedLock-guarded scheduler/ApisixReconcileJob re-projects the whole registry. Off by default;
+  # the stack sets MW_APISIX_SYNC_ENABLED=true. The admin key comes from Vault (secret/mw-admin-api,
+  # mw.apisix.admin-key, synced from APISIX_ADMIN_KEY).
+  apisix:
+    enabled: ${MW_APISIX_SYNC_ENABLED:false}
+    admin-url: ${MW_APISIX_ADMIN_URL:http://apisix:9180}
+    # APISIX secret object vault/edge (deploy/apisix/secrets/vault/edge.json) over the Vault KV v1
+    # mount apisix/: a BASIC client's password is <secret-ref>/<clientId>/password
+    secret-ref: "$secret://vault/edge"
+    redis:
+      host: redis
+      port: 6379
+      password-ref: "$env://REDIS_PASSWORD"
+    connect-timeout: 2s
+    read-timeout: 5s
+    reconcile-cron: ${MW_APISIX_RECONCILE_CRON:0 */5 * * * *}
   service:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}

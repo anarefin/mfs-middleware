@@ -10,6 +10,13 @@ mw:
       enabled: false
     timer:
       enabled: false
+    # No core by default (ticket 95a): a call fails fast as an unknown outcome. Saga tests record the
+    # calls (CoreCalls) or point this at their HTTP stand-in (CoreRestStub).
+    core:
+      base-url: http://127.0.0.1:9
+      token-uri: http://127.0.0.1:9/token
+      client-secret: test-only-not-a-secret
+      connect-timeout: 200ms
     # No Redis in the test infrastructure: the primary key alone (IdempotencyLockIntakeIT plugs in
     # an in-memory lock).
     idempotency-lock:

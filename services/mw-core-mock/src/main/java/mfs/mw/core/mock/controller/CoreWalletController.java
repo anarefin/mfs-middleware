@@ -17,11 +17,14 @@ import mfs.mw.core.mock.dto.OperationResult;
 import mfs.mw.core.mock.dto.ReversalRequest;
 import mfs.mw.core.mock.dto.StatementView;
 import mfs.mw.core.mock.dto.TransactionStatusView;
+import mfs.mw.core.mock.dto.ValidationResult;
 import mfs.mw.core.mock.dto.WalletCreditRequest;
 import mfs.mw.core.mock.dto.WalletTransferRequest;
 import mfs.mw.core.mock.security.TxnAssertionHeader;
 import mfs.mw.core.mock.service.CoreWalletService;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -52,9 +55,27 @@ public class CoreWalletController {
     return wallet.account(msisdn);
   }
 
+  /**
+   * WAL-03; a customer's own read (the orchestrator's BALANCE check, ticket 95a) carries the txnId, the
+   * assertion and the idempotency key it was signed over.
+   */
   @GetMapping("/balance/{walletId}")
-  BalanceView balance(@PathVariable @Size(min = 1, max = 64) String walletId) {
-    return wallet.balance(walletId);
+  BalanceView balance(
+      @PathVariable @Size(min = 1, max = 64) String walletId,
+      @RequestParam(required = false) @Pattern(regexp = WalletTransferRequest.TXN_ID) String txnId,
+      @RequestHeader(name = TxnAssertionHeader.NAME, required = false) @Size(max = 4096) String assertion,
+      @RequestHeader(name = "Idempotency-Key", required = false) @Size(max = 64) String idempotencyKey,
+      @AuthenticationPrincipal Jwt caller) {
+    return wallet.balance(walletId, new CoreWalletService.BalanceRead(
+        caller == null ? null : caller.getClaimAsString("azp"), txnId, assertion, idempotencyKey));
+  }
+
+  /** ValidateTransaction over REST (ticket 95a): the transfer's rules, nothing moved. */
+  @PostMapping("/transactions/validate")
+  ValidationResult validate(
+      @Valid @RequestBody WalletTransferRequest req,
+      @RequestHeader(name = TxnAssertionHeader.NAME, required = false) String assertion) {
+    return wallet.validate(req, TxnAssertionHeader.require(req, assertion));
   }
 
   @PostMapping("/charges/calculate")

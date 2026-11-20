@@ -38,6 +38,12 @@ paths:
           schema: { type: string, format: date-time }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
         - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+        - { name: partner, in: query, description: Ticket 130 - the transaction's partner id, schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: channel, in: query, description: Ticket 130 - the transaction's channel, schema: { type: string, minLength: 1, maxLength: 32 } }
+        - { name: status, in: query, description: Ticket 130 - the transaction's latest status, schema: { type: string, minLength: 1, maxLength: 32 } }
+        - { name: amountMin, in: query, description: Ticket 130 - inclusive, minor units, schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: amountMax, in: query, description: Ticket 130 - inclusive, minor units, schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: msisdn, in: query, description: Ticket 130 - a party's MSISDN (tokenised; 503 MW-SYS-002 when tokenising is off), schema: { type: string, minLength: 11, maxLength: 20 } }
         - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
       responses:
         "200":
@@ -45,6 +51,57 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AuditPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /test/v1/audit/transactions/{txnId}/timeline:
+    get:
+      operationId: auditTimelineForTests
+      summary: One transaction's per-hop timeline (same as the internal auditTimeline, ticket 130)
+      parameters:
+        - name: txnId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The timeline
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Timeline" }
+        "400": { $ref: "#/components/responses/Error" }
+  /test/v1/audit/search/export.csv:
+    get:
+      operationId: exportAuditEventsForTests
+      summary: Audited CSV export (as the internal exportAuditEvents, ticket 130; fewer filters)
+      description: >-
+        Writes the same operator-action record (`audit.search.exported`) as the internal export.
+        Errors: 400 MW-VAL-001 (bad filter, `X-Mw-Operator-Id` missing).
+      parameters:
+        - name: X-Mw-Operator-Id
+          in: header
+          required: false
+          description: The operator who exports; required by the service (400 when missing)
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - { name: txnId, in: query, schema: { type: string, format: uuid } }
+        - { name: action, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: partner, in: query, schema: { type: string, minLength: 1, maxLength: 64 } }
+        - { name: channel, in: query, schema: { type: string, minLength: 1, maxLength: 32 } }
+        - { name: status, in: query, schema: { type: string, minLength: 1, maxLength: 32 } }
+        - { name: amountMin, in: query, schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: amountMax, in: query, schema: { type: integer, format: int64, minimum: 0 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: RFC 4180 CSV, as the internal export
+          headers:
+            X-Mw-Export-Truncated:
+              schema: { type: string, enum: ["true", "false"] }
+          content:
+            text/csv:
+              schema: { type: string }
         "400": { $ref: "#/components/responses/Error" }
   /test/v1/audit/chains/{month}:
     get:
@@ -111,6 +168,55 @@ components:
         payloadRef: { type: string }
         before: { type: object }
         after: { type: object }
+        hop: { type: string, enum: [CHANNEL_IN, ORCHESTRATOR, CORE_CALL, PARTNER_CALL, PARTNER_CALLBACK, NOTIFICATION] }
+        direction: { type: string, enum: [IN, OUT] }
+        durationMs: { type: integer, format: int64 }
+    Timeline:
+      type: object
+      required: [txnId, hops, totalMs, anchor]
+      properties:
+        txnId: { type: string, format: uuid }
+        hops:
+          type: array
+          items: { $ref: "#/components/schemas/TimelineHop" }
+        totalMs: { type: integer, format: int64 }
+        anchor: { $ref: "#/components/schemas/AnchorStatus" }
+    TimelineHop:
+      type: object
+      required: [auditId, month, seq, at, action, service, actor, resource, outcome, sinceStartMs, payloads]
+      properties:
+        auditId: { type: string, format: uuid }
+        month: { type: string }
+        seq: { type: integer }
+        at: { type: string, format: date-time }
+        hop: { type: string, enum: [CHANNEL_IN, ORCHESTRATOR, CORE_CALL, PARTNER_CALL, PARTNER_CALLBACK, NOTIFICATION] }
+        direction: { type: string, enum: [IN, OUT] }
+        action: { type: string }
+        service: { type: string }
+        actor:
+          type: object
+          required: [type, id]
+          properties:
+            type: { type: string }
+            id: { type: string }
+        resource: { type: string }
+        outcome: { type: string }
+        durationMs: { type: integer, format: int64 }
+        sinceStartMs: { type: integer, format: int64 }
+        gapMs: { type: integer, format: int64 }
+        payloadRef: { type: string }
+        payloads:
+          type: array
+          items:
+            type: object
+            required: [direction, contentType]
+            properties:
+              direction: { type: string, enum: [IN, OUT] }
+              contentType: { type: string }
+              body: { type: string }
+              payloadRef: { type: string }
+              size: { type: integer }
+              sha256: { type: string }
     AuditPage:
       type: object
       required: [items, limit, offset, anchor]

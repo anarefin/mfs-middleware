@@ -29,7 +29,31 @@ public record AuditEvent(
     String outcome,
     Instant at,
     String sourceIp,
-    String service) {
+    String service,
+    String hop,
+    String direction,
+    Long durationMs,
+    java.util.List<Payload> payload) {
+
+  /**
+   * An event without the hop facts of ticket 130 (every producer before it, and this service's own
+   * operator-action records).
+   */
+  public AuditEvent(
+      int schemaVersion, UUID auditId, String txnId, String correlationId, Actor actor, String action,
+      String resource, JsonNode before, JsonNode after, String payloadRef, String outcome, Instant at,
+      String sourceIp, String service) {
+    this(schemaVersion, auditId, txnId, correlationId, actor, action, resource, before, after, payloadRef,
+        outcome, at, sourceIp, service, null, null, null, null);
+  }
+
+  /**
+   * One hop body (ticket 130): {@code IN} received by the middleware, {@code OUT} sent; masked by
+   * the producer, scrubbed again here. {@code body} may be an excerpt of the full masked body
+   * behind {@code payloadRef}.
+   */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record Payload(String direction, String contentType, String body, String payloadRef) {}
 
   /** Who did it: {@code system} (a service), {@code user} (operator or customer), {@code partner}. */
   @JsonIgnoreProperties(ignoreUnknown = true)

@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreEvent;
@@ -35,7 +36,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.orchestrator.consumers.enabled=false",
       "mw.orchestrator.timer.enabled=false"
     })
-@Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, SagaServiceIT.TestClock.class})
 class AddMoneyBankSagaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
@@ -43,11 +44,10 @@ class AddMoneyBankSagaIT {
   private static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
   private static final String INBOUND_SCHEMA = "events/mw-orchestrator/mw.partner.inbound.v1.schema.json";
   private static final String PARTNER_TOPIC = "mw.partner.request.bank.v1";
-  private static final String COMMANDS = "core.wallet.command.v1";
   private static final String ACCOUNT = "1234567890123";
 
   private final TransactionService transactions;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
   private final PartnerReplyService partnerReplies;
   private final PartnerInboundService inbound;
   private final SagaTimerService timers;
@@ -58,7 +58,7 @@ class AddMoneyBankSagaIT {
   @Autowired
   AddMoneyBankSagaIT(
       TransactionService transactions,
-      CoreEventService coreEvents,
+      CoreCalls coreEvents,
       PartnerReplyService partnerReplies,
       PartnerInboundService inbound,
       SagaTimerService timers,
@@ -96,7 +96,7 @@ class AddMoneyBankSagaIT {
   }
 
   private List<String> commandTypes(String txnId) {
-    return outbox(COMMANDS, txnId).stream().map(n -> n.path("commandType").asString()).toList();
+    return coreEvents.commands(txnId).stream().map(n -> n.path("commandType").asString()).toList();
   }
 
   private JsonNode last(String topic, String txnId) {
@@ -111,7 +111,7 @@ class AddMoneyBankSagaIT {
     for (JsonNode n : outbox(PARTNER_TOPIC, txnId)) {
       assertThat(ContractSchemas.schema(PARTNER_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
-    for (JsonNode n : outbox(COMMANDS, txnId)) {
+    for (JsonNode n : coreEvents.commands(txnId)) {
       assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
   }
@@ -157,7 +157,7 @@ class AddMoneyBankSagaIT {
     TxnRequest req = TestData.addMoneyBank(TestData.txnId(), "key-" + TestData.txnId(), 50_000, ACCOUNT);
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", "SUCCESS", null));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", "SUCCESS", null));
     partnerReplies.handle(reply(txn, PartnerRequestMapper.requestId(txn, "PAY"), "PAY", "PENDING", null, "C2W-1"));
     assertThat(statuses(txn)).endsWith("PARTNER_PENDING");
     return txn;
@@ -186,7 +186,7 @@ class AddMoneyBankSagaIT {
     String txn = toPartnerPending();
 
     inbound.handle(callback(txn, "SUCCESS", "C2W-1", null));
-    JsonNode credit = last(COMMANDS, txn);
+    JsonNode credit = coreEvents.commands(txn).getLast();
     assertThat(credit.path("commandType").asString()).isEqualTo("CreditWallet");
     assertThat(credit.path("commandId").asString()).isEqualTo(txn + ":credit");
     assertThat(credit.path("payload").path("creditParty").path("id").asString()).isEqualTo("01711000001");
@@ -195,7 +195,7 @@ class AddMoneyBankSagaIT {
 
     // the bank replays its callback: same inboundId, dropped, no second CreditWallet
     inbound.handle(callback(txn, "SUCCESS", "C2W-1", null));
-    coreEvents.handle(event("WalletCredited", txn, txn + ":credit", "SUCCESS", null));
+    coreEvents.answer(event("WalletCredited", txn, txn + ":credit", "SUCCESS", null));
 
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "PARTNER_PENDING", "COMMITTING", "COMPLETED");
     assertThat(commandTypes(txn)).containsExactly("ValidateTransaction", "CreditWallet");
@@ -212,7 +212,7 @@ class AddMoneyBankSagaIT {
     timers.sweep();
 
     assertThat(commandTypes(txn)).containsExactly("ValidateTransaction", "CreditWallet", "CreditWallet");
-    assertThat(outbox(COMMANDS, txn).stream().map(n -> n.path("commandId").asString()).skip(1).distinct())
+    assertThat(coreEvents.commands(txn).stream().map(n -> n.path("commandId").asString()).skip(1).distinct())
         .containsExactly(txn + ":credit");
     assertThat(statuses(txn)).endsWith("COMMITTING");
   }
@@ -222,7 +222,7 @@ class AddMoneyBankSagaIT {
     String txn = toPartnerPending();
     inbound.handle(callback(txn, "SUCCESS", "C2W-1", null));
 
-    coreEvents.handle(event("CreditRejected", txn, txn + ":credit", "FAILURE", "CREDIT_ACCOUNT_BLOCKED"));
+    coreEvents.answer(event("CreditRejected", txn, txn + ":credit", "FAILURE", "CREDIT_ACCOUNT_BLOCKED"));
 
     assertThat(statuses(txn)).endsWith("COMMITTING", "MANUAL_REVIEW");
     assertThat(last("mw.txn.status.v1", txn).path("error").path("code").asString())
@@ -248,7 +248,7 @@ class AddMoneyBankSagaIT {
     TxnRequest req = TestData.addMoneyBank(TestData.txnId(), "key-r", 50_000, ACCOUNT);
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", "SUCCESS", null));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", "SUCCESS", null));
 
     partnerReplies.handle(
         reply(txn, PartnerRequestMapper.requestId(txn, "PAY"), "PAY", "FAILED", "MW-PTR-C2WBANK-ACCOUNT_NOT_LINKED", null));
@@ -263,7 +263,7 @@ class AddMoneyBankSagaIT {
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
 
-    coreEvents.handle(event("TransactionRejected", txn, txn + ":validate", "FAILURE", "INSUFFICIENT_BALANCE"));
+    coreEvents.answer(event("TransactionRejected", txn, txn + ":validate", "FAILURE", "INSUFFICIENT_BALANCE"));
 
     assertThat(statuses(txn)).endsWith("REJECTED");
     assertThat(outbox(PARTNER_TOPIC, txn)).isEmpty();
@@ -285,8 +285,8 @@ class AddMoneyBankSagaIT {
     partnerReplies.handle(reply(txn, query.path("requestId").asString(), "STATUS_QUERY", "SUCCESS", null, "C2W-1"));
 
     assertThat(statuses(txn)).endsWith("UNKNOWN", "COMMITTING");
-    assertThat(last(COMMANDS, txn).path("commandType").asString()).isEqualTo("CreditWallet");
-    coreEvents.handle(event("WalletCredited", txn, txn + ":credit", "SUCCESS", null));
+    assertThat(coreEvents.commands(txn).getLast().path("commandType").asString()).isEqualTo("CreditWallet");
+    coreEvents.answer(event("WalletCredited", txn, txn + ":credit", "SUCCESS", null));
     assertThat(statuses(txn)).endsWith("COMPLETED");
     assertAllValid(txn);
   }

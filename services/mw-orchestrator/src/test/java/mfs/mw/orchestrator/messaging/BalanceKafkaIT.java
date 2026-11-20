@@ -10,20 +10,22 @@ import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * BALANCE (ADR D26) end to end over real Kafka and PostgreSQL against the orchestrator's core stub:
- * request -> BalanceInquiry on {@code core.wallet.command.v1} -> BalanceReported -> COMPLETED with
+ * BALANCE (ADR D26) end to end over real Kafka and PostgreSQL against the orchestrator's REST core
+ * stand-in ({@link CoreRestStub}, ticket 95a): request -> {@code GET /core/v1/balance/{walletId}} with
+ * the assertion, txnId and idempotency key -> COMPLETED with
  * the balance on {@code mw.txn.status.v1}, which is never stored; a rejection ends FAILED. The
  * VALIDATING deadline is covered with a test clock in {@code service/BalanceSagaIT}.
  */
@@ -41,10 +43,14 @@ import tools.jackson.databind.json.JsonMapper;
 class BalanceKafkaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
-  private static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
   private static final String AUDIT_SCHEMA = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
 
-  private static CoreStub core;
+  private static final CoreRestStub core = CoreRestStub.start();
+
+  @DynamicPropertySource
+  static void coreApi(DynamicPropertyRegistry registry) {
+    core.register(registry);
+  }
 
   private final EventPublisher publisher;
   private final KafkaContainer kafka;
@@ -57,11 +63,6 @@ class BalanceKafkaIT {
     this.kafka = kafka;
     this.jdbc = jdbc;
     this.json = json;
-  }
-
-  @BeforeAll
-  static void startCore(@Autowired KafkaContainer kafka) {
-    core = new CoreStub(kafka.getBootstrapServers());
   }
 
   @AfterAll
@@ -102,29 +103,28 @@ class BalanceKafkaIT {
     assertThat(names(got)).containsExactly("RECEIVED", "VALIDATING", "COMPLETED");
     assertValid(got, STATUS_SCHEMA);
     JsonNode done = json.readTree(got.get(2).value());
-    assertThat(done.path("balance").path("available").path("valueMinor").asLong()).isEqualTo(CoreStub.AVAILABLE);
+    assertThat(done.path("balance").path("available").path("valueMinor").asLong()).isEqualTo(CoreRestStub.AVAILABLE);
     assertThat(done.path("balance").path("asOf").asString()).isEqualTo("2026-11-16T08:15:31Z");
     assertThat(json.readTree(got.get(1).value()).has("balance")).isFalse();
 
-    List<JsonNode> mine = core.commands().stream().filter(c -> req.txnId().equals(c.path("txnId").asString())).toList();
-    assertThat(mine).singleElement().satisfies(c -> {
-      assertThat(c.path("commandType").asString()).isEqualTo("BalanceInquiry");
-      assertThat(c.path("commandId").asString()).isEqualTo(req.txnId() + ":balance");
-      assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(c)).isEmpty();
+    assertThat(core.requests(req.txnId())).singleElement().satisfies(c -> {
+      assertThat(c.path()).isEqualTo("/core/v1/balance/01711000001?txnId=" + req.txnId());
+      assertThat(c.headers()).containsEntry("x-txn-assertion", TestData.ASSERTION)
+          .containsEntry("idempotency-key", req.idempotencyKey());
     });
 
     List<ConsumerRecord<String, String>> audits = read("mw.audit.event.v1", req.txnId(), 3);
     assertValid(audits, AUDIT_SCHEMA);
     assertThat(audits).extracting(ConsumerRecord::value)
-        .noneMatch(v -> v.contains(String.valueOf(CoreStub.AVAILABLE)) || v.contains("balance"));
+        .noneMatch(v -> v.contains(String.valueOf(CoreRestStub.AVAILABLE)) || v.contains("balance"));
     String row = jdbc.queryForObject(
         "select row_to_json(t)::text from transaction t where txn_id = ?::uuid", String.class, req.txnId());
-    assertThat(row).contains("COMPLETED").doesNotContain(String.valueOf(CoreStub.AVAILABLE));
+    assertThat(row).contains("COMPLETED").doesNotContain(String.valueOf(CoreRestStub.AVAILABLE));
   }
 
   @Test
   void aCoreRejectionEndsFailed() {
-    TxnRequest req = request(CoreStub.UNKNOWN_WALLET);
+    TxnRequest req = request(CoreRestStub.UNKNOWN_WALLET);
 
     List<ConsumerRecord<String, String>> got = read("mw.txn.status.v1", req.txnId(), 3);
 

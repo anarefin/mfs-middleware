@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.List;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreEvent;
@@ -32,7 +33,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.orchestrator.consumers.enabled=false",
       "mw.orchestrator.timer.enabled=false"
     })
-@Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, SagaServiceIT.TestClock.class})
 class BillPaySagaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
@@ -40,7 +41,7 @@ class BillPaySagaIT {
   private static final String PARTNER_TOPIC = "mw.partner.request.billpay.v1";
 
   private final TransactionService transactions;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
   private final PartnerReplyService partnerReplies;
   private final SagaTimerService timers;
   private final MutableClock clock;
@@ -50,7 +51,7 @@ class BillPaySagaIT {
   @Autowired
   BillPaySagaIT(
       TransactionService transactions,
-      CoreEventService coreEvents,
+      CoreCalls coreEvents,
       PartnerReplyService partnerReplies,
       SagaTimerService timers,
       Clock clock,
@@ -125,8 +126,8 @@ class BillPaySagaIT {
     TxnRequest req = TestData.billPay(TestData.txnId(), "key-" + TestData.txnId(), 66_700, "1234567");
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", "{\"fee\":{\"valueMinor\":300,\"currency\":\"BDT\"}}"));
-    coreEvents.handle(event("FundsHeld", txn, txn + ":hold", "{\"holdId\":\"HOLD-CORE-9\"}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", "{\"fee\":{\"valueMinor\":300,\"currency\":\"BDT\"}}"));
+    coreEvents.answer(event("FundsHeld", txn, txn + ":hold", "{\"holdId\":\"HOLD-CORE-9\"}"));
     return txn;
   }
 
@@ -145,8 +146,8 @@ class BillPaySagaIT {
     assertThat(outbox("mw.partner.request.telco.v1", txn)).isEmpty();
 
     partnerReplies.handle(reply(txn, PartnerRequestMapper.requestId(txn, "PAY"), "PAY", "SUCCESS", null, "AGG-7"));
-    assertThat(last("core.payment.command.v1", txn).path("commandType").asString()).isEqualTo("CommitHold");
-    coreEvents.handle(event("HoldCommitted", txn, txn + ":commit", "{\"holdId\":\"HOLD-CORE-9\"}"));
+    assertThat(coreEvents.commands(txn).getLast().path("commandType").asString()).isEqualTo("CommitHold");
+    coreEvents.answer(event("HoldCommitted", txn, txn + ":commit", "{\"holdId\":\"HOLD-CORE-9\"}"));
 
     assertThat(statuses(txn))
         .containsExactly("RECEIVED", "VALIDATING", "HOLDING", "PARTNER_PENDING", "COMMITTING", "COMPLETED");
@@ -159,8 +160,8 @@ class BillPaySagaIT {
     String txn = toPartnerPending();
     partnerReplies.handle(
         reply(txn, PartnerRequestMapper.requestId(txn, "PAY"), "PAY", "FAILED", "MW-PTR-BILLAGG-PAYMENT_REFUSED", null));
-    assertThat(last("core.payment.command.v1", txn).path("commandType").asString()).isEqualTo("ReleaseHold");
-    coreEvents.handle(event("HoldReleased", txn, txn + ":release", "{\"holdId\":\"HOLD-CORE-9\"}"));
+    assertThat(coreEvents.commands(txn).getLast().path("commandType").asString()).isEqualTo("ReleaseHold");
+    coreEvents.answer(event("HoldReleased", txn, txn + ":release", "{\"holdId\":\"HOLD-CORE-9\"}"));
 
     assertThat(statuses(txn)).endsWith("RELEASING", "FAILED");
     assertThat(last("mw.txn.status.v1", txn).path("error").path("code").asString())

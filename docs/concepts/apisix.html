@@ -98,7 +98,8 @@
   apply.sh               the one-shot: PUT everything below through the Admin API
   global_rules/edge.json plugins on every request
   routes/&lt;id&gt;.json       one public route per file
-  consumers/&lt;name&gt;.json  known callers (the four MNO USSD gateways)
+  vault/edge.json        secret manager: APISIX reads credentials from the Vault KV v1 mount apisix/
+  consumers/&lt;name&gt;.json  known callers (the four MNO USSD gateways), until the client registry owns them
   lua/*.lua              small Lua functions the JSON pulls in with "@lua:lua/&lt;file&gt;"
   retired.txt            routes whose file was deleted: apply.sh deletes them from etcd too
   routes-test/           TEST ONLY routes (core mock, simulators, mail, ...)
@@ -177,6 +178,16 @@ APISIX --> App : same answer + X-Correlation-Id
   </ol>
   <p>A USSD request takes a different path through the same idea: <code>ip-restriction</code> (is this the MNO's address?), <code>basic-auth</code>
     (is the password right?), <code>consumer-restriction</code> (is it <em>this</em> MNO's consumer?), then a limit keyed on a hash of the phone number, never the number itself.</p>
+  <p><strong>The channel client registry (ticket 100a).</strong> Who may call the edge is a table in mw-admin-api
+    (<code>admin.channel_client</code>: client id, type, auth method, allowed routes, IP allow-list, rate, daily quota), changed only through
+    maker-checker (<code>/admin/v1/channel-clients</code>). APISIX is a projection of it: once an approval commits, mw-admin-api PUTs the
+    client's consumer (for a BASIC client such as <code>ussd-gp</code>: consumer <code>ussd_gp</code>, basic-auth password
+    <code>$secret://vault/edge/ussd-gp/password</code>, so the password is fetched from Vault and never stored in etcd) and a
+    consumer group <code>client_ussd_gp</code> with <code>limit-req</code>, <code>limit-count</code> and <code>ip-restriction</code>. A job
+    re-applies the whole registry every 5 minutes and removes consumers it labelled but no longer has. Worked example: an integration maker files
+    <code>{"type":"MNO","authMethod":"BASIC","allowedRoutes":["ussd-http-gp"],"ratePerSec":40,...}</code>, an ops checker approves, and a GET of
+    <code>/apisix/admin/consumers/ussd_gp</code> shows the label <code>managed-by: mw-admin-api</code>; from then on <code>apply.sh</code> leaves that
+    consumer alone. Details: <a href="../../deploy/apisix/README.md">deploy/apisix/README.md</a> "Channel client registry".</p>
 
   <div class="box where" id="where"><div class="tag">Where it lives</div><ul>
     <li><a href="../../deploy/apisix/README.md">deploy/apisix/README.md</a>: the full route-by-route reference, error code table and every policy. Read this next.</li>

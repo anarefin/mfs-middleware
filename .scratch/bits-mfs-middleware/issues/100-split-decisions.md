@@ -14,3 +14,7 @@ stay HMAC (checked by the adapter as today), USSD gateways stay basic auth, merc
   route-level limit keyed by token client id for consumer-less clients.
 - **100c** (by M13): inbound mTLS for `MTLS` clients on a separate APISIX SSL host, test certs from Vault PKI, simulator
   presenting a client cert, remaining `edge-test.sh` cases, API folder 41.
+
+100a done (cd3d58ea). Left for 100c: the live `scripts/edge-test.sh` cases and the API folder for edge clients (100a did not
+write `37-edge-clients`; use folder 41); `$secret://vault` lookup has only been unit/IT tested, verify it live.
+Left for 100b: per-client limit for consumer-less clients; registered routes are recorded but not enforced.

@@ -8,6 +8,9 @@ import java.util.Optional;
 import java.util.UUID;
 import mfs.mw.seeder.client.AdminConsole;
 import mfs.mw.seeder.dto.ChangeRequestView;
+import mfs.mw.seeder.dto.ChannelClientChangeRequest;
+import mfs.mw.seeder.dto.ChannelClientDefinition;
+import mfs.mw.seeder.dto.ChannelClientView;
 import mfs.mw.seeder.dto.ContentVersionView;
 import mfs.mw.seeder.dto.MenuProposal;
 import mfs.mw.seeder.dto.PartnerChangeRequest;
@@ -24,6 +27,7 @@ final class FakeAdminConsole implements AdminConsole {
   record Cr(String id, String type, String resource, String maker, Object body, String[] status) {}
 
   final Map<String, PartnerView> partners = new LinkedHashMap<>();
+  final Map<String, ChannelClientView> channelClients = new LinkedHashMap<>();
   final Map<String, Cr> requests = new LinkedHashMap<>();
   /** configKey -> versions, newest first. */
   final Map<String, List<ContentVersionView>> versions = new LinkedHashMap<>();
@@ -69,7 +73,12 @@ final class FakeAdminConsole implements AdminConsole {
       throw new RemoteCallException(403, "maker cannot approve");
     }
     writes.add("approve " + c.type() + "/" + c.resource());
-    if (c.body() instanceof PartnerChangeRequest req) {
+    if (c.body() instanceof ChannelClientChangeRequest req) {
+      ChannelClientDefinition d = req.client();
+      ChannelClientView old = channelClients.get(c.resource());
+      channelClients.put(c.resource(), new ChannelClientView(c.resource(), d.type(), d.authMethod(), d.allowedRoutes(),
+          d.ipAllowList(), d.ratePerSec(), d.dailyQuota(), d.enabled(), old == null ? 1 : old.version() + 1));
+    } else if (c.body() instanceof PartnerChangeRequest req) {
       PartnerView p = partners.get(c.resource());
       PartnerView.Config cfg =
           switch (req.action()) {
@@ -110,6 +119,21 @@ final class FakeAdminConsole implements AdminConsole {
     return addVersion("notify_template", rid, "template/" + rid, asUser, p);
   }
 
+  @Override
+  public Optional<ChannelClientView> channelClient(String asUser, String clientId) {
+    return Optional.ofNullable(channelClients.get(clientId));
+  }
+
+  @Override
+  public ChangeRequestView requestChannelClientChange(String asUser, String clientId, ChannelClientChangeRequest req) {
+    openCheck("channel_client", clientId);
+    ChannelClientView held = channelClients.get(clientId);
+    if (held != null && held.definition().equals(req.client())) {
+      throw new RemoteCallException(409, "nothing changes");
+    }
+    return add("channel_client", clientId, asUser, req);
+  }
+
   /** A version some earlier run or operator left in {@code status}. */
   void putVersion(String configKey, int version, String status, String maker) {
     String type = configKey.startsWith("ussd-menu/") ? "ussd_menu" : "notify_template";
@@ -136,7 +160,8 @@ final class FakeAdminConsole implements AdminConsole {
   private ChangeRequestView add(String type, String rid, String maker, Object body) {
     Cr c = new Cr(UUID.randomUUID().toString(), type, rid, maker, body, new String[] {"PENDING"});
     requests.put(c.id(), c);
-    writes.add("request " + type + "/" + rid + " " + (body instanceof PartnerChangeRequest r ? r.action() : "PUBLISH"));
+    writes.add("request " + type + "/" + rid + " " + (body instanceof PartnerChangeRequest r ? r.action()
+        : body instanceof ChannelClientChangeRequest cc ? cc.action() : "PUBLISH"));
     return view(c);
   }
 

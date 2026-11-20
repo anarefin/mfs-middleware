@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  * when its content changed, so a second run reports UNCHANGED.
  */
 @Service
-@Order(7)
+@Order(8)
 public class WriteManifestStep implements SeedStep {
 
   private static final Logger log = LoggerFactory.getLogger(WriteManifestStep.class);

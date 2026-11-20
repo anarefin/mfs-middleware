@@ -1,0 +1,5 @@
+{
+  "uri": "http://vault:8200",
+  "prefix": "apisix",
+  "token": "@env:APISIX_VAULT_TOKEN"
+}

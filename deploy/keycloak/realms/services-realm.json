@@ -238,6 +238,32 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "mw-orchestrator",
+      "name": "mw-orchestrator (the core wallet REST API /core/v1, ADR D31, ticket 95a)",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_MW_ORCHESTRATOR_SECRET}",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "fullScopeAllowed": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "aud-mw-core-mock",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "mw-core-mock",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
     }
   ],
   "users": [

@@ -234,6 +234,12 @@ mw:
     # suite through the test-only APISIX route; off unless the dev stack sets it.
     test-api:
       enabled: ${MW_AUDIT_DW_TEST_API_ENABLED:false}
+    # Ticket 130 (FRS AUD-03..05): the search projection audit.txn_index (consumer of
+    # mw.txn.status.v1) tokenises the parties' MSISDNs at mw-crypto (TOKENISE_MSISDN, through the
+    # anchor's mw-crypto client below); the CSV export returns at most export-max-rows rows.
+    query:
+      tokenise-msisdn: true
+      export-max-rows: ${MW_AUDIT_DW_EXPORT_MAX_ROWS:10000}
     chain-verify:
       enabled: true
       cron: "0 30 * * * *"

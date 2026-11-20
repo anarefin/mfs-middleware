@@ -6,6 +6,9 @@ import java.util.List;
 import java.util.UUID;
 import mfs.mw.core.mock.TestInfrastructure;
 import mfs.mw.core.mock.contracts.OpenApiSchemas;
+import mfs.mw.core.mock.dto.Fault.FaultMode;
+import mfs.mw.core.mock.dto.FaultRequest;
+import mfs.mw.core.mock.service.mockcontrol.LegacyFaults;
 import mfs.mw.core.mock.security.InternalTokens;
 import mfs.mw.core.mock.security.TestAssertions;
 import mfs.mw.core.mock.service.CoreCommandsTestSupport;
@@ -43,18 +46,21 @@ class CoreWalletRestIT {
   private final WalletSeeder seeder;
   private final JdbcTemplate jdbc;
   private final JsonMapper json;
+  private final LegacyFaults faults;
 
   @Autowired
-  CoreWalletRestIT(MockMvcTester mvc, WalletSeeder seeder, JdbcTemplate jdbc, JsonMapper json) {
+  CoreWalletRestIT(MockMvcTester mvc, WalletSeeder seeder, JdbcTemplate jdbc, JsonMapper json, LegacyFaults faults) {
     this.mvc = mvc;
     this.seeder = seeder;
     this.jdbc = jdbc;
     this.json = json;
+    this.faults = faults;
   }
 
   @BeforeEach
   void seed() {
     seeder.reset();
+    faults.reset();
     jdbc.update("delete from outbox");
   }
 
@@ -86,6 +92,11 @@ class CoreWalletRestIT {
     return mvc.get().uri(uri).header("Authorization", InternalTokens.bearer("mw-orchestrator")).exchange();
   }
 
+  /** An ops read (mw-admin-api): a balance without the customer's assertion. */
+  private MvcTestResult adminGet(String uri) {
+    return mvc.get().uri(uri).header("Authorization", InternalTokens.bearer("mw-admin-api")).exchange();
+  }
+
   /** The body, after checking it against the contract's response schema of {@code path}/{@code method}. */
   private JsonNode served(MvcTestResult r, String path, String method, int status) {
     assertThat(r).hasStatus(status);
@@ -99,12 +110,12 @@ class CoreWalletRestIT {
   }
 
   private long available(String walletId) {
-    return served(get("/core/v1/balance/" + walletId), "/core/v1/balance/{walletId}", "get", 200)
+    return served(adminGet("/core/v1/balance/" + walletId), "/core/v1/balance/{walletId}", "get", 200)
         .path("available").path("valueMinor").asLong();
   }
 
   private long total(String walletId) {
-    return served(get("/core/v1/balance/" + walletId), "/core/v1/balance/{walletId}", "get", 200)
+    return served(adminGet("/core/v1/balance/" + walletId), "/core/v1/balance/{walletId}", "get", 200)
         .path("total").path("valueMinor").asLong();
   }
 
@@ -353,4 +364,118 @@ class CoreWalletRestIT {
     assertThat(served(get("/core/v1/statements?walletId=" + PAYER + "&from=2000-01-01T00:00:00Z&to=2000-01-02T00:00:00Z"),
         "/core/v1/statements", "get", 200).path("entries")).isEmpty();
   }
+
+  // --- validate and the customer's balance (ticket 95a) ---
+
+  @Test
+  void validateAnswersTheFeeMovesNothingAndTheTransferThenUsesTheSameAssertion() {
+    String txn = CoreCommandsTestSupport.txnId();
+    Signed p2p = signed(txn, "P2P", PAYER, "WALLET", PAYEE, 10000);
+
+    JsonNode validated = served(post("/core/v1/transactions/validate", p2p.body(), p2p.assertion()),
+        "/core/v1/transactions/validate", "post", 200);
+    JsonNode again = served(post("/core/v1/transactions/validate", p2p.body(), p2p.assertion()),
+        "/core/v1/transactions/validate", "post", 200);
+
+    assertThat(validated.path("status").asString()).isEqualTo("VALIDATED");
+    assertThat(validated.path("txnId").asString()).isEqualTo(txn);
+    assertThat(validated.path("fee").path("valueMinor").asLong()).isEqualTo(500);
+    assertThat(validated.path("vat").path("valueMinor").asLong()).isEqualTo(65);
+    assertThat(again).as("idempotent under <txnId>:rest:validate").isEqualTo(validated);
+    assertThat(total(PAYER)).isEqualTo(SEED);
+    assertThat(status(txn).path("status").asString()).isEqualTo("VALIDATED");
+    assertThat(served(post("/core/v1/transfers", p2p.body(), p2p.assertion()), "/core/v1/transfers", "post", 200)
+        .path("status").asString()).as("the jti belongs to this txn").isEqualTo("POSTED");
+  }
+
+  @Test
+  void validateRefusesWithTheCoreReasonAndWithoutTheAssertion() {
+    String txn = CoreCommandsTestSupport.txnId();
+    Signed toNobody = signed(txn, "P2P", PAYER, "WALLET", "01799999999", 10000);
+    assertThat(served(post("/core/v1/transactions/validate", toNobody.body(), toNobody.assertion()),
+        "/core/v1/transactions/validate", "post", 422).path("code").asString()).isEqualTo("MW-CORE-CREDIT_WALLET_NOT_FOUND");
+
+    Signed unsigned = signed(CoreCommandsTestSupport.txnId(), "P2P", PAYER, "WALLET", PAYEE, 10000);
+    assertThat(served(post("/core/v1/transactions/validate", unsigned.body(), null),
+        "/core/v1/transactions/validate", "post", 401).path("code").asString()).isEqualTo("MW-AUTH-046");
+  }
+
+  @Test
+  void aCustomerBalanceNeedsTheAssertionOfItsTxnAndItsJtiOnce() {
+    String txn = CoreCommandsTestSupport.txnId();
+    Signed balance = signed(txn, "BALANCE", PAYER, "WALLET", PAYER, 0);
+    String key = json.readTree(balance.body()).path("idempotencyKey").asString();
+
+    JsonNode answer = served(balanceRead(PAYER, txn, balance.assertion(), key), "/core/v1/balance/{walletId}", "get", 200);
+    assertThat(answer.path("available").path("valueMinor").asLong()).isEqualTo(SEED);
+    assertThat(answer.path("asOf").asString()).isNotBlank();
+
+    JsonNode replayed = served(balanceRead(PAYER, CoreCommandsTestSupport.txnId(), balance.assertion(), key),
+        "/core/v1/balance/{walletId}", "get", 401);
+    assertThat(replayed.path("code").asString()).as("the jti is the first txn's").isEqualTo("MW-AUTH-046");
+    assertThat(served(get("/core/v1/balance/" + PAYER), "/core/v1/balance/{walletId}", "get", 401).path("code").asString())
+        .as("the orchestrator reads a customer's balance for the customer only").isEqualTo("MW-AUTH-046");
+    assertThat(served(get("/core/v1/balance/" + WalletSeeder.FEE_INCOME), "/core/v1/balance/{walletId}", "get", 200)
+        .path("walletId").asString()).as("a system wallet needs none").isEqualTo(WalletSeeder.FEE_INCOME);
+  }
+
+  @Test
+  void aRepeatedBalanceReadIsTheFirstAnswerAndAnotherAssertionUnderItsKeyIsAConflict() {
+    String txn = CoreCommandsTestSupport.txnId();
+    Signed balance = signed(txn, "BALANCE", PAYER, "WALLET", PAYER, 0);
+    String key = json.readTree(balance.body()).path("idempotencyKey").asString();
+    JsonNode first = served(balanceRead(PAYER, txn, balance.assertion(), key), "/core/v1/balance/{walletId}", "get", 200);
+    Signed hold = signed(CoreCommandsTestSupport.txnId(), "TOPUP", PAYER, "MSISDN", PAYER, 5000);
+    served(post("/core/v1/holds", hold.body(), hold.assertion()), "/core/v1/holds", "post", 200);
+
+    JsonNode again = served(balanceRead(PAYER, txn, balance.assertion(), key), "/core/v1/balance/{walletId}", "get", 200);
+    assertThat(again).as("answered from the stored inquiry, no live wallet fields").isEqualTo(first);
+    assertThat(again.path("held").path("valueMinor").asLong()).isZero();
+    assertThat(again.path("total").path("valueMinor").asLong()).isEqualTo(SEED);
+
+    String other = TestAssertions.mint(TestAssertions.claims(PAYER, "BALANCE", new TxnHash.Party("WALLET", PAYER),
+        new TxnHash.Party("WALLET", PAYER), 0, key).build());
+    assertThat(served(balanceRead(PAYER, txn, other, key), "/core/v1/balance/{walletId}", "get", 409).path("code").asString())
+        .as("another assertion under the same txn and key").isEqualTo("MW-IDEM-001");
+  }
+
+  @Test
+  void aBalanceInquiryRefusalIsTheCoreReason() {
+    String txn = CoreCommandsTestSupport.txnId();
+    faults.add(new FaultRequest(FaultMode.REJECT, "BalanceInquiry", txn, null, "WALLET_NOT_ACTIVE", 1));
+    Signed balance = signed(txn, "BALANCE", PAYER, "WALLET", PAYER, 0);
+    String key = json.readTree(balance.body()).path("idempotencyKey").asString();
+
+    assertThat(served(balanceRead(PAYER, txn, balance.assertion(), key), "/core/v1/balance/{walletId}", "get", 422)
+        .path("code").asString()).isEqualTo("MW-CORE-WALLET_NOT_ACTIVE");
+  }
+
+  private MvcTestResult balanceRead(String walletId, String txnId, String assertion, String key) {
+    return mvc.get().uri("/core/v1/balance/" + walletId + "?txnId=" + txnId)
+        .header("Authorization", InternalTokens.bearer("mw-orchestrator"))
+        .header("X-Txn-Assertion", assertion).header("Idempotency-Key", key).exchange();
+  }
+
+  // --- operator rounds (ticket 95a) ---
+
+  @Test
+  void anOperatorRoundIsDecidedAfreshWhileTheSagasOwnCommitRepeatsItsRefusal() {
+    String txn = CoreCommandsTestSupport.txnId();
+    Signed hold = signed(txn, "TOPUP", PAYER, "MSISDN", PAYER, 5000);
+    String holdId = served(post("/core/v1/holds", hold.body(), hold.assertion()), "/core/v1/holds", "post", 200)
+        .path("holdId").asString();
+    faults.add(new FaultRequest(FaultMode.REJECT, "CommitHold", txn, null, "INJECTED_REJECT", 1));
+
+    for (int i = 0; i < 2; i++) {
+      assertThat(served(post("/core/v1/holds/" + holdId + "/commit", null, null), "/core/v1/holds/{holdId}/commit", "post", 422)
+          .path("code").asString()).isEqualTo("MW-CORE-INJECTED_REJECT");
+    }
+    JsonNode forced = served(post("/core/v1/holds/" + holdId + "/commit", "{\"round\":1}", null),
+        "/core/v1/holds/{holdId}/commit", "post", 200);
+
+    assertThat(forced.path("status").asString()).isEqualTo("COMMITTED");
+    assertThat(total(PAYER)).isEqualTo(SEED - 5200);
+  }
+
+
 }
