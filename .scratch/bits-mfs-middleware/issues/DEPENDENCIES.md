@@ -140,7 +140,10 @@
 119b-remit-flow                             119a              open
 120-mw-adapter-atm                          95,97,102         split (120-split-decisions.md, 2026-11-20)
 120a-atm-adapter-inbound                    95,97,102         done     -        283 files +26354 −31   372dceb2  (admin-api V20 atm; host port 8100. Inbound SOAP recorded locally; publish, token, cash flows, Newman 54 -> 120b)
-120b-atm-token-flows                        120a              open
+120b-atm-token-flows                        120a              split (120-split-decisions.md, 1 h cap)
+120b1-atm-inbound-hardening                 120a              done     55m      22 files +755 −122     490f8531  (cash ops fail closed behind mw.atm.inbound.cash-enabled; state CAS + HMAC fingerprint, atm V9; APISIX partner-ucbatm-ws; PasswordDigest + nonce/Created)
+120b2-atm-token-issue                       120b1             open   (POST /app/v1/atm/tokens, PIN step-up, HMAC via mw-crypto, lockout)
+120b3-atm-cash-flows                        120b2             open   (atm branch of mw.partner.inbound.v1, ATM_CASH_OUT/IN flows, cash-enabled on, mock ATM page signs digest, AtmCashOutIT, Newman 54)
 # --- M10 gate: UC-13..17
 121-mw-adapter-interop                      92,97,102         split (121-split-decisions.md, 2026-11-20)
 121a-interop-adapter-module                 92,97,102         done     90m      270 files +25086 −28   80896661  (admin-api V21 interop; host port 8102; NPSB participant mock; no npsb seed yet)
