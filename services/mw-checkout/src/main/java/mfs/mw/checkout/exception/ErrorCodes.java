@@ -49,5 +49,12 @@ public final class ErrorCodes {
    */
   public static final String SYS_AUTH_UNAVAILABLE = "MW-SYS-012";
 
+  // ---- refunds (ticket 116) ----
+
+  /** Another merchant's payment (the orchestrator's code for the same refusal): 403. */
+  public static final String AUTH_NOT_OWNER = "MW-AUTH-022";
+  /** The refund's Idempotency-Key was used by this merchant with another body: 409. */
+  public static final String IDEM_KEY_CONFLICT = "MW-IDEM-001";
+
   private ErrorCodes() {}
 }

@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Merchant IPN receiver (ticket 32): {@code POST /merchant/ipn/**} is where a checkout session's
  * {@code ipnUrl} points in the dev stack ({@code http://mw-simulators:8080/merchant/ipn/...}).
- * {@code GET /sim/merchant/ipn/received[?ipnId=]} lists what came in; the answers are mock party {@code
+ * {@code GET /sim/merchant/ipn/received[?ipnId=][&type=PAYMENT|REFUND]} lists what came in; the answers are mock party {@code
  * merchant}'s (mock control, and the old {@code /sim/merchant/ipn/scenario} alias in {@link
  * ControlController}).
  */
@@ -47,7 +47,8 @@ public class MerchantIpnController {
   }
 
   @GetMapping("/sim/merchant/ipn/received")
-  List<ReceivedIpn> received(@RequestParam(required = false) String ipnId) {
-    return merchant.received(ipnId);
+  List<ReceivedIpn> received(
+      @RequestParam(required = false) String ipnId, @RequestParam(required = false) String type) {
+    return merchant.received(ipnId, type);
   }
 }

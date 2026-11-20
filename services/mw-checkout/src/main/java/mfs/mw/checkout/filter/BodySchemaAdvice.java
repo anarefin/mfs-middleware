@@ -8,6 +8,7 @@ import java.util.Map;
 import mfs.mw.checkout.dto.ConfirmRequest;
 import mfs.mw.checkout.dto.CreateSessionRequest;
 import mfs.mw.checkout.dto.OtpRequest;
+import mfs.mw.checkout.dto.RefundRequest;
 import mfs.mw.checkout.exception.ErrorCodes;
 import mfs.mw.checkout.exception.MwException;
 import mfs.mw.checkout.service.BodySchema;
@@ -22,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Checks every public JSON request body against its {@link BodySchema} before Jackson binds it:
- * {@link CreateSessionRequest} (merchant API), {@link OtpRequest} and {@link ConfirmRequest}
+ * {@link CreateSessionRequest} and {@link RefundRequest} (merchant API), {@link OtpRequest} and {@link ConfirmRequest}
  * (hosted page API). The bytes are read once (at most {@link #MAX_BODY} bytes, else 413
  * MW-VAL-BODY_TOO_LARGE), checked, and the same bytes are handed to the converter, so what is
  * validated is exactly what is bound. A failure is an {@code MwException}, answered by the global
@@ -40,6 +41,7 @@ public class BodySchemaAdvice extends RequestBodyAdviceAdapter {
     this.schemas =
         Map.of(
             CreateSessionRequest.class, new BodySchema(json, BodySchema.CREATE_SESSION),
+            RefundRequest.class, new BodySchema(json, BodySchema.CREATE_REFUND),
             OtpRequest.class, new BodySchema(json, BodySchema.PAY_OTP),
             ConfirmRequest.class, new BodySchema(json, BodySchema.PAY_CONFIRM));
   }

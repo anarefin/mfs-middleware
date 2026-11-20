@@ -318,7 +318,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   Cookie), body, answeredStatus (-1 = no answer)}`; no secret here (the e2e suite verifies the
   signature). Mock party `merchant` (operation `ipn`, keys ipnId, path): HTTP_5XX / BUSINESS_ERROR answer
   their `httpStatus`, CONNECTION_RESET and DOWN close the connection. `GET
-  /sim/merchant/ipn/received[?ipnId=]`; the old `POST /sim/merchant/ipn/scenario` and `DELETE
+  /sim/merchant/ipn/received[?ipnId=][&type=PAYMENT|REFUND]` (ticket 116: a refund IPN, body `type` REFUND, is recorded with type REFUND); the old `POST /sim/merchant/ipn/scenario` and `DELETE
   /sim/merchant/ipn/received` are aliases (above).
 - payShield 10K simulator (ticket 64, spec 18.8, D23; `client/PayShieldServer`, `service/PayShieldService`,
   `service/PayShieldKeys`, `util/PinBlocks`, `util/PayShieldCrypto`, `controller/PayShieldController`;
