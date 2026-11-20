@@ -3,6 +3,7 @@ package mfs.mw.simulators.service;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -10,12 +11,23 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import mfs.mw.simulators.config.SimulatorProperties;
+import mfs.mw.simulators.dto.SimMode;
 import mfs.mw.simulators.dto.SmscDlrState;
 import mfs.mw.simulators.dto.SmscMessage;
+import mfs.mw.simulators.exception.MockAbortException;
 import mfs.mw.simulators.exception.SmscRefusalException;
+import mfs.mw.simulators.service.mockcontrol.Decision;
+import mfs.mw.simulators.service.mockcontrol.Journal;
+import mfs.mw.simulators.service.mockcontrol.MagicValuesOnly;
+import mfs.mw.simulators.service.mockcontrol.MockCalls;
+import mfs.mw.simulators.service.mockcontrol.MockControl;
+import mfs.mw.simulators.service.mockcontrol.MockParties;
+import mfs.mw.simulators.service.mockcontrol.PartyState;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -26,16 +38,23 @@ import org.springframework.stereotype.Service;
  * (esm_class UDHI, IE 0x00 or 0x08) are reassembled. Destination magic suffixes: {@code 999} DLR
  * UNDELIV, {@code 998} DLR EXPIRED, {@code 997} the first two submits refused with
  * ESME_RTHROTTLED (0x58), {@code 996} refused with ESME_RINVDSTADR (0x0B), {@code 995} no DLR;
- * anything else DLR DELIVRD. State is in memory, last {@code sim.record-limit} messages.
+ * anything else DLR DELIVRD. The magic values are the default of the mock party {@code smsc} (ticket
+ * 102b, ADR D33, FRS MCT-04): a scenario on {@code bind} or {@code submit} wins over them. State is in
+ * memory, last {@code sim.record-limit} messages; the party reset clears them.
  */
 @Service
-public class SmscService {
+public class SmscService implements PartyState {
 
-  /** An accepted part: its message_id and the receipt to send (null = none). */
-  public record Submission(String messageId, SmscDlrState dlrState) {}
+  /** An accepted part: its message_id, the receipt to send (null = none) and the mock-control decision. */
+  public record Submission(String messageId, SmscDlrState dlrState, Decision decision) {}
+
+  /** The mock party (ticket 102b, FRS MCT-04): operations bind and submit; the DLR is its callback. */
+  public static final String PARTY = "smsc";
 
   private static final int STAT_THROTTLED = 0x58;
   private static final int STAT_INVALID_DEST = 0x0B;
+  private static final int STAT_BIND_FAILED = 0x0D;
+  private static final int STAT_SYSTEM_ERROR = 0x08;
   private static final int THROTTLED_SUBMITS = 2;
 
   private static final String GSM_BASIC =
@@ -63,26 +82,80 @@ public class SmscService {
   private final Map<String, SmscDlrState> dlrs = new ConcurrentHashMap<>();
   private final Map<String, AtomicInteger> throttled = new ConcurrentHashMap<>();
 
-  @Autowired
-  public SmscService(SimulatorProperties props, Clock clock) {
-    this(props.recordLimit(), clock);
-  }
+  private final MockControl control;
+  private final ObjectProvider<Journal> journal;
 
-  SmscService(int recordLimit, Clock clock) {
-    this.recordLimit = recordLimit;
+  @Autowired
+  public SmscService(SimulatorProperties props, Clock clock, MockControl control, ObjectProvider<Journal> journal) {
+    this.recordLimit = props.recordLimit();
     this.clock = clock;
     this.run = Long.toString(clock.millis(), 36);
+    this.control = control;
+    this.journal = journal;
   }
 
+  /** Without mock control: the magic values alone. */
+  SmscService(int recordLimit, Clock clock) {
+    this(new SimulatorProperties(Duration.ofSeconds(30), recordLimit), clock,
+        new MagicValuesOnly(new SimulatorProperties(Duration.ofSeconds(30), recordLimit)), null);
+  }
+
+  /**
+   * A bind of {@code systemId} (operation {@code bind}): empty = accept; a status = refuse the bind with
+   * it (BUSINESS_ERROR, default ESME_RBINDFAIL 0x0D; MAINTENANCE 0x0D). {@link MockAbortException} = close
+   * the connection unanswered (DOWN, CONNECTION_RESET).
+   */
+  public OptionalInt bind(String systemId) {
+    String id = systemId == null ? "" : systemId;
+    Decision d = control.decide(PARTY, "bind", Map.of("systemId", id), SimMode.SUCCESS);
+    record("bind", Map.of("systemId", id));
+    MockCalls.pause(d.delayMs());
+    if (d.gate() == Decision.Gate.DOWN || d.mode() == SimMode.CONNECTION_RESET) {
+      throw new MockAbortException(PARTY);
+    }
+    if (d.gate() == Decision.Gate.MAINTENANCE) {
+      return OptionalInt.of(STAT_BIND_FAILED);
+    }
+    if (d.mode() == SimMode.BUSINESS_FAILURE) {
+      return OptionalInt.of(d.code() == null ? STAT_BIND_FAILED : MockParties.smppStatus(d.code()));
+    }
+    return OptionalInt.empty();
+  }
+
+  /**
+   * One {@code submit_sm} (operation {@code submit}, key {@code msisdn} = the destination). Refused
+   * (nothing stored) with a {@link SmscRefusalException}: BUSINESS_ERROR (its code, default the magic
+   * value's, else ESME_RTHROTTLED 0x58), MAINTENANCE (ESME_RSYSERR 0x08) and the magic suffixes 996 / 997.
+   * DOWN throws {@link MockAbortException} (nothing stored). Otherwise stored; the returned decision says
+   * what the transport still does (TIMEOUT hold, HTTP_5XX = ESME_RSYSERR after storing, CONNECTION_RESET,
+   * the DLR: none, once, twice, late, out of order).
+   */
   public synchronized Submission submit(String destination, String source, byte dataCoding, byte esmClass,
       byte[] shortMessage) throws SmscRefusalException {
     String dest = destination == null ? "" : destination;
-    if (dest.endsWith("996")) {
-      throw new SmscRefusalException(STAT_INVALID_DEST, "invalid destination (magic 996)");
+    boolean magicThrottle = dest.endsWith("997")
+        && throttled.computeIfAbsent(dest, d -> new AtomicInteger()).get() < THROTTLED_SUBMITS;
+    Integer magicCode = dest.endsWith("996") ? Integer.valueOf(STAT_INVALID_DEST) : magicThrottle ? STAT_THROTTLED : null;
+    Decision d = control.decide(PARTY, "submit", Map.of("msisdn", dest),
+        magicCode == null ? SimMode.SUCCESS : SimMode.BUSINESS_FAILURE);
+    record("submit_sm", Map.of("destination", dest, "source", source == null ? "" : source));
+    if (d.gate() == Decision.Gate.DOWN) {
+      throw new MockAbortException(PARTY);
     }
-    if (dest.endsWith("997")
-        && throttled.computeIfAbsent(dest, d -> new AtomicInteger()).getAndIncrement() < THROTTLED_SUBMITS) {
-      throw new SmscRefusalException(STAT_THROTTLED, "throttled (magic 997)");
+    if (d.gate() == Decision.Gate.MAINTENANCE) {
+      throw new SmscRefusalException(STAT_SYSTEM_ERROR, "maintenance (mock control)");
+    }
+    if (d.mode() == SimMode.BUSINESS_FAILURE) {
+      if (d.code() != null) {
+        throw new SmscRefusalException(MockParties.smppStatus(d.code()), "refused (mock control)");
+      }
+      if ("magic".equals(d.source()) && magicCode != null) {
+        if (magicThrottle) {
+          throttled.get(dest).incrementAndGet();
+        }
+        throw new SmscRefusalException(magicCode, "refused (magic " + dest.substring(dest.length() - 3) + ")");
+      }
+      throw new SmscRefusalException(STAT_THROTTLED, "throttled (mock control)");
     }
     String id = "SMSC-" + run + "-" + ids.incrementAndGet();
     String encoding = dataCoding == 0x08 ? "UCS2" : "GSM7";
@@ -101,12 +174,30 @@ public class SmscService {
         store(dest, source, encoding, p.parts());
       }
     }
-    return new Submission(id, dlrFor(dest));
+    SmscDlrState dlr = switch (d.callback()) {
+      case NONE -> null;
+      case ONCE -> dlrFor(dest);
+      default -> dlrFor(dest) == null ? SmscDlrState.DELIVRD : dlrFor(dest);
+    };
+    return new Submission(id, dlr, d);
+  }
+
+  @Override
+  public void reset(String party) {
+    if (PARTY.equals(party)) {
+      reset();
+    }
+  }
+
+  private void record(String what, Map<String, String> headers) {
+    if (journal != null) {
+      journal.ifAvailable(j -> j.record(PARTY, "SMPP", what, null, headers, null, clock.instant()));
+    }
   }
 
   /** Records the receipt sent for a part. */
   public void dlrSent(String messageId, SmscDlrState state) {
-    dlrs.put(messageId, state);
+    dlrs.merge(messageId, state, (was, now) -> was.compareTo(now) >= 0 ? was : now);
   }
 
   /** Reassembled messages, oldest first; to one MSISDN when {@code msisdn} is given. */

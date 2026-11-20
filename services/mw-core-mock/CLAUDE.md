@@ -50,6 +50,20 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.core.mock`. Follow th
   open as before. The Keycloak clients and their `aud-mw-core-mock` mappers come with the callers (ticket
   95). Tests: `controller/CoreWalletControllerTest` (slice, `security/InternalTokens`),
   `controller/CoreWalletRestIT` (money, idempotency, every body against the contract).
+- Additions for the orchestrator's REST client (ticket 95a): `POST /core/v1/transactions/validate`
+  (`CoreWalletService.validate`, the Kafka ValidateTransaction's rules: payer/payee, limits, fee, the assertion
+  checked and its jti claimed for the txn; nothing moves; idempotent under `<txnId>:rest:validate`; answer
+  `ValidationResult` {txnId, status VALIDATED, coreRef, fee, vat, limitsLeft}). `GET /core/v1/balance/{walletId}`
+  with `X-Txn-Assertion` + `?txnId=` + `Idempotency-Key` (a customer's own read, the BALANCE check): the
+  BalanceInquiry command under `<txnId>:rest:balance` (assertion, jti, ACTIVE wallet, faults); a repeat is answered
+  entirely from the stored BalanceReported event (available, held, total, asOf as at the first answer; the event
+  payload now carries `held` and `total`), and the assertion's SHA-256 is part of the request hash, so another
+  assertion under the same txnId and key is `409 MW-IDEM-001` (security review of 95a). Without the assertion a
+  balance read is allowed for ops callers (`azp` mw-admin-api, mw-auth) and SYSTEM wallets only, else `401
+  MW-AUTH-046`; the answer carries `asOf`. Operator rounds: commit / release `HoldActionRequest.round` and credit
+  `CreditRequest.round` n >= 1 are their own operation (`<txnId>:rest:<op>:manual-<n>`), so an operator's forced
+  decision is decided afresh instead of replaying the refusal stored for the saga's own call. Tests in
+  `CoreWalletRestIT` / `CoreWalletControllerTest`.
 - Consumes `core.wallet.command.v1` and `core.payment.command.v1` (two `@KafkaListener`s on
   `messaging/CoreCommandListener`, off with `mw.coremock.consumer.enabled=false`), both with retry topics + DLQ. Handled: `ValidateTransaction`
   (fee, limits, assertion, account status; moves no money), `PostTransfer` (double-entry debit/credit plus

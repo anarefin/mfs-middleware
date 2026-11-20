@@ -24,4 +24,10 @@ class MagicValuesOnlyTest {
     assertThat(d.callback()).isEqualTo(CallbackMode.NONE);
     assertThat(control.settings("ocs")).isEqualTo(MockSettings.DEFAULT);
   }
+
+  @Test
+  void theSmscStillSendsItsDlrOnce() {
+    assertThat(control.decide("smsc", "submit", Map.of("msisdn", "01712345678"), SimMode.SUCCESS).callback())
+        .isEqualTo(CallbackMode.ONCE);
+  }
 }

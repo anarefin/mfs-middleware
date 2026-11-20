@@ -23,8 +23,9 @@ export default function Simulators() {
         title="Simulators & faults"
         description={
           <>
-            The partners (OCS, bill aggregator, bank) and the core are simulators: set how they behave, run a flow on the App, USSD or
-            Checkout page, then come back and reset. A preset is a ready-made failure test; the forms below set anything else. Changes
+            The partners (OCS, bill aggregator, bank, merchant), the SMSC, the USSD gateway, the payShield HSM and the core are mocks:
+            set how they behave (one mock-control API for every mw-simulators party), run a flow on the App, USSD or Checkout page,
+            then come back and reset. A preset is a ready-made failure test; the forms below set anything else. Changes
             last until reset (or a restart of mw-simulators / mw-core-mock), so always end with &quot;Reset everything&quot;.
           </>
         }
@@ -41,11 +42,12 @@ export default function Simulators() {
           </Panel>
         ))}
       </div>
-      <GroupTitle icon={Network}>Partners</GroupTitle>
+      <GroupTitle icon={Network}>Mock control</GroupTitle>
       <Hint className="text-sm">
         Magic values work without any scenario: a number / account / bill ending 999 is refused; an amount with .13 times out (applied),
         .77 gives 500 after send (applied), .99 an unknown code, .55 a malformed answer. Bills: due = Tk 100 + the last 3 digits; ending 404
-        not found, 000 already paid.
+        not found, 000 already paid. SMSC: a number ending 997 is throttled twice, 996 refused, 995 gets no DLR, 999 / 998 an
+        undeliverable / expired DLR.
       </Hint>
       <FillScope page="simulators">
         <PartnerForms />

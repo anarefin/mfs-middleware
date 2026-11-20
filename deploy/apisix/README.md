@@ -5,10 +5,12 @@ every `make up` and PUTs everything here to the APISIX Admin API.
 
 ```
 config.yaml                static config (listeners, etcd, Admin API, nginx env)
-apply.sh                   edge cert + SSL object, then global_rules/*.json, consumers/*.json,
-                           routes/*.json, then DELETEs what retired.txt lists
+apply.sh                   edge cert + SSL object, then vault/*.json, global_rules/*.json,
+                           consumers/*.json, routes/*.json, then DELETEs what retired.txt lists
+vault/<id>.json            secret manager vault/<id> (ticket 100a: vault/edge, the KV v1 mount apisix/)
 global_rules/edge.json     policies on every route (correlation ID, X-Mw-* strip, error envelope)
-consumers/<name>.json      real consumers, PUT as consumer <name> (the MNO USSD gateways)
+consumers/<name>.json      real consumers, PUT as consumer <name> (the MNO USSD gateways) unless the
+                           channel client registry already owns it (label managed-by=mw-admin-api)
 routes/<id>.json           one route per file, PUT as route <id>
 retired.txt                "<kind>/<id>" of objects whose file was removed: deleted on every apply
 routes-test/<id>.json      TEST ONLY, see "Test-only objects" below
@@ -236,6 +238,43 @@ away (401 `MW-AUTH-005`) and a nonce the merchant already used (401 `MW-AUTH-006
 
 A new partner gets its own `partner-<id>-callback.json` (upstream: the owning adapter);
 `scripts/edge-test.sh` has the cases to copy (billagg and c2wbank both covered).
+
+## Channel client registry (ticket 100a)
+
+mw-admin-api's channel client registry (`admin.channel_client`, `/admin/v1/channel-clients`,
+maker-checker resource `channel_client`) is the source of truth for every client of the edge (app
+types, MNO USSD gateways, partners, merchants, portals: auth method, allowed routes, IP allow-list,
+rate limit, daily quota). APISIX is a projection of it (`service/ApisixConsumerSync`): after an
+approval commits, and every 5 min (`scheduler/ApisixReconcileJob`, ShedLock), mw-admin-api calls the
+Admin API (it joins the `ops` network for that; key from Vault `secret/mw-admin-api`,
+`mw.apisix.admin-key`, synced from `APISIX_ADMIN_KEY`). Only a BASIC client has a consumer in this
+version (JWT tokens are checked per route; HMAC by the service; OAUTH2_CC and MTLS come with tickets
+100b and 100c):
+
+- consumer `<clientId with - as _>` (e.g. `ussd_gp`, the name the route's `consumer-restriction`
+  lists), labels `managed-by=mw-admin-api`, `channel-client`, `registry-version`; `basic-auth`
+  user = clientId, password `$secret://vault/edge/<clientId>/password`: never a value in etcd or in
+  the registry;
+- consumer group `client_<name>` when the client has limits: `limit-req` (`ratePerSec`, burst the
+  same, 429), `limit-count` (`dailyQuota` per 86400 s, Redis, 429), `ip-restriction` (`ipAllowList`,
+  403). **Precedence:** a consumer's plugin replaces the route's plugin of the same name for that
+  consumer, so a `dailyQuota` on a client whose route has its own `limit-count` (the USSD routes'
+  per-MSISDN limit) replaces it; the seeded MNO clients therefore carry a rate limit only;
+- a disabled client keeps its consumer without credential or group (its requests 401);
+- the reconcile deletes managed consumers and groups the registry no longer projects; objects without
+  the label (`apply.sh`'s, the test-only ones) are never touched. `apply.sh` in turn skips a consumer
+  file whose object carries the label, so `ussd_<mno>` belongs to the registry from its first
+  projection on (`test_apisix_edge.sh`).
+
+Secrets: APISIX's Vault secret manager speaks KV version 1 only, so the provision one-shot mounts
+`apisix/` as KV v1 (the services' `secret/` is KV v2) and writes `apisix/<clientId>` field `password`
+for every `EDGE_SECRETS` entry of `deploy/provision/services.sh` (the four MNO gateways, from
+`USSD_<MNO>_GATEWAY_SECRET`). The token of secret manager `vault/edge` (`vault/edge.json`, `"token":
+"@env:APISIX_VAULT_TOKEN"`) has policy `apisix-edge` (read `apisix/*`, nothing else); provision creates
+it with the fixed dev id `APISIX_VAULT_TOKEN` (fake value in `deploy/dev.env.defaults`) and renews it on
+every run (`scripts/test/test_vault.sh`). A new BASIC client needs its password written to
+`apisix/<clientId>` (field `password`) before its approval. The registry rows of today's clients are
+seeded by mw-seeder (`seed-channel-clients`).
 
 ## Rate-limiter degradation alert (ticket 50)
 

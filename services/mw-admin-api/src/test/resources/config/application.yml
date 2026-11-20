@@ -25,6 +25,9 @@ mw:
     expiry-cron: "-"
     # and the claim-first reconciler (ticket 75): KeyApprovalRaceIT calls it directly
     approving-reconcile-cron: "-"
+  apisix:
+    # ticket 100a: off in tests; ChannelClientChangeRequestIT turns it on against a stand-in Admin API
+    reconcile-cron: "-"
   partner-routes:
     status-consumer:
       # Off in tests: a cached context would compete for the topic; PartnerRouteApiIT switches it on.

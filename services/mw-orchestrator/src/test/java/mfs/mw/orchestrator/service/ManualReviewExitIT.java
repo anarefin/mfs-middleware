@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
@@ -30,7 +31,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {"mw.orchestrator.consumers.enabled=false", "mw.orchestrator.timer.enabled=false"})
-@Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, SagaServiceIT.TestClock.class})
 class ManualReviewExitIT {
 
   private final TransactionService intake;
@@ -41,7 +42,7 @@ class ManualReviewExitIT {
   private final TransactionTemplate tx;
   private final mfs.mw.orchestrator.scheduler.ManualReviewAgeingJob ageing;
   private final io.micrometer.core.instrument.MeterRegistry meters;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
   private final tools.jackson.databind.json.JsonMapper json;
 
   @Autowired
@@ -54,7 +55,7 @@ class ManualReviewExitIT {
       TransactionTemplate tx,
       mfs.mw.orchestrator.scheduler.ManualReviewAgeingJob ageing,
       io.micrometer.core.instrument.MeterRegistry meters,
-      CoreEventService coreEvents,
+      CoreCalls coreEvents,
       tools.jackson.databind.json.JsonMapper json) {
     this.coreEvents = coreEvents;
     this.json = json;
@@ -71,6 +72,7 @@ class ManualReviewExitIT {
   @BeforeEach
   void clean() {
     clock.set(TestData.NOW);
+    coreEvents.clear();
     for (String t : List.of("outbox", "inbox", "saga_timer", "saga_step", "idempotency", "transaction")) {
       jdbc.update("delete from " + t);
     }
@@ -90,6 +92,7 @@ class ManualReviewExitIT {
     jdbc.update("update transaction set status = 'MANUAL_REVIEW', hold_id = null where txn_id = ?", txnId);
     jdbc.update("delete from saga_timer");
     jdbc.update("delete from outbox");
+    coreEvents.clear();
     return txnId;
   }
 
@@ -135,13 +138,13 @@ class ManualReviewExitIT {
     UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
     decide(txnId, new SagaEvent.ManualCommit());
 
-    coreEvents.handle(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"REJECTED\"}"));
+    coreEvents.answer(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"REJECTED\"}"));
 
     assertThat(status(txnId)).isEqualTo("COMMITTING");
     assertThat(commandTypes()).containsExactly("QueryTransaction", "CreditWallet");
     assertThat(lastCommandId()).isEqualTo(id + ":credit:manual-1");
 
-    coreEvents.handle(event("WalletCredited", id, id + ":credit:manual-1", "{}"));
+    coreEvents.answer(event("WalletCredited", id, id + ":credit:manual-1", "{}"));
     assertThat(status(txnId)).isEqualTo("COMPLETED");
   }
 
@@ -151,7 +154,7 @@ class ManualReviewExitIT {
     UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
     decide(txnId, new SagaEvent.ManualCommit());
 
-    coreEvents.handle(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"CREDITED\"}"));
+    coreEvents.answer(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"CREDITED\"}"));
 
     assertThat(status(txnId)).isEqualTo("COMPLETED");
     assertThat(commandTypes()).containsExactly("QueryTransaction");
@@ -163,7 +166,7 @@ class ManualReviewExitIT {
     UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
     decide(txnId, new SagaEvent.ManualCommit());
 
-    coreEvents.handle(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"REVERSED\"}"));
+    coreEvents.answer(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"REVERSED\"}"));
 
     assertThat(status(txnId)).isEqualTo("MANUAL_REVIEW");
     assertThat(commandTypes()).containsExactly("QueryTransaction");
@@ -174,7 +177,7 @@ class ManualReviewExitIT {
     String id = TestData.txnId();
     UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
     decide(txnId, new SagaEvent.ManualCommit());
-    coreEvents.handle(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"NOT_FOUND\"}"));
+    coreEvents.answer(event("TransactionStatus", id, lastCommandId(), "{\"txnStatus\":\"NOT_FOUND\"}"));
     clock.set(TestData.NOW.plusSeconds(1));
 
     decide(txnId, new SagaEvent.DeadlineExpired());
@@ -188,21 +191,21 @@ class ManualReviewExitIT {
     UUID txnId = inManualReview(TestData.addMoneyBank(id, "key-" + id, 5_000, "1234567890123"));
     decide(txnId, new SagaEvent.ManualCommit());
     String firstCheck = lastCommandId();
-    coreEvents.handle(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"NOT_FOUND\"}"));
-    coreEvents.handle(event("CreditRejected", id, id + ":credit:manual-1", "{}"));
+    coreEvents.answer(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"NOT_FOUND\"}"));
+    coreEvents.answer(event("CreditRejected", id, id + ":credit:manual-1", "{}"));
     assertThat(status(txnId)).isEqualTo("MANUAL_REVIEW");
     clock.set(TestData.NOW.plusSeconds(30));
     decide(txnId, new SagaEvent.ManualCommit());
     String secondCheck = lastCommandId();
     assertThat(secondCheck).isNotEqualTo(firstCheck).startsWith(id + ":credit-check:");
 
-    coreEvents.handle(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"NOT_FOUND\"}"));
-    coreEvents.handle(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"CREDITED\"}"));
+    coreEvents.answer(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"NOT_FOUND\"}"));
+    coreEvents.answer(event("TransactionStatus", id, firstCheck, "{\"txnStatus\":\"CREDITED\"}"));
 
     assertThat(status(txnId)).isEqualTo("COMMITTING");
     assertThat(commandTypes()).containsExactly("QueryTransaction", "CreditWallet", "QueryTransaction");
 
-    coreEvents.handle(event("TransactionStatus", id, secondCheck, "{\"txnStatus\":\"REJECTED\"}"));
+    coreEvents.answer(event("TransactionStatus", id, secondCheck, "{\"txnStatus\":\"REJECTED\"}"));
     assertThat(lastCommandId()).isEqualTo(id + ":credit:manual-2");
   }
 
@@ -211,13 +214,11 @@ class ManualReviewExitIT {
   }
 
   private List<String> commandTypes() {
-    return jdbc.queryForList(
-        "select payload->>'commandType' from outbox where topic = 'core.wallet.command.v1' order by id", String.class);
+    return coreEvents.commands().stream().map(c -> c.path("commandType").asString()).toList();
   }
 
   private String lastCommandId() {
-    List<String> ids = jdbc.queryForList(
-        "select payload->>'commandId' from outbox where topic = 'core.wallet.command.v1' order by id", String.class);
+    List<String> ids = coreEvents.commands().stream().map(c -> c.path("commandId").asString()).toList();
     return ids.get(ids.size() - 1);
   }
 

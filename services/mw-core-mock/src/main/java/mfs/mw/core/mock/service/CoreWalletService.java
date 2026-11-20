@@ -27,6 +27,7 @@ import mfs.mw.core.mock.dto.ReversalRequest;
 import mfs.mw.core.mock.dto.StatementView;
 import mfs.mw.core.mock.dto.TransactionStatusView;
 import mfs.mw.core.mock.dto.TransferPayload;
+import mfs.mw.core.mock.dto.ValidationResult;
 import mfs.mw.core.mock.dto.WalletCreditRequest;
 import mfs.mw.core.mock.dto.WalletTransferRequest;
 import mfs.mw.core.mock.entity.Hold;
@@ -44,6 +45,7 @@ import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -64,6 +66,8 @@ import tools.jackson.databind.json.JsonMapper;
 public class CoreWalletService {
 
   static final String REST_OP = ":rest:";
+  /** Callers that read any wallet's balance without the customer's assertion (ops, ticket 95a). */
+  static final java.util.Set<String> OPS_READERS = java.util.Set.of("mw-admin-api", "mw-auth");
 
   private final CoreCommandService core;
   private final StatusOperations status;
@@ -109,11 +113,62 @@ public class CoreWalletService {
     return new AccountView(w.id(), w.msisdn(), w.type(), w.status(), w.kycLevel(), w.holderName());
   }
 
-  /** WAL-03: available (total minus held), held and total. */
+  /** WAL-03: available (total minus held), held and total, as an ops or system read. */
   @Transactional(readOnly = true)
   public BalanceView balance(String walletId) {
     Wallet w = wallet(walletId);
-    return new BalanceView(w.id(), Amount.bdt(w.availableMinor()), Amount.bdt(w.heldMinor()), Amount.bdt(w.balanceMinor()));
+    return new BalanceView(w.id(), Amount.bdt(w.availableMinor()), Amount.bdt(w.heldMinor()), Amount.bdt(w.balanceMinor()),
+        clock.instant());
+  }
+
+  /**
+   * How a balance is asked for (ticket 95a): the caller ({@code azp}) and, for a customer's own read,
+   * the transaction it belongs to with mw-auth's assertion and the idempotency key it was signed over.
+   */
+  public record BalanceRead(String caller, String txnId, String assertion, String idempotencyKey) {}
+
+  /**
+   * WAL-03 with the customer's authorisation (ticket 95a, ADR D26): with an assertion, the BALANCE
+   * check's BalanceInquiry under {@code <txnId>:rest:balance} (assertion and jti checked, wallet ACTIVE,
+   * idempotent, faults applied), {@code available} as that inquiry reported it. Without one, a plain
+   * read, allowed for ops callers ({@link #OPS_READERS}) and system wallets only: the orchestrator reads a
+   * customer's balance for the customer, so it is 401 {@code MW-AUTH-046} there.
+   */
+  @Transactional(noRollbackFor = MwException.class)
+  public BalanceView balance(String walletId, BalanceRead read) {
+    if (read.assertion() == null || read.assertion().isBlank()) {
+      Wallet w = wallet(walletId);
+      if (!OPS_READERS.contains(read.caller()) && !"SYSTEM".equals(w.type())) {
+        throw new MwException(ErrorCodes.AUTH_ASSERTION, "Transaction authorisation missing");
+      }
+      return balance(walletId);
+    }
+    if (read.txnId() == null || read.idempotencyKey() == null || read.idempotencyKey().isBlank()) {
+      throw new MwException(ErrorCodes.AUTH_ASSERTION, "Transaction authorisation needs its txnId and idempotency key");
+    }
+    Map<String, Object> wallet = Map.of("type", "WALLET", "id", walletId);
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("txnType", "BALANCE");
+    p.put("debitParty", wallet);
+    p.put("creditParty", wallet);
+    p.put("amount", Amount.bdt(0));
+    p.put("assertion", read.assertion());
+    p.put("idempotencyKey", read.idempotencyKey());
+    return run(read.txnId(), "balance", "BalanceInquiry", CoreCommandService.EVENT_TOPIC,
+        // the assertion's hash is part of the request: another assertion under the same txnId and key is a
+        // 409 conflict, never the stored answer (security review of ticket 95a)
+        new java.util.TreeMap<>(Map.of("walletId", walletId, "idempotencyKey", read.idempotencyKey(),
+            "assertion", sha256(read.assertion()))), p,
+        e -> {
+          // a repeat is answered from the stored BalanceInquiry event alone, as at its first answer
+          JsonNode body = payload(e);
+          Amount available = json.treeToValue(body.path("available"), Amount.class);
+          Amount held = body.has("held") ? json.treeToValue(body.path("held"), Amount.class) : Amount.bdt(0);
+          Amount total = body.has("total") ? json.treeToValue(body.path("total"), Amount.class)
+              : Amount.bdt(available.valueMinor() + held.valueMinor());
+          return new BalanceView(body.path("walletId").asString(), available, held, total,
+              Instant.parse(body.path("asOf").asString()));
+        });
   }
 
   /**
@@ -175,6 +230,43 @@ public class CoreWalletService {
 
   // --- money ---
 
+  /**
+   * ValidateTransaction over REST (ticket 95a): the same rules as the Kafka command (payer and payee,
+   * limits, fee, the assertion with its jti claimed for this txn), nothing moved, idempotent under
+   * {@code <txnId>:rest:validate}.
+   */
+  @Transactional(noRollbackFor = MwException.class)
+  public ValidationResult validate(WalletTransferRequest req, String assertion) {
+    return run(req.txnId(), "validate", "ValidateTransaction", CoreCommandService.EVENT_TOPIC, req,
+        transferPayload(req, assertion), e -> new ValidationResult(e.txnId(), "VALIDATED", e.coreRef(),
+            amount(e, "fee"), vat(e), limitsLeft(e)));
+  }
+
+  private JsonNode payload(CoreEvent e) {
+    return e.payload() == null ? json.createObjectNode() : json.valueToTree(e.payload());
+  }
+
+  private Amount amount(CoreEvent e, String field) {
+    JsonNode body = payload(e);
+    return body.has(field) ? json.treeToValue(body.path(field), Amount.class) : Amount.bdt(0);
+  }
+
+  /** The VAT line of the event's charges (absent: 0). */
+  private Amount vat(CoreEvent e) {
+    for (JsonNode line : payload(e).path("charges")) {
+      if ("VAT".equals(line.path("code").asString())) {
+        return json.treeToValue(line.path("amount"), Amount.class);
+      }
+    }
+    return Amount.bdt(0);
+  }
+
+  private Map<String, Amount> limitsLeft(CoreEvent e) {
+    Map<String, Amount> left = new LinkedHashMap<>();
+    payload(e).path("limitsLeft").properties().forEach(f -> left.put(f.getKey(), json.treeToValue(f.getValue(), Amount.class)));
+    return left.isEmpty() ? null : left;
+  }
+
   /** WAL-06: HoldFunds. */
   @Transactional(noRollbackFor = MwException.class)
   public OperationResult hold(WalletTransferRequest req, String assertion) {
@@ -190,7 +282,7 @@ public class CoreWalletService {
   @Transactional(noRollbackFor = MwException.class)
   public OperationResult commit(String holdId, HoldActionRequest req) {
     Hold hold = holdOf(holdId);
-    return run(hold.txnId(), "commit", "CommitHold", CoreCommandService.PAYMENT_EVENT_TOPIC, req, holdPayload(holdId, req),
+    return run(hold.txnId(), round("commit", req.round()), "CommitHold", CoreCommandService.PAYMENT_EVENT_TOPIC, req, holdPayload(holdId, req),
         e -> result(e, "COMMITTED", null));
   }
 
@@ -198,7 +290,7 @@ public class CoreWalletService {
   @Transactional(noRollbackFor = MwException.class)
   public OperationResult release(String holdId, HoldActionRequest req) {
     Hold hold = holdOf(holdId);
-    return run(hold.txnId(), "release", "ReleaseHold", CoreCommandService.PAYMENT_EVENT_TOPIC, req, holdPayload(holdId, req),
+    return run(hold.txnId(), round("release", req.round()), "ReleaseHold", CoreCommandService.PAYMENT_EVENT_TOPIC, req, holdPayload(holdId, req),
         e -> result(e, "RELEASED", null));
   }
 
@@ -219,7 +311,7 @@ public class CoreWalletService {
     if (req.settlementWallet() != null) {
       p.put("attributes", Map.of(TransferPayload.SETTLEMENT_WALLET, req.settlementWallet()));
     }
-    return run(req.txnId(), "credit", "CreditWallet", CoreCommandService.EVENT_TOPIC, req, p, e -> result(e, "CREDITED", null));
+    return run(req.txnId(), round("credit", req.round()), "CreditWallet", CoreCommandService.EVENT_TOPIC, req, p, e -> result(e, "CREDITED", null));
   }
 
   /**
@@ -238,14 +330,19 @@ public class CoreWalletService {
         e -> result(e, "REVERSED", req.originalTxnId()));
   }
 
+  /** The operation of an operator's round {@code n >= 1}: {@code <op>:manual-<n>}, else {@code op}. */
+  static String round(String op, Integer round) {
+    return round == null || round <= 0 ? op : op + ":manual-" + round;
+  }
+
   /**
    * One money operation: under the operation's lock, the body hash checked (409 on another body) or
    * recorded, then the command through {@link CoreCommandService#handle(CoreCommand, String)}
    * (answered from {@code command_log} on a repeat), its result event turned into the answer or the
    * refusal.
    */
-  private OperationResult run(String txnId, String op, String commandType, String eventTopic, Object request,
-      Map<String, Object> payload, Function<CoreEvent, OperationResult> answer) {
+  private <T> T run(String txnId, String op, String commandType, String eventTopic, Object request,
+      Map<String, Object> payload, Function<CoreEvent, T> answer) {
     String commandId = txnId + REST_OP + op;
     commandLog.lock(commandId);
     String hash = hash(request);
@@ -315,8 +412,13 @@ public class CoreWalletService {
   }
 
   private String hash(Object request) {
+    return sha256(json.writeValueAsString(request));
+  }
+
+  /** Hex SHA-256 of the UTF-8 text (the assertion itself is never stored). */
+  private static String sha256(String text) {
     try {
-      byte[] digest = MessageDigest.getInstance("SHA-256").digest(json.writeValueAsString(request).getBytes(StandardCharsets.UTF_8));
+      byte[] digest = MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8));
       return HexFormat.of().formatHex(digest);
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException(e);

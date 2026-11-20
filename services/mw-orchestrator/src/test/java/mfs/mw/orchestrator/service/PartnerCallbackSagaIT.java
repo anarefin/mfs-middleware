@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreEvent;
@@ -37,7 +38,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.orchestrator.consumers.enabled=false",
       "mw.orchestrator.timer.enabled=false"
     })
-@Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, SagaServiceIT.TestClock.class})
 class PartnerCallbackSagaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
@@ -45,7 +46,7 @@ class PartnerCallbackSagaIT {
   private static final String AUDIT_SCHEMA = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
 
   private final TransactionService transactions;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
   private final PartnerReplyService partnerReplies;
   private final PartnerInboundService callbacks;
   private final SagaTimerService timers;
@@ -57,7 +58,7 @@ class PartnerCallbackSagaIT {
   @Autowired
   PartnerCallbackSagaIT(
       TransactionService transactions,
-      CoreEventService coreEvents,
+      CoreCalls coreEvents,
       PartnerReplyService partnerReplies,
       PartnerInboundService callbacks,
       SagaTimerService timers,
@@ -166,8 +167,8 @@ class PartnerCallbackSagaIT {
     TxnRequest req = TestData.billPay(TestData.txnId(), "key-" + TestData.txnId(), 66_700, "1234567");
     transactions.accept(req, "gw-1");
     String txn = req.txnId();
-    coreEvents.handle(event("TransactionValidated", txn, txn + ":validate", "{\"fee\":{\"valueMinor\":300,\"currency\":\"BDT\"}}"));
-    coreEvents.handle(event("FundsHeld", txn, txn + ":hold", "{\"holdId\":\"HOLD-CORE-9\"}"));
+    coreEvents.answer(event("TransactionValidated", txn, txn + ":validate", "{\"fee\":{\"valueMinor\":300,\"currency\":\"BDT\"}}"));
+    coreEvents.answer(event("FundsHeld", txn, txn + ":hold", "{\"holdId\":\"HOLD-CORE-9\"}"));
     // the aggregator accepted the payment and will confirm it by callback
     partnerReplies.handle(reply(txn, PartnerRequestMapper.requestId(txn, "PAY"), "PAY", "PENDING", null));
     assertThat(statuses(txn)).endsWith("PARTNER_PENDING");
@@ -177,7 +178,7 @@ class PartnerCallbackSagaIT {
   private String completed() {
     String txn = toPartnerPending();
     callbacks.handle(callback(txn, "SUCCESS", "AGG-7", null));
-    coreEvents.handle(event("HoldCommitted", txn, txn + ":commit", "{\"holdId\":\"HOLD-CORE-9\"}"));
+    coreEvents.answer(event("HoldCommitted", txn, txn + ":commit", "{\"holdId\":\"HOLD-CORE-9\"}"));
     assertThat(statuses(txn)).endsWith("COMPLETED");
     return txn;
   }
@@ -191,7 +192,7 @@ class PartnerCallbackSagaIT {
     callbacks.handle(callback(txn, "SUCCESS", "AGG-7", null));
 
     assertThat(statuses(txn)).endsWith("PARTNER_PENDING", "COMMITTING");
-    assertThat(last("core.payment.command.v1", txn).path("commandType").asString()).isEqualTo("CommitHold");
+    assertThat(coreEvents.commands(txn).getLast().path("commandType").asString()).isEqualTo("CommitHold");
     assertThat(last("mw.txn.status.v1", txn).path("partnerRef").asString()).isEqualTo("AGG-7");
     assertAllValid(txn);
   }
@@ -218,7 +219,7 @@ class PartnerCallbackSagaIT {
     callbacks.handle(callback(txn, "FAILED", "AGG-8", "MW-PTR-BILLAGG-PAYMENT_REFUSED"));
 
     assertThat(statuses(txn)).endsWith("PARTNER_PENDING", "RELEASING");
-    assertThat(last("core.payment.command.v1", txn).path("commandType").asString()).isEqualTo("ReleaseHold");
+    assertThat(coreEvents.commands(txn).getLast().path("commandType").asString()).isEqualTo("ReleaseHold");
     assertThat(last("mw.txn.status.v1", txn).path("error").path("code").asString())
         .isEqualTo("MW-PTR-BILLAGG-PAYMENT_REFUSED");
     assertAllValid(txn);
@@ -259,7 +260,7 @@ class PartnerCallbackSagaIT {
     callbacks.handle(cb);
 
     assertThat(statuses(txn)).containsOnlyOnce("COMMITTING");
-    assertThat(outbox("core.payment.command.v1", txn).stream().map(c -> c.path("commandType").asString()))
+    assertThat(coreEvents.commands(txn).stream().map(c -> c.path("commandType").asString()))
         .containsOnlyOnce("CommitHold");
     assertThat(auditsOtherThanStates(txn)).isEmpty();
   }
@@ -340,7 +341,7 @@ class PartnerCallbackSagaIT {
     callbacks.handle(callback(txn, "SUCCESS", "OCS-1", null, "ocs", "billpay"));
 
     assertRejected(txn, "PARTNER_PENDING", before, "PARTNER_MISMATCH");
-    assertThat(outbox("core.payment.command.v1", txn).stream().map(c -> c.path("commandType").asString()))
+    assertThat(coreEvents.commands(txn).stream().map(c -> c.path("commandType").asString()))
         .doesNotContain("CommitHold");
     assertThat(queries.detail(UUID.fromString(txn), null).partnerCalls())
         .extracting(c -> c.operation())

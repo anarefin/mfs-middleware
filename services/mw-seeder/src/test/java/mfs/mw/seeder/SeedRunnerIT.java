@@ -112,7 +112,13 @@ class SeedRunnerIT {
                 "--mw.seeder.realms.portals.password=fake-portals-password",
                 "--mw.seeder.realms.portals.totp-secret=fake-portals-totp-secret",
                 "--mw.seeder.initial-backoff=10ms",
-                "--mw.seeder.max-backoff=50ms"));
+                "--mw.seeder.max-backoff=50ms",
+                // one channel client (ticket 100a) instead of the whole baseline list
+                "--mw.seeder.channel-clients[0].client-id=ussd-gp",
+                "--mw.seeder.channel-clients[0].type=MNO",
+                "--mw.seeder.channel-clients[0].auth-method=BASIC",
+                "--mw.seeder.channel-clients[0].allowed-routes[0]=ussd-http-gp",
+                "--mw.seeder.channel-clients[0].rate-per-sec=100"));
     a.addAll(List.of(extra));
     return a.toArray(String[]::new);
   }
@@ -123,7 +129,9 @@ class SeedRunnerIT {
 
     assertThat(requests(RequestMethod.POST, "/admin/realms/[a-z]+/users")).hasSize(USERS.size());
     assertThat(requests(RequestMethod.PUT, "/core-mock/v1/wallets/.*")).hasSize(WALLETS.size());
-    assertThat(requests(RequestMethod.POST, "/admin/v1/change-requests/.*/approve")).hasSize(4);
+    assertThat(requests(RequestMethod.POST, "/admin/v1/change-requests/.*/approve")).hasSize(5);
+    assertThat(requests(RequestMethod.POST, "/admin/v1/channel-clients/ussd-gp/change-requests").getFirst().getBodyAsString())
+        .contains("\"authMethod\":\"BASIC\"", "\"ratePerSec\":100");
     LoggedRequest maker =
         requests(RequestMethod.POST, "/admin/realms/ops/users").stream()
             .filter(r -> r.getBodyAsString().contains("seed-ops-maker")).findFirst().orElseThrow();
@@ -244,6 +252,7 @@ class SeedRunnerIT {
     IMPORTED.forEach(this::stubImportedUser);
     WALLETS.forEach(this::stubWallet);
     stubPartner();
+    stubChannelClient();
     stubAuth();
     wm.stubFor(get(urlPathEqualTo("/admin/v1/change-requests")).willReturn(okJson("{\"items\":[],\"limit\":200,\"offset\":0}")));
     stubContent("menu-main", "/admin/v1/ussd-menus/main", "ussd-menu/main");
@@ -327,6 +336,21 @@ class SeedRunnerIT {
         .willReturn(aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody(changeRequest("cr-ocs", "PENDING"))));
     wm.stubFor(post("/admin/v1/change-requests/cr-ocs/approve").inScenario("ocs").willSetStateTo("enabled")
         .willReturn(okJson(changeRequest("cr-ocs", "APPROVED"))));
+  }
+
+  /** ussd-gp is not registered yet: one UPSERT, approved, registers it (ticket 100a). */
+  private void stubChannelClient() {
+    String view = "{\"clientId\":\"ussd-gp\",\"type\":\"MNO\",\"authMethod\":\"BASIC\",\"allowedRoutes\":[\"ussd-http-gp\"],"
+        + "\"ipAllowList\":[],\"ratePerSec\":100,\"enabled\":true,\"version\":1,\"consumer\":\"ussd_gp\","
+        + "\"updatedAt\":\"2026-11-20T00:00:00Z\",\"updatedBy\":\"seed-ops-maker\",\"approvedBy\":\"seed-ops-checker\"}";
+    wm.stubFor(get("/admin/v1/channel-clients/ussd-gp").inScenario("cc").whenScenarioStateIs(STARTED)
+        .willReturn(aResponse().withStatus(404).withHeader("Content-Type", "application/json")
+            .withBody("{\"code\":\"MW-VAL-003\",\"message\":\"x\",\"correlationId\":\"c\",\"retryable\":false,\"details\":[]}")));
+    wm.stubFor(get("/admin/v1/channel-clients/ussd-gp").inScenario("cc").whenScenarioStateIs("registered").willReturn(okJson(view)));
+    wm.stubFor(post("/admin/v1/channel-clients/ussd-gp/change-requests").withRequestBody(matchingJsonPath("$.action", equalTo("UPSERT")))
+        .willReturn(aResponse().withStatus(201).withHeader("Content-Type", "application/json").withBody(changeRequest("cr-cc", "PENDING"))));
+    wm.stubFor(post("/admin/v1/change-requests/cr-cc/approve").inScenario("cc").willSetStateTo("registered")
+        .willReturn(okJson(changeRequest("cr-cc", "APPROVED"))));
   }
 
   private void stubContent(String id, String base, String configKey) {

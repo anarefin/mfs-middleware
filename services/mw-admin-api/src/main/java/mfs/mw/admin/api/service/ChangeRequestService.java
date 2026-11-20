@@ -564,6 +564,9 @@ public class ChangeRequestService {
     if (operator.hasAny(AdminRole.READ_PARTNERS)) {
       out.add(Partner.RESOURCE_TYPE);
     }
+    if (operator.hasAny(AdminRole.READ_CHANNEL_CLIENTS)) {
+      out.add(mfs.mw.admin.api.entity.ChannelClient.RESOURCE_TYPE);
+    }
     if (operator.hasAny(AdminRole.READ_KEYS)) {
       out.add(ChangeRequest.KEY);
     }

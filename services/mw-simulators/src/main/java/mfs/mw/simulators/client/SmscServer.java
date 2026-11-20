@@ -3,13 +3,17 @@ package mfs.mw.simulators.client;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.OptionalInt;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import mfs.mw.simulators.config.SmscProperties;
 import mfs.mw.simulators.dto.SmscDlrState;
+import mfs.mw.simulators.exception.MockAbortException;
 import mfs.mw.simulators.exception.SmscRefusalException;
 import mfs.mw.simulators.service.SmscService;
+import mfs.mw.simulators.service.mockcontrol.Decision;
+import mfs.mw.simulators.service.mockcontrol.MockCalls;
 import org.jsmpp.PDUStringException;
 import org.jsmpp.SMPPConstant;
 import org.jsmpp.bean.BroadcastSm;
@@ -122,6 +126,19 @@ public class SmscServer implements SmartLifecycle {
   private void bind(SMPPServerSession session) {
     try {
       BindRequest bind = session.waitForBind(5000);
+      OptionalInt refusal;
+      try {
+        refusal = smsc.bind(bind.getSystemId());
+      } catch (MockAbortException e) {
+        session.close();
+        return;
+      }
+      if (refusal.isPresent()) {
+        bind.reject(refusal.getAsInt());
+        log.atInfo().addKeyValue("event", "sim.smsc.bind_refused").addKeyValue("commandStatus", refusal.getAsInt())
+            .log("SMPP bind refused (mock control)");
+        return;
+      }
       bind.accept("bits-smsc-sim");
       log.atInfo().addKeyValue("event", "sim.smsc.bound").addKeyValue("bindType", bind.getBindType())
           .log("SMPP client bound");
@@ -130,6 +147,11 @@ public class SmscServer implements SmartLifecycle {
           .log("SMPP bind failed");
       session.close();
     }
+  }
+
+  private void schedule(SMPPServerSession session, SubmitSm sm, SmscService.Submission s, long delayMs,
+      SmscDlrState state) {
+    executor.schedule(() -> deliveryReceipt(session, sm, s.messageId(), state), delayMs, TimeUnit.MILLISECONDS);
   }
 
   private void deliveryReceipt(SMPPServerSession session, SubmitSm sm, String id, SmscDlrState state) {
@@ -160,10 +182,36 @@ public class SmscServer implements SmartLifecycle {
             sm.getShortMessage());
       } catch (SmscRefusalException e) {
         throw new ProcessRequestException(e.getMessage(), e.commandStatus());
+      } catch (MockAbortException e) {
+        session.close();
+        throw new ProcessRequestException("connection closed (mock control)", SMPPConstant.STAT_ESME_RSYSERR);
       }
+      Decision d = s.decision();
+      MockCalls.pause(d.delayMs());
       if (s.dlrState() != null) {
-        executor.schedule(() -> deliveryReceipt(session, sm, s.messageId(), s.dlrState()),
-            props.dlrDelay().toMillis(), TimeUnit.MILLISECONDS);
+        long delay = props.dlrDelay().toMillis();
+        switch (d.callback()) {
+          case LATE -> schedule(session, sm, s, delay + d.callbackDelayMs(), s.dlrState());
+          case DUPLICATE -> {
+            schedule(session, sm, s, delay, s.dlrState());
+            schedule(session, sm, s, delay * 2, s.dlrState());
+          }
+          case OUT_OF_ORDER -> {
+            schedule(session, sm, s, delay, s.dlrState());
+            schedule(session, sm, s, delay * 2, SmscDlrState.ENROUTE);
+          }
+          default -> schedule(session, sm, s, delay, s.dlrState());
+        }
+      }
+      switch (d.mode()) {
+        case TIMEOUT -> MockCalls.pause(d.holdMs());
+        case SERVER_ERROR_AFTER_SEND ->
+            throw new ProcessRequestException("system error after storing (mock control)", SMPPConstant.STAT_ESME_RSYSERR);
+        case CONNECTION_RESET -> {
+          session.close();
+          throw new ProcessRequestException("connection closed (mock control)", SMPPConstant.STAT_ESME_RSYSERR);
+        }
+        default -> { }
       }
       try {
         return new SubmitSmResult(new MessageId(s.messageId()), null);

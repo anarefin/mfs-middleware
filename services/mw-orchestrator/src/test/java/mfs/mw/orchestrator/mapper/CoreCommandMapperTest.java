@@ -155,6 +155,5 @@ class CoreCommandMapperTest {
     assertThat(payload.path("idempotencyKey").asString()).isEqualTo("key-b");
     assertThat(payload.path("debitParty")).isEqualTo(payload.path("creditParty"));
     assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
-    assertThat(mfs.mw.orchestrator.service.CoreTopics.commandTopic(c.commandType())).isEqualTo("core.wallet.command.v1");
   }
 }

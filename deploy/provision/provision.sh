@@ -7,7 +7,9 @@
 #   3. Vault policy + AppRole <svc> reading only that secret (and issuing from its own pki_int
 #      role, for a PKI_SERVICES entry); the role-id and a fresh secret-id go to OUT_ROOT/<dir>, the
 #      service's own approle volume (Spring configtree).
-# Before them: the PKI of mTLS phase 1 (root and intermediate CA once, a role per PKI_SERVICES entry).
+# Before them: the PKI of mTLS phase 1 (root and intermediate CA once, a role per PKI_SERVICES entry)
+# and the edge credentials APISIX reads itself (ticket 100a, lib.sh apisix_edge: KV v1 mount apisix/,
+# the EDGE_SECRETS of services.sh, APISIX's read-only token).
 # Then the SECRETS_AHEAD entries of services.sh: KV values only, for a service not in the stack yet.
 # Each service still gets only its own secret, role and AppRole; only this one-shot holds the
 # Vault root token and the PostgreSQL admin password, and it exits when done.
@@ -27,6 +29,7 @@ trap 'rm -rf "$tmp"' EXIT
 
 pki_setup
 for s in $PKI_SERVICES; do pki_role "$s"; done
+apisix_edge
 
 n=0
 for entry in $SERVICES; do

@@ -63,6 +63,18 @@ public enum AdminRole {
               RECON_CHECKER, COMPLIANCE_OFFICER, AUDITOR));
 
   /**
+   * Register or change a channel client of the edge registry (ticket 100a, FRS PLT-003, ADM-03):
+   * operations and integration staff, as for partners (100 split decision).
+   */
+  public static final Set<AdminRole> CHANNEL_CLIENT_MAKER = Set.copyOf(EnumSet.of(OPS_MAKER, INTEGRATION_MAKER));
+
+  /** Approve or reject such a request; never the maker's own (spec 15.3). */
+  public static final Set<AdminRole> CHANNEL_CLIENT_CHECKER = Set.copyOf(EnumSet.of(OPS_CHECKER, INTEGRATION_CHECKER));
+
+  /** See the registry (no secrets in it): whoever may read partners. */
+  public static final Set<AdminRole> READ_CHANNEL_CLIENTS = READ_PARTNERS;
+
+  /**
    * Key changes and the key ceremony (ticket 75, spec 18.8, OWN-08): file, enter a component, and
    * decide (maker and checker two different users, each with a fresh MFA).
    */
