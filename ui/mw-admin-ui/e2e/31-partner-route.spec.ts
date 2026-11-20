@@ -47,7 +47,9 @@ test.describe("partner routes", { tag: "@partners" }, () => {
     await form.getByLabel("Mappings (JSON: name -> JSONata)").fill(MAPPINGS);
     await form.getByLabel("Dry-run sample (JSON: the canonical call input)")
       .fill(JSON.stringify({ creditParty: { type: "BILLER_ACCOUNT", id: "77001234" } }));
-    await form.getByLabel("Reason").fill("onboard a biller with a route (e2e)");
+    // The mappings textarea sits inside its label, and its JSON contains the word "reason",
+    // so a substring label match also hits that field.
+    await form.getByRole("textbox", { name: "Reason", exact: true }).fill("onboard a biller with a route (e2e)");
 
     // a raw endpoint is refused before any approval, with its line
     await form.getByLabel("Route (Camel YAML DSL)").fill(ROUTE.replace('- to: "kamelet:mw-map?mapping=PAY.request"', '- to: "exec:rm"'));
