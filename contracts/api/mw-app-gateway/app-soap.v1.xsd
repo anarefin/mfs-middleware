@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- App SOAP facade (ticket 108, FRS CH-APP-01, PLT-006, PLT-050). The same operations as
+     POST /app/v1/{group}/preview, /confirm, POST /app/v1/balance and GET /app/v1/transactions/{txnId}.
+     Idempotency-Key is a SOAP header. A failure is a SOAP fault whose detail is Error. -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:tns="urn:mfs:mw:app:soap:v1"
+           targetNamespace="urn:mfs:mw:app:soap:v1"
+           elementFormDefault="qualified">
+
+  <xs:element name="Idempotency-Key" type="xs:string"/>
+
+  <xs:simpleType name="Group">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="send-money"/>
+      <xs:enumeration value="cash-in"/>
+      <xs:enumeration value="cash-out"/>
+      <xs:enumeration value="payment"/>
+      <xs:enumeration value="bill-pay"/>
+      <xs:enumeration value="top-up"/>
+      <xs:enumeration value="add-money"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="Amount">
+    <xs:sequence>
+      <xs:element name="valueMinor" type="xs:long"/>
+      <xs:element name="currency" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="CounterParty">
+    <xs:sequence>
+      <xs:element name="type" type="xs:string" minOccurs="0"/>
+      <xs:element name="id" type="xs:string"/>
+      <xs:element name="name" type="xs:string" minOccurs="0"/>
+      <xs:element name="walletType" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="BankAccount">
+    <xs:sequence>
+      <xs:element name="type" type="xs:string" minOccurs="0"/>
+      <xs:element name="id" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Partner">
+    <xs:sequence>
+      <xs:element name="partnerId" type="xs:string" minOccurs="0"/>
+      <xs:element name="productCode" type="xs:string" minOccurs="0"/>
+      <xs:element name="billerCode" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="EncryptedPin">
+    <xs:sequence>
+      <xs:element name="keyId" type="xs:string"/>
+      <xs:element name="ciphertext" type="xs:string"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Attributes">
+    <xs:sequence>
+      <xs:element name="entry" minOccurs="0" maxOccurs="20">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="key" type="xs:string"/>
+            <xs:element name="value" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Remaining">
+    <xs:sequence>
+      <xs:element name="perTxn" type="tns:Amount" minOccurs="0"/>
+      <xs:element name="daily" type="tns:Amount" minOccurs="0"/>
+      <xs:element name="monthly" type="tns:Amount" minOccurs="0"/>
+      <xs:element name="dailyCount" type="xs:int" minOccurs="0"/>
+      <xs:element name="monthlyCount" type="xs:int" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="Limits">
+    <xs:sequence>
+      <xs:element name="remaining" type="tns:Remaining" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ErrorInfo">
+    <xs:sequence>
+      <xs:element name="code" type="xs:string"/>
+      <xs:element name="message" type="xs:string"/>
+      <xs:element name="messageBn" type="xs:string" minOccurs="0"/>
+      <xs:element name="retryable" type="xs:boolean"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="PreviewRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="group" type="tns:Group"/>
+        <xs:element name="creditParty" type="tns:CounterParty" minOccurs="0"/>
+        <xs:element name="debitParty" type="tns:BankAccount" minOccurs="0"/>
+        <xs:element name="partner" type="tns:Partner" minOccurs="0"/>
+        <xs:element name="amount" type="tns:Amount"/>
+        <xs:element name="locale" type="xs:string" minOccurs="0"/>
+        <xs:element name="attributes" type="tns:Attributes" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="PreviewResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="previewId" type="xs:string"/>
+        <xs:element name="expiresAt" type="xs:string"/>
+        <xs:element name="txnType" type="xs:string"/>
+        <xs:element name="amount" type="tns:Amount" minOccurs="0"/>
+        <xs:element name="fee" type="tns:Amount" minOccurs="0"/>
+        <xs:element name="vat" type="tns:Amount" minOccurs="0"/>
+        <xs:element name="commission" type="tns:Amount" minOccurs="0"/>
+        <xs:element name="total" type="tns:Amount" minOccurs="0"/>
+        <xs:element name="counterparty" type="tns:CounterParty" minOccurs="0"/>
+        <xs:element name="limits" type="tns:Limits" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="ConfirmRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="group" type="tns:Group"/>
+        <xs:element name="previewId" type="xs:string"/>
+        <xs:element name="creditParty" type="tns:CounterParty" minOccurs="0"/>
+        <xs:element name="debitParty" type="tns:BankAccount" minOccurs="0"/>
+        <xs:element name="partner" type="tns:Partner" minOccurs="0"/>
+        <xs:element name="amount" type="tns:Amount"/>
+        <xs:element name="encryptedPin" type="tns:EncryptedPin"/>
+        <xs:element name="locale" type="xs:string" minOccurs="0"/>
+        <xs:element name="confirmDuplicate" type="xs:boolean" minOccurs="0"/>
+        <xs:element name="attributes" type="tns:Attributes" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="ConfirmResponse" type="tns:Transaction"/>
+  <xs:element name="GetTransactionStatusResponse" type="tns:Transaction"/>
+
+  <xs:complexType name="Transaction">
+    <xs:sequence>
+      <xs:element name="txnId" type="xs:string"/>
+      <xs:element name="status" type="xs:string"/>
+      <xs:element name="txnType" type="xs:string" minOccurs="0"/>
+      <xs:element name="debitParty" type="tns:CounterParty" minOccurs="0"/>
+      <xs:element name="creditParty" type="tns:CounterParty" minOccurs="0"/>
+      <xs:element name="amount" type="tns:Amount" minOccurs="0"/>
+      <xs:element name="fee" type="tns:Amount" minOccurs="0"/>
+      <xs:element name="coreRef" type="xs:string" minOccurs="0"/>
+      <xs:element name="error" type="tns:ErrorInfo" minOccurs="0"/>
+      <xs:element name="requestedAt" type="xs:string" minOccurs="0"/>
+      <xs:element name="updatedAt" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="GetBalanceRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="encryptedPin" type="tns:EncryptedPin"/>
+        <xs:element name="locale" type="xs:string" minOccurs="0"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="GetBalanceResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="txnId" type="xs:string"/>
+        <xs:element name="available" type="tns:Amount"/>
+        <xs:element name="asOf" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="GetTransactionStatusRequest">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="txnId" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="Error">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="code" type="xs:string"/>
+        <xs:element name="message" type="xs:string"/>
+        <xs:element name="messageBn" type="xs:string" minOccurs="0"/>
+        <xs:element name="txnId" type="xs:string" minOccurs="0"/>
+        <xs:element name="correlationId" type="xs:string" minOccurs="0"/>
+        <xs:element name="retryable" type="xs:boolean"/>
+        <xs:element name="details">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="detail" minOccurs="0" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element name="field" type="xs:string"/>
+                    <xs:element name="issue" type="xs:string"/>
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="timestamp" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

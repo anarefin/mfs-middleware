@@ -1,0 +1,4 @@
+{
+  "name": "48 App SOAP facade",
+  "description": "SOAP/XML facade on mw-app-gateway (ticket 108, FRS CH-APP-01). The same preview and confirm as REST, the same bearer and Idempotency-Key. Folder 41 stays the P2P FRS harness."
+}
