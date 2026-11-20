@@ -172,6 +172,9 @@ Route `partner-billagg-callback` (`/partner/billagg/callback/*`, POST only, tick
 Route `partner-c2wbank-callback` (`/partner/c2wbank/callback/*`, POST only, ticket 23) ->
 `mw-adapter-bank:8080`: the same four rules (own `limit-count` group
 `partner-c2wbank-callback`); the C2W bank's debit outcome callbacks, verified by mw-adapter-bank.
+Routes `partner-sslcommerz-callback`, `partner-ekpay-callback`, `partner-agg3-callback`,
+`partner-agg4-callback` (`/partner/<id>/callback/*`, ticket 114) -> `mw-adapter-billpay:8080`: billagg's
+four rules with their own `limit-count` group; the bill aggregators' payment callbacks (hmac-sha256).
 Neither callback route uses `openid-connect`: billagg and c2wbank are HMAC clients.
 
 Route `test-oauth2-cc` (`GET|POST /test/oauth2-cc`, ticket 100b) -> `mw-simulators:8080`

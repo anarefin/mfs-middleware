@@ -143,7 +143,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | `UC-05`, `UC-06` cash-in, cash-out | done |
 | `UC-07` B2B float | done (`B2B_TRANSFER`, `B2bTransferFlow`, folder 63) |
 | `UC-08` top-up | prepaid denominations and postpaid range landed in 112b; T1–T4 and T6–T10 are folder `tests/api/src/46-topup-operators` (112c). T5 waits out the inquiry schedule. T11 is ticket 125, T12 is ticket 127 |
-| `UC-09`, `UC-10` bills | one aggregator done; tickets 113, 114 |
+| `UC-09`, `UC-10` bills | five aggregators (billagg + ticket 114's four), catalogue 113; channel end-to-end at the gate |
 | `UC-11` merchant payment | app done (folder 04); USSD menu MERCHANT_PAY (109c); ticket 115 remains |
 | `UC-12` web checkout and refund | pay done; refund: core partial reversal built (116a), orchestrator refund as its own REVERSAL record, owning merchant only (116b), checkout refund API open (116c) |
 | `UC-13` add money from card | ticket 118 |
@@ -253,7 +253,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
 | CON-01 | done | partner engine (D28) with PAY, INQUIRY, STATUS_QUERY, REVERSE (`reverse:<txnId>`, sent once) and the optional `HEALTH_CHECK` probe (ticket 97; `PartnerReverseRouteIT`, `PartnerRouteHealthTest`) |
-| CON-02 | tickets 114, 131, 136 | partner routes as config with maker-checker built (D28); proven per family in 114, by console alone in 131, 136 |
+| CON-02 | tickets 131, 136 | partner routes as config with maker-checker built (D28); billpay family proven in 114 (four aggregators generated as config only, `BillAggregatorRouteIT`, `NewBillerRouteIT`); by console alone in 131, 136 |
 | CON-03 | done | JSONata and XSLT mappings in versioned partner records with maker-checker (D28, mw-admin-api) |
 | CON-04 | done | partner audit event and raw masked payload store `partner_payload` with latency and `payloadRef` (ticket 97, `PartnerPayloadIT`); audit side (ticket 130): the adapters send the masked bodies as `payload` with hop PARTNER_CALL and the latency, mw-audit-dw scrubs them again and chains them in `audit.payload` (`PartnerAuditPublisherTest`, `PayloadScrubTest`, `HashChainWithPayloadIT`) |
 | CON-05 | done | `PartnerRouteHealth`: UP, DEGRADED, DOWN, MAINTENANCE (+ DISABLED, DELETED), changes on `mw.partner.route.status.v1` `health` (ticket 97) |
@@ -266,8 +266,8 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-06 | done | trust bank mock (ticket 123) and the pull (ticket 126): `mw-recon` reads MT940 and MT942 from `trustbank/out` (sshj, Prowide) and classifies them (`Mt940ParserTest`, `ReconMatchingIT`, folder 60) |
 | EXT-07 | ticket 124 | EC NID mock |
 | EXT-08 | ticket 112 | one OCS simulator built; four operator profiles landed in 112a (`gp-ocs`, `robi-ocs`, `teletalk-ocs`, `bl-ocs`); 112b stores the fetched bill on the quote (minimum through outstanding); T1–T4 and T6–T10 are `tests/api/src/46-topup-operators` (112c). T5 waits out the inquiry schedule |
-| EXT-09 | ticket 114 | utility aggregator simulator (billagg) built; stateful bills and callbacks in 114 |
-| EXT-10 | ticket 114 | four bill aggregator profiles |
+| EXT-09 | done | utility aggregator simulator (billagg): seeded stateful bills `seed/v1/bills/billagg.csv`, reverse, callbacks (ticket 114, `BillAggregatorMockIT`) |
+| EXT-10 | done | four bill aggregators sslcommerz, ekpay, agg3 (SOAP), agg4 as generated route records (`deploy/partner-routes/aggregators/generate.mjs`) and mock profiles (ticket 114; agg4 JSON, not form/XML: open item) |
 | EXT-11 | ticket 115 | merchant SOAP |
 | EXT-12 | ticket 117 | partial: 20 bank profiles (REST and SOAP) generated from `deploy/partner-routes/bank/bank-profiles.csv`, AVL/W2B/STATUS/REVERSE routes (117a); mw-simulators bank gateway from the same CSV, seeded accounts, trigger table, mock party `bank-<code>`, health probe (117d); AVL API, W2B flow, suite open |
 | EXT-13 | tickets 121, 122 | NPSB and BanglaQR mock switch |
@@ -277,7 +277,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-17 | done | mock side (ticket 123) and the export (ticket 128): `mw-data-export` writes the daily drop, party `dw` checks `control_<date>.json` (`DwDailyExportIT`, folder 62) |
 | EXT-18 | done | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93), the orchestrator calls it (`client/CoreWalletClient`, ticket 95a), mw-auth checks a PIN reset's KYC factors (`client/CoreClient`) and mw-admin-api unlocks an account (`client/CoreAccountClient`) over it (ticket 95b); the core command topics and `core.command.v1` are retired, the core events stay on Kafka |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
-| MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
+| MCK-02 | ticket 112 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator done in 114 (`BillAggregatorMockIT`); operators 112 |
 | MCK-03 | ticket 136 | magic values are the default trigger of the mock-control engine, an explicit scenario wins (ticket 102, `service/mockcontrol/ScenarioEngine`); trigger table per mock in `docs/concepts/simulators.html`; every new mock in 136 |
 | MCK-04 | done | mw-simulators: `/mock-control/{party}` (D33, tickets 102a/b: every mw-simulators party incl. SMSC, USSD gateway, payShield; `contracts/api/mw-simulators/mock-control.v1.openapi.yaml`); mw-core-mock party `core` on the copied engine, Kafka and `/core/v1` (ticket 103, `contracts/api/mw-core-mock/core-mock-control.v1.openapi.yaml`, `CoreMockScenarioIT`) |
 | MCK-05 | done | DELAY(ms) per operation and scope, SLOW switch with a random range (ticket 102, `MockControlControllerIT`) |
@@ -380,7 +380,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | T5 | tickets 96, 104, 137 | never answers, `MANUAL_REVIEW` with alert: P2P in `tests/api/src/90-slow/p2p-frs.js` |
 | T6 | tickets 104, 137 | same Idempotency-Key twice: P2P in folder 41 |
 | T7 | tickets 104, 137 | duplicate partner callback: P2P `DUPLICATE_CALLBACK` on the core in folder 41 |
-| T8 | tickets 98, 114, 137 | circuit open, failover: partner failover stays 98 and 114; P2P fast fail is the core switch DOWN in folder 41 |
+| T8 | tickets 98, 137 | circuit open, failover: bill fetch fails over to the catalogue fallback (ticket 114, `BillFetchServiceTest`), PAY pre-send failover is routing (98); P2P fast fail is the core switch DOWN in folder 41 |
 | T9 | tickets 104, 137 | insufficient balance / limit: P2P limit before any transfer, and a short balance, in folder 41 |
 | T10 | tickets 104, 137 | restart mid-saga (`scripts/chaos.sh` `CHAOS_TARGETS=mw-orchestrator` checks the ledger; folder 41 checks the same identity on a completed P2P) |
 | T11 | tickets 125, 137 | AML HOLD |

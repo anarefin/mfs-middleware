@@ -229,6 +229,39 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   party reset (that bank back to its seed). Callbacks after every applied transfer (not TIMEOUT) to the party's
   `callbackUrl`, body `{transactionId, status, code, message, bankRef}`, signed with `sim.callback-secrets.bank-<code>`
   when set; replay `POST /mock-control/bank-<code>/callbacks/{transactionId}/replay`. Test: `BankGatewaySimulatorIT`.
+- Bill aggregator mocks (ticket 114, FRS UC-10, EXT-10, MCK-02/06/08; `controller/BillAggregatorMockController`,
+  `service/BillAggregatorMockService`, `AggregatorBillLedger`, `dto/AggregatorProfile`): four profiles, each a mock
+  party named after it (operations fetch, pay, status, reverse; keys biller, billNumber, txnRef), in the wire
+  dialect of `deploy/partner-routes/aggregators/generate.mjs` (keep `AggregatorProfile` in step): REST
+  `POST /<id>/v1/bills/inquiry`, `POST /<id>/v1/payments`, `GET /<id>/v1/payments/{reference}`, `POST
+  /<id>/v1/payments/{reference}/reverse` for `sslcommerz` (snake_case), `ekpay` (camelCase, Bearer token from
+  `POST /ekpay/v1/oauth/token` with any Basic client) and `agg4` (`{"req"}` / `{"res"}` envelope), SOAP 1.1
+  `POST /agg3/v1/soap` (`urn:agg3:v1`, GetBill / PayBill / PaymentStatus / ReversePayment, `soap:Client` faults
+  with `<detail><b:code/>`). The path is `/<id>/v1`, not the ticket's `/sim/agg/<id>`: the mock party is the
+  first path segment (journal, ADR D33). Auth presence is checked (sslcommerz `X-Key-Id` + `X-Signature` +
+  `X-Timestamp`, ekpay an issued token, agg3 a UsernameToken, agg4 Basic), else 401 / fault `1002`. Bills:
+  `seed/v1/bills/<id>.csv` (MCK-08; billerCode, billNumber, amount, dueDate, billPeriod, UNPAID|PAID), stateful
+  UNPAID -> PAID -> REVERSED (payable again), back to the seed only by the party reset (`DELETE
+  /mock-control/<id>/journal`, `POST /mock-control/reset`), not by a scenario. Test helper `GET
+  /sim/agg/<id>/bills/<biller>/<billNumber>`. Trigger table (codes per profile: sslcommerz `E10n`, ekpay `40n`,
+  agg3 `A3-0n`, agg4 `X0n`):
+
+  | Trigger | Fetch | Pay |
+  | --- | --- | --- |
+  | bill not seeded (biller known) | 422 n=1 NOT_FOUND | 422 n=1 |
+  | biller not in the profile's seed | 422 n=4 UNKNOWN_BILLER | 422 n=4 |
+  | bill PAID (seeded or paid earlier) | 200, status the profile's paid word | 422 n=2 BILL_ALREADY_PAID |
+  | amount not the bill's | | 422 n=6 AMOUNT_MISMATCH |
+  | bill number ending `999` | | 422 n=3 REFUSED |
+  | reverse of a payment not paid | | 422 n=5 NOT_PAID (reverse) |
+  | amount `.13` / `.77` / `.99` / `.55` | | timeout applied / 500 applied / 422 `9876` / cut-short body applied |
+
+  A repeated reference answers the stored payment; a second reverse the first reversal. Setting `callbackOnly`
+  answers a payment 202 (pending word) with the outcome by callback; callbacks (ONCE, DUPLICATE, LATE,
+  OUT_OF_ORDER by scenario, MCK-06) carry the REST status body, signed with `sim.callback-secrets.<id>` (stack:
+  `BILLAGG_HMAC_SECRET`). billagg also has seeded bills (`seed/v1/bills/billagg.csv`, bill numbers `1149...`):
+  a seeded bill answers its own amount, a paid one is refused `3002` on fetch and pay, a reverse makes it
+  payable again; any other bill number keeps the computed amount and magic endings. Test: `BillAggregatorMockIT`.
 - Partner reverse (ticket 97, FRS MCK-02; `controller/ReversalController`, `service/ReversalService`):
   `POST /ocs/v1/topup/{transactionId}/reverse`, `/billagg/v1/payments/{transactionId}/reverse`,
   `/c2wbank/v1/debits/{transactionId}/reverse`, optional body `{reversalId}` (the adapters send

@@ -5664,6 +5664,75 @@
       ]
     },
     {
+      "name": "50 Bill aggregators",
+      "description": "Ticket 114 (FRS UC-10, EXT-10, MCK-02, MCK-08). The four aggregators sslcommerz (REST, HMAC + key id), ekpay (REST, OAuth2), agg3 (SOAP, WS-Security) and agg4 (REST envelope, Basic) are generated partner routes in mw-adapter-billpay; mw-simulators plays them with seeded, stateful bills (seed/v1/bills/<id>.csv). A paid bill is fetched as paid and refused; the party reset puts the seed back. Folders 06-billpay and 07-billpay-callback stay green.",
+      "item": [
+        {
+          "name": "[billpay] every bill aggregator answers a seeded bill in its own wire format",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay] every bill aggregator answers a seeded bill in its own wire format\", eval(MW.forRun(\";(async (MW, S) => {\\n      const cases = [['AMBERIT', '1140000001', null, 125050], ['NESCO', '1140000001', '202611', 125050],\\n        ['DU', '1140000001', '202611', 125050], ['METLIFE', '1140000002', null, 48000]];\\n      for (const [biller, bill, month, minor] of cases) {\\n        const f = S.record(await MW.app.fetchBill('customer01', biller, bill, month));\\n        S.status(200);\\n        S.eq(biller + ' amount due', f.body.amount && f.body.amount.valueMinor, minor, String(f));\\n      }\\n      await S.noChange();\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay] a bill the aggregator holds as paid is a mapped aggregator error",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay] a bill the aggregator holds as paid is a mapped aggregator error\", eval(MW.forRun(\";(async (MW, S) => {\\n      S.record(await MW.app.fetchBill('customer01', 'AMBERIT', '1140000003', null));\\n      S.status(502);\\n      S.code('MW-PTR-SSLCOMMERZ-BILL_ALREADY_PAID');\\n      S.record(await MW.app.fetchBill('customer01', 'DU', '1140000003', '202611'));\\n      S.status(502);\\n      S.code('MW-PTR-AGG3-BILL_ALREADY_PAID');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        },
+        {
+          "name": "[billpay] a bill paid through sslcommerz completes and is then fetched as paid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const MW = eval(pm.collectionVariables.get('lib'));",
+                  "MW.run(\"[billpay] a bill paid through sslcommerz completes and is then fetched as paid\", eval(MW.forRun(\";(async (MW, S) => {\\n      await MW.mock.reset('sslcommerz');\\n      await S.note(['01711000001', 'SETTLEMENT', 'FEE_INCOME']);\\n      const f = S.record(await MW.app.fetchBill('customer01', 'CARNIVAL', '1140000011', null));\\n      S.status(200);\\n      S.eq('the amount due is 320000 poisha', f.body.amount && f.body.amount.valueMinor, 320000, String(f));\\n      await S.billPay('customer01', 'CARNIVAL', '1140000011', 320000, MW.pin);\\n      S.status(200);\\n      S.txnStatus('COMPLETED');\\n      await S.noHold('01711000001');\\n      S.record(await MW.app.fetchBill('customer01', 'CARNIVAL', '1140000011', null));\\n      S.status(502);\\n      S.code('MW-PTR-SSLCOMMERZ-BILL_ALREADY_PAID');\\n      await MW.mock.reset('sslcommerz');\\n    })\")), null);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/healthz",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
       "name": "60 Recon matching",
       "description": "Ticket 126, FRS REC-01, REC-04, EXT-06: an injected trust-bank line is classified MISSING_IN_UPAY. The test route is key-auth. partner-sftp is profile tester.",
       "item": [

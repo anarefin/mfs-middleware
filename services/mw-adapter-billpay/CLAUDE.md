@@ -457,6 +457,32 @@ one payment store for both front ends. `BillaggSoapRouteIT`. mw-admin-api's
 keep the two equal. An example record:
 `deploy/partner-routes/examples/rest-apikey-biller.yaml`; the concept page: `docs/concepts/camel-partner-routes.md`.
 
+**The four "other biller" aggregators** (ticket 114, FRS UC-10, EXT-10, CON-02): configuration only, no Java per
+partner. `node deploy/partner-routes/aggregators/generate.mjs` writes `src/main/resources/aggregators-dev.yml`
+(imported by `application-dev.yml`; base URL `BILL_AGG_BASE_URL`, hosts `MW_BILL_AGG_ALLOWED_HOSTS`) and
+mw-admin-api's `partner-seeds/dev/<id>.json` plus its seed list; never edit them by hand
+(`scripts/test/test_bill_aggregators.sh` runs `--check`). Each record has INQUIRY, PAY (`pending=true`),
+STATUS_QUERY, REVERSE and a `CALLBACK.response`, its own error map (six codes: BILL_NOT_FOUND,
+BILL_ALREADY_PAID, PAYMENT_REFUSED, UNKNOWN_BILLER, NOT_PAID, AMOUNT_MISMATCH; `9876` ambiguous); an INQUIRY of
+a paid bill is FAILED BILL_ALREADY_PAID. Callbacks are hmac-sha256 (`hmac-secret`) for all four; APISIX routes
+`partner-<id>-callback`.
+
+| Partner | Wire (mw-simulators `/<id>/v1/...`) | Outbound auth | Codes |
+| --- | --- | --- | --- |
+| `sslcommerz` | REST JSON, snake_case (`tran_id`, `biller_code`, `bill_no`, `val_id`, `error_code`) | hmac-sha256 + `X-Key-Id: bits-store` | `E101`-`E106` |
+| `ekpay` | REST JSON, camelCase (`requestId`, `billerId`, `billNo`, `trxId`, `respCode`) | OAuth2 client credentials (`client-secret`, token `/ekpay/v1/oauth/token`) | `401`-`406` |
+| `agg3` | SOAP 1.1 `mw-soap-call` JSON/XML convention, `urn:agg3:v1` (GetBill, PayBill, PaymentStatus, ReversePayment) | WS-Security UsernameToken (`ws-password`) | `A3-01`-`A3-06` (soap:Client faults) |
+| `agg4` | REST JSON in an envelope `{"req": {...}}` / `{"res": {...}}` (`svc`, `acct`, `amt`, `rcpt`, `err`) | Basic (`basic-user`, `basic-password`) | `X01`-`X06` |
+
+agg4 is JSON, not form-encoded or XML as the ticket allowed: `mw-http-call` sends JSON only and a body format
+option would change the four identical `partner/` engines (open item). Proved by `partner/route/BillAggregatorRouteIT`
+(mapping, auth header or UsernameToken, error map per record); a fifth aggregator by config alone is
+`NewBillerRouteIT`. Failover (ticket 114, FRS PLT-032, T8): `service/BillFetchService` asks the catalogue
+entry's `fallbackPartnerId` once when the primary's INQUIRY is not sent (circuit open, connect failed,
+disabled, maintenance, bulkhead full); an answer, a refusal or an uncertain outcome is never asked again
+elsewhere, and a PAY never fails over here (one aggregator per payment; pre-send PAY failover is the
+orchestrator's routing module, ticket 98). Tests `BillFetchServiceTest`.
+
 Ticket 23 (bank C2W) copied this chain with the framework into mw-adapter-bank (see its
 CLAUDE.md): a CALLBACK operation mapping that returns our `reference`, an
 async-callback instance with an inbound-capable auth scheme, a callback controller + service
