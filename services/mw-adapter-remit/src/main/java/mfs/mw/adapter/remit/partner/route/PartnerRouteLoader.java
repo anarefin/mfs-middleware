@@ -104,6 +104,9 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 @Component
 public class PartnerRouteLoader {
 
+  /** The client secret a dry-run candidate's OAuth2 token request sends (M9 review, ticket 139). */
+  public static final String DRY_RUN_CLIENT_SECRET = "dry-run-client-secret";
+
   /** Kamelet parameters that end up in the HTTP request: no {@code % ? & #}, before or after decoding. */
   static final Set<String> STRICT_PARAMS = Set.of("url", "path", "authHeader", "keyId", "method", "auth", "secretField",
       "userField", "tokenUrl", "clientId", "scope", "audience", "alg", "sslContextRef");
@@ -323,6 +326,12 @@ public class PartnerRouteLoader {
       fields.add(record.auth().credentialsRef());
     }
     for (String field : fields) {
+      if (calls.dryRunOauthSecrets.contains(field)) {
+        // M9 review (139): a dry-run candidate authenticates its token request with a fixed dummy
+        // secret, never the live client secret (the target may be a sandbox or a recording stub)
+        values.put(field, DRY_RUN_CLIENT_SECRET);
+        continue;
+      }
       try {
         values.put(field, credentials.read(id, field));
       } catch (IllegalStateException e) {
@@ -466,6 +475,8 @@ public class PartnerRouteLoader {
     final List<String> paths = new ArrayList<>();
     final Set<String> mappings = new LinkedHashSet<>();
     final Set<String> secretFields = new LinkedHashSet<>();
+    /** OAuth2 client secret fields of a dry-run candidate: replaced by {@link #DRY_RUN_CLIENT_SECRET}. */
+    final Set<String> dryRunOauthSecrets = new LinkedHashSet<>();
     /** The stylesheets {@code mw-soap-call} names (record {@code *.xsl} mappings or classpath resources). */
     final Set<String> stylesheets = new LinkedHashSet<>();
     /** The {@code partnerId} injected into each Kamelet (it names the circuit breaker). */
@@ -618,6 +629,9 @@ public class PartnerRouteLoader {
           problems.add("auth " + auth + " needs a secretField");
         } else {
           calls.secretFields.add(field);
+          if (calls.dryRunBase != null && "oauth2-cc".equals(auth)) {
+            calls.dryRunOauthSecrets.add(field);
+          }
         }
         authProblems(id, auth, params, calls, security, problems);
       }

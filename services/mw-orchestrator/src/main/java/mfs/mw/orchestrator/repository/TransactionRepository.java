@@ -92,6 +92,19 @@ public class TransactionRepository {
     }
   }
 
+  /**
+   * Whether a merchant refund (ticket 116b) of {@code originalTxnId} may have moved money: any refund
+   * record of it that the core did not refuse (REJECTED) and that did not fail before the core.
+   */
+  public boolean hasRefunds(UUID originalTxnId) {
+    Boolean any = jdbc.queryForObject(
+        "select exists (select 1 from transaction where txn_type = 'REVERSAL'"
+            + " and request -> 'attributes' ->> 'originalTxnId' = ? and status not in ('REJECTED', 'FAILED'))",
+        Boolean.class,
+        originalTxnId.toString());
+    return Boolean.TRUE.equals(any);
+  }
+
   /** Stores the partner routing chose. The idempotency hash is not recomputed (ticket 98). */
   public void updateRequest(UUID txnId, TxnRequest request) {
     jdbc.update(
