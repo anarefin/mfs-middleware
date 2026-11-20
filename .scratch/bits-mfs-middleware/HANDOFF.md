@@ -1,13 +1,13 @@
 # HANDOFF — FRS run 89–138 (state for another coding agent)
 
-Updated: 2026-11-20 (M7 gate run; the API suite failed). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
+Updated: 2026-11-20 (107a and 107b merged; 109a/109b/109c on ticket/109c-ussd-menus, not merged). Kept current after every merge/split; trust DEPENDENCIES.md for row status.
 
 ## Where things are
 - Repo: `/Users/ahmadnaqibularefin/Projects/mfs-middleware`, integration branch **`upay-main`** (not pushed, no PR).
 - Plan of this run: `~/.claude/plans/check-from-ticket-88-purrfect-dusk.md`. FRS plan: `~/.claude/plans/we-have-to-implement-harmonic-puzzle.md`.
 - Spec: `spec/FRS-Upay-Middleware.md` (+ `spec/bits-mfs-middleware-spec.md`). Repo rules: root `CLAUDE.md`, each `services/*/CLAUDE.md`.
 - Tickets: `.scratch/bits-mfs-middleware/issues/NN-*.md`; **status + order: `issues/DEPENDENCIES.md`** (authoritative).
-- Split decisions (user-approved): `issues/95-split-decisions.md`, `100-split-decisions.md`, `131-split-decisions.md`, `96-split-decisions.md`.
+- Split decisions (user-approved): `issues/95-split-decisions.md`, `100-split-decisions.md`, `131-split-decisions.md`, `96-split-decisions.md`, `107-split-decisions.md`.
 - Implementer brief (give to every implementer): `.scratch/bits-mfs-middleware/notes/implementer-brief.md`; code map: `notes/frs-run-notes.md`.
 - FRS id status per requirement: `docs/frs-traceability.md`. ADRs for this run: `docs/adr/D29..D33`.
 
@@ -24,6 +24,8 @@ Updated: 2026-11-20 (M7 gate run; the API suite failed). Kept current after ever
 103 (core mock-control + global reset),
 104 (P2P FRS harness, Newman folder 41-p2p-frs because 40 was already taken; live Newman and the M7 gate were not run),
 105 (app preview/confirm, Newman folder 46; live suite and tester-e2e not run),
+107a (saved billers, favourites and the customer inbox; saved billers and favourites are not encrypted, user decision),
+107b (profile, limits and statement; app-gateway is a core client for profile, limits, and statement; the live suite was not re-run after this merge),
 110 (push notifications), 110b (binding epoch from mw-auth; notify migration V17),
 111 (notify campaigns, promotional opt-out, masked log; folder 47),
 123 (AML/trustbank/DW file mocks), 128 (mw-data-export stream, daily SFTP, PII policy, archive),
@@ -33,12 +35,12 @@ Updated: 2026-11-20 (M7 gate run; the API suite failed). Kept current after ever
 Review fix on the earlier salvage: 2308d22e (19 files +342 −57). 88 is superseded by 126/127.
 
 ## In flight when this file was written
-None. The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
+109a, 109b and 109c are implemented on `ticket/109c-ussd-menus` and are not merged yet. The wave worktrees for 98, 100b, 111, 128 and 131c are removed. Other `.claude/worktrees/agent-*` trees are historical; leave them.
 
 ## Next (frontier, in priority order)
 1. **96b is merged.** 96c and 95c are the next orchestrator tickets and are not started.
-2. **M7 gate was run on 2026-11-20 and failed.** Base `3f68eb02`. Clean build, smoke, edge-test, folder 41, log-scan, ui-e2e (25/25) and tester-e2e (40/40) passed. The whole API suite failed: 1386 assertions, 2 failed (folder 13 rejected reversal, the audit change-request id scrubbed when the UUID holds a 6-digit run; folder 44 AML, the journal's first WRITE was another response file). No second full-suite loop. The gate fixes are uncommitted in this worktree. Same line in DEPENDENCIES.md.
-3. Unblocked and not started: 95c, 96c, 106/107/108/109, 115, 117, 130b, 135. Then **M8 gate** after the app and USSD tickets.
+2. **M7 gate (2026-11-20).** Passed: clean build, smoke 60/60, edge 65/65, folder 41 (54), log-scan, ui-e2e 25/25, tester-e2e 40/40. The whole API suite failed 2 of 1386 (folder 13 audit change-request id scrubbed; folder 44 AML journal first WRITE was another file) and was not re-run. The gate fixes are commit 784285bb.
+3. **107a and 107b are merged.** 109a/109b/109c are implemented on `ticket/109c-ussd-menus` and not merged yet. Unblocked and not started: 95c, 96c, 106/108, 115, 117, 130b, 135. Then **M8 gate** after the remaining app and USSD tickets.
 4. 118–121 still name parent ticket 95, and 95c is open. 100c stays until M13. 132 can use the routing API from 98.
 
 ## Milestone gate procedure (after the last ticket of a milestone)

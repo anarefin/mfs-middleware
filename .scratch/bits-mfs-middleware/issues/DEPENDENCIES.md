@@ -86,10 +86,12 @@
 102-mock-control-engine                     89                done (102a b8f2d843; 102b 33m 49 files +1774 −467 aacc96ef)
 103-mock-control-core-and-reset             102,94            done     120m     90 files +3425 −249    8c4ed022
 104-frs-e2e-harness                         96a,98,103        done     -        10 files +630 −15      524e1bb6  (folder 41-p2p-frs; 40 already taken by mock-reset. Live Newman and the M7 gate were not run)
-# --- M7 gate FAIL (2026-11-20, base 3f68eb02; gate fixes uncommitted, not in this docs commit): clean build PASS (7m16s, before the fixes); fresh stack; smoke 60/60 (one empty etcd read, passed on retry); edge-test 65/65; folder 41 54/54; whole suite FAIL 1386 assertions, 2 failed and not re-run (folder 13 rejected reversal: audit changeRequestId scrubbed when the UUID holds a 6-digit run; folder 44 AML: the journal's first WRITE was another response file). log-scan clean. ui-e2e 25/25. tester-e2e 40/40 after the console kept the typed PIN across Preview. No second full-suite loop.
+# --- M7 gate FAIL (2026-11-20, base 3f68eb02; gate fixes 784285bb): clean build PASS; smoke 60/60; edge-test 65/65; folder 41 54/54; log-scan clean; ui-e2e 25/25; tester-e2e 40/40. Whole suite FAIL 2 of 1386, not re-run (folder 13 audit change-request id scrubbed; folder 44 AML journal first WRITE was another file). The live suite was not re-run after the 107 merge.
 105-app-preview-confirm                     95                done     -        67 files +3346 −158    d735f224
 106-app-types-b2b                           94,105            open
-107-app-nonfinancial                        94,105            open
+107-app-nonfinancial                        94,105            split (107-split-decisions.md, 2026-11-20)
+107a-app-preferences                        94,105            done     -        65 files +2028 −21     96650ec1  (saved billers and favourites are not encrypted, user decision)
+107b-app-core-reads                         107a              done     -        32 files +1201 −15     ab25b616  (app-gateway is a core client for profile, limits, and statement. The live suite was not re-run after this merge)
 108-app-soap-facade                         105               open
 109-ussd-frs                                94,105            open
 110-notify-push                             102               done     37m      86 files +2628 −75     76ab0c4c,4757e709
