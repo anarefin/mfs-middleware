@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 import mfs.mw.portal.api.config.PortalApiProperties;
 import mfs.mw.portal.api.dto.BatchView;
+import mfs.mw.portal.api.dto.BulkFileFormat;
 import mfs.mw.portal.api.dto.BulkRow;
 import mfs.mw.portal.api.dto.PortalUser;
 import mfs.mw.portal.api.entity.Batch;
@@ -41,13 +42,13 @@ public class BatchService {
   private static final Logger log = LoggerFactory.getLogger(BatchService.class);
 
   private final BatchRepository batches;
-  private final BulkCsvParser parser;
+  private final BulkFileParser parser;
   private final PortalApiProperties props;
   private final Clock clock;
   private final BatchAudit audit;
 
   public BatchService(
-      BatchRepository batches, BulkCsvParser parser, PortalApiProperties props, Clock clock, BatchAudit audit) {
+      BatchRepository batches, BulkFileParser parser, PortalApiProperties props, Clock clock, BatchAudit audit) {
     this.batches = batches;
     this.parser = parser;
     this.props = props;
@@ -55,15 +56,22 @@ public class BatchService {
     this.audit = audit;
   }
 
+  /** A CSV upload ({@link #upload(PortalUser, byte[], BulkFileFormat)}). */
   @Transactional
   public BatchView upload(PortalUser maker, byte[] file) {
+    return upload(maker, file, BulkFileFormat.CSV);
+  }
+
+  /** Validates a CSV or XLSX file (ticket 129) and stores it as one batch awaiting approval. */
+  @Transactional
+  public BatchView upload(PortalUser maker, byte[] file, BulkFileFormat format) {
     require(maker, props.roles().maker());
     if (file.length > props.bulk().maxBytes().toBytes()) {
       throw new MwException(
           ErrorCodes.VAL_BULK_TOO_LARGE,
           "File is larger than " + props.bulk().maxBytes().toKilobytes() + " KB");
     }
-    List<BulkRow> rows = parser.parse(file);
+    List<BulkRow> rows = parser.parse(file, format);
     long total = 0;
     for (BulkRow r : rows) {
       total = Math.addExact(total, r.amountMinor());

@@ -11,6 +11,7 @@ import mfs.mw.orchestrator.dto.QueryPayload;
 import mfs.mw.orchestrator.dto.TransferPayload;
 import mfs.mw.orchestrator.entity.TransactionRecord;
 import mfs.mw.orchestrator.service.saga.AddMoneyCardFlow;
+import mfs.mw.orchestrator.service.saga.RemitInFlow;
 import org.springframework.stereotype.Component;
 
 /**
@@ -95,7 +96,15 @@ public class CoreCommandMapper {
     return new CoreCommand(
         1, "CreditWallet", commandId(txnId, round(STEP_CREDIT, manualRound)), txnId, req.correlationId(), now, now.plus(ttl),
         new CreditPayload(req.txnType(), req.debitParty(), req.creditParty(), req.amount(),
-            AddMoneyCardFlow.TXN_TYPE.equals(req.txnType()) ? AddMoneyCardFlow.SETTLEMENT_WALLET : null));
+            settlementWallet(req.txnType())));
+  }
+
+  /** The core settlement wallet a credit of {@code txnType} is paid from; null = the core's default. */
+  static String settlementWallet(String txnType) {
+    if (AddMoneyCardFlow.TXN_TYPE.equals(txnType)) {
+      return AddMoneyCardFlow.SETTLEMENT_WALLET;
+    }
+    return RemitInFlow.TXN_TYPE.equals(txnType) ? RemitInFlow.SETTLEMENT_WALLET : null;
   }
 
   /** ReleaseHold; a resend keeps the commandId, so the core applies it once. */

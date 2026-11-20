@@ -280,6 +280,8 @@ provision_mw_adapter_card() {
 # signed credits (and signs the outbound confirmations).
 provision_mw_adapter_remit() {
   gen_once spring.datasource.password 40
+  # HMAC key of the remittance fingerprint (M9 review: never a plain hash of the MSISDN); created once
+  gen_once mw.remit.fingerprint-key 48
   KV="secret/$SVC/ucb-imt"
   sync_env hmac-secret UCB_IMT_HMAC_SECRET
   KV="secret/$SVC"

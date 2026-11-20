@@ -11,6 +11,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import java.util.List;
 import java.util.Map;
 import mfs.mw.portal.api.config.SecurityConfig;
+import mfs.mw.portal.api.dto.BulkFileFormat;
 import mfs.mw.portal.api.security.PortalUserResolver;
 import mfs.mw.portal.api.service.BatchService;
 import org.junit.jupiter.api.Test;
@@ -69,7 +70,30 @@ class BulkBatchControllerTest {
             .exchange();
     assertThat(r).hasStatus(415);
     assertThat(r).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-005");
-    verify(service, never()).upload(any(), any());
+    verify(service, never()).upload(any(), any(), any());
+  }
+
+  @Test
+  void anXlsxUploadIsHandedOnAsXlsx() {
+    byte[] file = {0x50, 0x4b, 0x03, 0x04};
+    mvc.post()
+        .uri("/portal/org/v1/bulk/batches")
+        .with(jwt().jwt(j -> j.subject("u1").claim("orgId", "ORG001")))
+        .contentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        .content(file)
+        .exchange();
+    verify(service).upload(any(), eq(file), eq(BulkFileFormat.XLSX));
+  }
+
+  @Test
+  void aCsvUploadIsHandedOnAsCsv() {
+    mvc.post()
+        .uri("/portal/org/v1/bulk/batches")
+        .with(jwt().jwt(j -> j.subject("u1").claim("orgId", "ORG001")))
+        .contentType("text/csv;charset=UTF-8")
+        .content("msisdn,amount,reference\n")
+        .exchange();
+    verify(service).upload(any(), any(), eq(BulkFileFormat.CSV));
   }
 
   MvcTestResult reject(String body) {

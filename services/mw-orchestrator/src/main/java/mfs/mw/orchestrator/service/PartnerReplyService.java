@@ -19,6 +19,7 @@ import mfs.mw.orchestrator.repository.TransactionRepository;
 import mfs.mw.orchestrator.service.routing.RoutingCatalog;
 import mfs.mw.orchestrator.service.saga.FlowRegistry;
 import mfs.mw.orchestrator.service.saga.MerchantPayFlow;
+import mfs.mw.orchestrator.service.saga.RemitInFlow;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.Outcome;
 import mfs.mw.orchestrator.service.saga.PendingLeg;
@@ -98,6 +99,16 @@ public class PartnerReplyService {
       return;
     }
     recordAnswer(reply);
+    if (RemitInFlow.TXN_TYPE.equals(found.get().request().txnType())) {
+      // ticket 119b: the adapter's answer to an outcome confirmation never moves the remittance
+      log.atInfo()
+          .addKeyValue("event", "remit.outcome.confirmed")
+          .addKeyValue("txnId", reply.txnId())
+          .addKeyValue("partnerId", reply.partnerId())
+          .addKeyValue("outcome", reply.payload().outcome())
+          .log("remittance outcome confirmation answered; the transaction is unchanged");
+      return;
+    }
     if (MerchantPayFlow.TXN_TYPE.equals(found.get().request().txnType())
         && MerchantPayFlow.MERCHANT.family().equals(reply.family())) {
       merchantAnswer(found.get(), reply);
@@ -198,7 +209,8 @@ public class PartnerReplyService {
    * VALIDATING: SUCCESS asks the core next; FAILED, UNKNOWN or NOT_FOUND end FAILED with the partner's
    * error (nothing has moved, so no inquiry is worth it; the payer may simply try again); PENDING waits
    * for the VALIDATING deadline. NOTIFY (PAY) never touches the transaction: SUCCESS is logged; any
-   * other answer is retried with a fresh request id until {@code notify-attempts} sends, then the
+   * other answer is retried with a fresh request id, after a growing backoff ({@code notify-backoff},
+   * saga timer {@code MERCHANT_NOTIFY}), until {@code notify-attempts} sends, then the
    * notify is dead-lettered (ERROR {@code merchant.notify.dead_lettered}, audit
    * {@code merchant.notify.failed}). Any other answer is late and only on the timeline.
    */
@@ -242,7 +254,7 @@ public class PartnerReplyService {
       return;
     }
     if (sent < engine.merchantNotifyMaxAttempts()) {
-      engine.sendMerchantNotify(rec, sent + 1);
+      engine.scheduleMerchantNotify(rec, sent + 1); // M9 review: after a backoff, by the saga timer
       return;
     }
     String errorCode = reply.payload().errorCode();

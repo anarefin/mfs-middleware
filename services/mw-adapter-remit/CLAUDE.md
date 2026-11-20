@@ -13,10 +13,16 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.remit`. Follo
   `GET /remit/v1/credits/{partnerRef}`. Every request is `X-Partner-Id` plus hmac-sha256 over method, path,
   `X-Timestamp` (at most 300 s off), `X-Nonce` (once only) and the body hash. A bad signature, a replayed
   nonce, a stale timestamp or an unknown partner is 401 `MW-AUTH-001`. A credit is deduplicated on
-  (partner, partnerRef): the first is 202 once `mw.partner.inbound.v1` (kind REMITTANCE, txnType REMIT_IN,
-  family `remit`) is on Kafka in the same transaction; a re-send is 200 with the same Upay reference; a
+  (partner, partnerRef): the first is 202 once the row and the outbox row of `mw.partner.inbound.v1` (kind REMITTANCE, txnType
+  REMIT_IN, family `remit`) committed together (M9 review: no dual write; the relay publishes it); a re-send is 200 with the same Upay reference; a
   re-send that changes beneficiary or amount is 409 `MW-IDEM-002`. An invalid field is 400 `MW-VAL-001`.
-  Logs carry no MSISDN and no sender name (`sensitive-fields` on the seed).
+  Logs carry no MSISDN and no sender name (`sensitive-fields` on the seed). The re-send comparison is
+  `remittance.fingerprint` = HMAC-SHA256 of beneficiary, amount and currency under `mw.remit.fingerprint-key`
+  (Vault `secret/mw-adapter-remit`, created once by the provision; >= 32 chars; M9 review: rows written before
+  119b hold the old plain SHA-256, so a re-send of one of those is 409). The orchestrator's REMIT_IN outcome
+  (ticket 119b) arrives as a PAY with `attributes.outcome` CREDITED / REJECTED / MANUAL_REVIEW:
+  `RemitPartnerService` records it on the row first (the status API answers it), then confirms to the partner.
+  Edge: APISIX route `partner-remit-v1` (`/remit/v1/*`, `deploy/apisix/README.md`).
 - Outbound (`messaging/RemitRequestHandler` on `mw.partner.request.remit.v1`, off in tests with
   `mw.remit.request-consumer.enabled=false`): PAY confirms the outcome back to the partner and
   STATUS_QUERY reads it (`service/RemitPartnerService`). The call runs on `remitCallExecutor`, never on
@@ -26,7 +32,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.remit`. Follo
 - Dev provisioning (`provision_mw_adapter_remit`): role `adapter_remit_rw`, schema `remit_ref`,
   `secret/mw-adapter-remit/ucb-imt` field `hmac-secret` from `UCB_IMT_HMAC_SECRET` (the same value is
   mw-simulators' `sim.callback-secrets.ucb-imt`). Compose service `mw-adapter-remit` (profile `core`,
-  384 MiB, Hikari pool 2, `MW_PORT_ADAPTER_REMIT` 8100, `UCB_IMT_BASE_URL`).
+  384 MiB, Hikari pool 2, `MW_PORT_ADAPTER_REMIT` 8101, `UCB_IMT_BASE_URL`).
 
 ## Partner engine (`partner` package; ADR D28: the copy of mw-adapter-billpay's)
 

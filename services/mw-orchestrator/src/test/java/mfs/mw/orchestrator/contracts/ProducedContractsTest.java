@@ -124,6 +124,10 @@ class ProducedContractsTest {
             .withPartnerRef("sess-0001"),
         mfs.mw.orchestrator.service.saga.AddMoneyCardFlow.CARD, TestData.NOW, PARTNER_DEADLINE, "sess-0001",
         "tok-fake-0001"));
+    // ticket 119b: the outcome of an inbound remittance back to mw-adapter-remit
+    FIXTURES.put(PARTNER_REQUEST + "#remit", () -> PARTNER.remitConfirmation(
+        REQUESTS.toRecord(TestData.remitIn(TestData.txnId(), "IMT-2026-0001", 2_500_000), null, TestData.NOW),
+        "CREDITED", TestData.NOW, PARTNER_DEADLINE));
     // ticket 115b: the merchant system NOTIFY of a completed merchant payment
     FIXTURES.put(PARTNER_REQUEST + "#merchant", () -> PARTNER.merchantNotify(
         REQUESTS.toRecord(TestData.merchantPay(TestData.txnId(), "key-mp", 66_700, "01911000020"), null, TestData.NOW),

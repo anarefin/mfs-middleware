@@ -13,7 +13,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.Optional;
+import java.security.MessageDigest;
+import java.util.Base64;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import javax.xml.transform.TransformerFactory;
@@ -25,6 +28,8 @@ import mfs.mw.adapter.atm.controller.AtmSoap;
 import mfs.mw.adapter.atm.controller.AtmSoapEndpoint;
 import mfs.mw.adapter.atm.exception.SoapFaultResolver;
 import mfs.mw.adapter.atm.repository.AtmInboundStore;
+import mfs.mw.adapter.atm.repository.InMemoryAtmInboundStore;
+import mfs.mw.adapter.atm.security.NonceStore;
 import mfs.mw.adapter.atm.security.WsSecurityInterceptor;
 import mfs.mw.adapter.atm.service.AtmInboundService;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,7 +60,9 @@ class AtmSoapRouteTest {
   static final String PASSWORD = "test-only-ucbatm-ws-password";
   static final String NS = "xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\""
       + " xmlns:atm=\"" + AtmSoap.NAMESPACE + "\""
-      + " xmlns:wsse=\"" + AtmSoap.WSSE_NS + "\"";
+      + " xmlns:wsse=\"" + AtmSoap.WSSE_NS + "\""
+      + " xmlns:wsu=\"" + AtmSoap.WSU_NS + "\"";
+  static final String NOW = "2026-11-20T12:00:00Z";
 
   @Configuration
   @Import({
@@ -64,32 +71,23 @@ class AtmSoapRouteTest {
   static class Slice {
     @Bean
     AtmInboundStore atmInboundStore() {
-      return new Memory();
+      return new InMemoryAtmInboundStore();
     }
 
     @Bean
     AtmInboundProperties atmInboundProperties() {
-      return new AtmInboundProperties("ucbatm", "ucbatm", PASSWORD);
+      return new AtmInboundProperties("ucbatm", "ucbatm", PASSWORD, true);
+    }
+
+    @Bean
+    NonceStore nonceStore() {
+      Set<String> seen = ConcurrentHashMap.newKeySet();
+      return (partnerId, nonce, window) -> seen.add(partnerId + "\n" + nonce);
     }
 
     @Bean
     Clock clock() {
       return Clock.fixed(Instant.parse("2026-11-20T12:00:00Z"), ZoneOffset.UTC);
-    }
-  }
-
-  /** The idempotency of (operation, atmTxnRef) without a database. */
-  static final class Memory implements AtmInboundStore {
-    private final ConcurrentHashMap<String, Row> rows = new ConcurrentHashMap<>();
-
-    @Override
-    public boolean insert(String operation, String atmTxnRef, String txnId, String inboundId, Instant at) {
-      return rows.putIfAbsent(operation + "\n" + atmTxnRef, new Row(txnId, inboundId)) == null;
-    }
-
-    @Override
-    public Optional<Row> find(String operation, String atmTxnRef) {
-      return Optional.ofNullable(rows.get(operation + "\n" + atmTxnRef));
     }
   }
 
@@ -128,12 +126,16 @@ class AtmSoapRouteTest {
       assertThat(confirm).doesNotContain("Fault");
       assertThat(text(confirm, "txnId")).isEqualTo(txnId);
 
-      String reversal = exchange(reversal("ATM-1", "JAM"));
-      assertThat(reversal).doesNotContain("Fault");
-      assertThat(text(reversal, "txnId")).isEqualTo(txnId);
+      String confirmAgain = exchange(named("ConfirmDispenseRequest", "ATM-1"));
+      assertThat(text(confirmAgain, "txnId")).isEqualTo(txnId);
 
-      String reversalAgain = exchange(reversal("ATM-1", "JAM"));
-      assertThat(text(reversalAgain, "txnId")).isEqualTo(txnId);
+      String verify2 = text(exchange(verify("ATM-1R", MSISDN, TOKEN)), "txnId");
+      String reversal = exchange(reversal("ATM-1R", "JAM"));
+      assertThat(reversal).doesNotContain("Fault");
+      assertThat(text(reversal, "txnId")).isEqualTo(verify2);
+
+      String reversalAgain = exchange(reversal("ATM-1R", "JAM"));
+      assertThat(text(reversalAgain, "txnId")).isEqualTo(verify2);
 
       assertThat(events.list).allSatisfy(e -> {
         assertThat(e.getFormattedMessage()).doesNotContain(TOKEN).doesNotContain(MSISDN);
@@ -168,6 +170,60 @@ class AtmSoapRouteTest {
   }
 
   @Test
+  void aPasswordTextTokenIsRefused() {
+    String header = """
+        <wsse:Security>
+          <wsse:UsernameToken>
+            <wsse:Username>ucbatm</wsse:Username>
+            <wsse:Password Type="%s">%s</wsse:Password>
+          </wsse:UsernameToken>
+        </wsse:Security>
+        """.formatted(AtmSoap.PASSWORD_TEXT, PASSWORD);
+    String fault = exchange(envelope(header, verifyBody("ATM-T", MSISDN, TOKEN)));
+    assertThat(fault).contains("MW-AUTH-001").doesNotContain(PASSWORD);
+  }
+
+  @Test
+  void aWrongPasswordDigestIsRefused() {
+    String header = security("n-wrong".getBytes(StandardCharsets.UTF_8), NOW, "not-the-password");
+    assertThat(exchange(envelope(header, verifyBody("ATM-W", MSISDN, TOKEN)))).contains("MW-AUTH-001");
+  }
+
+  @Test
+  void aCreatedOutsideFiveMinutesIsRefused() {
+    byte[] nonce = "n-old".getBytes(StandardCharsets.UTF_8);
+    assertThat(exchange(envelope(security(nonce, "2026-11-20T11:54:59Z", PASSWORD), verifyBody("ATM-O", MSISDN, TOKEN))))
+        .contains("MW-AUTH-001");
+    byte[] ahead = "n-ahead".getBytes(StandardCharsets.UTF_8);
+    assertThat(exchange(envelope(security(ahead, "2026-11-20T12:05:01Z", PASSWORD), verifyBody("ATM-A", MSISDN, TOKEN))))
+        .contains("MW-AUTH-001");
+  }
+
+  @Test
+  void aReplayedNonceIsRefusedEvenWithANewAtmTxnRef() {
+    byte[] nonce = "n-replay".getBytes(StandardCharsets.UTF_8);
+    String header = security(nonce, NOW, PASSWORD);
+    assertThat(exchange(envelope(header, verifyBody("ATM-R1", MSISDN, TOKEN)))).doesNotContain("Fault");
+    assertThat(exchange(envelope(header, verifyBody("ATM-R2", MSISDN, TOKEN)))).contains("MW-AUTH-001");
+  }
+
+  @Test
+  void aTokenWithoutNonceOrCreatedIsRefused() {
+    String noNonce = security().replaceAll("(?s)<wsse:Nonce.*?</wsse:Nonce>", "");
+    assertThat(exchange(envelope(noNonce, verifyBody("ATM-N", MSISDN, TOKEN)))).contains("MW-AUTH-001");
+    String noCreated = security().replaceAll("(?s)<wsu:Created>.*?</wsu:Created>", "");
+    assertThat(exchange(envelope(noCreated, verifyBody("ATM-C", MSISDN, TOKEN)))).contains("MW-AUTH-001");
+  }
+
+  @Test
+  void aLateReversalOfAConfirmedCashOutIsAConflictFault() {
+    exchange(verify("ATM-S", MSISDN, TOKEN));
+    assertThat(exchange(named("ConfirmDispenseRequest", "ATM-S"))).doesNotContain("Fault");
+    String fault = exchange(reversal("ATM-S", "JAM"));
+    assertThat(fault).contains(AtmInboundService.STATE_CONFLICT).contains("Client");
+  }
+
+  @Test
   void aSchemaFailureIsAValidationFaultAndDoesNotEchoTheBody() {
     ListAppender<ILoggingEvent> events = listen(AtmSchemaInterceptor.class);
     try {
@@ -191,6 +247,7 @@ class AtmSoapRouteTest {
     String doc = out.toString();
     assertThat(doc).contains("VerifyTokenAndDebit", "ConfirmDispense", "ReversalAdvice", "CashIn");
     assertThat(doc).contains(AtmSoap.NAMESPACE);
+    assertThat(doc).contains("\"ACCEPTED\"", "\"DECLINED\"", "\"PENDING\"");
   }
 
   private String exchange(String soap) {
@@ -246,15 +303,35 @@ class AtmSoapRouteTest {
         """.formatted(ref, reason));
   }
 
-  private static String security() {
+  /** A fresh PasswordDigest UsernameToken (OASIS UsernameToken profile 1.0): new nonce, Created now. */
+  static String security() {
+    return security(UUID.randomUUID().toString().getBytes(StandardCharsets.UTF_8), NOW, PASSWORD);
+  }
+
+  static String security(byte[] nonce, String created, String password) {
     return """
         <wsse:Security>
           <wsse:UsernameToken>
             <wsse:Username>ucbatm</wsse:Username>
             <wsse:Password Type="%s">%s</wsse:Password>
+            <wsse:Nonce EncodingType="%s">%s</wsse:Nonce>
+            <wsu:Created>%s</wsu:Created>
           </wsse:UsernameToken>
         </wsse:Security>
-        """.formatted(AtmSoap.PASSWORD_TEXT, PASSWORD);
+        """.formatted(AtmSoap.PASSWORD_DIGEST, digest(nonce, created, password), AtmSoap.BASE64_BINARY,
+        Base64.getEncoder().encodeToString(nonce), created);
+  }
+
+  static String digest(byte[] nonce, String created, String password) {
+    try {
+      MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
+      sha1.update(nonce);
+      sha1.update(created.getBytes(StandardCharsets.UTF_8));
+      sha1.update(password.getBytes(StandardCharsets.UTF_8));
+      return Base64.getEncoder().encodeToString(sha1.digest());
+    } catch (java.security.NoSuchAlgorithmException e) {
+      throw new IllegalStateException(e);
+    }
   }
 
   private static String envelope(String header, String body) {

@@ -1131,6 +1131,9 @@ services:
       MW_APP_JWK_SET_URI: ${MW_APP_JWK_SET_URI:-http://mw-auth:8080/auth/v1/.well-known/jwks.json}
       # Synchronous wait for a terminal status before 202 PROCESSING (7.5).
       MW_APP_REPLY_BUDGET: ${MW_APP_REPLY_BUDGET:-25s}
+      # Bank account validations per wallet per hour when linking (M9 review; dev.env.defaults raises it
+      # so repeated API suite runs never hit it)
+      MW_APP_LINK_AVL_ATTEMPTS: ${MW_APP_LINK_AVL_ATTEMPTS:-5}
       # mTLS client certificate (pki_int/issue/mw-app-gateway) for mw-auth's internal API: the device
       # gate reads device keys and sessions there (ticket 68, D24)
       MW_TLS_ENABLED: "true"

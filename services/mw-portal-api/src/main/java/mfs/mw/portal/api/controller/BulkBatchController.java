@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import java.net.URI;
 import mfs.mw.portal.api.dto.BatchList;
 import mfs.mw.portal.api.dto.BatchView;
+import mfs.mw.portal.api.dto.BulkFileFormat;
 import mfs.mw.portal.api.dto.RejectRequest;
 import mfs.mw.portal.api.security.PortalUserResolver;
 import mfs.mw.portal.api.service.BatchService;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,7 +31,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 @RequestMapping("/portal/org/v1/bulk/batches")
 public class BulkBatchController {
 
-  static final String CSV = "text/csv";
+  static final String CSV = BulkFileFormat.CSV_TYPE;
 
   private final BatchService service;
   private final PortalUserResolver users;
@@ -39,11 +41,17 @@ public class BulkBatchController {
     this.users = users;
   }
 
-  /** 201 with the stored batch (PENDING_APPROVAL); 400 MW-VAL-030/031 when the file is refused. */
-  @PostMapping(consumes = CSV)
+  /**
+   * 201 with the stored batch (PENDING_APPROVAL); 400 MW-VAL-030/031 when the file is refused. CSV
+   * or XLSX (ticket 129), by the request's {@code Content-Type}.
+   */
+  @PostMapping(consumes = {BulkFileFormat.CSV_TYPE, BulkFileFormat.XLSX_TYPE})
   @ApiResponse(responseCode = "201", description = "Batch uploaded")
-  public ResponseEntity<BatchView> upload(@AuthenticationPrincipal Jwt jwt, @RequestBody byte[] file) {
-    BatchView view = service.upload(users.resolve(jwt), file);
+  public ResponseEntity<BatchView> upload(
+      @AuthenticationPrincipal Jwt jwt,
+      @RequestHeader(name = HttpHeaders.CONTENT_TYPE, required = false) String contentType,
+      @RequestBody byte[] file) {
+    BatchView view = service.upload(users.resolve(jwt), file, BulkFileFormat.of(contentType));
     return ResponseEntity.created(URI.create("/portal/org/v1/bulk/batches/" + view.batchId())).body(view);
   }
 

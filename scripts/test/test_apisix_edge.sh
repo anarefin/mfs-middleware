@@ -610,6 +610,21 @@ test_hmac_callbacks_and_ussd_do_not_require_a_bearer_token() {
     || fail "npsb inbound route: allow-list, upstream or uri changed"
 }
 
+# Ticket 120b1 (M9 review): the UCB ATM switch reaches mw-adapter-atm's SOAP API and WSDL only through
+# the edge, with a source allow-list, a body cap and a quota per source; no bearer (WS-Security in the adapter).
+test_ucbatm_ws_route_reaches_the_atm_adapter_with_partner_rules() {
+  render || fail "dry run failed"
+  obj routes partner-ucbatm-ws | jq -e '(.uris | index("/partner/ucbatm/ws/v1") != null)
+    and (.uris | index("/partner/ucbatm/ws/v1/*") != null)
+    and (.methods | sort) == ["GET", "POST"]
+    and (.plugins["ip-restriction"].whitelist | length) > 0
+    and .plugins["client-control"].max_body_size == 16384
+    and .plugins["limit-count"].key == "remote_addr"
+    and (.plugins | has("openid-connect") | not)
+    and .upstream.nodes["mw-adapter-atm:8080"] == 1' >/dev/null \
+    || fail "partner-ucbatm-ws: $(obj routes partner-ucbatm-ws | jq -c '{uris, methods, plugins: (.plugins | keys), upstream: .upstream.nodes}')"
+}
+
 # Ticket 100b: the OAUTH2_CC test route checks a partners-realm bearer token and limits by client id.
 test_oauth2_cc_route_checks_a_partners_bearer_and_limits_by_client_id() {
   render || fail "dry run failed"

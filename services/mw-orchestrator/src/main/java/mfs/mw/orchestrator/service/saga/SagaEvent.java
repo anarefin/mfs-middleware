@@ -43,6 +43,12 @@ public sealed interface SagaEvent {
     }
   }
 
+  /**
+   * The core accepted ValidateTransaction of inbound money with no partner leg (REMIT_IN, ticket
+   * 119b): the beneficiary may receive it, so CreditWallet follows at once.
+   */
+  record CreditValidated() implements SagaEvent {}
+
   record ValidationRejected() implements SagaEvent {}
 
   record HoldPlaced() implements SagaEvent {}

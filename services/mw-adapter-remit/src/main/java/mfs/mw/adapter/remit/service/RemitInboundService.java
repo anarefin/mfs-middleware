@@ -2,8 +2,9 @@ package mfs.mw.adapter.remit.service;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import java.security.GeneralSecurityException;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -20,7 +21,7 @@ import mfs.mw.adapter.remit.exception.ErrorCodes;
 import mfs.mw.adapter.remit.exception.MwException;
 import mfs.mw.adapter.remit.mapper.PartnerInboundMapper;
 import mfs.mw.adapter.remit.messaging.EventMetadata;
-import mfs.mw.adapter.remit.messaging.EventPublisher;
+import mfs.mw.adapter.remit.messaging.OutboxWriter;
 import mfs.mw.adapter.remit.partner.InboundCall;
 import mfs.mw.adapter.remit.partner.InboundResult;
 import mfs.mw.adapter.remit.partner.PartnerAuthenticationException;
@@ -32,6 +33,7 @@ import mfs.mw.adapter.remit.util.TxnIds;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -47,12 +49,14 @@ import org.springframework.transaction.support.TransactionTemplate;
  *       then reads the body with the record's {@code CALLBACK.response} mapping;
  *   <li>checks the fields (400 {@code MW-VAL-001} with details: partner reference, beneficiary
  *       MSISDN, a positive BDT amount with at most 2 decimals, sender name and ISO country);
- *   <li>deduplicates on (partner, partnerRef) and publishes in one database transaction: the {@code
- *       remittance} row and the synchronous Kafka send ({@code acks=all}) of {@code
- *       mw.partner.inbound.v1} (kind REMITTANCE, txnType REMIT_IN, a new UUIDv7 txnId) commit together,
- *       so the 202 goes out only once the event is on Kafka (a Kafka failure rolls the row back, 503, the
- *       partner sends it again). A re-send answers the same Upay reference without a second event; a
- *       re-send that changes beneficiary or amount is refused 409 {@code MW-IDEM-002}.
+ *   <li>deduplicates on (partner, partnerRef) and records in one database transaction: the {@code
+ *       remittance} row and the outbox row of {@code mw.partner.inbound.v1} (kind REMITTANCE, txnType
+ *       REMIT_IN, a new UUIDv7 txnId, inboundId stable per partner reference) commit together (spec 6.4;
+ *       M9 review: no dual write, so a lost Kafka ack can never leave two events for one reference), and
+ *       the relay publishes it after the commit. A database failure is 503 with nothing recorded. A
+ *       re-send answers the same Upay reference without a second event; a re-send that changes
+ *       beneficiary or amount is refused 409 {@code MW-IDEM-002}. The comparison uses an HMAC-SHA256
+ *       fingerprint under {@code mw.remit.fingerprint-key} (Vault), never a plain hash of the MSISDN.
  * </ol>
  *
  * The beneficiary, KYC, limit and AML checks and the core credit are mw-orchestrator's REMIT_IN flow
@@ -73,21 +77,27 @@ public class RemitInboundService {
   private final PartnerGateway partners;
   private final RemittanceRepository remittances;
   private final PartnerInboundMapper mapper;
-  private final EventPublisher publisher;
+  private final OutboxWriter outbox;
   private final TransactionTemplate tx;
   private final Clock clock;
+  private final SecretKeySpec fingerprintKey;
 
   public RemitInboundService(
       PartnerGateway partners,
       RemittanceRepository remittances,
       PartnerInboundMapper mapper,
-      EventPublisher publisher,
+      OutboxWriter outbox,
       PlatformTransactionManager transactionManager,
-      Clock clock) {
+      Clock clock,
+      @Value("${mw.remit.fingerprint-key}") String fingerprintKey) {
+    if (fingerprintKey == null || fingerprintKey.length() < 32) {
+      throw new IllegalStateException("mw.remit.fingerprint-key must be at least 32 characters (Vault)");
+    }
+    this.fingerprintKey = new SecretKeySpec(fingerprintKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
     this.partners = partners;
     this.remittances = remittances;
     this.mapper = mapper;
-    this.publisher = publisher;
+    this.outbox = outbox;
     this.tx = new TransactionTemplate(transactionManager);
     this.clock = clock;
   }
@@ -118,7 +128,7 @@ public class RemitInboundService {
                             candidate,
                             correlationId(),
                             now);
-                    publisher.publish(
+                    outbox.append(
                         TOPIC,
                         candidate,
                         new EventMetadata(event.correlationId(), candidate, event.inboundId(), 1),
@@ -130,7 +140,7 @@ public class RemitInboundService {
           .addKeyValue("event", "remit.credit.not_written")
           .addKeyValue("partnerId", partnerId)
           .addKeyValue("errorClass", e.getClass().getName())
-          .log("remittance could not be written to Kafka; not accepted");
+          .log("remittance could not be recorded; not accepted");
       throw new MwException(ErrorCodes.SYS_EVENT_NOT_WRITTEN, "The remittance could not be recorded; send it again", e)
           .withStatus(HttpStatus.SERVICE_UNAVAILABLE)
           .withRetryable(true);
@@ -229,13 +239,14 @@ public class RemitInboundService {
     return new Credit(ref, "0" + m.group(1), minor, "BDT", name.strip(), country);
   }
 
-  static String fingerprint(Credit c) {
+  /** HMAC-SHA256 hex of beneficiary, amount and currency: comparable, but no MSISDN to brute-force. */
+  String fingerprint(Credit c) {
     try {
-      byte[] h =
-          MessageDigest.getInstance("SHA-256")
-              .digest((c.msisdn() + "|" + c.valueMinor() + "|" + c.currency()).getBytes(StandardCharsets.UTF_8));
-      return HexFormat.of().formatHex(h);
-    } catch (NoSuchAlgorithmException e) {
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(fingerprintKey);
+      return HexFormat.of().formatHex(
+          mac.doFinal((c.msisdn() + "|" + c.valueMinor() + "|" + c.currency()).getBytes(StandardCharsets.UTF_8)));
+    } catch (GeneralSecurityException e) {
       throw new IllegalStateException(e);
     }
   }

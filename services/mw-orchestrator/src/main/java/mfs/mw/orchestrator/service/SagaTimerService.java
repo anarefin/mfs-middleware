@@ -67,6 +67,12 @@ public class SagaTimerService {
         continue;
       }
       TransactionRecord rec = found.get();
+      if (SagaEngine.MERCHANT_NOTIFY_TIMER.equals(timer.step())) {
+        if (rec.status() == Status.COMPLETED) {
+          engine.sendMerchantNotify(rec, timer.attempt()); // M9 review: a NOTIFY retry after its backoff
+        }
+        continue;
+      }
       try {
         if (rec.status() == Status.UNKNOWN && SagaEngine.INQUIRY_TIMER.equals(timer.step())) {
           inquiries.due(rec, timer.attempt()); // spec 7.4: inquire, or MANUAL_REVIEW after the last inquiry

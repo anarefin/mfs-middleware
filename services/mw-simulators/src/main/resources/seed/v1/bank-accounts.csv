@@ -8,5 +8,8 @@ bank,accountNumber,holderName,status,balance
 *,1234567892,Sajid Hasan,ACTIVE,100.00
 *,1234567893,Nusrat Jahan,DORMANT,10000.00
 *,1234567894,Abdul Karim,CLOSED,0.00
+# M9 review owner binding: the pending-credit trigger (ending 95) held by customer01 (01711000001), so the
+# API suite can link it; an unlisted number opens as "Test Customer" and no seeded wallet can link it
+*,1234567895,Rahim Uddin,ACTIVE,100000.00
 dbbl,2001000101,Farhana Akter,ACTIVE,750000.00
 sonali,3001000101,Mizanur Rahman,ACTIVE,750000.00

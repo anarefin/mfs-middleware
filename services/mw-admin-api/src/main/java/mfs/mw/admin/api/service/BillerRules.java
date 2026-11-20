@@ -19,6 +19,11 @@ final class BillerRules {
   private static final Pattern FIELD_NAME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9]{0,31}$");
   private static final Set<String> CATEGORIES = Set.of("UTILITY", "OTHER");
   private static final Set<String> RULES = Set.of("FIXED", "MINIMUM", "OPEN");
+  /** The keys of {@code BillerValue} (M9 review: an unknown key would be published once, then dropped). */
+  private static final Set<String> KEYS = Set.of(
+      "code", "nameEn", "nameBn", "category", "primaryAggregator", "fallbackAggregator", "fields", "amountRule",
+      "minAmountMinor", "maxAmountMinor", "billMonthRequired", "enabled", "maintenanceEn", "maintenanceBn");
+  private static final Set<String> FIELD_KEYS = Set.of("name", "labelEn", "labelBn", "regex", "required");
 
   private BillerRules() {}
 
@@ -28,6 +33,7 @@ final class BillerRules {
       out.add("value is required");
       return out;
     }
+    v.keySet().stream().filter(k -> !KEYS.contains(k)).sorted().forEach(k -> out.add(k + " is not a biller key"));
     text(v, "nameEn", 200, true, out);
     text(v, "nameBn", 200, true, out);
     if (!CATEGORIES.contains(String.valueOf(v.get("category")))) {
@@ -62,13 +68,21 @@ final class BillerRules {
       out.add("fields is a list of at most 10 input fields");
       return;
     }
+    Set<String> names = new java.util.HashSet<>();
     for (int i = 0; i < list.size(); i++) {
       if (!(list.get(i) instanceof Map<?, ?> f)) {
         out.add("fields[" + i + "] is an object");
         continue;
       }
+      for (Object k : f.keySet()) {
+        if (!FIELD_KEYS.contains(String.valueOf(k))) {
+          out.add("fields[" + i + "]." + k + " is not a field key");
+        }
+      }
       if (!(f.get("name") instanceof String n) || !FIELD_NAME.matcher(n).matches()) {
         out.add("fields[" + i + "].name is a field name");
+      } else if (!names.add(n.toLowerCase(java.util.Locale.ROOT))) {
+        out.add("fields[" + i + "].name is used twice");
       }
       for (String label : List.of("labelEn", "labelBn")) {
         if (!(f.get(label) instanceof String s) || s.isBlank() || s.length() > 100) {
