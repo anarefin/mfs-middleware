@@ -158,7 +158,8 @@
 123-file-mocks                              102,94            done     90m      72 files +3401 −39     57a73927
 124-mw-compliance-ekyc                      94,102,106        split (124-split-decisions.md)
 124a-compliance-ekyc-api                    94,102,106        done     ~60m     152 files +11689 −14   81f431f6,b984ba1b,3be57f1e  (3 security fixes: subject scoping, NID reuse -> MANUAL_REVIEW, unscoped read-only)
-124b-compliance-wiring                      124a              open   (EC mock, app onboarding routes, Keycloak/mw-crypto/mTLS, consumers, Newman 64; core KYC level endpoint: user decision)
+124b-compliance-wiring                      124a              done     53m      78 files +4688 −89     6cd5f1bd,838ea734,cca74793,47887e5f,f40ac999 (merge 7876361d; core PUT kyc-level mw-compliance only; DOB-only -> MANUAL_REVIEW; EC NID mock; compliance port 8103 + KC_MW_COMPLIANCE_SECRET (re-copy .env); app.v1 1.19.0 onboarding; open: retryable false after a failed core call, BASIC never issued)
+124c-kyc-consumers-suite                    124b              open   (mw-notify SMS + mw-audit-dw row on mw.kyc.completed.v1, topics.txt retry groups, Newman 64-ekyc, log-scan; see 124-split-decisions.md)
 125-aml-feed-actions                        124,123,96        open
 126-mw-recon-matching                       123,95            done     -        150 files, +10903 −38  62f06496
 127-mw-recon-reports                        126               done (split 127a,127b,127c; 127-split-decisions.md)
