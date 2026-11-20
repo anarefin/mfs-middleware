@@ -1,0 +1,2 @@
+# Tests only: the fake vault (partner/FakeVaultFunction) is found before camel-hashicorp-vault's.
+class=mfs.mw.adapter.merchant.partner.FakeVaultFunction

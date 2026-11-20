@@ -1,0 +1,132 @@
+# Dev profile only (SPRING_PROFILES_ACTIVE=dev): set by deploy/docker-compose.yml for the dev stack
+# and by the test config. The seed partner (version 0) points at mw-simulators over plain http; the
+# packaged application.yml has none, so a production start has no partners. Plain http still needs
+# MW_PARTNER_INSECURE_HTTP_HOSTS (docker-compose.yml sets it).
+mw:
+  partners:
+    # Dry-runs of new partner versions go to mw-simulators' programmable stub (ticket 83).
+    dry-run:
+      base-url: ${MW_PARTNER_DRY_RUN_BASE_URL:http://mw-simulators:8080/sim/partners/{partnerId}}
+    instances:
+      # Merchant system over SOAP (ticket 115, FRS UC-11 / EXT-11; mw-simulators MerchantSoapMock in 115b):
+      # SOAP 1.1 POST /merchant/v1/soap, namespace urn:merchant:v1, WS-Security UsernameToken user bits,
+      # password field ws-password of secret/mw-adapter-merchant/merchant-soap (dev value
+      # MERCHANT_SOAP_WS_PASSWORD, deploy/provision/services.sh). INQUIRY = ValidateMerchant (merchant
+      # exists, active, till valid; before the hold), PAY = NotifyPayment (after COMMIT, best effort),
+      # REVERSE = Refund. A soap:Client fault with a code is FAILED MW-PTR-MERCHANT-SOAP-<suffix>; a
+      # soap:Server fault or any other reply is UNKNOWN.
+      merchant-soap:
+        family: merchant
+        base-url: ${MERCHANT_SOAP_BASE_URL:http://mw-simulators:8080}
+        allowed-hosts: ${MW_MERCHANT_SOAP_ALLOWED_HOSTS:mw-simulators}
+        connect-timeout-ms: 3000
+        timeout-ms: 10000
+        read-timeout-ms: 12000
+        inquiry-retries: 1
+        sensitive-fields:
+          merchantId: PARTY_ID
+        ambiguous-codes: ["9876"]
+        error-map:
+          "[5001]": { suffix: MERCHANT_NOT_FOUND, retryable: false }
+          "[5002]": { suffix: MERCHANT_INACTIVE, retryable: false }
+          "[5003]": { suffix: INVALID_TILL, retryable: false }
+          "[5004]": { suffix: REFUND_REFUSED, retryable: false }
+        route: |
+          - route:
+              from:
+                uri: direct:partner-merchant-soap
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${header.mwOperation} == 'INQUIRY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=INQUIRY.request"
+                            - to: "kamelet:mw-soap-call?address=${mw.partners.instances.merchant-soap.base-url}/merchant/v1/soap&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:merchant:v1:ValidateMerchant&wsUsername=bits&wsPasswordSecret=ws-password"
+                            - to: "kamelet:mw-classify?mapping=INQUIRY.response&definiteStatuses=200"
+                        - simple: "${header.mwOperation} == 'PAY'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=PAY.request"
+                            - to: "kamelet:mw-soap-call?address=${mw.partners.instances.merchant-soap.base-url}/merchant/v1/soap&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:merchant:v1:NotifyPayment&wsUsername=bits&wsPasswordSecret=ws-password"
+                            - to: "kamelet:mw-classify?mapping=PAY.response&definiteStatuses=200"
+                        - simple: "${header.mwOperation} == 'REVERSE'"
+                          steps:
+                            - to: "kamelet:mw-map?mapping=REVERSE.request"
+                            - to: "kamelet:mw-soap-call?address=${mw.partners.instances.merchant-soap.base-url}/merchant/v1/soap&request=soap.request.xsl&response=soap.response.xsl&soapAction=urn:merchant:v1:Refund&wsUsername=bits&wsPasswordSecret=ws-password"
+                            - to: "kamelet:mw-classify?mapping=REVERSE.response&definiteStatuses=200"
+                  - to: "kamelet:mw-audit"
+        mappings:
+          "[INQUIRY.request]": |
+            {"op": "VALIDATE", "merchantId": creditParty.id, "tillId": attributes.tillId ? attributes.tillId : ""}
+          "[PAY.request]": |
+            {"op": "NOTIFY", "merchantId": creditParty.id, "tillId": attributes.tillId ? attributes.tillId : "",
+             "amount": amount.major, "reference": reference}
+          "[REVERSE.request]": |
+            {"op": "REFUND", "merchantId": creditParty.id, "amount": amount.major, "reference": reference,
+             "refundId": reversalReference}
+          "[soap.request.xsl]": |
+            <xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+                xmlns:fn="http://www.w3.org/2005/xpath-functions" xmlns:m="urn:merchant:v1" exclude-result-prefixes="fn">
+              <xsl:template match="/fn:map[fn:string[@key='op'] = 'NOTIFY']">
+                <m:NotifyPayment>
+                  <m:merchantId><xsl:value-of select="fn:*[@key='merchantId']"/></m:merchantId>
+                  <m:tillId><xsl:value-of select="fn:*[@key='tillId']"/></m:tillId>
+                  <m:amount><xsl:value-of select="fn:*[@key='amount']"/></m:amount>
+                  <m:reference><xsl:value-of select="fn:*[@key='reference']"/></m:reference>
+                </m:NotifyPayment>
+              </xsl:template>
+              <xsl:template match="/fn:map[fn:string[@key='op'] = 'REFUND']">
+                <m:Refund>
+                  <m:merchantId><xsl:value-of select="fn:*[@key='merchantId']"/></m:merchantId>
+                  <m:amount><xsl:value-of select="fn:*[@key='amount']"/></m:amount>
+                  <m:reference><xsl:value-of select="fn:*[@key='reference']"/></m:reference>
+                  <m:refundId><xsl:value-of select="fn:*[@key='refundId']"/></m:refundId>
+                </m:Refund>
+              </xsl:template>
+              <xsl:template match="/fn:map" priority="-1">
+                <m:ValidateMerchant>
+                  <m:merchantId><xsl:value-of select="fn:*[@key='merchantId']"/></m:merchantId>
+                  <m:tillId><xsl:value-of select="fn:*[@key='tillId']"/></m:tillId>
+                </m:ValidateMerchant>
+              </xsl:template>
+            </xsl:stylesheet>
+          "[soap.response.xsl]": |
+            <xsl:stylesheet version="3.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+                xmlns:m="urn:merchant:v1" xmlns:f="urn:bits:mw:soap-fault">
+              <xsl:output method="json"/>
+              <xsl:template match="/m:ValidateMerchantResponse">
+                <xsl:sequence select="map{'reply': 'VALIDATE', 'status': string(m:status), 'merchantRef': string(m:merchantRef)}"/>
+              </xsl:template>
+              <xsl:template match="/m:NotifyPaymentResponse">
+                <xsl:sequence select="map{'reply': 'NOTIFY', 'status': string(m:status), 'notifyRef': string(m:notifyRef),
+                    'code': string(m:code)}"/>
+              </xsl:template>
+              <xsl:template match="/m:RefundResponse">
+                <xsl:sequence select="map{'reply': 'REFUND', 'status': string(m:status), 'refundRef': string(m:refundRef),
+                    'code': string(m:code)}"/>
+              </xsl:template>
+              <xsl:template match="/f:fault">
+                <xsl:sequence select="map{'fault': string(@code), 'code': string(f:detail/m:error/m:code),
+                    'message': string(f:detail/m:error/m:message)}"/>
+              </xsl:template>
+              <xsl:template match="/*" priority="-1">
+                <xsl:sequence select="map{'reply': 'OTHER'}"/>
+              </xsl:template>
+            </xsl:stylesheet>
+          "[INQUIRY.response]": |
+            body.reply = "VALIDATE" and body.status = "ACTIVE" and body.merchantRef != ""
+              ? {"outcome": "SUCCESS", "partnerRef": body.merchantRef}
+            : body.fault = "Client" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}
+          "[PAY.response]": |
+            body.reply = "NOTIFY" and body.status = "RECEIVED" and body.notifyRef != ""
+              ? {"outcome": "SUCCESS", "partnerRef": body.notifyRef, "code": body.code != "" ? body.code}
+            : body.fault = "Client" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}
+          "[REVERSE.response]": |
+            body.reply = "REFUND" and body.status = "REFUNDED" and body.refundRef != ""
+              ? {"outcome": "SUCCESS", "partnerRef": body.refundRef, "code": body.code != "" ? body.code}
+            : body.fault = "Client" and body.code != ""
+              ? {"outcome": "FAILED", "code": body.code, "message": body.message}
+            : {"outcome": "UNKNOWN", "reason": "MALFORMED_REPLY"}

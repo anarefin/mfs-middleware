@@ -116,7 +116,7 @@
 113c-biller-amount-rule                     113a              in progress
 114-bill-aggregators                        113,97,102        open
 115-mw-adapter-merchant                     97,102            split (115-split-decisions.md, 2026-11-20)
-115a-merchant-adapter                       97,102            in progress
+115a-merchant-adapter                       97,102            done     31m      270 files +25395 −31   a58834bd,679349b0 (admin-api migration renumbered V17 at merge)
 115b-merchant-pay-flow                      115a,113          open
 139-dry-run-oauth2-isolation                115a              open   (security follow-up: dry-run keeps live tokenUrl; all adapter copies)
 116-checkout-refund-list                    95,96             split (116-split-decisions.md, 2026-11-20)
