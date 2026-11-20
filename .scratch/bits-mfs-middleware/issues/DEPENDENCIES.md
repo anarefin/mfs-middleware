@@ -143,7 +143,8 @@
 120a-atm-adapter-inbound                    95,97,102         done     -        283 files +26354 −31   372dceb2  (admin-api V20 atm; host port 8100. Inbound SOAP recorded locally; publish, token, cash flows, Newman 54 -> 120b)
 120b-atm-token-flows                        120a              split (120-split-decisions.md, 1 h cap)
 120b1-atm-inbound-hardening                 120a              done     55m      22 files +755 −122     490f8531  (cash ops fail closed behind mw.atm.inbound.cash-enabled; state CAS + HMAC fingerprint, atm V9; APISIX partner-ucbatm-ws; PasswordDigest + nonce/Created)
-120b2-atm-token-issue                       120b1             open   (POST /app/v1/atm/tokens, PIN step-up, HMAC via mw-crypto, lockout)
+120b2-atm-token-issue                       120b1             done     ~60m     71 files +2475 −158    dd71de9b,b896926e,ca777d53,f9de8c2d (merge 6bf20664; app.v1 1.18.0; mw-auth per-path caller rules, step-up compare-and-delete MW-AUTH-049; adapter DECLINED on bad token)
+120b2b-atm-auth-wiring                      120b2             open   (Keycloak services client mw-adapter-atm + secret, Vault provision, mTLS client cert, shell tests; before 120b3; after 124b to avoid Keycloak/provision conflicts)
 120b3-atm-cash-flows                        120b2             open   (atm branch of mw.partner.inbound.v1, ATM_CASH_OUT/IN flows, cash-enabled on, mock ATM page signs digest, AtmCashOutIT, Newman 54)
 # --- M10 gate: UC-13..17
 121-mw-adapter-interop                      92,97,102         split (121-split-decisions.md, 2026-11-20)
