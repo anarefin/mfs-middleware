@@ -7,8 +7,10 @@ info:
     trail. Its client is mw-admin-api, over the `app` zone network (`http://mw-audit-dw:8080`);
     it is not routed by APISIX and has no edge route. It reads as the read-only role
     `audit_reader`. Values are returned as stored, i.e. already masked (spec 18.3); operator
-    usernames (actor.id of a `user`) are staff data and are not masked. MSISDN search is done on
-    the transaction (mw-orchestrator `txn-query.v1`, keyed hash), then the audit trail by txnId.
+    usernames (actor.id of a `user`) are staff data and are not masked. Ticket 130 (FRS AUD-03..05):
+    the search also filters by the transaction's partner, channel, latest status, amount range and
+    a party's MSISDN (tokenised, TOKENISE_MSISDN; only tokens are stored) through the search
+    projection of `mw.txn.status.v1`; a transaction's per-hop timeline and an audited CSV export.
     Every page also carries the status of the signed daily anchors (`anchor`, ticket 74) for the
     admin console's audit view. Every error is the 5.3 envelope.
 servers:
@@ -40,6 +42,12 @@ paths:
           schema: { type: string, format: date-time }
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
         - { name: offset, in: query, schema: { type: integer, minimum: 0, maximum: 100000, default: 0 } }
+        - { $ref: "#/components/parameters/Partner" }
+        - { $ref: "#/components/parameters/Channel" }
+        - { $ref: "#/components/parameters/Status" }
+        - { $ref: "#/components/parameters/AmountMin" }
+        - { $ref: "#/components/parameters/AmountMax" }
+        - { $ref: "#/components/parameters/Msisdn" }
         - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
       responses:
         "200":
@@ -50,7 +58,118 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /internal/v1/audit/transactions/{txnId}/timeline:
+    get:
+      operationId: auditTimeline
+      summary: One transaction's per-hop timeline with latencies and masked payloads
+      description: >-
+        Ticket 130 (FRS AUD-04): every audit event of the transaction in the order it happened, as
+        hops (channel in, orchestrator steps, core calls, partner calls, callbacks, notifications;
+        the producer's hop or one inferred from the action), each with its own latency
+        (durationMs, when the producer measured it), the time since the first hop (sinceStartMs)
+        and since the previous hop (gapMs), and its masked payloads. An unknown transaction has no
+        hops. mw-admin-api shows it on the transaction detail. Errors: 400 MW-VAL-001 (txnId not a
+        UUID).
+      parameters:
+        - name: txnId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The timeline
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Timeline" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /internal/v1/audit/search/export.csv:
+    get:
+      operationId: exportAuditEvents
+      summary: Export an audit search as CSV; the export itself is audited
+      description: >-
+        Ticket 130 (FRS AUD-05): the same filters as searchAuditEvents (no paging), at most
+        `mw.audit-dw.query.export-max-rows` rows (default 10,000) in the order they happened; header
+        `X-Mw-Export-Truncated` says whether the cap cut the result. Every export first writes one
+        operator-action record into the audit trail (action `audit.search.exported`, actor the
+        operator of `X-Mw-Operator-Id`, `after` = the filters (an MSISDN only as "given"), the row
+        count and whether it was truncated). Values are as stored (masked); a cell starting with
+        `=`, `+`, `-` or `@` is prefixed with `'`. Errors: 400 MW-VAL-001 (bad filter, operator
+        missing), 503 MW-SYS-002 (MSISDN search not available).
+      parameters:
+        - name: X-Mw-Operator-Id
+          in: header
+          required: false
+          description: The operator who exports (staff username); required by the service (400 when missing)
+          schema: { type: string, minLength: 1, maxLength: 128 }
+        - { name: txnId, in: query, schema: { type: string, format: uuid } }
+        - { name: actorType, in: query, schema: { type: string, minLength: 1, maxLength: 32 } }
+        - { name: actorId, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: action, in: query, schema: { type: string, minLength: 1, maxLength: 128 } }
+        - { name: resource, in: query, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { name: outcome, in: query, schema: { type: string, minLength: 1, maxLength: 32 } }
+        - { name: from, in: query, description: Inclusive lower bound of `at`, schema: { type: string, format: date-time } }
+        - { name: to, in: query, description: Exclusive upper bound of `at`, schema: { type: string, format: date-time } }
+        - { $ref: "#/components/parameters/Partner" }
+        - { $ref: "#/components/parameters/Channel" }
+        - { $ref: "#/components/parameters/Status" }
+        - { $ref: "#/components/parameters/AmountMin" }
+        - { $ref: "#/components/parameters/AmountMax" }
+        - { $ref: "#/components/parameters/Msisdn" }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: >-
+            RFC 4180 CSV (CRLF line ends), header row `at,recordedAt,auditId,txnId,correlationId,hop,direction,durationMs,actorType,actorId,action,resource,outcome,service,payloadRef,month,seq`
+          headers:
+            X-Mw-Export-Truncated:
+              description: true when more rows matched than the cap allows
+              schema: { type: string, enum: ["true", "false"] }
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
 components:
+  parameters:
+    Partner:
+      name: partner
+      in: query
+      description: Ticket 130 (FRS AUD-03) - the transaction's partner id (search projection audit.txn_index)
+      schema: { type: string, minLength: 1, maxLength: 64 }
+    Channel:
+      name: channel
+      in: query
+      description: Ticket 130 - the transaction's channel
+      schema: { type: string, minLength: 1, maxLength: 32 }
+    Status:
+      name: status
+      in: query
+      description: Ticket 130 - the transaction's latest status
+      schema: { type: string, minLength: 1, maxLength: 32 }
+    AmountMin:
+      name: amountMin
+      in: query
+      description: Ticket 130 - inclusive lower bound of the transaction amount, minor units (poisha)
+      schema: { type: integer, format: int64, minimum: 0 }
+    AmountMax:
+      name: amountMax
+      in: query
+      description: Ticket 130 - inclusive upper bound of the transaction amount, minor units (poisha)
+      schema: { type: integer, format: int64, minimum: 0 }
+    Msisdn:
+      name: msisdn
+      in: query
+      description: >-
+        Ticket 130 - a party's MSISDN (01XXXXXXXXX, 8801XXXXXXXXX or +8801XXXXXXXXX). It is tokenised
+        (mw-crypto TOKENISE_MSISDN) and only the token is searched; 400 when it is not a mobile
+        number, 503 MW-SYS-002 when tokenising is switched off.
+      schema: { type: string, minLength: 11, maxLength: 20 }
   securitySchemes:
     internalClientCredentials:
       type: oauth2
@@ -95,6 +214,60 @@ components:
         payloadRef: { type: string }
         before: { type: object }
         after: { type: object }
+        hop:
+          type: string
+          enum: [CHANNEL_IN, ORCHESTRATOR, CORE_CALL, PARTNER_CALL, PARTNER_CALLBACK, NOTIFICATION]
+          description: Ticket 130 - the event's hop, as sent or inferred from the action; absent when neither
+        direction: { type: string, enum: [IN, OUT], description: Ticket 130 - the hop's direction seen from the middleware }
+        durationMs: { type: integer, format: int64, description: Ticket 130 - the hop's latency as the producer measured it }
+    Timeline:
+      type: object
+      required: [txnId, hops, totalMs, anchor]
+      properties:
+        txnId: { type: string, format: uuid }
+        hops:
+          type: array
+          items: { $ref: "#/components/schemas/TimelineHop" }
+        totalMs: { type: integer, format: int64, description: From the first hop to the last }
+        anchor: { $ref: "#/components/schemas/AnchorStatus" }
+    TimelineHop:
+      type: object
+      required: [auditId, month, seq, at, action, service, actor, resource, outcome, sinceStartMs, payloads]
+      properties:
+        auditId: { type: string, format: uuid }
+        month: { type: string }
+        seq: { type: integer }
+        at: { type: string, format: date-time }
+        hop:
+          type: string
+          enum: [CHANNEL_IN, ORCHESTRATOR, CORE_CALL, PARTNER_CALL, PARTNER_CALLBACK, NOTIFICATION]
+        direction: { type: string, enum: [IN, OUT] }
+        action: { type: string }
+        service: { type: string }
+        actor:
+          type: object
+          required: [type, id]
+          properties:
+            type: { type: string }
+            id: { type: string }
+        resource: { type: string }
+        outcome: { type: string }
+        durationMs: { type: integer, format: int64, description: The hop's own latency (producer-measured) }
+        sinceStartMs: { type: integer, format: int64, description: Time since the first hop }
+        gapMs: { type: integer, format: int64, description: Time since the previous hop (absent on the first) }
+        payloadRef: { type: string }
+        payloads:
+          type: array
+          items:
+            type: object
+            required: [direction, contentType]
+            properties:
+              direction: { type: string, enum: [IN, OUT] }
+              contentType: { type: string }
+              body: { type: string, description: Masked (producer) and scrubbed again (mw-audit-dw) }
+              payloadRef: { type: string, description: The full masked body in an adapter's payload store }
+              size: { type: integer, description: UTF-8 bytes of body }
+              sha256: { type: string, description: Hex SHA-256 of body, part of the hash chain }
     AuditPage:
       type: object
       required: [items, limit, offset, anchor]

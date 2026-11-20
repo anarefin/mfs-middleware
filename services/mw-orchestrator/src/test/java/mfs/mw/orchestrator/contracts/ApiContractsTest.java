@@ -24,12 +24,14 @@ import tools.jackson.databind.json.JsonMapper;
  * The API this module serves ({@code produces.apis}: {@code txn-query.v1}): the response bodies of
  * {@code controller/TransactionQueryController}, built from fixtures through the real view mapper
  * and serialised with the service JsonMapper (the one Spring MVC uses), validate against the
- * OpenAPI component schemas. The module calls no API ({@code consumes.apis} is empty).
+ * OpenAPI component schemas. The one API it calls ({@code consumes.apis}) is the core wallet's (ADR D31,
+ * ticket 95a): {@code client/CoreWalletClientTest} checks its request bodies against that contract.
  */
 class ApiContractsTest {
 
   private static final String API = "api/mw-orchestrator/txn-query.v1.openapi.yaml";
   private static final String TEST_API = "api/mw-orchestrator/orchestrator-test.v1.openapi.yaml";
+  private static final String CORE_API = "api/mw-core-mock/core-wallet.v1.openapi.yaml";
   private static final JsonMapper JSON = ContractManifest.serviceJsonMapper();
   private static final RequestMapper REQUESTS = new RequestMapper(JSON);
 
@@ -52,7 +54,7 @@ class ApiContractsTest {
   @Test
   void theApiIsTheOneTheManifestSaysThisModuleServes() {
     assertThat(ContractManifest.entries("produces", "apis")).containsExactly(API, TEST_API);
-    assertThat(ContractManifest.entries("consumes", "apis")).isEmpty();
+    assertThat(ContractManifest.entries("consumes", "apis")).containsExactly(CORE_API);
   }
 
   @Test

@@ -16,3 +16,8 @@ Ticket 95 was ~1 day of work (4 modules, ~14 ITs on the Kafka CoreStub), so it i
   `POST /core/v1/accounts/{walletId}/unlock` and the verify-factors call; then retire the core command topics/contracts and
   mw-core-mock's `CoreCommandListener` (core *events* stay on Kafka, D31).
 - **95c** (after 95a, 94): orchestrator consumes `HoldExpired` and wallet-state events (94 added HoldExpired).
+
+95a done (b43b392f, 53c83472). Added to **95b**: after 103, a legacy `DROP_REPLY` core fault only drops the Kafka event, so
+the Newman `S.dropReply(...)` lost-answer scenarios (folders 01, 03, 04, 05, 09, 11) would COMPLETE instead of going UNKNOWN.
+Make the legacy DROP_REPLY (and the core party's NO_CALLBACK) also lose the REST answer (TIMEOUT/5xx after the posting is
+made) so those folders keep their UNKNOWN -> inquiry path; test it. Also retire `CoreCommandMapperTest`'s schema input.

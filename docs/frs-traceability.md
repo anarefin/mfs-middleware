@@ -161,9 +161,9 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | ID | Status | Repo / evidence or reason |
 | --- | --- | --- |
 | PLT-001 | done | APISIX is the only port beyond loopback (D3 amendment); production is edge-only |
-| PLT-002 | ticket 100 | app JWTs (mw-auth) and merchant API key + HMAC built; partner client credentials and inbound mTLS in 100 |
-| PLT-003 | tickets 100, 132 | client registry (APISIX consumers) API in 100, console in 132 |
-| PLT-004 | ticket 100 | 429 with `Retry-After` on every route, one bucket per route group keyed per client (ticket 99, `lua/edge-error-headers.lua`, `test_apisix_edge.sh`, `scripts/edge-test.sh`); counters in Redis (ticket 90, D29); token-bucket quotas per registered client 100 |
+| PLT-002 | ticket 100 | app JWTs (mw-auth) and merchant API key + HMAC built; the client registry records each client's auth method (ticket 100a); partner client credentials (100b) and inbound mTLS (100c) follow |
+| PLT-003 | ticket 132 | client registry built (ticket 100a): mw-admin-api `admin.channel_client` (V12), `/admin/v1/channel-clients` maker-checker (`ChannelClientChangeRequestIT`), projected to APISIX consumers + consumer groups after the approval commits and on a ShedLock reconcile (`service/ApisixConsumerSync`, `ApisixConsumerSyncTest`), secrets as `$secret://vault/edge/...` on the Vault KV v1 mount `apisix/`; today's clients seeded by mw-seeder (`seed-channel-clients`); console in 132 |
+| PLT-004 | ticket 100 | 429 with `Retry-After` on every route, one bucket per route group keyed per client (ticket 99, `lua/edge-error-headers.lua`, `test_apisix_edge.sh`, `scripts/edge-test.sh`); counters in Redis (ticket 90, D29); per registered client with an APISIX consumer: `limit-req` rate and `limit-count` daily quota in its consumer group (ticket 100a, `ApisixConsumerSyncTest`); consumer-less clients keyed by token client id in 100b |
 | PLT-005 | done | `CorrelationIdFilter` in every service, `MwHeaders` on Kafka, propagated on outbound calls (root `CLAUDE.md`) |
 | PLT-006 | ticket 108 | Bean Validation and body JSON Schema (`MW-VAL-001`) built; XSD with the SOAP facade |
 | PLT-007 | done | `MaskingPolicy` and `@Sensitive` in every service, `scripts/log-scan.sh`; mask shape `0171****789` (repo rule) |
@@ -174,16 +174,16 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | PLT-013 | done | mw-orchestrator `service/DuplicateGuard` (60 s, `MW_DUPLICATE_WINDOW`): app/USSD `MW-VAL-024` + `confirmDuplicate` (USSD asks the PIN again), API clients `MW-VAL-025` (`DuplicateGuardTest`, `DuplicateGuardIT`, ticket 99); API folder 36 |
 | PLT-014 | tickets 118, 119, 121 | bank and billpay callbacks deduplicated by partner reference (inbox) and signed nonces (ticket 99) built; card, IMT, NPSB in their adapters |
 | PLT-020 | done | saga steps with compensation (`saga_step`, spec 7.1) |
-| PLT-021 | done | step state persisted per step; resume after restart (`scripts/chaos.sh`) |
+| PLT-021 | done | step state persisted per step; resume after restart (`scripts/chaos.sh`); a core REST call starts only after its step commits and its answer re-enters the saga in its own transaction (ticket 95a, `CoreCallDispatcher`, `CoreReplyService`) |
 | PLT-022 | ticket 96 | core-side compensation built; the partner leg in reverse order in 96 |
-| PLT-023 | ticket 96 | `UNKNOWN` and the inquiry schedule built (spec 7.4); FRS default 30 s / 2 min / 10 min / 1 h in 96 |
+| PLT-023 | ticket 96 | `UNKNOWN` and the inquiry schedule built (spec 7.4); a core call without a definite answer (timeout, 5xx) goes UNKNOWN on its step deadline and WAL-13 settles it (ticket 95a, `CoreRestFlowIT`); FRS default 30 s / 2 min / 10 min / 1 h in 96 |
 | PLT-024 | ticket 96 | `MANUAL_REVIEW` after the cut-off built; alert event and metric in 96 |
 | PLT-025 | ticket 96 | partner REVERSE, idempotent and retried until acknowledged |
 | PLT-026 | ticket 105 | core fee returned at validation; preview with fee, VAT and commission in 105 |
-| PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector in ticket 95 |
+| PLT-030 | done | Resilience4j per partner (spec 19.2), timeouts set from the console; the core connector `client/CoreWalletClient` (connect/read timeouts, breaker `core`, reads retried only; ticket 95a) |
 | PLT-031 | done | no automatic redelivery of a PAY (D28); INQUIRY and STATUS retried |
 | PLT-032 | ticket 98 | fast failure `MW-SYS-PARTNER_CIRCUIT_OPEN` built; failover routing in 98 |
-| PLT-033 | done | bulkhead per partner (`MW-SYS-PARTNER_BUSY`), one adapter per family (D32) |
+| PLT-033 | done | bulkhead per partner (`MW-SYS-PARTNER_BUSY`), one adapter per family (D32); bulkhead `core` on the core calls, each on its own virtual thread (ticket 95a) |
 | PLT-034 | done | Kafka retry topics and DLQ (D2, D27); the AML and DW feeds use them (tickets 125, 128) |
 | PLT-035 | done | transactional outbox in every producing service (spec 6.4) |
 | PLT-040 | ticket 98 | routing rules in the mw-orchestrator routing module |
@@ -255,7 +255,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CON-01 | done | partner engine (D28) with PAY, INQUIRY, STATUS_QUERY, REVERSE (`reverse:<txnId>`, sent once) and the optional `HEALTH_CHECK` probe (ticket 97; `PartnerReverseRouteIT`, `PartnerRouteHealthTest`) |
 | CON-02 | tickets 114, 131, 136 | partner routes as config with maker-checker built (D28); proven per family in 114, by console alone in 131, 136 |
 | CON-03 | done | JSONata and XSLT mappings in versioned partner records with maker-checker (D28, mw-admin-api) |
-| CON-04 | ticket 130 | partner audit event and raw masked payload store `partner_payload` with latency and `payloadRef` built (ticket 97, `PartnerPayloadIT`); audit side 130 |
+| CON-04 | done | partner audit event and raw masked payload store `partner_payload` with latency and `payloadRef` (ticket 97, `PartnerPayloadIT`); audit side (ticket 130): the adapters send the masked bodies as `payload` with hop PARTNER_CALL and the latency, mw-audit-dw scrubs them again and chains them in `audit.payload` (`PartnerAuditPublisherTest`, `PayloadScrubTest`, `HashChainWithPayloadIT`) |
 | CON-05 | done | `PartnerRouteHealth`: UP, DEGRADED, DOWN, MAINTENANCE (+ DISABLED, DELETED), changes on `mw.partner.route.status.v1` `health` (ticket 97) |
 | CON-06 | ticket 136 | developer guide and sample connector |
 | EXT-01 | ticket 109 | USSD gateway simulator (GP, SMPP) built; four MNOs in 109 |
@@ -275,7 +275,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | EXT-15 | ticket 119 | UCB IMT mock |
 | EXT-16 | ticket 120 | UCB ATM mock |
 | EXT-17 | ticket 128 | mock side done (ticket 123): party `dw` checks each `control_<date>.json` drop of `dw/in` (row count, sha256, header per file type, `seed/v1/dw/schemas.json`), verdict in the journal (`DwDropValidatorTest`, `SftpMocksIT`); the export in 128 |
-| EXT-18 | ticket 95 | core over REST (D31): the mock serves it, `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93); the orchestrator's client in 95 |
+| EXT-18 | ticket 95 | core over REST (D31): the mock serves `/core/v1` (`api/mw-core-mock/core-wallet.v1.openapi.yaml`, ticket 93) and the orchestrator calls it (`client/CoreWalletClient`, ticket 95a); mw-auth and mw-admin-api still send Kafka commands until 95b |
 | MCK-01 | done | the simulators speak the real protocols (SMPP binds, SOAP, HMAC, mTLS); each new mock keeps the rule in its ticket |
 | MCK-02 | tickets 112, 114 | reverse once built in mw-simulators (ocs, billagg, c2wbank; ticket 97, `ReversalServiceTest`); stateful paid bills per aggregator 112, 114 |
 | MCK-03 | ticket 136 | magic values are the default trigger of the mock-control engine, an explicit scenario wins (ticket 102, `service/mockcontrol/ScenarioEngine`); trigger table per mock in `docs/concepts/simulators.html`; every new mock in 136 |
@@ -302,7 +302,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | WAL-10 | done | `POST /core/v1/credits` (tickets 93, 94): from the partner settlement wallet `settlementWallet` names (`SETTLEMENT_NPSB`, `SETTLEMENT_UCB_IMT`, ...), else `SETTLEMENT` |
 | WAL-11 | ticket 116 | `POST /core/v1/reversals` built (ticket 93, full, idempotent, once); partial reversal for refunds in 116 |
 | WAL-12 | ticket 107 | `GET /core/v1/statements` (tickets 93, 94): entries by wallet and range, paged, with the balance after each entry; the customer statement in 107 |
-| WAL-13 | ticket 95 | `GET /core/v1/transactions/{txnId}` built (ticket 93: status and entries); the orchestrator's inquiry uses it in 95 |
+| WAL-13 | done | `GET /core/v1/transactions/{txnId}` (ticket 93: status and entries); the orchestrator's HOLDING query, inquiry, reversal query and credit check use it (ticket 95a) |
 
 ## 8. Supporting services (FRS 8)
 
@@ -330,11 +330,11 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | CMP-03 | ticket 125 | real-time pre-check, fails open with an alert (D32) |
 | CMP-04 | ticket 124 | consent log |
 | CMP-05 | tickets 124, 134 | encrypted at rest; unmask by permission in 134 |
-| AUD-01 | ticket 130 | state changes and operator actions audited today; request and response payloads in 130 |
+| AUD-01 | ticket 130 | state changes, operator actions and partner calls audited with masked request/response payloads in the hash chain (`audit.payload`, ticket 130); open: channel request logging (CHANNEL_IN), core-call and notification hops are not sent yet |
 | AUD-02 | done | append-only audit with a hash chain (mw-audit-dw `audit_event`) |
-| AUD-03 | ticket 130 | search built (ADM-09); more filters and the 3 s / 30 day target in 130 |
-| AUD-04 | ticket 130 | saga timeline built; per-hop payloads and latency in 130 |
-| AUD-05 | ticket 130 | audited CSV export |
+| AUD-03 | done | search by txnId, actor, action, resource, outcome, time, and (ticket 130) partner, channel, status, amount range, MSISDN (TOKENISE_MSISDN token) via `audit.txn_index`; 3 s over 30 days proven by `AuditSearchPerfIT` (`slow-wait`) |
+| AUD-04 | ticket 135 | `GET /internal/v1/audit/transactions/{txnId}/timeline`: hops in order with latency, gaps and masked payloads (`TimelineIT`); mw-admin-api transaction detail does not call it yet (UI ticket 135) |
+| AUD-05 | done | `GET /internal/v1/audit/search/export.csv` with a row cap; every export writes an `audit.search.exported` operator-action record into the chain (`ExportAuditedIT`) |
 | DAT-01 | deviation | JSON Schema in Git, no schema registry (M9, D10, D31): the FRS allows JSON Schema; the registry is not run. The FRS topics come with tickets 127 (`recon.exception`) and 128 |
 | DAT-02 | ticket 128 | daily DW batch |
 | DAT-03 | ticket 128 | PII tokenisation policy |
@@ -346,7 +346,7 @@ UUIDv7 ids, amounts in poisha). The FRS is mapped, not copied; only what the rep
 | --- | --- | --- |
 | ADM-01 | ticket 131 | partner enable/disable, timeouts and routes built (M6, D28); maintenance window and mock/real switch in 131 |
 | ADM-02 | ticket 131 | partner credentials already live in Vault (`secret/mw-adapter-*/<partner>`, ticket 91); the upload and expiry dashboard are ticket 131 |
-| ADM-03 | tickets 100, 132 | channel clients |
+| ADM-03 | ticket 132 | channel clients: API built (ticket 100a, `/admin/v1/channel-clients`, maker-checker resource `channel_client`); console in 132 |
 | ADM-04 | tickets 98, 132 | routing rules |
 | ADM-05 | tickets 113, 132 | billers |
 | ADM-06 | ticket 133 | USSD menu JSON editing built; visual editor and preview in 133 |

@@ -26,6 +26,14 @@ info:
     `txnHash`). Missing or refused (signature, `aud` core, `exp`, `sub` the payer, `txnHash`, a
     `jti` another transaction used): `401 MW-AUTH-046`. A `BULK_DISBURSE` row needs none (the org
     authorised the batch by maker-checker). Credits need none (money in from a settlement wallet).
+    Balance reads (ticket 95a): the orchestrator reads a customer's balance for the customer only, with
+    the BALANCE check's `txnId`, its assertion and the `Idempotency-Key` it was signed over; ops callers
+    (mw-admin-api, mw-auth) and system wallets read without.
+
+    Operator rounds (ticket 95a): a commit, release or credit with `round` n >= 1 carries out an
+    operator's n-th forced decision and is its own operation (`<txnId>:rest:<op>:manual-<n>`), so the
+    core decides it afresh instead of repeating the refusal stored for the saga's own call (round 0 or
+    absent). A hold is committed once and a transaction credited once whatever the round.
 
     Rejections by the core are `422 MW-CORE-<reason>` with the core reason (`INSUFFICIENT_BALANCE`,
     `LIMIT_EXCEEDED_PER_TXN`, `LIMIT_EXCEEDED_DAILY`, `WALLET_NOT_FOUND`, `CREDIT_WALLET_NOT_FOUND`,
@@ -69,15 +77,28 @@ paths:
     get:
       operationId: getBalance
       summary: "WAL-03: available, held and total balance"
+      description: >-
+        With `X-Txn-Assertion` (a customer's own read, the BALANCE check of ADR D26; ticket 95a): the
+        BalanceInquiry of `txnId`, idempotent by it, the assertion checked (subject the wallet, txnHash over
+        BALANCE, amount 0, the wallet on both sides, `Idempotency-Key`, the channel) and its jti claimed;
+        a wallet that is not ACTIVE is 422 MW-CORE-WALLET_NOT_ACTIVE. Without it: an ops caller
+        (mw-admin-api, mw-auth) or a system wallet, else 401 MW-AUTH-046.
+      parameters:
+        - { name: txnId, in: query, required: false, description: "The BALANCE check's txnId (with X-Txn-Assertion)", schema: { $ref: "#/components/schemas/TxnId" } }
+        - $ref: "#/components/parameters/TxnAssertion"
+        - { name: Idempotency-Key, in: header, required: false, description: "The channel's key the assertion was signed over (with X-Txn-Assertion)", schema: { type: string, minLength: 1, maxLength: 64 } }
       responses:
         "200":
           description: The balance
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Balance" }
+        "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /core/v1/charges/calculate:
     parameters:
       - $ref: "#/components/parameters/CorrelationId"
@@ -128,6 +149,35 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+  /core/v1/transactions/validate:
+    parameters:
+      - $ref: "#/components/parameters/CorrelationId"
+      - $ref: "#/components/parameters/TxnAssertion"
+    post:
+      operationId: validateTransaction
+      summary: "Validate a transaction before any money moves: payer and payee, limits, fee (ticket 95a)"
+      description: >-
+        The rules of a transfer without the posting: the payer (and the payee when it is a wallet of the
+        core) found and allowed, the limits, the fee from the tariff sheet, the assertion checked and its
+        jti claimed for this txnId (the later hold or transfer of the same txnId is authorised by it).
+        Idempotent by txnId (`<txnId>:rest:validate`). Nothing moves; no hold.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferRequest" }
+      responses:
+        "200":
+          description: It would pass (status VALIDATED), at this fee
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ValidationResult" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /core/v1/holds:
     parameters:
       - $ref: "#/components/parameters/CorrelationId"
@@ -151,6 +201,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /core/v1/holds/{holdId}/commit:
     parameters:
       - $ref: "#/components/parameters/HoldId"
@@ -178,6 +229,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /core/v1/holds/{holdId}/release:
     parameters:
       - $ref: "#/components/parameters/HoldId"
@@ -201,6 +253,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /core/v1/transfers:
     parameters:
       - $ref: "#/components/parameters/CorrelationId"
@@ -224,6 +277,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /core/v1/credits:
     parameters:
       - $ref: "#/components/parameters/CorrelationId"
@@ -246,6 +300,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /core/v1/reversals:
     parameters:
       - $ref: "#/components/parameters/CorrelationId"
@@ -268,6 +323,7 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
         "422": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
   /core/v1/statements:
     parameters:
       - $ref: "#/components/parameters/CorrelationId"
@@ -379,6 +435,20 @@ components:
         available: { $ref: "#/components/schemas/Amount" }
         held: { $ref: "#/components/schemas/Amount" }
         total: { $ref: "#/components/schemas/Amount" }
+        asOf: { type: string, format: date-time, description: "When the core read it (a customer's read: when its BalanceInquiry was first answered)" }
+    ValidationResult:
+      type: object
+      required: [txnId, status, coreRef, fee]
+      properties:
+        txnId: { $ref: "#/components/schemas/TxnId" }
+        status: { const: VALIDATED }
+        coreRef: { type: string }
+        fee: { $ref: "#/components/schemas/Amount", description: "What the payer would pay on top of the amount, VAT included" }
+        vat: { $ref: "#/components/schemas/Amount", description: The VAT inside the fee }
+        limitsLeft:
+          type: object
+          description: What is left of the payer's limits before this amount (PER_TXN, DAILY, MONTHLY, ...)
+          additionalProperties: { $ref: "#/components/schemas/Amount" }
     ChargesRequest:
       type: object
       required: [txnType, amount]
@@ -450,6 +520,7 @@ components:
       type: object
       properties:
         reason: { type: string, maxLength: 200 }
+        round: { type: integer, minimum: 0, maximum: 1000, description: "The operator decision it carries out (ticket 95a); 0 or absent: the saga's own call" }
     CreditRequest:
       type: object
       required: [txnId, txnType, creditParty, amount]
@@ -459,6 +530,7 @@ components:
         creditParty: { $ref: "#/components/schemas/Party" }
         amount: { $ref: "#/components/schemas/Amount" }
         settlementWallet: { $ref: "#/components/schemas/SettlementWallet" }
+        round: { type: integer, minimum: 0, maximum: 1000, description: "An operator's forced credit (ticket 95a); 0 or absent: the saga's own call" }
     ReversalRequest:
       type: object
       required: [txnId, originalTxnId]

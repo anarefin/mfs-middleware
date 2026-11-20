@@ -9,6 +9,8 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import mfs.mw.seeder.config.SeederProperties;
 import mfs.mw.seeder.dto.ChangeRequestView;
+import mfs.mw.seeder.dto.ChannelClientChangeRequest;
+import mfs.mw.seeder.dto.ChannelClientView;
 import mfs.mw.seeder.dto.ContentVersionView;
 import mfs.mw.seeder.dto.MenuProposal;
 import mfs.mw.seeder.dto.PartnerChangeRequest;
@@ -86,6 +88,23 @@ public class AdminApiClient implements AdminConsole {
       String asUser, String code, String channel, String locale, TemplateProposal proposal) {
     return post(asUser, "POST /admin/v1/notify-templates/{code}/{channel}/{locale}/change-requests",
         template(code, channel, locale) + "/change-requests", proposal, 201);
+  }
+
+  @Override
+  public Optional<ChannelClientView> channelClient(String asUser, String clientId) {
+    String call = "GET /admin/v1/channel-clients/{clientId}";
+    HttpJson.Response r =
+        as(asUser, () -> http.get(call, uri("/admin/v1/channel-clients/" + enc(clientId)), auth(asUser)));
+    if (r.status() == 404) {
+      return Optional.empty();
+    }
+    return Optional.of(http.read(call, HttpJson.expect(call, r, 200), ChannelClientView.class));
+  }
+
+  @Override
+  public ChangeRequestView requestChannelClientChange(String asUser, String clientId, ChannelClientChangeRequest request) {
+    return post(asUser, "POST /admin/v1/channel-clients/{clientId}/change-requests",
+        "/admin/v1/channel-clients/" + enc(clientId) + "/change-requests", request, 201);
   }
 
   private List<ContentVersionView> versions(String asUser, String call, String path) {

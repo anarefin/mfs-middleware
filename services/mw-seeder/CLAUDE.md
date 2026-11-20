@@ -63,13 +63,21 @@ this file says what is specific to this module.
      nothing). Pending requests of the seed maker are approved first; one of another operator fails the
      step (one open request per resource; the seeder never decides someone else's). A partner unknown to
      mw-admin-api (its dev seeds) fails the step.
-  6. `seed-admin-content`: the USSD menu `main` (all four MNOs) and the SMS templates
+  6. `seed-channel-clients` (ticket 100a): today's edge clients (`mw.seeder.channel-clients`: the
+     customer/agent/merchant apps, the four MNO USSD gateways, billagg, c2wbank, the three checkout
+     merchants, the org portal) as rows of mw-admin-api's channel client registry. A missing or
+     different client: the seed maker files UPSERT with the full definition, the seed checker
+     approves (mw-admin-api then projects the BASIC ones, the MNO gateways, to APISIX consumers whose
+     password Vault holds). At its baseline: nothing is asked. Leftover requests of the seed maker are
+     approved first; one of another operator fails the step. The MNO clients carry a rate limit only
+     (a daily quota would replace their route's per-MSISDN limit-count).
+  7. `seed-admin-content`: the USSD menu `main` (all four MNOs) and the SMS templates
      `TXN_P2P_RECEIVED` bn/en, proposed and approved through mw-admin-api, so the console has a first
      admin-made version. The values are copies of what mw-ussd (`menus/main-v3.json` ->
      `src/main/resources/seed-content/menus/main.json`) and mw-notify (V5 rows, in `application.yml`)
      ship, so publishing changes no text a test reads: keep the copies identical. Content with any
      PUBLISHED admin version is left alone; a version the seed maker left PENDING is approved.
-  7. `write-manifest`: the manifest (below), replaced atomically only when its content changed.
+  8. `write-manifest`: the manifest (below), replaced atomically only when its content changed.
 - Manifest (`dto/SeedManifest`, `schemaVersion` 1): written to `mw.seeder.manifest-path`
   (`/run/mw/seed/manifest.json`, the `seed-manifest` volume); `scripts/api-test.sh` and `scripts/ui-e2e.sh` copy it to
   `build/seed/manifest.json` (host; read it from Newman and Playwright, or mount the volume read-only
@@ -132,7 +140,7 @@ this file says what is specific to this module.
 
 ## Contracts used
 
-- `api/mw-admin-api/admin.v1.openapi.yaml` (partners, change requests, approve, USSD menu and template
+- `api/mw-admin-api/admin.v1.openapi.yaml` (partners, channel clients (ticket 100a, `dto/ChannelClientChangeRequest`, `ChannelClientDefinition`, `ChannelClientView`), change requests, approve, USSD menu and template
   versions and change requests), own types `dto/PartnerChangeRequest`, `MenuProposal`,
   `TemplateProposal`, `PartnerView`, `ChangeRequestView`, `ContentVersionView`. Called directly
   (`http://mw-admin-api:8080`, not through APISIX) with an ops token whose `iss` is Keycloak's internal

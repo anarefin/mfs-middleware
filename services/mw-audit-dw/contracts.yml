@@ -3,6 +3,8 @@ produces:
   events: []
   apis:   [api/mw-audit-dw/audit-query.v1.openapi.yaml, api/mw-audit-dw/audit-dw-test.v1.openapi.yaml]
 consumes:
-  events: [events/mw-audit-dw/mw.audit.event.v1.schema.json]
-  # ticket 74: the daily anchor is signed at mw-crypto (/jws/sign AUDIT_ANCHOR_SIGN, /jwks)
+  # ticket 130: mw.txn.status.v1 feeds the search projection audit.txn_index
+  events: [events/mw-audit-dw/mw.audit.event.v1.schema.json, events/mw-orchestrator/mw.txn.status.v1.schema.json]
+  # ticket 74: the daily anchor is signed at mw-crypto (/jws/sign AUDIT_ANCHOR_SIGN, /jwks);
+  # ticket 130: MSISDNs of the search projection are tokenised there (/tokens TOKENISE_MSISDN)
   apis:   [api/mw-crypto/crypto-internal.v1.openapi.yaml]

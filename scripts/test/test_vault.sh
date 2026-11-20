@@ -95,9 +95,10 @@ EOF
 PROVISION_ENV="REDIS_PASSWORD=redis-t BILLAGG_HMAC_SECRET=billagg-t BILLAGG_WS_PASSWORD=billagg-ws-t C2WBANK_HMAC_SECRET=c2w-t
   CHECKOUT_DEMO_MERCHANT_SECRET=merchant-t CHECKOUT_PHARMACY_MERCHANT_SECRET=pharmacy-t CHECKOUT_FASHION_MERCHANT_SECRET=fashion-t
   KC_MW_ADMIN_API_SECRET=admin-t KC_MW_PORTAL_API_SECRET=portal-t KC_MW_AUDIT_DW_SECRET=audit-dw-t KC_MW_AUTH_SECRET=auth-t
-  KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_SIMULATORS_SECRET=simulators-t SFTP_DEV_PASSWORD=sftp-t
+  KC_MW_APP_GATEWAY_SECRET=app-gateway-t KC_MW_USSD_SECRET=ussd-t KC_MW_CHECKOUT_SECRET=checkout-t KC_MW_ORCHESTRATOR_SECRET=orchestrator-t KC_MW_SIMULATORS_SECRET=simulators-t SFTP_DEV_PASSWORD=sftp-t
   USSD_GP_GATEWAY_SECRET=gp-t USSD_ROBI_GATEWAY_SECRET=robi-t USSD_BL_GATEWAY_SECRET=bl-t USSD_TELETALK_GATEWAY_SECRET=teletalk-t
   SOFTHSM_MWCRYPTO_USER_PIN=hsm-pin-t SOFTHSM_PAYSIM_USER_PIN=paysim-pin-t
+  APISIX_VAULT_TOKEN=apisix-vault-t APISIX_ADMIN_KEY=apisix-admin-t
   KC_URL=http://kc:8080 KC_BOOTSTRAP_ADMIN_USERNAME=kc-admin KC_BOOTSTRAP_ADMIN_PASSWORD=kc-admin-t"
 
 # approle_token <dir>: log in with the role-id / secret-id provision wrote to out/<dir>
@@ -146,4 +147,28 @@ test_dev_unseal_and_provision_work_against_a_real_vault() {
   run_real_provision || fail "second provision run failed"
   [ "$(vx read -field=certificate pki_int/cert/ca)" = "$ca" ] || fail "intermediate CA replaced"
   [ "$(vx kv get -field=spring.datasource.password secret/mw-orchestrator)" = "$pw" ] || fail "database password regenerated"
+}
+
+# Ticket 100a: APISIX's Vault secret manager speaks KV v1 only, so provision mounts apisix/ as KV
+# version 1 with the edge credentials, and the fixed APISIX token reads that mount and nothing else.
+test_provision_gives_apisix_a_kv_v1_mount_and_a_read_only_token() {
+  docker_ok || { echo "    skipped: Docker not available" >&2; return 0; }
+  vault_fixture
+  run_real_provision || fail "provision failed: $OUT"
+  vx secrets list -format=json | jq -e '."apisix/".type == "kv" and ((."apisix/".options.version // "1") == "1")' >/dev/null \
+    || fail "apisix/ is not a KV v1 mount: $(vx secrets list -format=json | jq -c '."apisix/"')"
+  [ "$(vx read -field=password apisix/ussd-gp)" = gp-t ] || fail "apisix/ussd-gp password not synced"
+  [ "$(vx read -field=password apisix/ussd-teletalk)" = teletalk-t ] || fail "apisix/ussd-teletalk password not synced"
+  [ "$(vx kv get -field=mw.apisix.admin-key secret/mw-admin-api)" = apisix-admin-t ] || fail "admin key not in secret/mw-admin-api"
+  # what APISIX does: GET /v1/apisix/<name> with its token
+  docker exec -e VAULT_TOKEN=apisix-vault-t "$V" vault read -field=password apisix/ussd-robi | grep -qx robi-t \
+    || fail "the APISIX token cannot read apisix/"
+  docker exec -e VAULT_TOKEN=apisix-vault-t "$V" vault kv get secret/mw-admin-api >/dev/null 2>&1 \
+    && fail "the APISIX token reads secret/"
+  docker exec -e VAULT_TOKEN=apisix-vault-t "$V" vault write apisix/ussd-gp password=x >/dev/null 2>&1 \
+    && fail "the APISIX token may write apisix/"
+  # idempotent: a second run renews the same token
+  run_real_provision || fail "second provision run failed: $OUT"
+  docker exec -e VAULT_TOKEN=apisix-vault-t "$V" vault read -field=password apisix/ussd-gp | grep -qx gp-t \
+    || fail "the APISIX token is gone after a second run"
 }

@@ -1,7 +1,9 @@
 package mfs.mw.adapter.telco.messaging;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -23,12 +25,17 @@ import org.springframework.transaction.support.TransactionTemplate;
  * as {@link PartnerAudit} masked them (4 KB excerpts), {@code payloadRef} the full masked bodies
  * (ticket 97). Key: txnId, else the partner id. A call without a txnId (bill fetch, dry-run, health
  * probe) is audited too: its 6.1 txn header is the audit id (ticket 97; it used to be dropped).
+ * Ticket 130 (FRS AUD-01): hop PARTNER_CALL, direction OUT, the call's {@code durationMs} and the
+ * masked bodies as {@code payload} (request OUT, answer IN, each with the {@code payloadRef}), so
+ * mw-audit-dw stores them in its hash chain and shows them on the transaction's timeline.
  */
 @Component
 public class PartnerAuditPublisher implements Consumer<PartnerAudit.Entry> {
 
   public static final String AUDIT_TOPIC = "mw.audit.event.v1";
   public static final String ACTION = "partner.call.completed";
+  /** The timeline hop of a partner call (ticket 130). */
+  public static final String HOP = "PARTNER_CALL";
 
   private final OutboxWriter outbox;
   private final TransactionTemplate tx;
@@ -82,7 +89,32 @@ public class PartnerAuditPublisher implements Consumer<PartnerAudit.Entry> {
         e.payloadRef(),
         "SUCCESS".equals(e.outcome()) || "PENDING".equals(e.outcome()) ? "SUCCESS" : "FAILURE",
         clock.instant(),
-        service.name());
+        service.name(),
+        HOP,
+        "OUT",
+        e.durationMs(),
+        payload(e));
+  }
+
+  /** The masked bodies as hop payloads (ticket 130): the request OUT, the partner's answer IN. */
+  private static List<AuditEvent.Payload> payload(PartnerAudit.Entry e) {
+    List<AuditEvent.Payload> out = new ArrayList<>();
+    if (e.request() != null && !e.request().isEmpty()) {
+      out.add(new AuditEvent.Payload("OUT", contentType(e.request()), e.request(), e.payloadRef()));
+    }
+    if (e.response() != null && !e.response().isEmpty()) {
+      out.add(new AuditEvent.Payload("IN", contentType(e.response()), e.response(), e.payloadRef()));
+    }
+    return out.isEmpty() ? null : out;
+  }
+
+  /** The body's media type by its first character (the framework keeps no content type). */
+  static String contentType(String body) {
+    String t = body.stripLeading();
+    if (t.startsWith("{") || t.startsWith("[")) {
+      return "application/json";
+    }
+    return t.startsWith("<") ? "application/xml" : "text/plain";
   }
 
   private static void put(Map<String, String> map, String key, String value) {

@@ -62,9 +62,24 @@ public class CoreEventMapper {
 
   /** BalanceReported (ADR D26): the wallet's available balance (balance minus holds) as of now. */
   public CoreEvent balanceReported(CoreCommand cmd, String coreRef, String walletId, Amount available) {
+    return balanceReported(cmd, coreRef, walletId, available, null, null);
+  }
+
+  /**
+   * BalanceReported with the held and total balance at the same instant (ticket 95a): the REST
+   * balance read answers a repeat entirely from this stored event, never from live wallet fields.
+   */
+  public CoreEvent balanceReported(CoreCommand cmd, String coreRef, String walletId, Amount available, Amount held,
+      Amount total) {
     Map<String, Object> payload = new java.util.LinkedHashMap<>();
     payload.put("walletId", walletId);
     payload.put("available", available);
+    if (held != null) {
+      payload.put("held", held);
+    }
+    if (total != null) {
+      payload.put("total", total);
+    }
     payload.put("asOf", clock.instant().toString());
     return event(cmd, "BalanceReported", coreRef, CoreEvent.Outcome.SUCCESS, null, null, null, payload);
   }

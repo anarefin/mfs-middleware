@@ -102,8 +102,11 @@ val contractsDir = layout.projectDirectory.dir(providers.gradleProperty("mwContr
 // Configuration cache: lambdas stored with a task (the provider below, the Mockito agent provider)
 // must capture only locals, never a top-level val of this script (that serialises the script object).
 val listedContracts = providers.fileContents(layout.projectDirectory.file("contracts.yml")).asText.map { yml ->
-    // Read by a test although contracts.yml does not list it (dto/ConfigChangedEventSchemaTest).
-    val extraTestContracts = listOf("events/mw-admin-api/mw.config.changed.v1.schema.json")
+    // Read by tests although contracts.yml does not list them (dto/ConfigChangedEventSchemaTest; the
+    // core call shapes of mapper/CoreCommandMapperTest until ticket 95b retires core.command.v1).
+    val extraTestContracts = listOf(
+        "events/mw-admin-api/mw.config.changed.v1.schema.json",
+        "events/mw-orchestrator/core.command.v1.schema.json")
     val paths = yml.lines()
         .filterNot { it.trimStart().startsWith("#") }
         .flatMap { line -> Regex("""(?:events|api|common)/[A-Za-z0-9._/-]+""").findAll(line).map { it.value }.toList() }

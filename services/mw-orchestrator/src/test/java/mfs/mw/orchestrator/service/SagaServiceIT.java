@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.List;
 import mfs.mw.orchestrator.MutableClock;
 import mfs.mw.orchestrator.TestData;
+import mfs.mw.orchestrator.CoreCalls;
 import mfs.mw.orchestrator.TestInfrastructure;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreEvent;
@@ -32,7 +33,7 @@ import tools.jackson.databind.json.JsonMapper;
       "mw.orchestrator.consumers.enabled=false",
       "mw.orchestrator.timer.enabled=false"
     })
-@Import({TestInfrastructure.class, SagaServiceIT.TestClock.class})
+@Import({TestInfrastructure.class, CoreCalls.class, SagaServiceIT.TestClock.class})
 class SagaServiceIT {
 
   @TestConfiguration(proxyBeanMethods = false)
@@ -49,7 +50,8 @@ class SagaServiceIT {
   private static final String AUDIT_SCHEMA = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
 
   private final TransactionService transactions;
-  private final CoreEventService coreEvents;
+  private final CoreCalls coreEvents;
+  private final CoreEventService kafkaEvents;
   private final SagaTimerService timers;
   private final MutableClock clock;
   private final JdbcTemplate jdbc;
@@ -58,13 +60,15 @@ class SagaServiceIT {
   @Autowired
   SagaServiceIT(
       TransactionService transactions,
-      CoreEventService coreEvents,
+      CoreCalls coreEvents,
+      CoreEventService kafkaEvents,
       SagaTimerService timers,
       Clock clock,
       JdbcTemplate jdbc,
       JsonMapper json) {
     this.transactions = transactions;
     this.coreEvents = coreEvents;
+    this.kafkaEvents = kafkaEvents;
     this.timers = timers;
     this.clock = (MutableClock) clock;
     this.jdbc = jdbc;
@@ -97,7 +101,7 @@ class SagaServiceIT {
   }
 
   private List<JsonNode> commands(String txnId) {
-    return outbox("core.wallet.command.v1", txnId);
+    return coreEvents.commands(txnId);
   }
 
   private List<JsonNode> audits(String txnId) {
@@ -160,7 +164,7 @@ class SagaServiceIT {
     assertThat(commands(txn).get(0).path("commandType").asString()).isEqualTo("ValidateTransaction");
     assertThat(commands(txn).get(0).path("commandId").asString()).isEqualTo(txn + ":validate");
 
-    coreEvents.handle(
+    coreEvents.answer(
         event("TransactionValidated", txn, "validate", null, "{\"fee\":{\"valueMinor\":500,\"currency\":\"BDT\"}}"));
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "POSTING");
     assertThat(commands(txn).get(1).path("commandType").asString()).isEqualTo("PostTransfer");
@@ -168,7 +172,7 @@ class SagaServiceIT {
     assertThat(commands(txn).get(1).path("payload").path("assertion").asString())
         .isEqualTo(mfs.mw.orchestrator.TestData.ASSERTION);
 
-    coreEvents.handle(event("TransferPosted", txn, "post", null, "{}"));
+    coreEvents.answer(event("TransferPosted", txn, "post", null, "{}"));
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "POSTING", "COMPLETED");
     JsonNode done = lastStatus(txn);
     assertThat(done.path("previousStatus").asString()).isEqualTo("POSTING");
@@ -180,13 +184,34 @@ class SagaServiceIT {
     assertAllValid(txn);
   }
 
+  // --- the core's Kafka events (ticket 95a) ---------------------------------------------------
+
+  @Test
+  void theCoresKafkaResultEventsOfItsRestCallsAreNeverAppliedTwice() {
+    String txn = start(5_000);
+
+    kafkaEvents.handle(event("TransactionValidated", txn, "rest:validate", null, "{}"));
+    assertThat(status(txn)).as("only the REST answer moves the saga").isEqualTo("VALIDATING");
+
+    coreEvents.answer(event("TransactionValidated", txn, "validate", null, "{}"));
+    kafkaEvents.handle(event("TransactionValidated", txn, "rest:validate", null, "{}"));
+    kafkaEvents.handle(event("FundsHeld", txn, "rest:hold", null, "{\"holdId\":\"HOLD-1\"}"));
+    kafkaEvents.handle(event("HoldCommitted", txn, "rest:commit", null, "{}"));
+    kafkaEvents.handle(event("TransferPosted", txn, "rest:transfer", null, "{}"));
+
+    assertThat(status(txn)).isEqualTo("POSTING");
+    assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "POSTING");
+    assertThat(commands(txn)).extracting(c -> c.path("commandType").asString())
+        .containsExactly("ValidateTransaction", "PostTransfer");
+  }
+
   // --- audit trail (ticket 12, spec 14.3) ---------------------------------------------------------
 
   @Test
   void everyStateAP2pPassesThroughIsAuditedOnce() {
     String txn = start(5_000);
-    coreEvents.handle(event("TransactionValidated", txn, "validate", null, "{}"));
-    coreEvents.handle(event("TransferPosted", txn, "post", null, "{}"));
+    coreEvents.answer(event("TransactionValidated", txn, "validate", null, "{}"));
+    coreEvents.answer(event("TransferPosted", txn, "post", null, "{}"));
 
     assertThat(auditedMoves(txn))
         .containsExactly("->RECEIVED", "RECEIVED>VALIDATING", "VALIDATING>POSTING", "POSTING>COMPLETED");
@@ -209,7 +234,7 @@ class SagaServiceIT {
   @Test
   void anAuditRecordIsWrittenWithItsStateChangeAndCarriesTheError() {
     String txn = start(5_000);
-    coreEvents.handle(event("TransactionRejected", txn, "validate", "INSUFFICIENT_BALANCE", "{}"));
+    coreEvents.answer(event("TransactionRejected", txn, "validate", "INSUFFICIENT_BALANCE", "{}"));
 
     assertThat(auditedMoves(txn)).containsExactly("->RECEIVED", "RECEIVED>VALIDATING", "VALIDATING>REJECTED");
     JsonNode rejected = audits(txn).get(2);
@@ -224,7 +249,7 @@ class SagaServiceIT {
     String txn = start(5_000);
     clock.advance(Duration.ofSeconds(6));
     timers.sweep();
-    coreEvents.handle(event("TransactionValidated", txn, "validate", null, "{}")); // late, refused
+    coreEvents.answer(event("TransactionValidated", txn, "validate", null, "{}")); // late, refused
 
     assertThat(auditedMoves(txn)).containsExactly("->RECEIVED", "RECEIVED>VALIDATING", "VALIDATING>FAILED");
     assertAllValid(txn);
@@ -253,7 +278,7 @@ class SagaServiceIT {
   @Test
   void aCoreRejectionAtValidationEndsRejectedWithTheMappedError() {
     String txn = start(5_000);
-    coreEvents.handle(event("TransactionRejected", txn, "validate", "INSUFFICIENT_BALANCE", "{}"));
+    coreEvents.answer(event("TransactionRejected", txn, "validate", "INSUFFICIENT_BALANCE", "{}"));
 
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "REJECTED");
     JsonNode rejected = lastStatus(txn);
@@ -266,8 +291,8 @@ class SagaServiceIT {
   @Test
   void aCoreRejectionAtPostingEndsRejected() {
     String txn = start(5_000);
-    coreEvents.handle(event("TransactionValidated", txn, "validate", null, "{}"));
-    coreEvents.handle(event("TransferRejected", txn, "post", "LIMIT_EXCEEDED_DAILY", "{}"));
+    coreEvents.answer(event("TransactionValidated", txn, "validate", null, "{}"));
+    coreEvents.answer(event("TransferRejected", txn, "post", "LIMIT_EXCEEDED_DAILY", "{}"));
 
     assertThat(status(txn)).isEqualTo("REJECTED");
     assertThat(lastStatus(txn).path("error").path("code").asString()).isEqualTo("MW-CORE-LIMIT_EXCEEDED_DAILY");
@@ -321,8 +346,8 @@ class SagaServiceIT {
   void aRedeliveredCoreEventIsAppliedOnce() {
     String txn = start(5_000);
     CoreEvent validated = event("TransactionValidated", txn, "validate", null, "{}");
-    coreEvents.handle(validated);
-    coreEvents.handle(validated);
+    coreEvents.answer(validated);
+    coreEvents.answer(validated);
 
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING", "POSTING");
     assertThat(commands(txn)).hasSize(2);
@@ -331,7 +356,7 @@ class SagaServiceIT {
   @Test
   void anEventThatDoesNotFitTheCurrentStateIsIgnored() {
     String txn = start(5_000);
-    coreEvents.handle(event("TransferPosted", txn, "post", null, "{}"));
+    coreEvents.answer(event("TransferPosted", txn, "post", null, "{}"));
 
     assertThat(status(txn)).isEqualTo("VALIDATING");
     assertThat(statuses(txn)).containsExactly("RECEIVED", "VALIDATING");
@@ -339,9 +364,9 @@ class SagaServiceIT {
 
   @Test
   void anEventForAnUnknownTransactionOrTypeIsIgnored() {
-    coreEvents.handle(event("TransferPosted", TestData.txnId(), "post", null, "{}"));
+    coreEvents.answer(event("TransferPosted", TestData.txnId(), "post", null, "{}"));
     String txn = start(5_000);
-    coreEvents.handle(event("SomethingNew", txn, "validate", null, "{}"));
+    coreEvents.answer(event("SomethingNew", txn, "validate", null, "{}"));
     assertThat(status(txn)).isEqualTo("VALIDATING");
   }
 
@@ -426,7 +451,7 @@ class SagaServiceIT {
   @Test
   void aMissingPostReplyMovesPostingToUnknownAfterFiveSeconds() {
     String txn = start(5_000);
-    coreEvents.handle(event("TransactionValidated", txn, "validate", null, "{}"));
+    coreEvents.answer(event("TransactionValidated", txn, "validate", null, "{}"));
     clock.advance(Duration.ofSeconds(4));
     assertThat(timers.sweep()).isZero();
     clock.advance(Duration.ofSeconds(2));
@@ -443,7 +468,7 @@ class SagaServiceIT {
     String txn = start(5_000);
     clock.advance(Duration.ofSeconds(6));
     timers.sweep();
-    coreEvents.handle(event("TransactionValidated", txn, "validate", null, "{}"));
+    coreEvents.answer(event("TransactionValidated", txn, "validate", null, "{}"));
 
     assertThat(status(txn)).isEqualTo("FAILED");
     assertThat(commands(txn)).hasSize(1);

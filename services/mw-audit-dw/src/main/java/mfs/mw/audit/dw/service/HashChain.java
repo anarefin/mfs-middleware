@@ -3,11 +3,15 @@ package mfs.mw.audit.dw.service;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import mfs.mw.audit.dw.entity.AuditRow;
 import mfs.mw.audit.dw.entity.ChainHead;
+import mfs.mw.audit.dw.entity.PayloadRow;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -17,6 +21,12 @@ import tools.jackson.databind.json.JsonMapper;
  * before, after, prevHashHex]} (UTF-8, no spaces, null for absent values, instants as ISO-8601
  * UTC as PostgreSQL stores them, i.e. at most microseconds; before/after as jsonb text). The
  * first row of a month links to {@link #GENESIS} (32 zero bytes).
+ *
+ * <p>Ticket 130: a row with hop facts or payloads appends one more element, {@code {"hop",
+ * "direction", "durationMs", "payloads": [{"ordinal", "direction", "contentType", "payloadRef",
+ * "size", "sha256"}]}} (sha256 in hex), so its {@code audit.payload} rows are inside the chain, and
+ * {@link #verify} also recomputes each body's SHA-256. A row without them hashes exactly as before,
+ * so the chains written earlier stay valid.
  */
 public final class HashChain {
 
@@ -35,14 +45,42 @@ public final class HashChain {
 
   static byte[] hash(AuditRow r, byte[] prevHash) {
     List<Object> fields =
-        Arrays.asList(
-            r.month(), r.seq(), text(r.auditId()), text(r.recordedAt()), text(r.at()),
-            text(r.txnId()), r.correlationId(), r.actorType(), r.actorId(), r.action(),
-            r.resource(), r.outcome(), r.service(), r.sourceIp(), r.payloadRef(), r.before(),
-            r.after(), HEX.formatHex(prevHash));
+        new ArrayList<>(
+            Arrays.asList(
+                r.month(), r.seq(), text(r.auditId()), text(r.recordedAt()), text(r.at()),
+                text(r.txnId()), r.correlationId(), r.actorType(), r.actorId(), r.action(),
+                r.resource(), r.outcome(), r.service(), r.sourceIp(), r.payloadRef(), r.before(),
+                r.after(), HEX.formatHex(prevHash)));
+    if (r.hasHopFacts()) {
+      Map<String, Object> hop = new LinkedHashMap<>();
+      hop.put("hop", r.hop());
+      hop.put("direction", r.direction());
+      hop.put("durationMs", r.durationMs());
+      List<Object> payloads = new ArrayList<>();
+      for (PayloadRow p : r.payloads()) {
+        Map<String, Object> d = new LinkedHashMap<>();
+        d.put("ordinal", p.ordinal());
+        d.put("direction", p.direction());
+        d.put("contentType", p.contentType());
+        d.put("payloadRef", p.payloadRef());
+        d.put("size", p.size());
+        d.put("sha256", p.sha256() == null ? null : HEX.formatHex(p.sha256()));
+        payloads.add(d);
+      }
+      hop.put("payloads", payloads);
+      fields.add(hop);
+    }
+    return digest(JSON.writeValueAsString(fields).getBytes(StandardCharsets.UTF_8));
+  }
+
+  /** SHA-256 of {@code body}'s UTF-8 bytes; null for no body. */
+  public static byte[] sha256(String body) {
+    return body == null ? null : digest(body.getBytes(StandardCharsets.UTF_8));
+  }
+
+  private static byte[] digest(byte[] bytes) {
     try {
-      return MessageDigest.getInstance("SHA-256")
-          .digest(JSON.writeValueAsString(fields).getBytes(StandardCharsets.UTF_8));
+      return MessageDigest.getInstance("SHA-256").digest(bytes);
     } catch (NoSuchAlgorithmException e) {
       throw new IllegalStateException("SHA-256 is required by every Java runtime", e);
     }
@@ -68,6 +106,11 @@ public final class HashChain {
       if (!Arrays.equals(r.prevHash(), prev)) {
         return ChainVerification.broken(
             month, rows.size(), expected, "prevHash does not link to the previous row");
+      }
+      for (PayloadRow p : r.payloads()) {
+        if (!Arrays.equals(p.sha256(), sha256(p.body()))) {
+          return ChainVerification.broken(month, rows.size(), expected, "payload does not match its digest");
+        }
       }
       if (!Arrays.equals(r.hash(), hash(r, r.prevHash()))) {
         return ChainVerification.broken(month, rows.size(), expected, "hash does not match the row");
