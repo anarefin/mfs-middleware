@@ -233,6 +233,14 @@ class CoreWalletControllerTest {
   }
 
   @Test
+  void anInboundRemittanceValidationNeedsNoAssertion() {
+    // ticket 119b: REMIT_IN is the partner's money for a beneficiary who authorised nothing
+    given(service.transfer(any(), isNull())).willReturn(result("VALIDATED"));
+
+    assertThat(post("/core/v1/transactions/validate", HOLD_BODY.replace("TOPUP", "REMIT_IN"))).hasStatusOk();
+  }
+
+  @Test
   void aHoldWithABadTxnIdOrNoPartyIs400() {
     assertThat(post("/core/v1/holds", HOLD_BODY.replace(TXN, "not-a-uuid")).header("X-Txn-Assertion", "a"))
         .hasStatus(400).bodyJson().extractingPath("$.code").isEqualTo("MW-VAL-001");

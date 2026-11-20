@@ -42,6 +42,7 @@ import mfs.mw.orchestrator.service.saga.MerchantPayFlow;
 import mfs.mw.orchestrator.service.saga.PartnerCall;
 import mfs.mw.orchestrator.service.saga.PendingLeg;
 import mfs.mw.orchestrator.service.saga.RefundFlow;
+import mfs.mw.orchestrator.service.saga.RemitInFlow;
 import mfs.mw.orchestrator.exception.ErrorCodes;
 import mfs.mw.orchestrator.exception.InvalidTransitionException;
 import mfs.mw.orchestrator.service.saga.SagaEvent;
@@ -179,6 +180,9 @@ public class SagaEngine {
       }
       if (t.to() == Status.COMPLETED && t.from() != Status.REVERSING) {
         sendMerchantNotify(next, 1); // ticket 115b: after commit, best effort, never reverses
+      }
+      if (RemitInFlow.TXN_TYPE.equals(next.request().txnType())) {
+        sendRemitConfirmation(next, t.to(), now); // ticket 119b: the adapter learns every outcome
       }
     }
     rearm(next, t, now);
@@ -557,6 +561,51 @@ public class SagaEngine {
           .addKeyValue("attempt", attempt)
           .log("merchant payment notify sent");
     });
+  }
+
+  /** Saga timer step of a merchant NOTIFY retry (M9 review); its attempt is the attempt to send. */
+  public static final String MERCHANT_NOTIFY_TIMER = "MERCHANT_NOTIFY";
+
+  /**
+   * Schedules NOTIFY attempt {@code attempt} (2 or more) after its backoff: {@code notifyBackoff}
+   * doubled for each attempt after the second. {@link SagaTimerService} sends it when it is due.
+   */
+  public void scheduleMerchantNotify(TransactionRecord rec, int attempt) {
+    Duration backoff = merchantSystems.notifyBackoff().multipliedBy(1L << Math.min(20, Math.max(0, attempt - 2)));
+    timers.armAttempt(rec.txnId(), MERCHANT_NOTIFY_TIMER, clock.instant().plus(backoff), attempt);
+    log.atInfo()
+        .addKeyValue("event", "merchant.notify.retry_scheduled")
+        .addKeyValue("txnId", rec.txnId().toString())
+        .addKeyValue("attempt", attempt)
+        .addKeyValue("backoffMs", backoff.toMillis())
+        .log("merchant payment notify retry scheduled");
+  }
+
+  /**
+   * The outcome of an inbound remittance back to mw-adapter-remit (ticket 119b): a PAY on {@code
+   * mw.partner.request.remit.v1} with {@code attributes.outcome} CREDITED (COMPLETED), REJECTED
+   * (REJECTED / FAILED: nothing was credited) or MANUAL_REVIEW, through the outbox, so it leaves only
+   * once the state change commits. The adapter records it (its status API) and confirms it to the
+   * partner. Other states send nothing. Its answer never moves the transaction.
+   */
+  private void sendRemitConfirmation(TransactionRecord rec, Status to, Instant now) {
+    String outcome =
+        switch (to) {
+          case COMPLETED -> "CREDITED";
+          case REJECTED, FAILED -> "REJECTED";
+          case MANUAL_REVIEW -> "MANUAL_REVIEW";
+          default -> null;
+        };
+    if (outcome == null) {
+      return;
+    }
+    PartnerRequest request = partnerMapper.remitConfirmation(rec, outcome, now, properties.partnerTimeout());
+    sendToPartner(rec, RemitInFlow.REMIT, request, request.payload().partner().partnerId(), now);
+    log.atInfo()
+        .addKeyValue("event", "remit.outcome.sent")
+        .addKeyValue("txnId", rec.txnId().toString())
+        .addKeyValue("outcome", outcome)
+        .log("remittance outcome sent to the adapter");
   }
 
   /** How many NOTIFY attempts went to the merchant system for this transaction so far. */

@@ -73,7 +73,9 @@ public class DuplicateGuard {
         || !current.isPositive()
         || settings.exemptChannels().contains(req.channel())
         || TransactionService.REVERSAL.equals(req.txnType())
-        || BalanceFlow.TXN_TYPE.equals(req.txnType())) {
+        || BalanceFlow.TXN_TYPE.equals(req.txnType())
+        // an inbound remittance is deduplicated on its partner reference (adapter and inbox, ticket 119b)
+        || mfs.mw.orchestrator.service.saga.RemitInFlow.TXN_TYPE.equals(req.txnType())) {
       return Decision.PASS;
     }
     boolean prompt = settings.promptChannels().contains(req.channel());

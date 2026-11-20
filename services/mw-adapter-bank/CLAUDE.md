@@ -35,7 +35,13 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.adapter.bank`. Follow
   `azp` in `allowed-clients` = `mw-app-gateway`), 401 `MW-AUTH-001` / 403 `MW-AUTH-002`; only `/bank/**` is
   protected, callbacks and the actuator stay open. Plain HTTP on the app network (as core-mock's wallet API):
   the adapter has no TLS server chassis yet, so mTLS on this port is an open item. Not routed by APISIX.
-  Tests `service/AccountValidationServiceTest`, `controller/AccountValidationControllerTest`.
+  Owner binding (M9 review): an optional `matchName` (the wallet's KYC name) is compared with the bank's whole
+  holder name, which the profile's INQUIRY mapping passes as `attributes.holderFullName` and which never leaves
+  the adapter (`util/HolderNameMatch`: case, accents, punctuation and honorifics such as Md / Mst / Mr dropped;
+  every token of the shorter name pairs with one of the longer, exactly or, 6+ letters with the same first letter,
+  one edit apart; at least one exact pair; a one-token name only matches a one-token name); the answer adds
+  `nameMatch`, false when the bank sent no full name.
+  Tests `service/AccountValidationServiceTest`, `controller/AccountValidationControllerTest`, `util/HolderNameMatchTest`.
 - Stable partner reference (`service/PartnerReferenceService`, table `partner_reference` in own
   schema `bank_ref`): `BITS` + txnId hex, stored on first use, sent as the bank's
   `transactionId`; a repeated one returns the original outcome.

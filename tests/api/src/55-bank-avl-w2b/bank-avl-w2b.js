@@ -110,6 +110,21 @@ export default [
     },
   },
   {
+    name: '[w2b avl] an account held by someone else is refused and nothing is linked',
+    run: async (MW, S) => {
+      // M9 review owner binding: 1234567891 is Karima Begum's, customer01 is Rahim Uddin
+      await MW.mockReset('bank-ebl');
+      const r = S.record(await MW.http('POST', '/app/v1/bank-accounts', {
+        headers: await MW.app.headers('customer01'), json: { bankCode: 'ebl', accountNumber: '1234567891' },
+      }));
+      S.status(422);
+      S.code('MW-VAL-ACCOUNT_HOLDER_MISMATCH');
+      S.check('the answer names no holder', !JSON.stringify(r.body).includes('Karima'), r.body);
+      const list = await accounts(MW);
+      S.check('no account ending 7891 is linked', !(list.body.accounts || []).some(a => a.bankCode === 'ebl' && a.accountLast4 === '7891'), list.body);
+    },
+  },
+  {
     name: '[w2b avl] linking a SOAP bank account runs AVL over SOAP and shows the holder initial',
     run: async (MW, S) => {
       await MW.mockReset('bank-sonali');
@@ -132,6 +147,8 @@ export default [
       const quote = S.record(await MW.app.preview('customer01', 'transfer-to-bank', body));
       S.status(200);
       S.check('the preview carries a previewId and never the full number', !!quote.body.previewId && !JSON.stringify(quote.body).includes('1234567890'), quote.body);
+      // FL-09 (M9 review): the preview runs AVL again and shows the holder's initial
+      S.eq('the preview shows the bank holder initial', quote.body.counterparty && quote.body.counterparty.name, 'R.', quote.body);
       S.record(await MW.app.confirm('customer01', 'transfer-to-bank', 'api-' + MW.uuid(),
         Object.assign({ previewId: quote.body.previewId, encryptedPin: await MW.encryptPin(MW.pin) }, body)));
       S.carriesTxnId();

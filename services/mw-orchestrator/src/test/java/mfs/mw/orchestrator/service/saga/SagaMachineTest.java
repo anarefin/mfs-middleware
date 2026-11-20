@@ -32,6 +32,8 @@ class SagaMachineTest {
     row(Status.VALIDATING, new Validated(true), Status.HOLDING, Effect.SEND_HOLD);
     // inbound money (ADD_MONEY_BANK, ticket 23): nothing to hold, the partner is asked first
     row(Status.VALIDATING, new Validated(false, true), Status.PARTNER_PENDING, Effect.SEND_PARTNER_REQUEST);
+    // REMIT_IN (ticket 119b): inbound money without a partner leg credits the wallet once validated
+    row(Status.VALIDATING, new CreditValidated(), Status.COMMITTING, Effect.SEND_COMMIT);
     row(Status.VALIDATING, new ValidationRejected(), Status.REJECTED, Effect.NONE);
     row(Status.VALIDATING, new DeadlineExpired(), Status.FAILED, Effect.NONE);
     // BALANCE (ADR D26): one BalanceInquiry in VALIDATING, answered COMPLETED or FAILED; no money moves
@@ -135,7 +137,7 @@ class SagaMachineTest {
 
   private static List<SagaEvent> allEvents() {
     return List.of(
-        new ValidationStarted(), new RequestRejected(), new BalanceInquiryStarted(), new BalanceReported(), new BalanceInquiryRejected(), new Validated(false), new Validated(true), new Validated(false, true),
+        new ValidationStarted(), new RequestRejected(), new BalanceInquiryStarted(), new BalanceReported(), new BalanceInquiryRejected(), new Validated(false), new Validated(true), new Validated(false, true), new CreditValidated(),
         new ValidationRejected(), new HoldPlaced(), new HoldRejected(), new HoldQueryResult(true),
         new HoldQueryResult(false), new PostSucceeded(), new PostRejected(), new PartnerSucceeded(),
         new PartnerFailed(), new PartnerFailed(false), new PartnerUnknown(), new InquirySucceeded(true), new InquirySucceeded(false),
@@ -165,7 +167,7 @@ class SagaMachineTest {
 
   @Test
   void everyListedTransitionIsTakenWithItsEffect() {
-    assertThat(TABLE).hasSize(75);
+    assertThat(TABLE).hasSize(76);
     TABLE.forEach(
         (key, expect) -> {
           Transition t = SagaMachine.apply(key.from(), key.event());

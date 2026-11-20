@@ -47,6 +47,27 @@ class AccountValidationServiceTest {
   }
 
   @Test
+  void aKycNameIsComparedWithTheBanksFullHolderName() {
+    when(gateway.call(any())).thenReturn(new PartnerResponse.Success(
+        "VR-1", null, Map.of("holderName", "R.", "holderFullName", "MD. RAHIM UDDIN")));
+
+    var same = service.validate("dbbl", "1234567890", "Rahim Uddin");
+    var other = service.validate("dbbl", "1234567890", "Karima Begum");
+
+    assertThat(same.nameMatch()).isTrue();
+    assertThat(same.holderName()).isEqualTo("R.");
+    assertThat(other.nameMatch()).isFalse();
+    assertThat(service.validate("dbbl", "1234567890").nameMatch()).isNull();
+  }
+
+  @Test
+  void noFullNameFromTheBankIsAMismatch() {
+    when(gateway.call(any())).thenReturn(new PartnerResponse.Success("VR-1", null, Map.of("holderName", "R.")));
+
+    assertThat(service.validate("dbbl", "1234567890", "Rahim Uddin").nameMatch()).isFalse();
+  }
+
+  @Test
   void aRefusalIsThePartnerCode() {
     when(gateway.call(any()))
         .thenReturn(new PartnerResponse.Rejected("4001", "no such account", "ACCOUNT_NOT_FOUND", false));
