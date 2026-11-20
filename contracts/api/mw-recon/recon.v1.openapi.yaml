@@ -5,7 +5,10 @@ info:
   description: >
     Operator reprocess of one registered statement or settlement file (ticket 126), the recon reports and
     the exception work queue (ticket 127). Not routed at the edge; mw-admin-api calls it. Reprocess is
-    audited on mw.audit.event.v1. Nothing here posts money or changes a transaction.
+    audited on mw.audit.event.v1. Nothing here posts money or changes a transaction. Every path needs a
+    Keycloak realm services client-credentials bearer token with mw-recon in aud from client mw-admin-api
+    (ticket 127b security review): none or bad 401 MW-AUTH-001, another client 403 MW-AUTH-002. The caller
+    being authenticated, X-Mw-Operator-Id is mw-admin-api's assertion of the operator.
 paths:
   /internal/v1/recon/files/{id}/reprocess:
     post:

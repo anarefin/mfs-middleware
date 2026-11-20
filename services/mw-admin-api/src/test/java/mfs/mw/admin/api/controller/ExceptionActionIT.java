@@ -104,6 +104,11 @@ class ExceptionActionIT {
   static void recon(HttpExchange ex) throws IOException {
     String path = ex.getRequestURI().getPath();
     if ("POST".equals(ex.getRequestMethod()) && path.endsWith("/actions")) {
+      // the services token is sent (mw-recon accepts only mw-admin-api's, ticket 127b security review)
+      if (!"Bearer t".equals(ex.getRequestHeaders().getFirst("Authorization"))) {
+        respond(ex, 401, "{}");
+        return;
+      }
       RECORDED.add(ex.getRequestHeaders().getFirst("X-Mw-Operator-Id") + " "
           + new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
       respond(ex, 200, "{}");

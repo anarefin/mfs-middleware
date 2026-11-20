@@ -32,7 +32,7 @@ Statement and settlement reconciliation (spec 13, ticket 126, FRS REC-01..04, RE
   `GET .../{id}` with a suggested action (advice only), `POST .../{id}/explanations` (OPEN or EXPLAINED -> EXPLAINED,
   audited on `mw.audit.event.v1` as `recon.exception.explained`; ACTIONED or RESOLVED is refused with 409
   `MW-VAL-006`; FRS 10.4 #7: every difference resolved or explained). The operator comes from
-  `X-Mw-Operator-Id` as for reprocess (no caller authentication in this module yet). Exception states: OPEN, EXPLAINED, ACTIONED,
+  `X-Mw-Operator-Id` as for reprocess, asserted by mw-admin-api. Exception states: OPEN, EXPLAINED, ACTIONED,
   RESOLVED. An action is never taken here: it is a maker-checker change request in mw-admin-api.
 - Exception actions (ticket 127b): mw-admin-api's `recon_exception` change request, once a recon-checker
   approved it and mw-admin-api sent the ticket 37 message (FORCE_COMMIT on `mw.txn.action.v1`, REVERSE as a
@@ -46,6 +46,13 @@ Statement and settlement reconciliation (spec 13, ticket 126, FRS REC-01..04, RE
   `mw.recon.exception.v1` per state change (OPEN when raised by a run or the trust position, EXPLAINED,
   ACTIONED, RESOLVED) to the outbox in the same transaction, key the exception id. Consumers mw-audit-dw (audit
   trail) and mw-data-export (DW, local shape).
+
+- Caller authentication (ticket 127b security review; `config/SecurityConfig`, `config/InternalAuthProperties`
+  `mw.internal-auth.*`, copied from mw-core-mock): `/internal/**` needs a realm `services` client-credentials JWT
+  (JWKS `MW_INTERNAL_JWK_SET_URI`, issuer `MW_INTERNAL_ISSUER`, `aud` containing mw-recon: mapper `aud-mw-recon` on
+  client mw-admin-api in `deploy/keycloak/realms/services-realm.json`) whose `azp` is in `allowed-clients`
+  (mw-admin-api); none or bad 401 `MW-AUTH-001`, another client 403 `MW-AUTH-002`. The actuator and the dev-only
+  `/test/v1/**` stay open. Tests `config/InternalApiSecurityIT`, tokens from `security/InternalTokens`.
 
 ## Contracts owned
 

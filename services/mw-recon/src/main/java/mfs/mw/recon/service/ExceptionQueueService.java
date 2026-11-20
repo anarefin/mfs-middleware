@@ -138,7 +138,7 @@ public class ExceptionQueueService {
   private ReconStore.ExceptionRow require(UUID id) {
     ReconStore.ExceptionRow row = store.exception(id);
     if (row == null) {
-      throw new MwException(ErrorCodes.VAL_NOT_FOUND, "no such recon exception");
+      throw new MwException(ErrorCodes.VAL_NOT_FOUND, "no such recon exception").withStatus(HttpStatus.NOT_FOUND);
     }
     return row;
   }
