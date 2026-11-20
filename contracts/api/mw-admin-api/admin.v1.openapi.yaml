@@ -841,6 +841,51 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/billers:
+    get:
+      operationId: listBillers
+      summary: The biller catalogue
+      description: >-
+        Ticket 113, FRS ADM-05. Every entry (the BillerValue of mw.config.changed.v1) with its
+        version. Partner reading roles.
+      responses:
+        "200":
+          description: The catalogue
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BillerList" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /admin/v1/billers/{code}/change-requests:
+    post:
+      operationId: proposeBiller
+      summary: Propose a biller catalogue change (maker)
+      description: >-
+        Ticket 113, FRS FL-04, FL-05, ADM-05, PLT-043. Role ops-maker or integration-maker; a
+        different ops-checker or integration-checker approves. action UPSERT (default; create or
+        edit, value the full BillerValue without code), ENABLE or DISABLE (maintenanceEn /
+        maintenanceBn replace the entry's; a disabled biller needs both). Field regexes must
+        compile; MINIMUM needs minAmountMinor; maxAmountMinor >= minAmountMinor. Approval stores
+        version + 1 and publishes mw.config.changed.v1 configType BILLER, configKey biller/{code}.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string, pattern: "^[A-Z0-9_]{2,32}$" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BillerChange" }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
   /admin/v1/ussd-menus/{menuId}/change-requests:
     post:
       operationId: proposeUssdMenu
@@ -1243,6 +1288,29 @@ components:
         The wallet's PIN-lock state an UNLOCK expects (LOCKED) and leads to (ACTIVE); a PIN_RESET
         leads to RESET (a new PIN set by the customer).
       enum: [LOCKED, ACTIVE, RESET]
+    BillerChange:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        action: { type: string, enum: [UPSERT, ENABLE, DISABLE], default: UPSERT }
+        value: { type: object, description: "UPSERT: the full BillerValue (mw.config.changed.v1) without code." }
+        maintenanceEn: { type: string, minLength: 1, maxLength: 500 }
+        maintenanceBn: { type: string, minLength: 1, maxLength: 500 }
+        reason: { type: string, minLength: 1, maxLength: 500 }
+    BillerList:
+      type: object
+      required: [billers]
+      properties:
+        billers:
+          type: array
+          items:
+            type: object
+            required: [code, version]
+            description: A BillerValue of mw.config.changed.v1 plus its version.
+            properties:
+              code: { type: string }
+              version: { type: integer, minimum: 1 }
     RoutingChange:
       type: object
       additionalProperties: false

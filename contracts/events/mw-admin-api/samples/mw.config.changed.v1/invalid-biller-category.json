@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "configKey": "biller/DESCO",
+  "configType": "BILLER",
+  "change": "UPSERT",
+  "version": 1,
+  "value": {
+    "code": "DESCO",
+    "nameEn": "Dhaka Electric Supply Company",
+    "nameBn": "ঢাকা ইলেকট্রিক সাপ্লাই কোম্পানি",
+    "category": "ELECTRICITY",
+    "primaryAggregator": "billagg",
+    "fallbackAggregator": "ekpay",
+    "fields": [
+      {
+        "name": "accountNo",
+        "labelEn": "Account number",
+        "labelBn": "হিসাব নম্বর",
+        "regex": "^[0-9]{8,12}$",
+        "required": true
+      }
+    ],
+    "amountRule": "FIXED",
+    "billMonthRequired": true,
+    "enabled": true
+  },
+  "changedAt": "2026-11-20T09:00:00Z",
+  "changedBy": "ops-maker01",
+  "approvedBy": "ops-checker01"
+}

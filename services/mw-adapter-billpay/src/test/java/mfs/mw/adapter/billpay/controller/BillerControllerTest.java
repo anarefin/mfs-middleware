@@ -1,6 +1,7 @@
 package mfs.mw.adapter.billpay.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -52,7 +53,7 @@ class BillerControllerTest {
 
   @Test
   void fetchesABill() {
-    when(service.fetch("DESCO", "1234567"))
+    when(service.fetch("DESCO", "1234567", null))
         .thenReturn(new BillView("DESCO", "1234567", new Money(66_700L, "BDT"), "2026-11-14", "2026-11"));
     MvcTestResult r = fetch("DESCO", "{\"billNumber\":\"1234567\"}");
     assertThat(r).hasStatusOk();
@@ -64,12 +65,20 @@ class BillerControllerTest {
     assertThat(fetch("DESCO", "{\"billNumber\":\"12 34\"}")).hasStatus(400);
     assertThat(fetch("DESCO", "{}")).hasStatus(400);
     assertThat(fetch("de sco", "{\"billNumber\":\"1\"}")).hasStatus(400);
-    verify(service, never()).fetch(anyString(), anyString());
+    assertThat(fetch("DESCO", "{\"billNumber\":\"1234567\",\"billMonth\":\"202613\"}")).hasStatus(400);
+    verify(service, never()).fetch(anyString(), anyString(), any());
+  }
+
+  @Test
+  void theBillMonthIsPassedOn() {
+    when(service.fetch("DESCO", "1234567", "202611"))
+        .thenReturn(new BillView("DESCO", "1234567", new Money(66_700L, "BDT"), "2026-11-14", "2026-11"));
+    assertThat(fetch("DESCO", "{\"billNumber\":\"1234567\",\"billMonth\":\"202611\"}")).hasStatusOk();
   }
 
   @Test
   void aRefusalIsTheEnvelopeWithItsStatus() {
-    when(service.fetch("DESCO", "1234404"))
+    when(service.fetch("DESCO", "1234404", null))
         .thenThrow(new MwException("MW-PTR-BILLAGG-BILL_NOT_FOUND", "Bill not found").withStatus(HttpStatus.BAD_GATEWAY));
     MvcTestResult r = fetch("DESCO", "{\"billNumber\":\"1234404\"}");
     assertThat(r).hasStatus(502);

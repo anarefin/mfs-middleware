@@ -26,11 +26,11 @@ class BillFetchServiceTest {
 
   final PartnerGateway gateway = mock(PartnerGateway.class);
   final BillFetchService service =
-      new BillFetchService(
+      new BillFetchService(new BillerCatalog(
           new BillerProperties(
               Map.of(
                   "DESCO", new BillerProperties.Biller("Dhaka Electric", "ELECTRICITY", "billagg"),
-                  "WASA", new BillerProperties.Biller("Dhaka WASA", "WATER", "billagg"))),
+                  "WASA", new BillerProperties.Biller("Dhaka WASA", "WATER", "billagg")))),
           new PartnerCallMapper(),
           gateway);
 
