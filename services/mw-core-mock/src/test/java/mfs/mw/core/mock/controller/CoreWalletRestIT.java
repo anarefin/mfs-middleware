@@ -477,5 +477,90 @@ class CoreWalletRestIT {
     assertThat(total(PAYER)).isEqualTo(SEED - 5200);
   }
 
+  // --- account unlock and KYC factors (ticket 95b: mw-admin-api and mw-auth over REST) ---
 
+  private MvcTestResult postAs(String client, String uri, String body) {
+    return mvc.post().uri(uri).header("Authorization", InternalTokens.bearer(client))
+        .contentType(MediaType.APPLICATION_JSON).content(body).exchange();
+  }
+
+  private String walletStatus(String walletId) {
+    return jdbc.queryForObject("select status from wallet where id = ?", String.class, walletId);
+  }
+
+  private static String unlockBody(String txnId) {
+    return """
+        {"txnId":"%s","changeRequestId":"%s","makerId":"ops-maker","checkerId":"ops-checker"}"""
+        .formatted(txnId, UUID.randomUUID());
+  }
+
+  private static String factorsBody(String txnId) {
+    return """
+        {"txnId":"%s","resetId":"%s","factors":{"nidLast4Token":"NID_AAAA","dateOfBirthToken":"NID_BBBB","tokenKid":"tokenise-nid.v1"}}"""
+        .formatted(txnId, UUID.randomUUID());
+  }
+
+  @Test
+  void anOpsUnlockLiftsACoreLockOnceAndARepeatIsTheSameAnswer() {
+    jdbc.update("update wallet set status = 'LOCKED' where id = ?", PAYER);
+    String body = unlockBody(CoreCommandsTestSupport.txnId());
+
+    JsonNode first = served(postAs("mw-admin-api", "/core/v1/accounts/" + PAYER + "/unlock", body),
+        "/core/v1/accounts/{walletId}/unlock", "post", 200);
+    assertThat(first.path("status").asString()).isEqualTo("UNLOCKED");
+    assertThat(first.path("walletId").asString()).isEqualTo(PAYER);
+    assertThat(walletStatus(PAYER)).isEqualTo("ACTIVE");
+
+    jdbc.update("update wallet set status = 'LOCKED' where id = ?", PAYER);
+    JsonNode again = served(postAs("mw-admin-api", "/core/v1/accounts/" + PAYER + "/unlock", body),
+        "/core/v1/accounts/{walletId}/unlock", "post", 200);
+    assertThat(again).isEqualTo(first);
+    assertThat(walletStatus(PAYER)).as("a repeat unlocks nothing").isEqualTo("LOCKED");
+  }
+
+  @Test
+  void anUnlockOfAWalletThatIsNotLockedOrUnknownIsTheCoreRefusal() {
+    assertThat(served(postAs("mw-admin-api", "/core/v1/accounts/" + PAYER + "/unlock", unlockBody(CoreCommandsTestSupport.txnId())),
+        "/core/v1/accounts/{walletId}/unlock", "post", 422).path("code").asString()).isEqualTo("MW-CORE-WALLET_NOT_LOCKED");
+    assertThat(served(postAs("mw-admin-api", "/core/v1/accounts/01799999999/unlock", unlockBody(CoreCommandsTestSupport.txnId())),
+        "/core/v1/accounts/{walletId}/unlock", "post", 422).path("code").asString()).isEqualTo("MW-CORE-WALLET_NOT_FOUND");
+  }
+
+  @Test
+  void onlyMwAdminApiMayUnlockAndOnlyMwAuthMayVerifyFactors() {
+    jdbc.update("update wallet set status = 'LOCKED' where id = ?", PAYER);
+    assertThat(postAs("mw-orchestrator", "/core/v1/accounts/" + PAYER + "/unlock", unlockBody(CoreCommandsTestSupport.txnId())))
+        .hasStatus(403);
+    assertThat(postAs("mw-auth", "/core/v1/accounts/" + PAYER + "/unlock", unlockBody(CoreCommandsTestSupport.txnId())))
+        .hasStatus(403);
+    assertThat(walletStatus(PAYER)).isEqualTo("LOCKED");
+    assertThat(postAs("mw-admin-api", "/core/v1/customers/" + PAYER + "/verify-factors", factorsBody(CoreCommandsTestSupport.txnId())))
+        .hasStatus(403);
+  }
+
+  @Test
+  void theFactorsOfAnActiveOrCoreLockedWalletAreVerified() {
+    JsonNode ok = served(postAs("mw-auth", "/core/v1/customers/" + PAYER + "/verify-factors", factorsBody(CoreCommandsTestSupport.txnId())),
+        "/core/v1/customers/{walletId}/verify-factors", "post", 200);
+    assertThat(ok.path("status").asString()).isEqualTo("VERIFIED");
+    assertThat(ok.path("walletId").asString()).isEqualTo(PAYER);
+
+    jdbc.update("update wallet set status = 'LOCKED' where id = ?", PAYER);
+    assertThat(served(postAs("mw-auth", "/core/v1/customers/" + PAYER + "/verify-factors", factorsBody(CoreCommandsTestSupport.txnId())),
+        "/core/v1/customers/{walletId}/verify-factors", "post", 200).path("status").asString()).isEqualTo("VERIFIED");
+  }
+
+  @Test
+  void theFactorsOfABlockedWalletOrAnInjectedMismatchAreRefused() {
+    String txn = CoreCommandsTestSupport.txnId();
+    faults.add(new FaultRequest(FaultMode.REJECT, "VerifyCustomerFactors", txn, null, "FACTORS_MISMATCH", 1));
+    assertThat(served(postAs("mw-auth", "/core/v1/customers/" + PAYER + "/verify-factors", factorsBody(txn)),
+        "/core/v1/customers/{walletId}/verify-factors", "post", 422).path("code").asString())
+        .isEqualTo("MW-CORE-FACTORS_MISMATCH");
+
+    jdbc.update("update wallet set status = 'BLOCKED' where id = ?", PAYEE);
+    assertThat(served(postAs("mw-auth", "/core/v1/customers/" + PAYEE + "/verify-factors", factorsBody(CoreCommandsTestSupport.txnId())),
+        "/core/v1/customers/{walletId}/verify-factors", "post", 422).path("code").asString())
+        .isEqualTo("MW-CORE-WALLET_NOT_ACTIVE");
+  }
 }

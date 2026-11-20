@@ -226,8 +226,6 @@ mw:
     ttl: 72h
     expiry-cron: "0 */5 * * * *"
     expiry-batch: 500
-    # UnlockWallet sent on approval of a wallet unlock (ticket 52): expiresAt = issuedAt + this
-    unlock-command-ttl: 1h
     # Claim-first approvals (ticket 75, key changes): the claiming checker may retry within the lease;
     # after it scheduler/ApprovingReconcileJob resolves the request from mw-crypto's state of the change
     approving-lease: 5m
@@ -251,6 +249,22 @@ mw:
     connect-timeout: 2s
     read-timeout: 5s
     reconcile-cron: ${MW_APISIX_RECONCILE_CRON:0 */5 * * * *}
+  # Partner credential upload and expiry alerts (ticket 131): uploads are staged under
+  # secret/mw-admin-api/staged-credentials/<id> and written on approval into the adapters' per-partner
+  # secrets secret/mw-adapter-<family>/<partner> (write-only policy, deploy/provision/lib.sh).
+  credentials:
+    vault:
+      enabled: ${VAULT_ENABLED:false}
+      uri: ${VAULT_ADDR:http://vault:8200}
+      kv-mount: secret
+      staging-path: mw-admin-api/staged-credentials
+      connect-timeout: 2s
+      read-timeout: 5s
+    expiry:
+      cron: ${MW_CREDENTIAL_EXPIRY_CRON:0 0 6 * * *}
+      thresholds-days: [30, 7, 1]
+      ops-email: ${MW_OPS_ALERT_EMAIL:ops@bits.example}
+      locale: en
   service:
     name: ${spring.application.name}
     version: ${MW_VERSION:0.1.0-SNAPSHOT}
@@ -270,6 +284,16 @@ mw:
     ttl: 72h
     retry-period: 1m
     bundle: mw-service
+  # The core wallet API (ADR D31, ticket 95b; config/CoreClientProperties, client/CoreAccountClient): an
+  # approved unlock lifts the core's own lock with POST /core/v1/accounts/{walletId}/unlock, with the realm
+  # services token below (audience mw-core-mock). Idempotent by unlockTxnId: no definite answer is asked
+  # again `attempts` times, `backoff` apart, then logged.
+  core:
+    base-url: ${MW_CORE_URL:http://mw-core-mock:8080}
+    timeout: 2s
+    connect-timeout: 1s
+    attempts: 3
+    backoff: 300ms
   admin-api:
     jwt:
       # Keycloak realm `ops` (operators, password + TOTP; spec 15.1, 18.2). Keys fetched on the first token.

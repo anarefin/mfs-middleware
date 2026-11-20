@@ -12,7 +12,6 @@ import mfs.mw.admin.api.dto.AuditEvent;
 import mfs.mw.admin.api.dto.ChangeRequestView;
 import mfs.mw.admin.api.dto.ReversalRequest;
 import mfs.mw.admin.api.dto.TxnAction;
-import mfs.mw.admin.api.dto.UnlockWalletCommand;
 import mfs.mw.admin.api.dto.WalletLockCommand;
 import mfs.mw.admin.api.entity.ChangeRequest;
 import mfs.mw.admin.api.util.MaskingPolicy;
@@ -25,8 +24,8 @@ import mfs.mw.admin.api.util.SensitiveType;
  * transaction/<txnId>} (so the request shows in the transaction's audit trail), {@code before} /
  * {@code after} the request status and the transaction status; reasons are scrubbed free text. A
  * wallet request (UNLOCK, ticket 52) is audited as {@code wallet/<masked MSISDN>} with txnId its
- * {@code unlockTxnId} and {@code walletStatus} in place of {@code txnStatus}; its approval sends
- * {@code UnlockWallet} to the core. A partner request (ticket 38) is audited as {@code
+ * {@code unlockTxnId} and {@code walletStatus} in place of {@code txnStatus}; its approval unlocks
+ * the core's account over REST (ticket 95b). A partner request (ticket 38) is audited as {@code
  * partner/<id>} without a txnId; its before/after carry {@code config} (the changed fields of the
  * diff, never secrets) in place of a status.
  */
@@ -171,18 +170,6 @@ public final class ChangeRequestMapper {
   }
 
   /**
-   * The approved wallet unlock for the core ({@code UnlockWallet} on {@code core.command.v1},
-   * ticket 52): txnId the request's {@code unlockTxnId}, commandId {@code <changeRequestId>:unlock}.
-   */
-  public static UnlockWalletCommand unlock(
-      ChangeRequest cr, String checkerId, String correlationId, Instant at, Duration ttl) {
-    return new UnlockWalletCommand(
-        1, UnlockWalletCommand.TYPE, unlockCommandId(cr), unlockTxnId(cr), correlationId, at, at.plus(ttl),
-        new UnlockWalletCommand.Payload(
-            new UnlockWalletCommand.Subject("WALLET", cr.resourceId()), cr.id().toString(), cr.makerId(), checkerId));
-  }
-
-  /**
    * The approved unlock for mw-auth ({@code auth.wallet-lock.v1} UNLOCK, ticket 70): commandId
    * {@code <changeRequestId>:auth-unlock}, key the wallet id, actor the checker.
    */
@@ -205,7 +192,7 @@ public final class ChangeRequestMapper {
         CorrelationIds.orNew(correlationId), at);
   }
 
-  /** The core command id of a wallet unlock: the core is idempotent on it. */
+  /** The id kept in {@code payload.commandId} of an approved unlock (ticket 52; the core is idempotent by unlockTxnId since 95b). */
   public static String unlockCommandId(ChangeRequest cr) {
     return cr.id() + ":unlock";
   }

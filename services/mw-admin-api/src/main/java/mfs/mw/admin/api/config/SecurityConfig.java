@@ -86,8 +86,14 @@ public class SecurityConfig {
                     .requestMatchers(
                         HttpMethod.POST, "/admin/v1/transactions/*/change-requests", "/admin/v1/wallets/*/change-requests")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.TXN_MAKER::contains)))
-                    .requestMatchers(HttpMethod.POST, "/admin/v1/partners/*/change-requests")
+                    .requestMatchers(
+                        HttpMethod.POST, "/admin/v1/partners/*/change-requests", "/admin/v1/partners/*/error-map/change-requests")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.PARTNER_MAKER::contains)))
+                    // partner credentials (ticket 131); the service checks again
+                    .requestMatchers(HttpMethod.GET, "/admin/v1/credentials", "/admin/v1/credentials/expiring")
+                    .access(roles(r -> r.stream().anyMatch(AdminRole.READ_CREDENTIALS::contains)))
+                    .requestMatchers(HttpMethod.POST, "/admin/v1/partners/*/credentials/*/change-requests")
+                    .access(roles(r -> r.stream().anyMatch(AdminRole.CREDENTIAL_MAKER::contains)))
                     .requestMatchers(
                         HttpMethod.POST, "/admin/v1/change-requests/*/approve", "/admin/v1/change-requests/*/reject")
                     .access(roles(r -> r.stream().anyMatch(AdminRole.ANY_CHECKER::contains)))

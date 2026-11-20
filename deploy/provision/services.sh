@@ -68,6 +68,9 @@ provision_mw_simulators() {
   sync_env sim.ussd-gateway.credentials.teletalk USSD_TELETALK_GATEWAY_SECRET
   # the payShield simulator logs in to the softhsm paysim token with it (ticket 64)
   sync_env sim.payshield.pkcs11.user-pin SOFTHSM_PAYSIM_USER_PIN
+  # the file mocks (ticket 123): partner-sftp login, realm services client for mw-core-mock's statements
+  sync_env sim.files.sftp.password SFTP_DEV_PASSWORD
+  sync_env sim.files.trustbank.core.client-secret KC_MW_SIMULATORS_SECRET
   # the simulated partner's private_key_jwt key at Keycloak realm partners (ticket 73)
   partner_sim_client_key
   db_role simulators_rw simulators
@@ -155,6 +158,8 @@ provision_mw_admin_api() {
   # the APISIX Admin API key: the channel client registry projects its consumers there (ticket 100a)
   sync_env mw.apisix.admin-key APISIX_ADMIN_KEY
   db_role admin_api_rw admin partner
+  # partner credential upload (ticket 131): staging area + write-only access to the adapters' partner secrets
+  EXTRA_POLICY="$(credential_upload_policy)"
 }
 
 provision_mw_adapter_telco() {

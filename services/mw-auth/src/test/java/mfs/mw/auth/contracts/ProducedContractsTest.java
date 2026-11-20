@@ -8,10 +8,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
-import mfs.mw.auth.dto.VerifyCustomerFactorsCommand;
 import mfs.mw.auth.mapper.AuditEventMapper;
 import mfs.mw.auth.mapper.DeviceNotificationMapper;
-import mfs.mw.auth.util.UuidV7;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
@@ -34,19 +32,7 @@ class ProducedContractsTest {
   static final Map<String, Supplier<List<Object>>> FIXTURES =
       Map.of(
           "events/mw-notify/mw.notify.request.v1.schema.json", ProducedContractsTest::notifyRequests,
-          "events/mw-orchestrator/core.command.v1.schema.json#VerifyCustomerFactors", ProducedContractsTest::kycCommands,
           "events/mw-audit-dw/mw.audit.event.v1.schema.json", ProducedContractsTest::auditEvents);
-
-  /** {@code PinResetService}: a self-service reset's KYC check (ticket 70). */
-  static List<Object> kycCommands() {
-    return List.of(new VerifyCustomerFactorsCommand(1, VerifyCustomerFactorsCommand.TYPE,
-        "pin-reset:3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d", UuidV7.at(NOW).toString(), CORRELATION_ID, NOW,
-        NOW.plusSeconds(900),
-        new VerifyCustomerFactorsCommand.Payload(new VerifyCustomerFactorsCommand.Subject("WALLET", "01711000001"),
-            "3f6b1c2d-4e5f-4a6b-9c7d-8e9f0a1b2c3d",
-            new VerifyCustomerFactorsCommand.Factors("NID_MZXW6YTBOI4TEMRXGQ3DIMZSGI4TCNRQ",
-                "NID_ONSWG4TFOQ2DCMBQGEZDSNBVGY3TQOJQ", "tokenise-nid.v1"))));
-  }
 
   /** {@code AuditTrail}: a PIN lock by mw-auth and an ops unlock (ticket 70). */
   static List<Object> auditEvents() {
@@ -65,7 +51,7 @@ class ProducedContractsTest {
     return List.of(
         mapper.otp("01711000001", "123456", null, NOW.plusSeconds(120), CORRELATION_ID),
         mapper.otp("01711000001", "654321", "en", NOW.plusSeconds(120), CORRELATION_ID),
-        mapper.bound("01711000001", "dev-0001", "bn", CORRELATION_ID),
+        mapper.bound("01711000001", "dev-0001", 42L, "bn", CORRELATION_ID),
         mapper.otp("01711000001", "123456", "en", NOW.plusSeconds(120), CORRELATION_ID, "RESET"),
         mapper.notice("01711000001", DeviceNotificationMapper.PIN_CHANGED_TEMPLATE, null, CORRELATION_ID),
         mapper.notice("01711000001", DeviceNotificationMapper.RESET_APPROVED_TEMPLATE, "en", CORRELATION_ID));

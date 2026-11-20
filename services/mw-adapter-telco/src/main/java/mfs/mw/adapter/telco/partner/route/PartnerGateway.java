@@ -96,6 +96,13 @@ public class PartnerGateway {
       response = new PartnerResponse.NotSent(NotSentReason.UNKNOWN_PARTNER);
     } else if (!resolved.get().config().enabled()) {
       response = new PartnerResponse.NotSent(NotSentReason.DISABLED);
+    } else if (resolved.get().config().inMaintenance(clock.instant())) {
+      PartnerConfig.MaintenanceWindow window = resolved.get().config().maintenanceWindow();
+      response =
+          new PartnerResponse.NotSent(
+              NotSentReason.MAINTENANCE,
+              PartnerResponse.Notice.orDefault(
+                  window == null ? null : window.messageEn(), window == null ? null : window.messageBn()));
     } else {
       response = send(resolved.get(), call, start);
     }

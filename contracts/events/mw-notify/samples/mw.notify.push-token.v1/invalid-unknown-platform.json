@@ -4,5 +4,6 @@
   "deviceId": "dev-0001",
   "token": "fcm-test-token-abc123",
   "platform": "WINDOWS",
-  "registeredAt": "2026-11-20T08:00:00Z"
+  "registeredAt": "2026-11-20T08:00:00Z",
+  "bindingEpoch": 42
 }

@@ -1,4 +1,11 @@
 {
-  "invalid-unknown-platform.json": ["/platform must be equal to one of the allowed values"],
-  "invalid-without-token.json": ["/ must have required property 'token'"]
+  "invalid-unknown-platform.json": [
+    "/platform must be equal to one of the allowed values"
+  ],
+  "invalid-without-token.json": [
+    "/ must have required property 'token'"
+  ],
+  "invalid-without-binding-epoch.json": [
+    "/ must have required property 'bindingEpoch'"
+  ]
 }

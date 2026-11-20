@@ -15,6 +15,8 @@ public final class ErrorCodes {
   public static final String VAL_MEDIA_TYPE = "MW-VAL-005";
   /** Unexpected failure; details stay in the log, never in the response. */
   public static final String SYS_INTERNAL = "MW-SYS-001";
+  /** A file mock could not reach the file host or mw-core-mock (ticket 123); retryable, 503. */
+  public static final String SYS_FILE_MOCK_UNAVAILABLE = "MW-SYS-FILE_MOCK_UNAVAILABLE";
 
   private ErrorCodes() {}
 }

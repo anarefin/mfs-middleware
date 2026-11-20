@@ -112,7 +112,7 @@ val listedContracts = providers.fileContents(layout.projectDirectory.file("contr
     // contracts/ContractSchemasTest). Add here any other contract a test reads but contracts.yml lacks.
     val extraTestContracts = listOf(
         "events/mw-admin-api/mw.config.changed.v1.schema.json",
-        "events/mw-orchestrator/core.command.v1.schema.json",
+        "events/mw-orchestrator/mw.txn.request.v1.schema.json",
     )
     val paths = yml.lines()
         .filterNot { it.trimStart().startsWith("#") }

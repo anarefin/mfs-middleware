@@ -11,7 +11,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import mfs.mw.core.mock.dto.AccountActionResult;
+import mfs.mw.core.mock.dto.AccountUnlockRequest;
 import mfs.mw.core.mock.dto.AccountView;
+import mfs.mw.core.mock.dto.FactorsRequest;
 import mfs.mw.core.mock.dto.Amount;
 import mfs.mw.core.mock.dto.BalanceView;
 import mfs.mw.core.mock.dto.ChargesRequest;
@@ -328,6 +331,40 @@ public class CoreWalletService {
     p.put("reason", req.reason());
     return run(req.txnId(), "reversal", "ReverseTransaction", CoreCommandService.EVENT_TOPIC, req, p,
         e -> result(e, "REVERSED", req.originalTxnId()));
+  }
+
+  /**
+   * UnlockWallet over REST (ticket 95b; mw-admin-api after maker-checker): a core LOCKED wallet back to
+   * ACTIVE, else 422 {@code MW-CORE-WALLET_NOT_LOCKED} / {@code WALLET_NOT_FOUND}; idempotent under
+   * {@code <txnId>:rest:unlock}.
+   */
+  @Transactional(noRollbackFor = MwException.class)
+  public AccountActionResult unlock(String walletId, AccountUnlockRequest req) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("subject", Map.of("type", "WALLET", "id", walletId));
+    p.put("changeRequestId", req.changeRequestId());
+    p.put("makerId", req.makerId());
+    p.put("checkerId", req.checkerId());
+    return run(req.txnId(), "unlock", "UnlockWallet", CoreCommandService.EVENT_TOPIC,
+        new java.util.TreeMap<>(Map.of("walletId", walletId, "request", req)), p,
+        e -> new AccountActionResult(e.txnId(), payload(e).path("walletId").asString(), "UNLOCKED", e.coreRef(), null));
+  }
+
+  /**
+   * VerifyCustomerFactors over REST (ticket 95b; mw-auth's self-service PIN reset): {@code VERIFIED}, else
+   * 422 {@code MW-CORE-WALLET_NOT_FOUND} / {@code WALLET_NOT_ACTIVE} / an injected {@code FACTORS_MISMATCH};
+   * idempotent under {@code <txnId>:rest:factors}. The factors are hashes, never logged.
+   */
+  @Transactional(noRollbackFor = MwException.class)
+  public AccountActionResult verifyFactors(String walletId, FactorsRequest req) {
+    Map<String, Object> p = new LinkedHashMap<>();
+    p.put("subject", Map.of("type", "WALLET", "id", walletId));
+    p.put("resetId", req.resetId());
+    p.put("factors", req.factors());
+    return run(req.txnId(), "factors", "VerifyCustomerFactors", CoreCommandService.EVENT_TOPIC,
+        new java.util.TreeMap<>(Map.of("walletId", walletId, "request", req)), p,
+        e -> new AccountActionResult(e.txnId(), payload(e).path("walletId").asString(), "VERIFIED", e.coreRef(),
+            payload(e).path("resetId").asString()));
   }
 
   /** The operation of an operator's round {@code n >= 1}: {@code <op>:manual-<n>}, else {@code op}. */

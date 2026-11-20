@@ -237,6 +237,13 @@ mw:
     default-sender: Bits
     default-locale: bn
     receipt-buffer-ttl: 1d
+    # Where rules with recipient OPS send (the MANUAL_REVIEW alert, FRS PLT-024, ticket 96a, V16):
+    # operations' mobile number (SMS) and mailbox (email), texts in ops.locale; unset = that
+    # channel's ops rule is skipped.
+    ops:
+      msisdn: ${MW_NOTIFY_OPS_MSISDN:}
+      email: ${MW_NOTIFY_OPS_EMAIL:}
+      locale: ${MW_NOTIFY_OPS_LOCALE:en}
     # PROMO is held from start to end local time (spec 10.1) and sent after, unless it expires
     # first; a window whose end is before its start spans midnight.
     quiet-hours:

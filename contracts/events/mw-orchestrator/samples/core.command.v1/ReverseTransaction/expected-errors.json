@@ -1,3 +1,0 @@
-{
-  "invalid-reverse-without-original.json": ["/payload must have required property 'originalTxnId'"]
-}

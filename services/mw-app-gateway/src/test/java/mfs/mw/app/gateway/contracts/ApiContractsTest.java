@@ -217,7 +217,7 @@ class ApiContractsTest {
         "content", "application/json", "schema").validate(JSON.readTree("{}"))).isNotEmpty();
     assertThat(OpenApiSchemas.at(AUTH_API, "paths", "/internal/v1/sessions/{walletId}/{deviceId}", "get", "responses",
         "200", "content", "application/json", "schema").validate(JSON.readTree(
-            "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300,\"deviceKeyFingerprint\":\"abababababababababababababababababababababababababababababababab\",\"boundAt\":\"2026-11-14T06:00:00Z\"}")))
+            "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300,\"deviceKeyFingerprint\":\"abababababababababababababababababababababababababababababababab\",\"boundAt\":\"2026-11-14T06:00:00Z\",\"bindingEpoch\":42}")))
         .isEmpty();
   }
 
@@ -251,10 +251,10 @@ class ApiContractsTest {
 
   @Test
   void aContractShapedLiveSessionDeserialises() {
-    String answer = "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300,\"deviceKeyFingerprint\":\"abababababababababababababababababababababababababababababababab\",\"boundAt\":\"2026-11-14T06:00:00Z\"}";
+    String answer = "{\"walletId\":\"01711000001\",\"deviceId\":\"device-0001\",\"idleTimeoutSeconds\":300,\"deviceKeyFingerprint\":\"abababababababababababababababababababababababababababababababab\",\"boundAt\":\"2026-11-14T06:00:00Z\",\"bindingEpoch\":42}";
     assertThat(OpenApiSchemas.component(AUTH_API, "LiveSession").validate(JSON.readTree(answer))).isEmpty();
     assertThat(JSON.readValue(answer, LiveSession.class)).isEqualTo(new LiveSession(
-        "01711000001", "device-0001", 300, "abababababababababababababababababababababababababababababababab", Instant.parse("2026-11-14T06:00:00Z")));
+        "01711000001", "device-0001", 300, "abababababababababababababababababababababababababababababababab", Instant.parse("2026-11-14T06:00:00Z"), 42L));
   }
 
   @Test

@@ -68,6 +68,19 @@ class PartnerReplyMapperTest {
   }
 
   @Test
+  void aPayRefusedForMaintenanceIsFailedWithTheWindowsBnAndEnMessage() {
+    // ticket 131b: the reply contract has one message; the Bangla text rides in attributes.messageBn
+    PartnerReply reply = mapper.toReply(request, null, new PartnerResponse.NotSent(NotSentReason.MAINTENANCE,
+        new PartnerResponse.Notice("Under maintenance until 4 pm", "বিকেল ৪টা পর্যন্ত রক্ষণাবেক্ষণ")));
+
+    assertThat(reply.payload().outcome()).isEqualTo("FAILED");
+    assertThat(reply.payload().errorCode()).isEqualTo("MW-SYS-PARTNER_MAINTENANCE");
+    assertThat(reply.payload().message()).isEqualTo("Under maintenance until 4 pm");
+    assertThat(reply.payload().attributes()).isEqualTo(Map.of("messageBn", "বিকেল ৪টা পর্যন্ত রক্ষণাবেক্ষণ"));
+    assertThat(reply.payload().retryable()).isTrue();
+  }
+
+  @Test
   void anExpiredPayIsFailedAsNotSent() {
     PartnerReply reply = mapper.expired(request);
     assertThat(reply.payload().outcome()).isEqualTo("FAILED");

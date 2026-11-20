@@ -3,10 +3,7 @@ package mfs.mw.core.mock.mapper;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
-import mfs.mw.core.mock.contracts.ContractSchemas;
 import mfs.mw.core.mock.dto.CoreCommand;
 import mfs.mw.core.mock.exception.MwException;
 import org.junit.jupiter.api.Test;
@@ -14,24 +11,32 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import tools.jackson.databind.json.JsonMapper;
 
-/** The mapper reads the orchestrator's contract samples and refuses what cannot be a command. */
+/**
+ * The mapper reads the commands the REST API builds (ticket 95b: the core.command.v1 contract and its
+ * samples are retired) and refuses what cannot be a command.
+ */
 class CoreCommandMapperTest {
 
   static final JsonMapper JSON = JsonMapper.builder().build();
-  static final String DIR = "events/mw-orchestrator/samples/core.command.v1/";
 
   private final CoreCommandMapper mapper = new CoreCommandMapper(JSON);
 
-  static List<Path> transferSamples() {
-    List<Path> all = new java.util.ArrayList<>(ContractSchemas.samples(DIR + "PostTransfer", "valid"));
-    all.addAll(ContractSchemas.samples(DIR + "ValidateTransaction", "valid"));
-    return all;
+  static List<String> transferSamples() {
+    String p2p = "{\"schemaVersion\":1,\"commandType\":\"PostTransfer\",\"commandId\":\"t1:rest:transfer\",\"txnId\":\"t1\","
+        + "\"payload\":{\"txnType\":\"P2P\",\"debitParty\":{\"type\":\"WALLET\",\"id\":\"01711000001\"},"
+        + "\"creditParty\":{\"type\":\"WALLET\",\"id\":\"01711000002\"},\"amount\":{\"valueMinor\":10000,\"currency\":\"BDT\"},"
+        + "\"assertion\":\"a.b.c\",\"idempotencyKey\":\"k-1\"}}";
+    String validate = p2p.replace("PostTransfer", "ValidateTransaction").replace(":rest:transfer", ":rest:validate");
+    String bulk = "{\"schemaVersion\":1,\"commandType\":\"PostTransfer\",\"commandId\":\"t2:rest:transfer\",\"txnId\":\"t2\","
+        + "\"payload\":{\"txnType\":\"BULK_DISBURSE\",\"debitParty\":{\"type\":\"ORG\",\"id\":\"01311000001\"},"
+        + "\"creditParty\":{\"type\":\"WALLET\",\"id\":\"01711000002\"},\"amount\":{\"valueMinor\":500,\"currency\":\"BDT\"}}}";
+    return List.of(p2p, validate, bulk);
   }
 
   @ParameterizedTest
   @MethodSource("transferSamples")
-  void readsEveryValidTransferSample(Path sample) throws Exception {
-    CoreCommand cmd = mapper.command(Files.readString(sample));
+  void readsEveryTransferShape(String body) {
+    CoreCommand cmd = mapper.command(body);
 
     var p = mapper.transfer(cmd);
     if (!p.authorisationRequired()) {

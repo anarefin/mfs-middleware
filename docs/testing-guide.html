@@ -137,6 +137,7 @@ Every login is printed where a step needs it; <a href="#c1-0">1.0 Logins at a gl
       <tr><td class="tick"></td><td>Custom partner and core faults</td><td><a href="#c5-7">5.7</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>A fault on every core command</td><td><a href="#c5-8">5.8</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Reset every mock in one call</td><td><a href="#c5-9">5.9</a></td><td>curl</td></tr>
+      <tr><td class="tick"></td><td>File mocks: AML response, MT940 / MT942, DW drop check, file faults</td><td><a href="#c5-10">5.10</a></td><td>Files</td></tr>
       <tr><td class="tick"></td><td>SMS content, language, masking, delivery reports; email receipts</td><td><a href="#c6-1">6.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Web checkout: pay, signed redirect, IPN</td><td><a href="#c7-1">7.1</a></td><td>Test console</td></tr>
       <tr><td class="tick"></td><td>Web checkout variants: wrong OTP, pay twice, IPN retries, core refusal</td><td><a href="#c7-2">7.2</a></td><td>Test console</td></tr>
@@ -270,7 +271,7 @@ scripts/creds.sh</pre></div>
     <tr><td>number / account / bill ending <code>999</code></td><td>refused by the partner (business failure)</td></tr>
     <tr><td>amount with <code>.13</code> paisa (e.g. <code>20.13</code>)</td><td>partner times out but <b>applied</b> the request</td></tr>
     <tr><td>amount <code>.77</code></td><td>partner answers HTTP 500 after applying (the status inquiry then finds it: COMPLETED)</td></tr>
-    <tr><td>amount <code>.99</code></td><td>partner answers an unknown code, also to every status inquiry: the transaction <b>stays UNKNOWN with the amount held</b> (up to the 24 h cut-off, then MANUAL_REVIEW). Useful for 9.6</td></tr>
+    <tr><td>amount <code>.99</code></td><td>partner answers an unknown code, also to every status inquiry: the transaction <b>stays UNKNOWN with the amount held</b> (until the last status inquiry of the schedule goes unanswered, then MANUAL_REVIEW and the ops alert: SMS to the ops number, email to ops@bits.test in GreenMail). Useful for 9.6</td></tr>
     <tr><td>amount <code>.55</code></td><td>partner answers a broken body (applied)</td></tr>
     <tr><td>bill number ending <code>404</code> / <code>000</code></td><td>bill not found / already paid</td></tr>
     <tr><td>SMS number ending <code>999</code> / <code>998</code> / <code>995</code></td><td>delivery report UNDELIV / EXPIRED / none</td></tr>
@@ -1082,6 +1083,39 @@ curl -sk https://localhost/auth/realms/ops/protocol/openid-connect/token -H 'api
       <li>The core's mock control directly: <code>GET http://localhost:8084/mock-control/core/journal</code>
         (dev port of mw-core-mock) is <code>[]</code> until the next money call.</li>
     </ol>
+  </div>
+
+  <div class="case" id="c5-10">
+    <h3><span class="id">5.10</span>File mocks: AML response, MT940 / MT942, DW drop check, file faults</h3>
+    <p>Page <span class="ui">Files (AML, MT940, DW)</span>. <b>Sign-in: none.</b> The file-based partners of mw-simulators
+    (ticket 123) work on <code>partner-sftp</code> (profile <code>tester</code>, login <code>bits</code>, folders
+    <code>aml/in</code>, <code>aml/out</code>, <code>trustbank/out</code>, <code>dw/in</code>). Their jobs also run on
+    their own (AML every 15 s, an MT942 every 15 min, the MT940 of yesterday at 00:05 Dhaka time, DW every 30 s).</p>
+    <ol>
+      <li><span class="ui">Run a file mock now</span>: trustbank, <code>mt940</code>, date <code>2026-11-20</code> → one
+        <code>WRITE</code> entry <code>trustbank/out/MT940_0011223344556_20261120.fin</code> with its <code>sha256</code>; the
+        answer's body is the FIN text (<code>:20:TB940261120</code>, <code>:60F:</code>, one <code>:61:</code> /
+        <code>:86:</code> per SETTLEMENT ledger entry of that day, <code>:62F:</code>). Run it again: byte for byte the same
+        (same sha256) while the ledger did not change.</li>
+      <li><span class="ui">AML: upload a sample transaction file</span> → the response lists
+        <code>HOLD|…|01711000777|WATCH_LIST|…</code>, <code>BLOCK|…|01811116666|BLOCK_SUFFIX|…</code> and the trailer
+        <code>T|2|0|1|1</code>. An amount above 5,000,000 poisha (Tk 50,000) per row adds ALERT lines.</li>
+      <li><span class="ui">File fault</span>: trustbank, <code>mt940</code>, <code>MISSING_FILE</code>, next N
+        <code>1</code>; run the MT940 → a <code>SKIP</code> entry and no file; run again → written. Also try
+        <code>INJECTED_MISMATCH</code> with kind <code>AMOUNT_MISMATCH</code> (or <code>MISSING_IN_PARTNER</code>,
+        <code>MISSING_IN_UPAY</code>, <code>DC_FLIP</code>) and a count, <code>LATE_FILE</code> with a delay (a
+        <code>LATE</code> entry, the <code>WRITE</code> follows), <code>DUPLICATE_FILE</code> (a second
+        <code>…_DUP.fin</code>) and <code>CORRUPT_FILE</code>.</li>
+      <li><span class="ui">Journal</span>: dw after a drop of mw-data-export (or by curl, below) shows the control file's
+        <code>verdict</code> <code>ACCEPTED</code> or <code>REJECTED</code> with <code>reasons</code> such as
+        <code>ROW_COUNT transactions_2026-11-20.csv: control 3, file 1</code>.</li>
+      <li><span class="ui">Reset party</span> when done (or the global reset of 5.9).</li>
+    </ol>
+    <div class="cmd"><pre>curl -sk -X POST https://localhost/test/mock-control/dw/files -H 'apikey: e2e-test-apikey' \
+  -H 'content-type: application/json' -d '{"name":"control_2026-11-20.json","content":"{\"files\":[]}"}'
+curl -sk -X POST https://localhost/test/mock-control/dw/run -H 'apikey: e2e-test-apikey'</pre></div>
+    <p>Without <code>--profile tester</code> partner-sftp is not running: a run answers 503
+    <code>MW-SYS-FILE_MOCK_UNAVAILABLE</code>.</p>
   </div>
 </section>
 

@@ -37,7 +37,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
     topic; ticket 110). Each party lists the
     behaviours it carries out (`MockParty.behaviours`; the SMPP / TCP ones a subset) and `MockParties.check`
     refuses a scenario with another behaviour, an operation it lacks or a `code` not in its form (SMPP
-    command_status `0x58` / `88` for smsc and ussdgw, two characters for payshield): 400 MW-VAL-001. An HTTP
+    command_status `0x58` / `88` for smsc and ussdgw, two characters for payshield): 400 MW-VAL-001. The
+    file mocks `aml`, `trustbank`, `dw` of ticket 123 are parties too (below). An HTTP
     party's name is the first segment of its wire paths (the journal's key). A new mock adds a line there
     and calls `MockControl.decide(party, operation, keys, magic)` per operation, then carries the
     `Decision` out (`MockCalls.admit` / `MockCalls.answer`).
@@ -310,6 +311,55 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
   PARTIAL_SUCCESS stores with status `ACCEPTED` (mw-notify: SENT, not DELIVERED); DOWN closes, MAINTENANCE 503,
   nothing stored. The journal records each call (Authorization dropped); the party reset forgets the pushes.
   Test: `PushSimulatorIT`.
+- File mocks (ticket 123, FRS EXT-05, EXT-06, EXT-17, MCT-05, MCK-01/03/07; `service/files/`,
+  `controller/FileMockController`, `client/SftpClient` (sshj, implements `client/RemoteFiles`),
+  `client/CoreLedgerClient`, `config/FileMockProperties` `sim.files.*`; mock-control profile only). On the
+  partner SFTP host (stack `partner-sftp`, profile tester, login bits, password `sim.files.sftp.password` =
+  `SFTP_DEV_PASSWORD` from Vault; host key checked only when `sim.files.sftp.host-key` is set). Folders
+  `aml/in`, `aml/out`, `trustbank/out`, `dw/in` (created by partner-sftp's command). Parties of the engine
+  (`MockParties`): `aml` (respond; keys file, date), `trustbank` (mt940, mt942; keys date, account), `dw`
+  (validate; keys file, date). Jobs (ShedLock, only with `sim.files.enabled`, the stack sets
+  `SIM_FILES_ENABLED` = `MW_SIM_FILES_ENABLED`, default true; a host that is down gives one warning per
+  outage): `scheduler/AmlResponderJob` (`sim.files.aml.poll` 15 s), `TrustStatementJob` (the MT940 of
+  yesterday at `cutoff-cron` 00:05 Asia/Dhaka, an MT942 of today every `intraday` 15 min),
+  `DwDropValidatorJob` (`sim.files.dw.poll` 30 s). `POST /mock-control/{party}/run {operation?, date?,
+  at?}` runs one now and answers `{party, operation, entries}` (the journal entries of the run); `POST
+  /mock-control/{party}/files {name, content}` (aml, dw) drops a file into the inbox as the middleware
+  would (test helper, 201 `{path, sha256, bytes}`). Not reachable: 503 `MW-SYS-FILE_MOCK_UNAVAILABLE`.
+  - AML (`AmlMockService`, `AmlResponder`, draft format `contracts/files/aml/README.md`, which ticket 125
+    finalises): each new file of `aml/in` (once per name and sha256; the party reset forgets) is READ and
+    answered in `aml/out` as `AML_RESP_<x>` (header, `ACTION|txnId|walletId|rule|reference` lines, trailer
+    `T|lines|alerts|holds|blocks`; an unreadable file gets `E|<code>|<detail>`). Triggers (seed
+    `seed/v1/aml/rules.json`, MCK-03): amount above 5,000,000 poisha -> ALERT `AMOUNT_THRESHOLD` (payer);
+    a WALLET / MSISDN party on the watch-list (01711000777, 01811000777, 01911000777) -> HOLD `WATCH_LIST`;
+    one ending `6666` -> BLOCK `BLOCK_SUFFIX`; strongest wins. INJECTED_MISMATCH kind `UNKNOWN_TXN`.
+  - Trust bank (`TrustBankService`, `TrustStatementGenerator`, Prowide Core `MT940` / `MT942` and field
+    classes, never string concatenation): `trustbank/out/MT940_<account>_<yyyyMMdd>.fin`,
+    `MT942_<account>_<yyyyMMdd>_<HHmm>.fin` of the mw-core-mock wallet `sim.files.trustbank.wallet-id`
+    (SETTLEMENT), account `0011223344556`, BICs TRSTBDDHXXXX -> BITSBDDHXXXX. The ledger only through REST:
+    `GET /core/v1/statements` with a realm services client-credentials token (client `mw-simulators`,
+    secret `sim.files.trustbank.core.client-secret` = `KC_MW_SIMULATORS_SECRET`, token URI set by compose;
+    mw-core-mock's compose block adds it to `MW_INTERNALAUTH_ALLOWEDCLIENTS`), and `GET
+    /core-mock/v1/wallets/{id}` for the balance of a day without `balanceAfter`. One `:61:`/`:86:` pair per
+    entry (`:86:` = txnId); closing = opening + the lines shown. Deterministic: same ledger, date and fault
+    give the same bytes. INJECTED_MISMATCH kinds: MISSING_IN_PARTNER (first `count` lines dropped),
+    MISSING_IN_UPAY (`count` extra credits `TB-EXTRA-<yyMMdd>-<n>` of n x 10 Tk), AMOUNT_MISMATCH (+1 Tk on
+    the first `count`), DC_FLIP (their mark flipped).
+  - DW (`DwDropService`, `DwDropValidator`, schemas `seed/v1/dw/schemas.json`, a draft for ticket 128): each
+    new `control_<date>.json` `{date, files:[{name, rows, sha256}]}` of `dw/in` and the files it lists:
+    present, sha256, data row count, header of the type (`transactions`, `wallet_snapshot`,
+    `notifications`, `recon`); journal READ per file (`verdict` OK or the problem) and one for the control
+    file (`verdict` ACCEPTED / REJECTED, `reasons`). A BUSINESS_ERROR scenario forces REJECTED (`FORCED
+    <code>`); the file faults do not apply (it writes nothing).
+  - File faults (`service/files/FileMocks`, engine `MockControl.fileFault`, dimension FILE of
+    `dto/MockBehaviour`; only the file parties take them): MISSING_FILE (nothing written, journal SKIP),
+    LATE_FILE (journal LATE, written after `delayMs`, default the timeout hold), DUPLICATE_FILE (also
+    `<name>_DUP<ext>`), CORRUPT_FILE (first half + NUL `#CORRUPT#`), INJECTED_MISMATCH (`code` = kind,
+    `count` default 1, refused for a kind the party lacks); scope `nextN` files or `key` (date or file
+    name). Journal entries (method READ / WRITE / SKIP / LATE, path, headers `sha256`, `bytes`, `fault`,
+    `verdict`, `reasons`; body the text up to 64 KiB). Tests: `TrustStatementGeneratorTest`,
+    `AmlResponderTest`, `FileFaultScenarioTest`, `DwDropValidatorTest`, `SftpMocksIT` (the stack's
+    atmoz/sftp image and a stub core), API folder 44, test console page `/files`.
 - Generic programmable partner stub (ticket 83, `controller/PartnerStubController`,
   `service/PartnerStubStore`, `dto/PartnerStub`): for partner route dry-runs (the adapters'
   `mw.partners.dry-run.base-url` in dev, `http://mw-simulators:8080/sim/partners/{partnerId}`) and manual
@@ -342,6 +392,12 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.simulators`. Follow t
 - `api/mw-core-mock/core-mock-control.v1.openapi.yaml` (ticket 103): `POST /mock-control/reset` of the
   global reset (`client/CoreMockControlClient`, own types `dto/ResetResult`; checked by
   `contracts/MockControlContractTest`).
+- `api/mw-core-mock/core-wallet.v1.openapi.yaml` (`GET /core/v1/statements`) and
+  `api/mw-core-mock/core-mock-seed.v1.openapi.yaml` (`GET /core-mock/v1/wallets/{walletId}`), ticket 123:
+  the trust bank mock's ledger (`client/CoreLedgerClient`, own type `dto/LedgerEntry`; the bodies it reads
+  checked by `contracts/MockControlContractTest`).
+- Draft file format `contracts/files/aml/README.md` (ticket 123 wrote it, ticket 125 / mw-compliance owns
+  and finalises it); the MT940 / MT942 are SWIFT formats.
 - Otherwise none. (Later tickets add the core stub: `core.*.command` in, `core.*.event` out, spec 22.2.)
 - `contracts.yml`: the machine-readable list (checked by `./gradlew :contractsLint`): no events produced
   or consumed (the Kafka chassis is unused), so there is no `ProducedContractsTest` /

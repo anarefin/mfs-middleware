@@ -36,9 +36,7 @@ import tools.jackson.databind.json.JsonMapper;
 class ReversalSagaIT {
 
   private static final String STATUS_SCHEMA = "events/mw-orchestrator/mw.txn.status.v1.schema.json";
-  private static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
   private static final String AUDIT_SCHEMA = "events/mw-audit-dw/mw.audit.event.v1.schema.json";
-  private static final String COMMAND_TOPIC = "core.wallet.command.v1";
 
   private final TransactionService transactions;
   private final CoreCalls coreEvents;
@@ -116,9 +114,6 @@ class ReversalSagaIT {
       for (JsonNode n : outbox("mw.audit.event.v1", key)) {
         assertThat(ContractSchemas.schema(AUDIT_SCHEMA).validate(n)).as(n.toString()).isEmpty();
       }
-    }
-    for (JsonNode n : allCommands()) {
-      assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(n)).as(n.toString()).isEmpty();
     }
   }
 

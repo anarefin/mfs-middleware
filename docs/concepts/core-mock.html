@@ -186,7 +186,7 @@ mw-orchestrator -> mw-orchestrator : COMPLETED, money moved once
     <li>Assertion keys: <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/security/AssertionKeys.java">security/AssertionKeys</a>,
       <a href="../../services/mw-core-mock/src/main/java/mfs/mw/core/mock/client/AssertionJwksClient.java">client/AssertionJwksClient</a>.</li>
     <li>Settings (fees, limits, seed balances): <a href="../../services/mw-core-mock/src/main/resources/application.yml">application.yml</a>, under <code>mw.coremock</code>.</li>
-    <li>Contracts: commands in <code>contracts/events/mw-orchestrator/core.command.v1.schema.json</code>, events in
+    <li>Contracts: the core REST API <code>contracts/api/mw-core-mock/core-wallet.v1.openapi.yaml</code> (the Kafka command contract was retired in ticket 95b), events in
       <code>contracts/events/mw-core-mock/core.event.v1.schema.json</code> (owned by mw-core-mock until the real core takes them over).</li>
   </ul></div>
 

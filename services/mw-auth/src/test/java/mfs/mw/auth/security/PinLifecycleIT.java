@@ -13,6 +13,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -25,17 +26,15 @@ import java.util.Map;
 import java.util.UUID;
 import mfs.mw.auth.TestInfrastructure;
 import mfs.mw.auth.RedisInfrastructure;
+import mfs.mw.auth.client.CoreClient;
 import mfs.mw.auth.client.CryptoClient;
-import mfs.mw.auth.contracts.ContractSchemas;
 import mfs.mw.auth.dto.CryptoPinDerived;
 import mfs.mw.auth.dto.CryptoPinVerified;
 import mfs.mw.auth.dto.CryptoTokens;
 import mfs.mw.auth.dto.NotificationRequest;
-import mfs.mw.auth.messaging.CoreWalletEventListener;
 import mfs.mw.auth.messaging.EventPublisher;
 import mfs.mw.auth.security.DeviceBindingIT.Device;
 import mfs.mw.auth.security.DeviceBindingIT.Signed;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -70,22 +69,20 @@ class PinLifecycleIT {
   private final MockMvcTester mvc;
   private final JdbcTemplate jdbc;
   private final StringRedisTemplate redis;
-  private final CoreWalletEventListener coreEvents;
   private final JsonMapper json;
 
   @MockitoBean EventPublisher publisher;
   @MockitoBean CryptoClient crypto;
+  @MockitoBean CoreClient core;
 
   String msisdn;
   Device device;
 
   @Autowired
-  PinLifecycleIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate redis, CoreWalletEventListener coreEvents,
-      JsonMapper json) {
+  PinLifecycleIT(MockMvcTester mvc, JdbcTemplate jdbc, StringRedisTemplate redis, JsonMapper json) {
     this.mvc = mvc;
     this.jdbc = jdbc;
     this.redis = redis;
-    this.coreEvents = coreEvents;
     this.json = json;
   }
 
@@ -373,26 +370,12 @@ class PinLifecycleIT {
         .contentType(MediaType.APPLICATION_JSON).content("{\"encryptedPin\":" + pinJson(pin) + "}").exchange();
   }
 
-  /** The core's answer as mw-core-mock sends it, delivered to the core event listener. */
-  void coreAnswers(JsonNode command, boolean verified, String eventId) throws Exception {
-    String body = json.writeValueAsString(Map.of(
-        "schemaVersion", 1,
-        "eventType", verified ? "CustomerFactorsVerified" : "CustomerFactorsRejected",
-        "eventId", eventId,
-        "commandId", command.path("commandId").asString(),
-        "txnId", command.path("txnId").asString(),
-        "coreRef", "CORE-1",
-        "occurredAt", Instant.now().toString(),
-        "outcome", verified ? "SUCCESS" : "FAILURE",
-        "reasonCode", verified ? "-" : "FACTORS_MISMATCH",
-        "payload", Map.of("resetId", command.path("payload").path("resetId").asString(), "walletId", msisdn)));
-    // straight into the listener method, as its container would hand it the record (listeners off here)
-    coreEvents.handle(new ConsumerRecord<>(CoreWalletEventListener.TOPIC, 0, 0L, msisdn, body), () -> {});
-  }
-
-  JsonNode kycCommand(String resetId) {
-    return outbox("core.wallet.command.v1").stream()
-        .filter(c -> c.path("payload").path("resetId").asString("").equals(resetId)).findFirst().orElseThrow();
+  /** The reset's status once the core's answer (on another thread) has been applied. */
+  MvcTestResult statusOnceNot(Device d, String resetId, String status) {
+    org.awaitility.Awaitility.await().atMost(java.time.Duration.ofSeconds(10)).pollInterval(java.time.Duration.ofMillis(50))
+        .until(() -> !status.equals(com.jayway.jsonpath.JsonPath.read(
+            status(d, resetId).getResponse().getContentAsString(), "$.status")));
+    return status(d, resetId);
   }
 
   @Test
@@ -402,21 +385,24 @@ class PinLifecycleIT {
     String refresh = "rt-" + UUID.randomUUID();
     jdbc.update("insert into refresh_token (token_hash, family, wallet_id, device_id, expires_at) values (?, ?, ?, ?, now() + interval '1 day')",
         refresh, UUID.randomUUID(), msisdn, device.id());
+    java.util.concurrent.CountDownLatch coreAnswers = new java.util.concurrent.CountDownLatch(1);
+    when(core.verifyFactors(anyString(), anyString(), any(), any())).thenAnswer(inv -> {
+      coreAnswers.await(10, java.util.concurrent.TimeUnit.SECONDS);
+      return new CoreClient.FactorsAnswer(CoreClient.Outcome.VERIFIED, null);
+    });
 
     String resetId = startSelf(device, otp(device, "RESET"));
-    JsonNode cmd = kycCommand(resetId);
-    assertThat(ContractSchemas.schema("events/mw-orchestrator/core.command.v1.schema.json").validate(cmd)).isEmpty();
-    assertThat(cmd.path("commandType").asString()).isEqualTo("VerifyCustomerFactors");
-    assertThat(cmd.path("commandId").asString()).isEqualTo("pin-reset:" + resetId);
-    assertThat(cmd.toString()).as("the factors never go in clear").doesNotContain("1234").doesNotContain("1990-01-31");
+    ArgumentCaptor<CryptoTokens> factors = ArgumentCaptor.forClass(CryptoTokens.class);
+    verify(core, timeout(5000)).verifyFactors(eq(msisdn), anyString(), eq(UUID.fromString(resetId)), factors.capture());
+    assertThat(factors.getValue().toString()).as("the factors never go in clear").doesNotContain("1234").doesNotContain("1990-01-31");
     verify(crypto).tokeniseNid(List.of(msisdn + ":1234", msisdn + ":1990-01-31"));
 
     assertThat(status(device, resetId)).bodyJson().extractingPath("$.status").isEqualTo("PENDING_KYC");
     assertThat(status(Device.create(), resetId)).as("another device").hasStatus(404);
     assertCode(setPin(device, resetId, "97531"), 409, "MW-VAL-031");
 
-    coreAnswers(cmd, true, UUID.randomUUID().toString());
-    assertThat(status(device, resetId)).bodyJson().extractingPath("$.status").isEqualTo("VERIFIED");
+    coreAnswers.countDown();
+    assertThat(statusOnceNot(device, resetId, "PENDING_KYC")).bodyJson().extractingPath("$.status").isEqualTo("VERIFIED");
     assertCode(setPin(device, resetId, "11111"), 400, "MW-AUTH-044");
     assertThat(status(device, resetId)).bodyJson().extractingPath("$.status").isEqualTo("VERIFIED");
 
@@ -432,15 +418,28 @@ class PinLifecycleIT {
   }
 
   @Test
-  void aRejectionOfTheCoreClosesTheResetAndADuplicateAnswerChangesNothing() throws Exception {
+  void aRejectionOfTheCoreClosesTheResetWithTheCoreReason() throws Exception {
+    when(core.verifyFactors(anyString(), anyString(), any(), any()))
+        .thenReturn(new CoreClient.FactorsAnswer(CoreClient.Outcome.REJECTED, "FACTORS_MISMATCH"));
+
     String resetId = startSelf(device, otp(device, "RESET"));
-    String eventId = UUID.randomUUID().toString();
-    coreAnswers(kycCommand(resetId), false, eventId);
-    MvcTestResult r = status(device, resetId);
+
+    MvcTestResult r = statusOnceNot(device, resetId, "PENDING_KYC");
     assertThat(r).bodyJson().extractingPath("$.status").isEqualTo("REJECTED");
     assertThat(r).bodyJson().extractingPath("$.reason").isEqualTo("FACTORS_MISMATCH");
-    coreAnswers(kycCommand(resetId), true, eventId);
-    assertThat(status(device, resetId)).bodyJson().extractingPath("$.status").isEqualTo("REJECTED");
+    assertThat(audits("auth.pin_reset.rejected")).hasSize(1);
+    assertCode(setPin(device, resetId, "97531"), 409, "MW-VAL-031");
+  }
+
+  @Test
+  void noDefiniteAnswerOfTheCoreLeavesTheResetPending() throws Exception {
+    when(core.verifyFactors(anyString(), anyString(), any(), any()))
+        .thenReturn(new CoreClient.FactorsAnswer(CoreClient.Outcome.UNKNOWN, null));
+
+    String resetId = startSelf(device, otp(device, "RESET"));
+
+    verify(core, timeout(5000)).verifyFactors(eq(msisdn), anyString(), eq(UUID.fromString(resetId)), any());
+    assertThat(status(device, resetId)).bodyJson().extractingPath("$.status").isEqualTo("PENDING_KYC");
     assertCode(setPin(device, resetId, "97531"), 409, "MW-VAL-031");
   }
 

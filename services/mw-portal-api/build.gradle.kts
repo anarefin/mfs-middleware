@@ -111,7 +111,7 @@ val listedContracts = providers.fileContents(layout.projectDirectory.file("contr
     // contracts/ContractSchemasTest).
     val extraTestContracts = listOf(
         "events/mw-admin-api/mw.config.changed.v1.schema.json",
-        "events/mw-orchestrator/core.command.v1.schema.json",
+        "events/mw-orchestrator/mw.txn.request.v1.schema.json",
     )
     val paths = yml.lines()
         .filterNot { it.trimStart().startsWith("#") }

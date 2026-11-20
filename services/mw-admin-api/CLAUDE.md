@@ -60,7 +60,7 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   approval (moved on: `409 MW-VAL-030`, request stays PENDING); expired: marked EXPIRED + audited,
   `409 MW-VAL-032`; decided already `409 MW-VAL-033` (the `status = 'PENDING'` update guard).
   `GET /admin/v1/change-requests[?status&resourceType&resourceId&limit&offset]` (`resourceType`
-  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|key|channel_client; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
+  transaction|wallet|pin_reset|partner|ussd_menu|notify_template|key|channel_client|partner_credential|partner_error_map; `status` is `dto/ChangeRequestView.Status`), `GET .../{id}`
   (`READ_CHANGE_REQUESTS`: the transaction readers and integration-maker/checker, ticket 38; an
   operator without `READ_TRANSACTIONS` sees partner requests only: transaction and wallet ones are
   left out of the list, `?resourceType=transaction|wallet` and their detail are 403).
@@ -100,23 +100,33 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   maker != checker rule (`403 MW-AUTH-030`) are the transaction ones; there is no status read (the
   core owns the wallet state, so a request is taken for any well-formed id and the core refuses an
   unlock of a wallet that is not LOCKED). Approval = one database transaction: row APPROVED
-  (`payload.commandId`) + `UnlockWallet` (`dto/UnlockWalletCommand`, `core.command.v1`, owned by
-  mw-orchestrator) on `core.wallet.command.v1` (key unlockTxnId, commandId `<changeRequestId>:unlock`,
-  `expiresAt` = issued + `mw.change-requests.unlock-command-ttl` 1h, payload subject WALLET + the
-  whole id, changeRequestId, makerId, checkerId) + audit. Audit resource `wallet/<masked id>`,
-  `walletStatus` where a transaction request has `txnStatus`, `after.sentAs` the topic.
+  (`payload.commandId` `<changeRequestId>:unlock`) + audit. Audit resource `wallet/<masked id>`,
+  `walletStatus` where a transaction request has `txnStatus`, `after.sentAs` what it sent.
+  **Ticket 95b (ADR D31):** the core lock is lifted over REST, only after that commit (no remote call
+  before the decision, as the ticket 70 review asks): `client/CoreAccountClient` `POST
+  /core/v1/accounts/{walletId}/unlock {txnId (the unlockTxnId), changeRequestId, makerId, checkerId}`
+  (contract `api/mw-core-mock/core-wallet.v1.openapi.yaml`, only client mw-admin-api; config
+  `config/CoreClientProperties` `mw.core.*`: `base-url` `MW_CORE_URL` `http://mw-core-mock:8080`, timeouts,
+  `attempts` 3 and `backoff` 300 ms: the unlock is idempotent by txnId, so no definite answer (5xx, 408,
+  429, timeout) is asked again, then UNKNOWN); the realm services token of client mw-admin-api now also
+  carries audience mw-core-mock (`aud-mw-core-mock` mapper). The answer (UNLOCKED, REFUSED with the core
+  reason, UNKNOWN) is logged (`admin.wallet.core_unlock`), not tracked: the request stays APPROVED (a
+  core lock left in place needs a new request). It replaced `UnlockWallet` on `core.wallet.command.v1`
+  (`dto/UnlockWalletCommand`, `mw.change-requests.unlock-command-ttl` gone). Tests `client/CoreAccountClientTest`
+  (local HTTP server: body against the contract, refusal, retries, token renewal, path encoding),
+  `controller/WalletUnlockApiIT` (the client mocked: called once after the approval, never on reject).
   Decisions (no product owner): ops-maker / ops-checker act on wallets as on transactions; the
-  core's answer (`WalletUnlocked` / `UnlockRejected`) is not consumed here (as for ticket 37, the
-  result is not tracked; mw-core-mock's wallet view shows it); the reason text is not sent to the core.
+  core's answer is not tracked (as for ticket 37; mw-core-mock's wallet view shows it); the reason text
+  is not sent to the core.
   **Ticket 70:** the same approval transaction also writes UNLOCK on `auth.wallet-lock.v1` (owned by
   mw-auth; `dto/WalletLockCommand`, `ChangeRequestMapper.authUnlock`: commandId
   `<changeRequestId>:auth-unlock`, key the wallet id, actor the checker, `payload.authCommandId`), so
   mw-auth lifts its PIN lock (every level) and any ADMIN lock; audit `after.sentAs`
-  `auth.wallet-lock.v1,core.wallet.command.v1`. **Decision:** `UnlockWallet` to the core stays, because
+  `auth.wallet-lock.v1,core-wallet.v1:unlock` (since 95b). **Decision:** the core unlock stays, because
   the core may lock an account for its own reasons. Ticket 72 removed the core PIN check and its lockout
   and kept the core's LOCKED status and `UnlockWallet` for such core-side locks (mw-core-mock CLAUDE.md), so
-  both commands stay: UNLOCK lifts the mw-auth PIN / ADMIN lock, `UnlockWallet` a core lock (`UnlockRejected
-  WALLET_NOT_LOCKED` when there is none, harmless).
+  both stay: UNLOCK lifts the mw-auth PIN / ADMIN lock, the core unlock a core lock (`422
+  MW-CORE-WALLET_NOT_LOCKED` when there is none, harmless).
 - Care PIN reset (ticket 70, spec 18.7): `POST /admin/v1/wallets/{walletId}/change-requests {action:
   PIN_RESET, reason}` (same maker role and id rules) opens a change request of resourceType
   `pin_reset` (`ChangeRequest.PIN_RESET`, handled like `wallet`: `ChangeRequest.walletLike`, masked id,
@@ -357,6 +367,63 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
   never change (register a new client); a consumer's plugin replaces the route's of the same name, so a
   `dailyQuota` on a USSD client would replace its route's per-MSISDN `limit-count` (the seeds carry a
   rate only).
+- Partner credentials (ticket 131a, FRS ADM-02; 131 split decisions; `controller/CredentialController`
+  -> `service/CredentialService` (reads, maker) and `service/CredentialChangeHandler` (approval) ->
+  `repository/CredentialMetaRepository`, tables `admin.credential_meta` and `admin.credential_alert` V13,
+  `entity/CredentialMeta`, `mapper/CredentialMapper`, `service/CredentialMaterial`, `client/CredentialVault`
+  / `client/VaultCredentialClient`, `config/CredentialProperties` `mw.credentials.*`): `POST
+  /admin/v1/partners/{partnerId}/credentials/{name}/change-requests {action: UPLOAD, reason, type
+  API_KEY|HMAC_SECRET|CLIENT_CERT, secret? notAfter? | certificatePem + privateKeyPem (PKCS#8) | pkcs12 +
+  pkcs12Password}` (`AdminRole.CREDENTIAL_MAKER` = integration-maker only) -> 201 PENDING, resourceType
+  `partner_credential`, resourceId `<partnerId>/<name>`. **Write-only:** `CredentialMaterial` checks the
+  upload (secret 16+ chars, a certificate's key must sign what the certificate verifies, not expired,
+  names `[a-z0-9-]` at most 64 / 46 for a certificate; problems never repeat the upload) and turns it into
+  the Vault fields the adapters read (a secret: field `<name>`; a certificate: `<name>-keystore` base64
+  PKCS#12 + `<name>-keystore-password`, a fresh random password for a PEM upload); the fields are staged
+  at once under `secret/mw-admin-api/staged-credentials/<random id>` and the request row keeps only that
+  `stagedRef` (the sealed reference), `vaultPath` `mw-adapter-<family>/<partnerId>` (the adapters'
+  existing per-partner secret, split decision) and `meta` (type, vaultFields, kid `<name>-v<n>`,
+  certificate fingerprint `sha256:<hex>`, subject, serialNumber, notAfter); `diff` the metadata. A
+  credential keeps its type (`400`); unknown partner `404`; Vault unreachable or `mw.credentials.vault.enabled`
+  off `503 MW-SYS-043` (retryable; nothing filed, a staged copy of a request that could not be opened is
+  dropped). The body's `toString` and `@Sensitive(SECRET)` fields keep it out of logs. Approve on the
+  shared endpoint (`CREDENTIAL_CHECKER` = integration-checker; never the maker), **claim-first** like key
+  changes (a reject or expiry cannot win once claimed): the handler reads the staged fields, PATCHes
+  them into `secret/data/<vaultPath>` (merge patch: the partner's other fields stay; 404 -> create with
+  `cas=0`), the decision transaction upserts `credential_meta` (version + 1, change request id) and the
+  audit (`sentAs` `vault`), and only after the commit the staged copy is dropped. Settling a stale claim
+  (`ApprovingReconcileJob`): metadata with this request's id = applied; a staged copy = written now; none =
+  can never apply (`reusableAfterCancel` false, EXPIRED). Reject / expiry drop the staged copy. Vault
+  token: `mw.credentials.vault.token` (tests only) else the Spring Cloud Vault session (AppRole). Policy
+  (`deploy/provision/lib.sh` `credential_upload_policy`, set by `provision_mw_admin_api`): staging area
+  create/update/read + metadata delete, and `create, update, patch` (never read) on `secret/data/<adapter>/*`
+  of every `mw-adapter-*` of the manifest, so an uploaded secret can never be read back by this service.
+  Reads (`READ_CREDENTIALS` = the partner readers, viewer included): `GET /admin/v1/credentials[?partnerId]`
+  and `GET /admin/v1/credentials/expiring?days=30` (1..3650, expired ones included, soonest first; the
+  console card), metadata only with `daysLeft`. Expiry alerts: `scheduler/CredentialExpiryJob` (ShedLock
+  `credential-expiry`, `mw.credentials.expiry.cron` daily 06:00 UTC) -> `service/CredentialExpiryService`:
+  the smallest threshold of `mw.credentials.expiry.thresholds-days` (30, 7, 1) a credential is under
+  raises one alert per credential version (ledger `credential_alert`; skipped larger thresholds marked
+  too): WARN `credential.expiring` and an ops email on `mw.notify.request.v1` (mw-notify's contract, own
+  type `dto/NotifyRequest`, template `OPS_CREDENTIAL_EXPIRING` seeded bn/en in mw-notify V15, recipient
+  `mw.credentials.expiry.ops-email`, messageId `credential-expiry:<id>:v<n>:<t>d`) through the outbox.
+  Decisions (no product owner): integration staff only (the ticket's roles); no fingerprint of a secret
+  (a hash of a secret is a guessing oracle); the template code is `OPS_CREDENTIAL_EXPIRING` (the
+  contract's `^[A-Z0-9_]+$`, not the ticket's dotted name); resource types snake_case like the others
+  (`partner_credential`, `partner_error_map`); the adapters read an API key / HMAC secret when the
+  route loads and a TLS context at start, so a rotation takes effect on the next partner config version or
+  an adapter restart (runbook "Partner credential and certificate rotation"). Tests
+  `service/CredentialMaterialTest`, `service/CredentialChangeTest` (stand-in Vault), `controller/CredentialVaultIT`
+  (real Vault 2.2.2 with exactly the provisioned policy: staged, approved into the partner's secret, other
+  fields kept, metadata only, the service's token gets 403 reading it back, rotation, reject),
+  `scheduler/CredentialExpiryJobIT`.
+- Response-code map (ticket 131a, FRS ADM-08): `POST /admin/v1/partners/{partnerId}/error-map/change-requests
+  {action: SET_ERROR_MAP, reason, errorMap, ambiguousCodes?}` (`PARTNER_MAKER`) -> resourceType
+  `partner_error_map` (`PartnerConfigService.requestErrorMap`), payload the partner request's shape
+  (family, baseVersion, full config with the new map; no dry-run on a proven route), diff the map before /
+  after; approved by a `PARTNER_CHECKER` through `service/PartnerErrorMapChangeHandler` = exactly
+  `PartnerChangeHandler` (version + 1, `mw.config.changed.v1`). `ErrorMapping.retryable` is optional
+  (default false). Tests in `PartnerConfigApiIT`.
 - Internal API identity (M3 gate decision; `client/ServiceTokenClient`, `client/InternalApiCaller`):
   Keycloak realm `services` client `mw-admin-api` (client credentials, HTTP Basic, token carries
   audiences mw-orchestrator and mw-audit-dw), cached until 30 s before `expires_in`, dropped on a
@@ -394,19 +461,19 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.admin.api`. Follow th
 
 ## Contracts used
 
-- `contracts.yml`: produces `events/mw-orchestrator/core.command.v1#UnlockWallet` (ticket 52,
-  `dto/UnlockWalletCommand`; `WalletUnlockApiIT` validates the outbox row),
-  `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
+- `contracts.yml`: produces `events/mw-audit-dw/mw.audit.event.v1` (own type `dto/AuditEvent`;
   `contracts/ProducedContractsTest`, and `AdminTransactionApiIT` validates the outbox row),
   `events/mw-admin-api/mw.txn.action.v1` (`dto/TxnAction`) and a REVERSAL on
   `events/mw-auth/auth.wallet-lock.v1` (ticket 70, `dto/WalletLockCommand` UNLOCK and PIN_RESET;
   `WalletUnlockApiIT`, `PinResetApiIT`),
   `events/mw-orchestrator/mw.txn.request.v1` (`dto/ReversalRequest`; `ChangeRequestApiIT`
-  validates both outbox rows), `events/mw-admin-api/mw.config.changed.v1` (`dto/ConfigChangedEvent`;
+  validates both outbox rows), `events/mw-notify/mw.notify.request.v1` (ticket 131a, `dto/NotifyRequest`, the
+  credential expiry ops email; `CredentialExpiryJobIT` validates the outbox rows), `events/mw-admin-api/mw.config.changed.v1` (`dto/ConfigChangedEvent`;
   `PartnerConfigApiIT` and `ContentChangeApiIT` validate the outbox rows), serves
   `admin.v1`; consumes `api/mw-orchestrator/txn-query.v1` (own type `dto/AdminTxn`) and
-  `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`) and `api/mw-crypto/crypto-internal.v1`
-  (ticket 75, own type `dto/CryptoKeys`), unknown fields ignored
+  `api/mw-audit-dw/audit-query.v1` (own type `dto/AuditTrail`), `api/mw-crypto/crypto-internal.v1`
+  (ticket 75, own type `dto/CryptoKeys`) and `api/mw-core-mock/core-wallet.v1` (ticket 95b, the unlock;
+  `client/CoreAccountClientTest`), unknown fields ignored
   (`contracts/ApiContractsTest` reads contract-shaped answers). Consumes
   `events/mw-adapter-billpay/mw.partner.route.status.v1` (ticket 83, `contracts/ConsumedContractsTest`).
 

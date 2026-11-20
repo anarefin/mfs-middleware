@@ -61,6 +61,12 @@ public class BodySchema {
   /** {@code POST /admin/v1/channel-clients/{clientId}/change-requests} (ticket 100a). */
   public static final String CHANNEL_CLIENT_CHANGE = "derived-schemas/admin-v1-channel-client-change-request.json";
 
+  /** {@code POST /admin/v1/partners/{partnerId}/credentials/{name}/change-requests} (ticket 131). */
+  public static final String CREDENTIAL_CHANGE = "derived-schemas/admin-v1-credential-change-request.json";
+
+  /** {@code POST /admin/v1/partners/{partnerId}/error-map/change-requests} (ticket 131). */
+  public static final String ERROR_MAP_CHANGE = "derived-schemas/admin-v1-error-map-change-request.json";
+
   private final ObjectReader reader;
   private final Schema schema;
 

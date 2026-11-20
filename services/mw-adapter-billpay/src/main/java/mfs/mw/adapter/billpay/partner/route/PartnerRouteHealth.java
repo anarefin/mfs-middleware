@@ -22,7 +22,8 @@ import org.springframework.stereotype.Component;
  * camel.health.exclude-pattern}).
  *
  * <p>State, first match: {@code DELETED} (no live version), {@code DISABLED} (record disabled),
- * {@code MAINTENANCE} (the record's {@code maintenance} flag), {@code DOWN} (route not running,
+ * {@code MAINTENANCE} (the record's {@code maintenance} flag, or an open {@code maintenanceWindow},
+ * ticket 131b), {@code DOWN} (route not running,
  * circuit breaker {@code mw-cb-<id>} open, or the last health probe failed), {@code DEGRADED}
  * (breaker half-open, or its failure rate at or over {@code
  * mw.partners.health.degraded-failure-rate}, default 25 %, while closed), else {@code UP}. Probe
@@ -89,7 +90,7 @@ public class PartnerRouteHealth implements HealthIndicator {
     if (!config.enabled()) {
       return State.DISABLED;
     }
-    if (config.maintenance()) {
+    if (config.inMaintenance(java.time.Instant.now())) {
       return State.MAINTENANCE;
     }
     if (!routes.isStarted(runtime) || Boolean.FALSE.equals(probes.get(key(runtime)))) {

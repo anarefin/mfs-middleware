@@ -312,7 +312,7 @@ components:
         boundAt: { type: string, format: date-time }
     LiveSession:
       type: object
-      required: [walletId, deviceId, idleTimeoutSeconds, deviceKeyFingerprint, boundAt]
+      required: [walletId, deviceId, idleTimeoutSeconds, deviceKeyFingerprint, boundAt, bindingEpoch]
       properties:
         walletId: { type: string }
         deviceId: { type: string }
@@ -322,6 +322,16 @@ components:
           pattern: "^[0-9a-f]{64}$"
           description: Lower-case hex SHA-256 of the device's current public key (the SubjectPublicKeyInfo DER bytes)
         boundAt: { type: string, format: date-time, description: When the device's current key was bound }
+        bindingEpoch:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >-
+            The epoch of this device's current binding to this wallet (ticket 110b): one database sequence over
+            every binding of any device to any wallet, so a later binding always has a higher epoch, whatever
+            the clocks. The DEVICE_BOUND notice to mw-notify carries the same value (param bindingEpoch);
+            mw-app-gateway copies it into each push token registration so mw-notify can refuse a registration
+            of an older binding.
     SeedPinsRequest:
       type: object
       additionalProperties: false

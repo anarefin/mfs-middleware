@@ -8,7 +8,8 @@ import org.springframework.stereotype.Repository;
 
 /**
  * {@code notify.push_device} (ticket 110): the device token of each wallet's bound device. Wallet ids are
- * the core's (the MSISDN for app wallets, the party id of {@code mw.txn.status.v1}).
+ * the core's (the MSISDN for app wallets, the party id of {@code mw.txn.status.v1}). Bindings and
+ * registrations are ordered by mw-auth's binding epoch (ticket 110b), never by a service's clock.
  */
 @Repository
 public class PushDeviceRepository {
@@ -20,64 +21,82 @@ public class PushDeviceRepository {
   }
 
   /**
-   * Stores the token of {@code (walletId, deviceId)} unless a newer registration is stored. Call inside a
-   * transaction with {@link #removeOthers}. True when stored.
+   * Stores the token of {@code (walletId, deviceId)} from binding {@code epoch} unless the stored row is of a
+   * newer binding, or of the same binding and registered later ({@code at}, the gateway's clock, only orders
+   * registrations of one binding). Call inside a transaction with {@link #removeOthers}. True when stored.
    */
-  public boolean upsert(String walletId, String deviceId, String token, String platform, Instant at) {
+  public boolean upsert(String walletId, String deviceId, String token, String platform, long epoch, Instant at) {
     return jdbc.update(
-            "insert into push_device (wallet_id, device_id, token, platform, updated_at) values (?, ?, ?, ?, ?)"
+            "insert into push_device (wallet_id, device_id, token, platform, binding_epoch, updated_at)"
+                + " values (?, ?, ?, ?, ?, ?)"
                 + " on conflict (wallet_id, device_id) do update set token = excluded.token,"
-                + " platform = excluded.platform, updated_at = excluded.updated_at"
-                + " where push_device.updated_at <= excluded.updated_at",
-            walletId, deviceId, token, platform, Timestamp.from(at))
+                + " platform = excluded.platform, binding_epoch = excluded.binding_epoch,"
+                + " updated_at = excluded.updated_at"
+                + " where coalesce(push_device.binding_epoch, 0) < excluded.binding_epoch"
+                + " or (push_device.binding_epoch = excluded.binding_epoch"
+                + " and push_device.updated_at <= excluded.updated_at)",
+            walletId, deviceId, token, platform, epoch, Timestamp.from(at))
         == 1;
   }
 
   /**
-   * Removes what a registration of {@code (walletId, deviceId, token)} replaces: the wallet's other devices
-   * (one bound device per wallet), the device's rows under another wallet, and the token under any other
-   * key. Returns the rows removed.
+   * Removes what a registration of {@code (walletId, deviceId, token)} from binding {@code epoch} replaces:
+   * the wallet's other devices (one bound device per wallet) and the device's rows under another wallet, of
+   * older bindings, and the token under any other key. Returns the rows removed.
    */
-  public int removeOthers(String walletId, String deviceId, String token) {
+  public int removeOthers(String walletId, String deviceId, String token, long epoch) {
     return jdbc.update(
-        "delete from push_device where (wallet_id = ? and device_id <> ?) or (device_id = ? and wallet_id <> ?)"
+        "delete from push_device where (((wallet_id = ? and device_id <> ?) or (device_id = ? and wallet_id <> ?))"
+            + " and coalesce(binding_epoch, 0) < ?)"
             + " or (token = ? and not (wallet_id = ? and device_id = ?))",
-        walletId, deviceId, deviceId, walletId, token, walletId, deviceId);
+        walletId, deviceId, deviceId, walletId, epoch, token, walletId, deviceId);
   }
 
   /**
-   * A re-bind of {@code walletId} to {@code deviceId} at {@code at}: removes the wallet's other devices' tokens
-   * and the device's tokens under any other wallet (a device that moved), and records the binding (the
-   * revocation tombstone {@link #revokedBy} reads; an older binding never replaces a newer one). Rows removed.
+   * A re-bind of {@code walletId} to {@code deviceId} as binding {@code epoch} (mw-auth's): removes the
+   * wallet's other devices' tokens and the device's tokens under any other wallet (a device that moved) that
+   * come from older bindings, and records the binding (the revocation tombstone {@link #supersedes} reads; an
+   * older epoch never replaces a newer one). A notice without an epoch ({@code null}) removes those rows
+   * whatever their binding and records nothing. Rows removed.
    */
-  public int rebind(String walletId, String deviceId, Instant at) {
+  public int rebind(String walletId, String deviceId, Long epoch, Instant at) {
+    if (epoch == null) {
+      return jdbc.update(
+          "delete from push_device where (wallet_id = ? and device_id <> ?) or (device_id = ? and wallet_id <> ?)",
+          walletId, deviceId, deviceId, walletId);
+    }
     int removed = jdbc.update(
-        "delete from push_device where (wallet_id = ? and device_id <> ?) or (device_id = ? and wallet_id <> ?)",
-        walletId, deviceId, deviceId, walletId);
+        "delete from push_device where ((wallet_id = ? and device_id <> ?) or (device_id = ? and wallet_id <> ?))"
+            + " and coalesce(binding_epoch, 0) < ?",
+        walletId, deviceId, deviceId, walletId, epoch);
     jdbc.update(
-        "insert into push_device_binding (wallet_id, device_id, bound_at) values (?, ?, ?)"
-            + " on conflict (wallet_id) do update set device_id = excluded.device_id, bound_at = excluded.bound_at"
-            + " where push_device_binding.bound_at <= excluded.bound_at",
-        walletId, deviceId, Timestamp.from(at));
+        "insert into push_device_binding (wallet_id, device_id, binding_epoch, bound_at) values (?, ?, ?, ?)"
+            + " on conflict (wallet_id, device_id) do update set binding_epoch = excluded.binding_epoch,"
+            + " bound_at = excluded.bound_at"
+            + " where coalesce(push_device_binding.binding_epoch, 0) < excluded.binding_epoch",
+        walletId, deviceId, epoch, Timestamp.from(at));
     return removed;
   }
 
   /**
-   * Whether a registration of {@code (walletId, deviceId)} stamped {@code registeredAt} was revoked by a
-   * binding at or after it: the wallet bound to another device, or the device bound to another wallet.
+   * Whether a registration of {@code (walletId, deviceId)} from binding {@code epoch} is superseded: a newer
+   * binding of the wallet or of the device is known (a DEVICE_BOUND notice), or a token of another device of
+   * the wallet, or of the device under another wallet, from a newer binding is stored (its notice not in yet).
    */
-  public boolean revokedBy(String walletId, String deviceId, Instant registeredAt) {
-    Integer n = jdbc.queryForObject(
-        "select count(*) from push_device_binding where bound_at >= ?"
-            + " and ((wallet_id = ? and device_id <> ?) or (device_id = ? and wallet_id <> ?))",
-        Integer.class, Timestamp.from(registeredAt), walletId, deviceId, deviceId, walletId);
-    return n != null && n > 0;
+  public boolean supersedes(String walletId, String deviceId, long epoch) {
+    Boolean b = jdbc.queryForObject(
+        "select exists (select 1 from push_device_binding where binding_epoch > ? and (wallet_id = ? or device_id = ?))"
+            + " or exists (select 1 from push_device where binding_epoch > ?"
+            + " and ((wallet_id = ? and device_id <> ?) or (device_id = ? and wallet_id <> ?)))",
+        Boolean.class, epoch, walletId, deviceId, epoch, walletId, deviceId, deviceId, walletId);
+    return Boolean.TRUE.equals(b);
   }
 
-  /** The wallet's newest token, if its app registered one. */
+  /** The wallet's token of its newest binding, if its app registered one. */
   public Optional<String> tokenOf(String walletId) {
     return jdbc.query(
-            "select token from push_device where wallet_id = ? order by updated_at desc limit 1",
+            "select token from push_device where wallet_id = ?"
+                + " order by coalesce(binding_epoch, 0) desc, updated_at desc limit 1",
             (rs, i) -> rs.getString(1), walletId)
         .stream()
         .findFirst();

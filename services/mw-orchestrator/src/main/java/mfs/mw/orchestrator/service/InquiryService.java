@@ -27,8 +27,8 @@ import org.springframework.stereotype.Service;
 /**
  * Status inquiry of UNKNOWN outcomes (spec 7.4, FR-07). No transaction stays in UNKNOWN without a
  * scheduled inquiry: entering UNKNOWN arms the first slot ({@link SagaEngine}), each slot sends one
- * inquiry and arms the next ({@link #due}), and the cut-off hands the transaction to an operator
- * (MANUAL_REVIEW, {@code MW-TMO-004}). Answers:
+ * inquiry and arms the next ({@link #due}), and once the last inquiry of the schedule
+ * went unanswered the transaction goes to an operator (MANUAL_REVIEW, {@code MW-TMO-004}). Answers:
  *
  * <ul>
  *   <li>SUCCESS: commit the hold (TOPUP) or complete (P2P, the core posted it);
@@ -77,13 +77,13 @@ public class InquiryService {
 
   /**
    * An inquiry slot of an UNKNOWN transaction came due; {@code sent} inquiries went out before.
-   * Past the cut-off: MANUAL_REVIEW. Otherwise one more inquiry and the next slot.
+   * Every inquiry of the schedule sent and the last one unanswered: MANUAL_REVIEW (FRS PLT-024).
+   * Otherwise one more inquiry and the next slot.
    */
   public void due(TransactionRecord rec, int sent) {
     Instant now = clock.instant();
     InquirySchedule schedule = inquiry.scheduleFor(SagaEngine.partnerId(rec));
-    Instant since = unknownSince(rec);
-    if (schedule.exhausted(since, now)) {
+    if (schedule.exhausted(sent)) {
       engine.fire(rec, new SagaEvent.InquiryExhausted(), error(ErrorCodes.TMO_INQUIRY_EXHAUSTED,
           "The outcome is still unknown after every status inquiry; an operator will resolve it", false));
       log.atWarn()
@@ -91,11 +91,11 @@ public class InquiryService {
           .addKeyValue("txnId", rec.txnId().toString())
           .addKeyValue("partnerId", SagaEngine.partnerId(rec))
           .addKeyValue("inquiries", sent)
-          .log("status inquiry cut-off reached; transaction handed to manual review");
+          .log("last status inquiry unanswered; transaction handed to manual review");
       return;
     }
     engine.fire(rec, new SagaEvent.DeadlineExpired(), null);
-    timers.armAttempt(rec.txnId(), SagaEngine.INQUIRY_TIMER, schedule.after(sent + 1, since, now), sent + 1);
+    timers.armAttempt(rec.txnId(), SagaEngine.INQUIRY_TIMER, schedule.next(sent + 1, now), sent + 1);
   }
 
   /**

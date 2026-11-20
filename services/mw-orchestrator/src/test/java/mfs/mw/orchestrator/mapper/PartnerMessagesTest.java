@@ -7,7 +7,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import mfs.mw.orchestrator.TestData;
 import mfs.mw.orchestrator.contracts.ContractSchemas;
-import mfs.mw.orchestrator.dto.CoreCommand;
 import mfs.mw.orchestrator.dto.ErrorInfo;
 import mfs.mw.orchestrator.dto.PartnerReply;
 import mfs.mw.orchestrator.dto.PartnerRequest;
@@ -20,7 +19,6 @@ import tools.jackson.databind.json.JsonMapper;
 /** The hold-path messages this service builds and reads, checked against their contracts. */
 class PartnerMessagesTest {
 
-  private static final String COMMANDS = "events/mw-orchestrator/core.command.v1.schema.json";
   private static final String REQUESTS = "events/mw-orchestrator/mw.partner.request.v1.schema.json";
 
   private final JsonMapper json = JsonMapper.builder().build();
@@ -30,13 +28,11 @@ class PartnerMessagesTest {
           .withHold("HOLD-1");
 
   @Test
-  void holdCommitReleaseAndQueryAreValidCommands() {
+  void holdCommitReleaseAndQueryHaveTheirStepCommandIds() {
     CoreCommandMapper m = new CoreCommandMapper();
     Duration ttl = Duration.ofSeconds(60);
-    for (CoreCommand c :
-        new CoreCommand[] {m.hold(rec, TestData.NOW, ttl), m.commit(rec, TestData.NOW, ttl), m.release(rec, TestData.NOW, ttl), m.query(rec, TestData.NOW, ttl)}) {
-      assertThat(ContractSchemas.schema(COMMANDS).validate(json.valueToTree(c))).as(c.commandType()).isEmpty();
-    }
+    assertThat(m.hold(rec, TestData.NOW, ttl).commandType()).isEqualTo("HoldFunds");
+    assertThat(m.release(rec, TestData.NOW, ttl).commandType()).isEqualTo("ReleaseHold");
     assertThat(m.commit(rec, TestData.NOW, ttl).commandId()).isEqualTo(rec.txnId() + ":commit");
     assertThat(m.query(rec, TestData.NOW, ttl).commandId())
         .isEqualTo(rec.txnId() + ":query:" + TestData.NOW.toEpochMilli());

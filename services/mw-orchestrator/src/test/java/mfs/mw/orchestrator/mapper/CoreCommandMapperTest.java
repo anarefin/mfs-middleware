@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import mfs.mw.orchestrator.TestData;
-import mfs.mw.orchestrator.contracts.ContractSchemas;
 import mfs.mw.orchestrator.dto.CoreCommand;
 import mfs.mw.orchestrator.dto.TxnRequest;
 import mfs.mw.orchestrator.entity.TransactionRecord;
@@ -12,8 +11,6 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 class CoreCommandMapperTest {
-
-  private static final String SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
 
   private final JsonMapper json = JsonMapper.builder().build();
   private final CoreCommandMapper mapper = new CoreCommandMapper();
@@ -34,7 +31,6 @@ class CoreCommandMapperTest {
     assertThat(c.commandId()).isEqualTo(rec.txnId() + ":validate");
     assertThat(c.expiresAt()).isEqualTo(TestData.NOW.plusSeconds(60));
     assertThat(json.writeValueAsString(c)).contains(TestData.ASSERTION);
-    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
 
   @Test
@@ -43,7 +39,6 @@ class CoreCommandMapperTest {
 
     assertThat(c.commandType()).isEqualTo("PostTransfer");
     assertThat(c.commandId()).isEqualTo(rec.txnId() + ":post");
-    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
 
   @Test
@@ -61,7 +56,6 @@ class CoreCommandMapperTest {
     assertThat(payload.path("amount").path("valueMinor").asLong()).isEqualTo(5_000);
     assertThat(payload.path("fee").path("valueMinor").asLong()).isEqualTo(500);
     assertThat(json.writeValueAsString(c)).doesNotContain("encryptedPin");
-    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
 
   @Test
@@ -80,7 +74,6 @@ class CoreCommandMapperTest {
     assertThat(payload.path("debitParty").path("type").asString()).isEqualTo("BANK_ACCOUNT");
     assertThat(payload.path("amount").path("valueMinor").asLong()).isEqualTo(50_000);
     assertThat(json.writeValueAsString(c)).doesNotContain("assertion", TestData.ASSERTION);
-    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
 
   @Test
@@ -107,7 +100,6 @@ class CoreCommandMapperTest {
       assertThat(payload.has("encryptedPin")).as(c.commandType()).isFalse();
       assertThat(payload.path("idempotencyKey").asString()).as(c.commandType())
           .isEqualTo(c.txnId().equals(topup.txnId().toString()) ? "key-t" : "key-a");
-      assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).as(c.commandType()).isEmpty();
     }
   }
 
@@ -135,7 +127,6 @@ class CoreCommandMapperTest {
     var payload = json.valueToTree(c).path("payload");
     assertThat(payload.has("assertion")).isFalse();
     assertThat(payload.has("idempotencyKey")).isFalse();
-    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
 
   /** ADR D26: BalanceInquiry is shaped like a transfer, under {@code <txnId>:balance}, on the wallet topic. */
@@ -154,6 +145,5 @@ class CoreCommandMapperTest {
     assertThat(payload.path("assertion").asString()).isEqualTo(TestData.ASSERTION);
     assertThat(payload.path("idempotencyKey").asString()).isEqualTo("key-b");
     assertThat(payload.path("debitParty")).isEqualTo(payload.path("creditParty"));
-    assertThat(ContractSchemas.schema(SCHEMA).validate(json.valueToTree(c))).isEmpty();
   }
 }

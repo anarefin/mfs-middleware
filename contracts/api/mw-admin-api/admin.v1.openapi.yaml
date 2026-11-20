@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Bits admin API v1 (mw-admin-api)
-  version: 1.2.0
+  version: 1.3.0
   description: |
     Operations console API (ticket 36, spec 15). Reached by mw-admin-ui server-side through the
     internal APISIX route `/admin/v1/*` (Keycloak realm `ops`, password + TOTP); never by a browser
@@ -80,6 +80,25 @@ info:
     mount `apisix/`, never in the registry) plus consumer group `client_<name>` (`limit-req` rate,
     `limit-count` daily quota, `ip-restriction`); a periodic reconcile repairs drift. Secrets (HMAC
     keys, client secrets, passwords) never appear in a registry row.
+
+    Partner credentials and the response-code map (ticket 131, FRS ADM-02, ADM-08): an
+    `integration-maker` uploads a partner credential (an API key or HMAC secret, or a client
+    certificate with its key as PEM or PKCS#12) as a change request (resourceType
+    `partner_credential`, resourceId `<partnerId>/<name>`, action UPLOAD). The upload is write-only:
+    its secret parts are staged in Vault at once and never stored in the change request, returned,
+    logged or audited; the request carries only the staging reference, the target secret
+    (`<adapter>/<partnerId>`) and metadata (type, the Vault field names, `kid` `<name>-v<version>`,
+    a certificate's SHA-256 `fingerprint`, `subject`, `serialNumber`, `notAfter`). A different
+    `integration-checker` approves it (claim-first, like key changes): the fields are written into
+    the partner's Vault secret `secret/<adapter>/<partnerId>` (a secret: field `<name>`; a
+    certificate: `<name>-keystore` and `<name>-keystore-password`, the adapters' mTLS fields) and the
+    metadata stored; this service can write those secrets but never read them. `GET
+    /admin/v1/credentials` lists metadata only, `GET /admin/v1/credentials/expiring` feeds the
+    expiry dashboard; ops get an email at 30, 7 and 1 days before `notAfter`. Vault unreachable or
+    not enabled: 503 MW-SYS-043 (retryable). The error map (`config.errorMap`, partner code ->
+    canonical `MW-PTR-<PARTNER>-<suffix>` and retryability) has its own change request (resourceType
+    `partner_error_map`, action SET_ERROR_MAP; makers and checkers as for partner config); approved,
+    the full config is published as the partner's next version.
 servers:
   - url: https://localhost
 security:
@@ -432,6 +451,128 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/partners/{partnerId}/error-map/change-requests:
+    post:
+      operationId: requestPartnerErrorMapChange
+      summary: Replace a partner's response-code map (maker, ticket 131)
+      description: >-
+        Role `ops-maker` or `integration-maker`. `errorMap` replaces the partner's whole map (partner
+        code -> `{suffix, retryable}`, the canonical code being `MW-PTR-<PARTNER>-<suffix>`);
+        `ambiguousCodes` replaces the ambiguous codes when given. Unknown partner 404 MW-VAL-003; a
+        bad suffix 400 MW-VAL-001; nothing changes 409 MW-VAL-030; one open request per partner (409
+        MW-VAL-031). `payload` has the partner request's shape (`family`, `baseVersion`, the full
+        `config`); `diff` the map before and after. Approved by a different `ops-checker` /
+        `integration-checker`: published on `mw.config.changed.v1` as the next version.
+      parameters:
+        - { name: partnerId, in: path, required: true, schema: { $ref: "#/components/schemas/PartnerId" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, reason, errorMap]
+              additionalProperties: false
+              properties:
+                action: { $ref: "#/components/schemas/ErrorMapAction" }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+                errorMap: { $ref: "#/components/schemas/PartnerErrorMap" }
+                ambiguousCodes: { $ref: "#/components/schemas/PartnerAmbiguousCodes" }
+      responses:
+        "201":
+          description: The change request, PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /admin/v1/partners/{partnerId}/credentials/{name}/change-requests:
+    post:
+      operationId: uploadPartnerCredential
+      summary: Upload a partner credential into Vault (maker, ticket 131)
+      description: >-
+        Role `integration-maker`. Write-only: the secret parts are staged in Vault at once and never
+        stored, returned, logged or audited. API_KEY / HMAC_SECRET: `secret` (16 to 4096 characters)
+        and an optional future `notAfter`; `name` is the field name `auth.credentialsRef` names
+        (lower-case letters, digits, hyphens, at most 64). CLIENT_CERT: `certificatePem` (leaf first,
+        chain optional) with its PKCS#8 `privateKeyPem`, or `pkcs12` (base64) with `pkcs12Password`;
+        the key must belong to the certificate and the certificate must not have expired; `name` (at
+        most 46) is the adapters' TLS context name. A credential keeps its type. Unknown partner 404
+        MW-VAL-003; problems 400 MW-VAL-001 (never repeating what was uploaded); one open request per
+        credential (409 MW-VAL-031); Vault unavailable 503 MW-SYS-043. Approved by a different
+        `integration-checker` on the shared approve endpoint.
+      parameters:
+        - { name: partnerId, in: path, required: true, schema: { $ref: "#/components/schemas/PartnerId" } }
+        - { name: name, in: path, required: true, schema: { $ref: "#/components/schemas/CredentialName" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, reason, type]
+              additionalProperties: false
+              properties:
+                action: { $ref: "#/components/schemas/CredentialAction" }
+                reason: { type: string, minLength: 1, maxLength: 500, description: Why (free text; masked in logs) }
+                type: { $ref: "#/components/schemas/CredentialType" }
+                secret: { type: string, minLength: 1, maxLength: 4096, writeOnly: true }
+                certificatePem: { type: string, minLength: 1, maxLength: 65536 }
+                privateKeyPem: { type: string, minLength: 1, maxLength: 65536, writeOnly: true }
+                pkcs12: { type: string, minLength: 1, maxLength: 131072, writeOnly: true, description: base64 }
+                pkcs12Password: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
+                notAfter: { type: string, format: date-time, description: "API_KEY / HMAC_SECRET only: when it expires" }
+      responses:
+        "201":
+          description: The change request, PENDING (payload and diff hold metadata only)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChangeRequest" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "503": { $ref: "#/components/responses/Error" }
+  /admin/v1/credentials:
+    get:
+      operationId: listCredentials
+      summary: Partner credential metadata (ticket 131)
+      description: Roles that may read partners. Metadata only; a secret is never returned.
+      parameters:
+        - { name: partnerId, in: query, required: false, schema: { $ref: "#/components/schemas/PartnerId" } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: Every stored credential (or one partner's), by id
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CredentialPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+  /admin/v1/credentials/expiring:
+    get:
+      operationId: listExpiringCredentials
+      summary: Credentials expiring within some days, expired ones included (dashboard card)
+      description: Roles that may read partners. Soonest `notAfter` first.
+      parameters:
+        - { name: days, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 3650, default: 30 } }
+        - { name: X-Correlation-Id, in: header, required: false, schema: { type: string } }
+      responses:
+        "200":
+          description: The credentials whose notAfter is at most `days` away
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CredentialPage" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
   /admin/v1/channel-clients:
     get:
       operationId: listChannelClients
@@ -974,11 +1115,17 @@ components:
         A `channel_client` request (ticket 100a): `payload` the full `client` definition and the
         `baseVersion` the maker saw (absent for a new client) and, once approved, the stored
         `version`; `diff` the changed fields before and after.
+        A `partner_credential` request (ticket 131, action UPLOAD): `payload` the `partnerId`,
+        `name`, `adapter`, the target `vaultPath` (`<adapter>/<partnerId>`), the `stagedRef` (where
+        the upload waits in Vault) and `meta` (type, vaultFields, kid, fingerprint, subject,
+        serialNumber, notAfter) and, once approved, the stored `version`; `diff` the metadata before
+        and after. Never a secret. A `partner_error_map` request (action SET_ERROR_MAP): as a partner
+        request; `diff` the `errorMap` / `ambiguousCodes` before and after.
       required: [id, resourceType, resourceId, action, payload, diff, makerId, status, reason, createdAt, expiresAt]
       properties:
         id: { type: string, format: uuid }
         resourceType: { $ref: "#/components/schemas/ResourceType" }
-        resourceId: { type: string, description: "txnId; wallet id (masked); partnerId; menuId; <code>/<channel>/<locale>; keyId; or clientId" }
+        resourceId: { type: string, description: "txnId; wallet id (masked); partnerId; menuId; <code>/<channel>/<locale>; keyId; clientId; or <partnerId>/<name> (credential)" }
         action:
           anyOf:
             - { $ref: "#/components/schemas/TxnAction" }
@@ -987,6 +1134,8 @@ components:
             - { $ref: "#/components/schemas/ContentAction" }
             - { $ref: "#/components/schemas/KeyAction" }
             - { $ref: "#/components/schemas/ChannelClientAction" }
+            - { $ref: "#/components/schemas/CredentialAction" }
+            - { $ref: "#/components/schemas/ErrorMapAction" }
         payload: { type: object }
         diff:
           type: object
@@ -1053,7 +1202,8 @@ components:
         offset: { type: integer }
     ResourceType:
       type: string
-      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template, key, channel_client]
+      enum: [transaction, wallet, pin_reset, partner, ussd_menu, notify_template, key, channel_client, partner_credential,
+        partner_error_map]
     KeyAction:
       type: string
       description: Key changes and the key ceremony (ticket 75)
@@ -1162,20 +1312,8 @@ components:
               type: object
               maxProperties: 20
               additionalProperties: { type: string, maxLength: 256 }
-        errorMap:
-          type: object
-          maxProperties: 500
-          additionalProperties:
-            type: object
-            required: [suffix]
-            additionalProperties: false
-            properties:
-              suffix: { type: string, minLength: 1, maxLength: 64, pattern: "^[A-Z0-9_]+$" }
-              retryable: { type: boolean }
-        ambiguousCodes:
-          type: array
-          maxItems: 100
-          items: { type: string, minLength: 1, maxLength: 64 }
+        errorMap: { $ref: "#/components/schemas/PartnerErrorMap" }
+        ambiguousCodes: { $ref: "#/components/schemas/PartnerAmbiguousCodes" }
         sensitiveFields:
           type: object
           maxProperties: 100
@@ -1198,6 +1336,38 @@ components:
           items: { type: string, minLength: 1, maxLength: 253, pattern: "^[A-Za-z0-9.-]+$" }
           description: The hosts the route may call (guardrail 4)
         dryRun: { $ref: "#/components/schemas/PartnerDryRun" }
+        maintenance:
+          type: boolean
+          description: "In maintenance now, until cleared (ticket 97): health MAINTENANCE, every call refused MW-SYS-PARTNER_MAINTENANCE (ticket 131b)"
+        healthCheck: { type: boolean, description: "The route has a HEALTH_CHECK branch the adapter probes on a schedule (ticket 97)" }
+        maintenanceWindow: { $ref: "#/components/schemas/PartnerMaintenanceWindow" }
+        endpoint:
+          type: string
+          enum: [MOCK, REAL]
+          description: "The selected endpoint profile (ticket 131b): the route's url={{endpoint}} is filled from endpoints[endpoint]"
+        endpoints: { $ref: "#/components/schemas/PartnerEndpoints" }
+    PartnerMaintenanceWindow:
+      type: object
+      additionalProperties: false
+      description: >-
+        A maintenance window (ticket 131b, FRS PLT-043): from start (absent: now) until end (absent:
+        until cleared); inside it the adapter refuses every call with MW-SYS-PARTNER_MAINTENANCE and
+        the bn/en message (absent: the adapters' default text), and its health is MAINTENANCE.
+      properties:
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        messageEn: { type: string, minLength: 1, maxLength: 500 }
+        messageBn: { type: string, minLength: 1, maxLength: 500 }
+    PartnerEndpoints:
+      type: object
+      additionalProperties: false
+      description: >-
+        The base URL of each endpoint profile (ticket 131b, FRS 10.4 criterion 3): http(s), host,
+        port and plain path segments, host in allowedHosts. Switching the profile is a config
+        change, never a route edit.
+      properties:
+        MOCK: { type: string, minLength: 8, maxLength: 512, pattern: "^https?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*/?$" }
+        REAL: { type: string, minLength: 8, maxLength: 512, pattern: "^https?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*/?$" }
     PartnerDryRun:
       type: object
       required: [operation]
@@ -1330,6 +1500,69 @@ components:
         items:
           type: array
           items: { $ref: "#/components/schemas/ChannelClient" }
+    PartnerErrorMap:
+      type: object
+      description: Partner code -> canonical code suffix (`MW-PTR-<PARTNER>-<suffix>`) and retryability (spec 12.1)
+      maxProperties: 500
+      additionalProperties:
+        type: object
+        required: [suffix]
+        additionalProperties: false
+        properties:
+          suffix: { type: string, minLength: 1, maxLength: 64, pattern: "^[A-Z0-9_]+$" }
+          retryable: { type: boolean }
+    PartnerAmbiguousCodes:
+      type: array
+      description: Partner codes whose outcome is unknown (the transaction goes to inquiry)
+      maxItems: 100
+      items: { type: string, minLength: 1, maxLength: 64 }
+    ErrorMapAction:
+      type: string
+      description: The response-code map change (ticket 131)
+      enum: [SET_ERROR_MAP]
+    CredentialAction:
+      type: string
+      description: A credential upload (ticket 131); a new value replaces the held one
+      enum: [UPLOAD]
+    CredentialType:
+      type: string
+      enum: [API_KEY, HMAC_SECRET, CLIENT_CERT]
+    CredentialName:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: "^[a-z0-9][a-z0-9-]{0,63}$"
+    Credential:
+      type: object
+      description: A partner credential's metadata (ticket 131). Never the secret.
+      required: [credentialId, partnerId, name, adapter, type, vaultFields, kid, version, uploadedBy, approvedBy, uploadedAt]
+      properties:
+        credentialId: { type: string, description: "<partnerId>/<name>" }
+        partnerId: { $ref: "#/components/schemas/PartnerId" }
+        name: { $ref: "#/components/schemas/CredentialName" }
+        adapter: { type: string, description: "The adapter whose Vault secret holds it (secret/<adapter>/<partnerId>)" }
+        type: { $ref: "#/components/schemas/CredentialType" }
+        vaultFields:
+          type: array
+          items: { type: string }
+          description: The field names written in the partner's secret
+        kid: { type: string, description: "<name>-v<version>" }
+        fingerprint: { type: string, pattern: "^sha256:[0-9a-f]{64}$", description: A certificate's SHA-256 over its DER encoding }
+        subject: { type: string, description: A certificate's subject DN }
+        serialNumber: { type: string, description: A certificate's serial number (hex) }
+        notAfter: { type: string, format: date-time }
+        daysLeft: { type: integer, description: Whole days until notAfter (negative once expired) }
+        version: { type: integer, minimum: 1 }
+        uploadedBy: { type: string, description: The maker }
+        approvedBy: { type: string, description: The checker }
+        uploadedAt: { type: string, format: date-time, description: When the approval wrote it }
+    CredentialPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Credential" }
     ErrorEnvelope:
       type: object
       required: [code, message, correlationId, retryable, details]

@@ -70,7 +70,26 @@
         "readTimeoutMs": { "type": "integer", "minimum": 1 },
         "errorMap": { "type": "object" },
         "ambiguousCodes": { "type": "array", "items": { "type": "string" } },
-        "sensitiveFields": { "type": "object" }
+        "sensitiveFields": { "type": "object" },
+        "maintenance": { "type": "boolean", "description": "In maintenance now, until cleared (ticket 97); calls refused MW-SYS-PARTNER_MAINTENANCE (ticket 131b)." },
+        "healthCheck": { "type": "boolean", "description": "The route has a HEALTH_CHECK branch, probed on a schedule (ticket 97)." },
+        "maintenanceWindow": {
+          "type": "object",
+          "description": "Ticket 131b: from start (absent: now) until end (absent: until cleared), the bn/en message of the refusal.",
+          "properties": {
+            "start": { "type": "string", "format": "date-time" },
+            "end": { "type": "string", "format": "date-time" },
+            "messageEn": { "type": "string", "minLength": 1, "maxLength": 500 },
+            "messageBn": { "type": "string", "minLength": 1, "maxLength": 500 }
+          }
+        },
+        "endpoint": { "enum": ["MOCK", "REAL"], "description": "Ticket 131b: the selected endpoint profile; the route's url={{endpoint}} is filled from endpoints[endpoint]." },
+        "endpoints": {
+          "type": "object",
+          "description": "Ticket 131b: base URL per endpoint profile.",
+          "propertyNames": { "enum": ["MOCK", "REAL"] },
+          "additionalProperties": { "type": "string", "pattern": "^https?://[A-Za-z0-9.-]{1,253}(:[0-9]{1,5})?(/[A-Za-z0-9._~-]+)*/?$" }
+        }
       }
     }
   }

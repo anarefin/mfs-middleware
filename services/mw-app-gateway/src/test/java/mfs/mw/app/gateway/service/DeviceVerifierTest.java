@@ -70,7 +70,7 @@ class DeviceVerifierTest {
       if (d == null || !d.walletId().equals(walletId) || !live.contains(walletId + ":" + deviceId)) {
         return Optional.empty();
       }
-      return Optional.of(new LiveSession(walletId, deviceId, 300, DeviceVerifier.fingerprint(d.publicKey()), d.boundAt()));
+      return Optional.of(new LiveSession(walletId, deviceId, 300, DeviceVerifier.fingerprint(d.publicKey()), d.boundAt(), 1L));
     });
   }
 

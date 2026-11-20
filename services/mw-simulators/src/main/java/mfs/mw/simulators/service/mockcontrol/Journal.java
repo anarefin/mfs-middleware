@@ -29,14 +29,17 @@ public class Journal {
     this.limit = props.recordLimit();
   }
 
-  public synchronized void record(
+  /** Records one request (or, for the file mocks of ticket 123, one file read, written or skipped) and answers it. */
+  public synchronized RecordedRequest record(
       String party, String method, String path, String query, Map<String, String> headers, String body, Instant at) {
     long seq = sequences.merge(party, 1L, Long::sum);
     Deque<RecordedRequest> q = requests.computeIfAbsent(party, k -> new ArrayDeque<>());
-    q.addLast(new RecordedRequest(seq, at, method, path, query, Map.copyOf(headers), body));
+    RecordedRequest r = new RecordedRequest(seq, at, method, path, query, Map.copyOf(headers), body);
+    q.addLast(r);
     while (q.size() > limit) {
       q.removeFirst();
     }
+    return r;
   }
 
   /**

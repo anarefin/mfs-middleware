@@ -177,7 +177,11 @@ public class PartnerRouteStatusService {
             live.isEnabled() && current.isEnabled(), live.connectTimeoutMs(), live.timeoutMs(), live.readTimeoutMs(),
             live.headers(), live.auth(), live.errorMap(), live.ambiguousCodes(), live.sensitiveFields(), live.resilience(),
             live.route(), live.mappings(), live.allowedHosts(), null)
-        .withTimeouts(current.connectTimeoutMs(), current.timeoutMs(), current.readTimeoutMs());
+        .withTimeouts(current.connectTimeoutMs(), current.timeoutMs(), current.readTimeoutMs())
+        // ticket 131b: maintenance and the health check are operator state (the current version's);
+        // the endpoint profile is part of what the live version proved (the live one's)
+        .withHealthFields(current)
+        .withEndpoint(live.endpoint(), live.endpoints());
   }
 
   /**

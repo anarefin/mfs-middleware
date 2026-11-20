@@ -60,8 +60,8 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   CASH_IN agent -> customer, CASH_OUT customer -> agent, MERCHANT_PAY customer -> merchant; the core enforces the wallet types).
   `BulkDisburseFlow` (ticket 34, one child of an org bulk batch, sent by mw-portal-api) is validate +
   post too: debit `{ORG, <org wallet>}`, credit the customer's WALLET, **no PIN** (the org
-  authorised the batch by maker-checker; `core.command.v1` ValidateTransaction/PostTransfer require
-  `assertion` + `idempotencyKey` for every txnType but BULK_DISBURSE). Only channels in
+  authorised the batch by maker-checker; the core's validate / transfer require the
+  assertion + `idempotencyKey` for every txnType but BULK_DISBURSE). Only channels in
   `mw.orchestrator.bulk-channels` (default `ORG_PORTAL`) may send one, else REJECTED `MW-AUTH-021`
   (`BulkDisburseSagaIT`); the core restricts it to ORG -> CUSTOMER. The portal derives txnId and
   key per row, so a resent child is answered from the idempotency record. The batch's parent
@@ -131,7 +131,11 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 - Alerts (S4, `service/SagaAlerts`, spec 6.3/7.2/21): stable `event` log lines and Micrometer meters
   `mw.txn.commit.unacknowledged`, `mw.txn.release.unacknowledged`, `mw.txn.commit.failed`,
   `mw.txn.release.failed`, `mw.txn.reversal.retry.exhausted` (counters) and
-  `mw.manual.review.oldest.age` (gauge, seconds). Daily MANUAL_REVIEW ageing check:
+  `mw.manual.review.oldest.age` (gauge, seconds). Entering MANUAL_REVIEW from any state (FRS PLT-024,
+  ticket 96a; hook in `SagaEngine.fire`): counter `mw.manual.review.entered` (`mw_manual_review_entered_total`)
+  and WARN `txn.manual_review.entered` (`from`, `errorCode`), both after the state change commits; the
+  operations SMS/email is mw-notify's `OPS` rule on the MANUAL_REVIEW status of `mw.txn.status.v1` (no
+  extra event). Daily MANUAL_REVIEW ageing check:
   `scheduler/ManualReviewAgeingJob` (ShedLock `manual-review-ageing`, cron
   `mw.orchestrator.manual-review-ageing-cron`, default 06:00 UTC) -> `service/ManualReviewAgeingService`
   -> WARN `txn.manual_review.ageing` with `count` and `oldestAgeSeconds` (age since its `updated_at`).
@@ -149,10 +153,10 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
   `STATUS_QUERY` on the partner topic (`requestId` = name UUID of `<txnId>:STATUS_QUERY:<epoch
   ms>`, fresh per inquiry; same `partnerTxnRef`; `originalPartnerRef` = stored partnerRef), else a
   core QueryTransaction (fresh commandId, as the HOLDING query). Schedule
-  `mw.orchestrator.inquiry.*`: `schedule` 30s,1m,2m,5m,15m,1h (waits between inquiries),
-  `repeat-every` 6h, `cut-off` 24h after entering UNKNOWN (stands in for the partner's settlement
-  cut-off), `partners.<partnerId>.{schedule,repeat-every,cut-off}` overrides. The expiry at the
-  cut-off asks nothing: MANUAL_REVIEW `MW-TMO-004`. Answers (any reply for an UNKNOWN txn, the
+  `mw.orchestrator.inquiry.*` (FRS PLT-023/024, ticket 96a): `schedule` 30s,2m,10m,1h (waits before each
+  inquiry; `MW_ORCHESTRATOR_INQUIRY_SCHEDULE`), `answer-wait` 30s (how long the last inquiry's answer is
+  awaited), `partners.<partnerId>.schedule` (a partner's own list of waits; nothing else is overridable).
+  The slot after the last inquiry asks nothing: MANUAL_REVIEW `MW-TMO-004`. Answers (any reply for an UNKNOWN txn, the
   STATUS_QUERY answer or a late PAY reply): SUCCESS -> COMMITTING (partnerRef stored); FAILED ->
   RELEASING with the reply's error; NOT_FOUND -> RELEASING `MW-TMO-003` only once PARTNER_PENDING
   entry + `partner-timeout` + `not-found-grace` (30 s) has passed (the adapter refuses an expired
@@ -445,17 +449,14 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.orchestrator`. Follow
 
 ## Contracts owned
 
-- `events/mw-orchestrator/mw.txn.request.v1`, `mw.txn.status.v1`, `core.command.v1` (+ per-command
-  payloads), `mw.partner.request.v1`, `mw.partner.reply.v1`, `mw.partner.inbound.v1`,
+- `events/mw-orchestrator/mw.txn.request.v1`, `mw.txn.status.v1`, `mw.partner.request.v1`, `mw.partner.reply.v1`, `mw.partner.inbound.v1`,
   `api/mw-orchestrator/txn-query.v1.openapi.yaml` (internal query API, ticket 35; 1.3.0 wallet scope, ADR D25),
   `api/mw-orchestrator/orchestrator-test.v1.openapi.yaml` (test-only API, ticket 58), and
   `common/defs.v1` (see `contracts/OWNERS.yml`). Tests validate every status the service emits against
-  them. Since ticket 95a the orchestrator produces no `core.command.v1` message (it calls the core over REST);
-  the contract stays for mw-auth's VerifyCustomerFactors and mw-admin-api's UnlockWallet until ticket 95b retires
-  it (`CoreCommandMapperTest` still checks the internal call shapes against it). `core.command.v1#UnlockWallet` (ticket 52) is in this contract but
-  produced by mw-admin-api (ops unlock after maker-checker), not by the orchestrator; its results
-  `WalletUnlocked` / `UnlockRejected` carry a txnId the orchestrator does not know and are dropped
-  (`txn.unknown`).
+  them. Since ticket 95a the orchestrator calls the core over REST; ticket 95b retired `core.command.v1`
+  (its files, samples and the two command topics): `dto/CoreCommand` and its payloads are the internal
+  shape of a saga step's core call only. The core's `WalletUnlocked` / `UnlockRejected` (mw-admin-api's
+  REST unlock) carry a txnId the orchestrator does not know and are dropped (`txn.unknown`).
 
 ## Contracts used
 

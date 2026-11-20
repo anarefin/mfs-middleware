@@ -1,6 +1,6 @@
 # Contracts this module produces and consumes (ticket 53); paths relative to contracts/.
 # `#<Msg>` names one message type of a multi-type topic, e.g.
-#   events/mw-orchestrator/core.command.v1.schema.json#HoldFunds
+#   events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged
 # `./gradlew :contractsLint` checks every entry exists; the module's build.gradle.kts tracks the listed
 # contracts as test inputs, so only the modules a contract change affects re-run their tests.
 # Ticket 67: the wallet projection from the core (WalletStateChanged, contracts/ConsumedContractsTest)
@@ -8,12 +8,12 @@
 # Ticket 68: the device API moved from mw-app-gateway: the public auth.v1 API, the internal API of
 # the gateway's device lookups (contracts/ApiContractsTest) and the binding OTP / new-device SMS to
 # mw-notify (contracts/ProducedContractsTest).
-# Ticket 70: the PIN lifecycle: VerifyCustomerFactors to the core and its answers (self-service reset),
-# the wallet lock command topic it owns (from mw-admin-api), audit events of locks, changes and resets.
+# Ticket 70: the PIN lifecycle: the wallet lock command topic it owns (from mw-admin-api), audit events
+# of locks, changes and resets. Ticket 95b (ADR D31): the self-service reset's KYC factors check is a
+# REST call to the core (core-wallet.v1 verify-factors), no longer VerifyCustomerFactors on Kafka.
 produces:
   events:
     - events/mw-notify/mw.notify.request.v1.schema.json
-    - events/mw-orchestrator/core.command.v1.schema.json#VerifyCustomerFactors
     - events/mw-audit-dw/mw.audit.event.v1.schema.json
   apis:
     - api/mw-auth/auth.v1.openapi.yaml
@@ -23,7 +23,8 @@ produces:
 consumes:
   events:
     - events/mw-core-mock/core.event.v1.schema.json#WalletStateChanged
-    - events/mw-core-mock/core.event.v1.schema.json#CustomerFactorsVerified
-    - events/mw-core-mock/core.event.v1.schema.json#CustomerFactorsRejected
     - events/mw-auth/auth.wallet-lock.v1.schema.json
-  apis: [api/mw-crypto/crypto-internal.v1.openapi.yaml]
+  apis:
+    - api/mw-crypto/crypto-internal.v1.openapi.yaml
+    # ticket 95b: the PIN reset's factors check (client/CoreClient)
+    - api/mw-core-mock/core-wallet.v1.openapi.yaml

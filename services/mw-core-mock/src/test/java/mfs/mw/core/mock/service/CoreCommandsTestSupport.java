@@ -19,7 +19,6 @@ import tools.jackson.databind.json.JsonMapper;
 public final class CoreCommandsTestSupport {
 
   static final String EVENT_SCHEMA = "events/mw-core-mock/core.event.v1.schema.json";
-  static final String COMMAND_SCHEMA = "events/mw-orchestrator/core.command.v1.schema.json";
 
   private final JsonMapper json;
 
@@ -44,9 +43,6 @@ public final class CoreCommandsTestSupport {
     envelope.put("issuedAt", now.toString());
     envelope.put("expiresAt", now.plusSeconds(300).toString());
     envelope.put("payload", payload);
-    assertThat(ContractSchemas.schema(COMMAND_SCHEMA).validate(json.valueToTree(envelope)))
-        .as("command %s against core.command.v1", type)
-        .isEmpty();
     return json.convertValue(envelope, CoreCommand.class);
   }
 

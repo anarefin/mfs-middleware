@@ -68,15 +68,11 @@ public record ContractManifest(
   }
 
   /**
-   * The envelope field that carries the message type of a multi-type topic: {@code commandType}
-   * ({@code core.command.v1}), {@code eventType} ({@code core.event.v1}), {@code family} (the
-   * {@code mw.partner.*.v1} topics).
+   * The envelope field that carries the message type of a multi-type topic: {@code eventType} ({@code
+   * core.event.v1}), {@code family} (the {@code mw.partner.*.v1} topics).
    */
   public static String typeField(String entry) {
     String topic = topic(entry);
-    if (topic.equals("core.command.v1")) {
-      return "commandType";
-    }
     if (topic.equals("core.event.v1")) {
       return "eventType";
     }

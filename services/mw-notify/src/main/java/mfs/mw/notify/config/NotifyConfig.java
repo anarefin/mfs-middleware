@@ -17,6 +17,7 @@ public class NotifyConfig {
 
   @Bean
   public RuleEngine ruleEngine(NotifyProperties props) {
-    return new RuleEngine(props.defaultLocale());
+    NotifyProperties.Ops ops = props.ops();
+    return new RuleEngine(props.defaultLocale(), new RuleEngine.OpsAddress(ops.msisdn(), ops.email(), ops.locale()));
   }
 }

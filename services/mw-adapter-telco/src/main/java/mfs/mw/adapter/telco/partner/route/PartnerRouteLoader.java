@@ -70,8 +70,11 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
  *
  * <ol>
  *   <li>the record ({@link PartnerConfig#problems()}; a record without a route is refused);
- *   <li>no {@code {{...}}} anywhere (property placeholders reach {@code env:}, {@code sys:}, the
- *       vault function, beans);
+ *   <li>{@code {{endpoint}}}, when the route uses it, filled from {@code endpoints} by the selected
+ *       {@code endpoint} (a plain base URL, trailing slashes removed) so every later check, allowed
+ *       hosts included, sees the URL the call will use (ticket 131b);
+ *   <li>no other {@code {{...}}} anywhere, including one a YAML escape hid (property placeholders
+ *       reach {@code env:}, {@code sys:}, the vault function, beans);
  *   <li>safe YAML: exactly one {@code - route:} whose only key is {@code from}, with only {@code
  *       uri: direct:partner-<id>} and {@code steps}; the partner sets no route attribute (id,
  *       error handler, policies, message history, trace, startup) and nothing else at top level;
@@ -218,6 +221,12 @@ public class PartnerRouteLoader {
     }
 
     String text = record.route();
+    // ticket 131b: only the literal {{endpoint}} is filled, and only before the checks. A placeholder
+    // a YAML escape hides is not this token, so the checks below refuse it.
+    String base = record.endpointBase();
+    if (base != null) {
+      text = text.replace(PartnerConfig.ENDPOINT_PLACEHOLDER, base);
+    }
     if (text.contains("{{")) {
       security.add("property placeholders ({{...}}) are not allowed in a partner route");
       refuseIfAny(id, security, problems);

@@ -119,6 +119,8 @@ class GlobalResetIT {
     List<String> expected = new java.util.ArrayList<>(MockParties.ALL.stream().map(p -> p.name()).toList());
     expected.add("core");
     assertThat(names).containsExactlyElementsOf(expected);
+    // the push mock (ticket 110) and the file mocks (ticket 123) are reset too
+    assertThat(names).contains("push", "aml", "trustbank", "dw");
     assertThat(CORE_CALLS).containsExactly("POST {\"seedVersion\":\"v1\"}");
     for (var p : MockParties.ALL) {
       assertThat(json.readTree(send("GET", "/mock-control/" + p.name() + "/journal", null).body())).as(p.name()).isEmpty();

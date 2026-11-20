@@ -73,7 +73,7 @@
 95c-hold-expired-wallet-state               95a,94            open
 97-adapter-reverse-health                   89                done     110m     99 files +3635 −156    8921933e
 96-orchestrator-saga-frs                    95,97             split (96-split-decisions.md, 2026-11-20)
-96a-inquiry-schedule-ops-alert              95a,97            open
+96a-inquiry-schedule-ops-alert              95a,97            done     75m      26 files +384 −152     1f61e790
 96b-partner-reverse-refused-commit          96a               open
 96c-partner-leg-reversal-folder30           96b               open
 98-routing-module                           96a,97             open
@@ -110,7 +110,7 @@
 121-mw-adapter-interop                      92,97,102         open
 122-banglaqr                                121               open
 # --- M11 gate: UC-18, UC-19
-123-file-mocks                              102,94            open
+123-file-mocks                              102,94            done     90m      72 files +3401 −39     57a73927
 124-mw-compliance-ekyc                      94,102,106        open
 125-aml-feed-actions                        124,123,96        open
 126-mw-recon-matching                       123,95            open
@@ -121,7 +121,7 @@
 130b-audit-hops-channels-core-notify        130               open   (CHANNEL_IN in channels, CORE_CALL in orchestrator, NOTIFICATION in mw-notify; closes AUD-01/AUD-04 with 135)
 # --- M12 gate: UC-01, UC-20..22
 131-admin-partner-credentials               91,97             split (131-split-decisions.md, 2026-11-20)
-131a-admin-credentials-backend              91,97             open
+131a-admin-credentials-backend              91,97             done     135m     59 files +3307 −41     ce25fff7
 131b-maintenance-endpoint-profile           97,131a           open   (run before 115, 118-121; routing part after 98)
 131c-admin-ui-partner-tabs                  131a,131b         open
 132-admin-routing-billers-clients-ui        98,100a,113        open

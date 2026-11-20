@@ -52,7 +52,6 @@ test_repo_has_the_v1_contract_set_under_each_owning_service() {
   for f in \
     events/mw-orchestrator/mw.txn.request.v1.schema.json \
     events/mw-orchestrator/mw.txn.status.v1.schema.json \
-    events/mw-orchestrator/core.command.v1.schema.json \
     events/mw-orchestrator/mw.partner.request.v1.schema.json \
     events/mw-orchestrator/mw.partner.reply.v1.schema.json \
     events/mw-orchestrator/mw.partner.inbound.v1.schema.json \
@@ -66,16 +65,14 @@ test_repo_has_the_v1_contract_set_under_each_owning_service() {
   done
 }
 
-# Core commands needing customer authorisation carry mw-auth's assertion (18.7, D22): each has an
-# invalid sample stated to fail for a missing assertion and a valid sample with one. Since ticket 72
-# no PIN travels on Kafka: no event schema or sample names encryptedPin.
-test_repo_core_command_requires_authorisation_on_authorising_commands() {
-  local s="$REPO_DIR/contracts/events/mw-orchestrator/samples/core.command.v1" c
-  for c in ValidateTransaction HoldFunds PostTransfer; do
-    grep -q "\"/payload must have required property 'assertion'\"" "$s/$c/expected-errors.json" 2>/dev/null \
-      || fail "no invalid $c sample stated to fail for a missing assertion"
-    grep -lq '"assertion"' "$s/$c"/valid-*.json 2>/dev/null || fail "no valid $c sample with an assertion"
-  done
+# The transaction request carries mw-auth's assertion (18.7, D22); the core commands that once carried it
+# on Kafka are REST calls since ticket 95b (core-wallet.v1, X-Txn-Assertion), so no core.command.v1 is left.
+# Since ticket 72 no PIN travels on Kafka: no event schema or sample names encryptedPin.
+test_repo_assertion_travels_on_the_request_and_no_core_command_contract_is_left() {
+  grep -lq '"assertion"' "$REPO_DIR/contracts/events/mw-orchestrator/samples/mw.txn.request.v1"/valid-*.json 2>/dev/null \
+    || fail "no valid mw.txn.request.v1 sample with an assertion"
+  [ -e "$REPO_DIR/contracts/events/mw-orchestrator/core.command.v1.schema.json" ] && fail "core.command.v1 is retired (ticket 95b)"
+  grep -q "X-Txn-Assertion" "$REPO_DIR/contracts/api/mw-core-mock/core-wallet.v1.openapi.yaml" || fail "core-wallet.v1 lacks X-Txn-Assertion"
   grep -q '"TxnAssertion": {' "$REPO_DIR/contracts/common/defs.v1.schema.json" || fail "defs.v1 lacks TxnAssertion"
   grep -rlq 'encryptedPin' "$REPO_DIR/contracts/events" && fail "an event contract still carries encryptedPin (removed in ticket 72)"
   return 0
@@ -92,7 +89,7 @@ test_repo_envelopes_have_one_payload_schema_per_message_type() {
   local e="$REPO_DIR/contracts/events" t n refs r
   # one payload file on disk per oneOf branch of the envelope (counted, not fixed: tickets add
   # message types), and every branch's $ref names a file that exists
-  for t in mw-orchestrator/core.command.v1 mw-core-mock/core.event.v1 \
+  for t in mw-core-mock/core.event.v1 \
     mw-orchestrator/mw.partner.request.v1 mw-orchestrator/mw.partner.reply.v1 \
     mw-orchestrator/mw.partner.inbound.v1; do
     n="$(ls "$e/$t"/*.payload.schema.json 2>/dev/null | wc -l | tr -d ' ')"
@@ -106,10 +103,6 @@ test_repo_envelopes_have_one_payload_schema_per_message_type() {
     done
     grep -q '"oneOf"' "$e/$t.schema.json" || fail "$t.schema.json has no oneOf over payloads"
     grep -q '"if"' "$e/$t.schema.json" && fail "$t.schema.json still picks payload rules with if/then"
-  done
-  for f in HoldFunds ValidateTransaction PostTransfer CommitHold ReleaseHold CreditWallet ReverseTransaction \
-    QueryTransaction ApplyComplianceAction UnlockWallet; do
-    [ -f "$e/mw-orchestrator/core.command.v1/$f.payload.schema.json" ] || fail "no $f payload schema"
   done
   # Partner topics (review of 48): the families share one payload per topic, but keep a family
   # enum and one oneOf branch per family so a family can get its own payload file later.

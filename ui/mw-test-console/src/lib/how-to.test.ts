@@ -13,6 +13,7 @@ const SOURCES: Record<PageKey, string[]> = {
   auth: ["auth/auth-tester.tsx"],
   ussd: ["ussd/phone.tsx"],
   simulators: ["simulators/forms.tsx"],
+  files: ["files/forms.tsx"],
   inbox: ["inbox/inbox.tsx"],
   checkout: ["checkout/checkout-tester.tsx"],
   bulk: ["bulk/bulk-tester.tsx"],

@@ -57,10 +57,14 @@ class ConsumedContractsTest {
   static final List<String> REJECTED_BY_LISTENER =
       List.of("events/mw-notify/samples/mw.notify.request.v1/invalid-unknown-priority.json");
 
-  /** Invalid push-token samples the listener refuses (ticket 110): an unknown platform, no token. */
+  /**
+   * Invalid push-token samples the listener refuses (ticket 110): an unknown platform, no token; no binding
+   * epoch (ticket 110b: a registration that cannot prove its binding is never stored).
+   */
   static final List<String> PUSH_TOKEN_REJECTED =
       List.of("events/mw-notify/samples/mw.notify.push-token.v1/invalid-unknown-platform.json",
-          "events/mw-notify/samples/mw.notify.push-token.v1/invalid-without-token.json");
+          "events/mw-notify/samples/mw.notify.push-token.v1/invalid-without-token.json",
+          "events/mw-notify/samples/mw.notify.push-token.v1/invalid-without-binding-epoch.json");
 
   static ConsumerRecord<String, String> record(String body) {
     return new ConsumerRecord<>("contract-test", 0, 0L, null, body);
@@ -133,6 +137,7 @@ class ConsumedContractsTest {
             assertThat(e.token()).isNotBlank();
             assertThat(e.platform()).isNotNull();
             assertThat(e.registeredAt()).isNotNull();
+            assertThat(e.bindingEpoch()).isPositive();
           });
 
   @TestFactory

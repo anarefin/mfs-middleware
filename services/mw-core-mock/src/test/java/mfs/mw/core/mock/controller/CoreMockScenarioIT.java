@@ -111,6 +111,39 @@ class CoreMockScenarioIT {
   }
 
   @Test
+  void aNoCallbackScenarioAlsoLosesTheRestAnswerAfterTheTransferIsApplied() {
+    scenario("{\"operation\":\"transfer\",\"behaviour\":\"NO_CALLBACK\",\"nextN\":1}");
+
+    MvcTestResult r = rest.core("/core/v1/transfers", CoreRest.signed("P2P", A, "WALLET", C, 10000));
+
+    assertThat(r).hasStatus(504);
+    assertThat(rest.body(r).path("code").asString()).isEqualTo("MW-TMO-CORE_ANSWER_LOST");
+    assertThat(rest.body(r).path("retryable").asBoolean()).isTrue();
+    assertThat(rest.available(A)).as("applied: the caller must ask WAL-13").isEqualTo(SEED - 10500);
+    assertThat(jdbc.queryForObject("select count(*) from outbox", Long.class)).as("no result event either").isZero();
+  }
+
+  @Test
+  void theLegacyDropReplyFaultLosesTheRestAnswerAndARefusalLostStaysARefusal() {
+    assertThat(rest.control("POST", "/core-mock/v1/faults", "{\"mode\":\"DROP_REPLY\",\"commandType\":\"PostTransfer\",\"times\":1}"))
+        .hasStatus(201);
+    MvcTestResult lost = rest.core("/core/v1/transfers", CoreRest.signed("P2P", A, "WALLET", C, 10000));
+    assertThat(lost).hasStatus(504);
+    assertThat(rest.available(A)).isEqualTo(SEED - 10500);
+
+    assertThat(rest.control("POST", "/core-mock/v1/faults", "{\"mode\":\"REJECT\",\"commandType\":\"PostTransfer\",\"times\":1}"))
+        .hasStatus(201);
+    assertThat(rest.control("POST", "/core-mock/v1/faults", "{\"mode\":\"DROP_REPLY\",\"commandType\":\"PostTransfer\",\"times\":1}"))
+        .hasStatus(201);
+    CoreRest.Signed refused = CoreRest.signed("P2P", B, "WALLET", C, 10000);
+    MvcTestResult refusalLost = rest.core("/core/v1/transfers", refused);
+    assertThat(refusalLost).as("the refusal never reaches the caller").hasStatus(504);
+    assertThat(rest.available(B)).as("nothing applied").isEqualTo(SEED);
+    assertThat(rest.body(rest.coreGet("/core/v1/transactions/" + refused.txnId())).path("status").asString())
+        .as("WAL-13 tells the truth").isEqualTo("REJECTED");
+  }
+
+  @Test
   void maintenanceAnswers503AndAppliesNothing() {
     assertThat(rest.control("PUT", "/mock-control/core/switch", "{\"state\":\"MAINTENANCE\"}")).hasStatusOk();
 

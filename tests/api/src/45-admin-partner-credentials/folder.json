@@ -1,0 +1,4 @@
+{
+  "name": "45 Admin partner credentials and response-code map (maker-checker, Vault write-only)",
+  "description": "Ticket 131a, FRS ADM-02, ADM-08: ops-e2e-maker01 (integration-maker) uploads a partner credential, which is staged in Vault and never returned; ops-e2e-checker01 (integration-checker) approves it into the partner's Vault secret; the admin API lists metadata only and the expiry dashboard shows what expires soon. The response-code map of a partner goes through its own change request and is published as the partner's next version."
+}

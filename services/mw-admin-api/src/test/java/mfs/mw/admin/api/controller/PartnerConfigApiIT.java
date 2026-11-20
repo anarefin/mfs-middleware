@@ -257,6 +257,39 @@ class PartnerConfigApiIT {
     assertThat(value.path("enabled").asBoolean()).isFalse();
   }
 
+  // --- ticket 97 / 131b fields: never dropped by a republish ----------------------------------
+
+  @Test
+  void theHealthMaintenanceAndEndpointFieldsSurviveEveryRepublish() {
+    String body =
+        """
+        {"action":"UPSERT_ROUTE","reason":"onboard mtco","family":"telco","config":{
+          "allowedHosts":["mock.mtco.example.test","api.mtco.example.test"],"dryRun":{"operation":"PAY"},
+          "maintenance":true,"healthCheck":true,
+          "maintenanceWindow":{"start":"2026-11-07T00:00:00Z","end":"2026-11-07T02:00:00Z",
+            "messageEn":"MTCO top-up is under maintenance","messageBn":"এমটিকো টপ-আপ রক্ষণাবেক্ষণে আছে"},
+          "endpoint":"MOCK",
+          "endpoints":{"MOCK":"http://mock.mtco.example.test:8080","REAL":"https://api.mtco.example.test"},
+          "route":"- route:\\n    from:\\n      uri: direct:partner-mtco\\n      steps:\\n        - to: \\"kamelet:mw-map?mapping=PAY.request\\"\\n        - to: \\"kamelet:mw-http-call?url={{endpoint}}&method=POST&path=/topup\\"\\n        - to: \\"kamelet:mw-classify?mapping=PAY.response&definiteStatuses=422\\"\\n        - to: \\"kamelet:mw-audit\\"\\n",
+          "mappings":{"PAY.request":"{\\"ref\\": reference}","PAY.response":"{\\"outcome\\": \\"UNKNOWN\\"}"}}}
+        """;
+    assertThat(approve(CHECKER, asked(INTEGRATION_MAKER, "mtco", body))).hasStatus(200);
+    assertThat(approve(CHECKER, asked(MAKER, "mtco", "{\"action\":\"SET_TIMEOUTS\",\"reason\":\"x\",\"timeouts\":{\"timeoutMs\":9000}}")))
+        .hasStatus(200);
+
+    JsonNode record = outbox(CONFIG_TOPIC).getLast();
+    assertEvent(CONFIG_SCHEMA, record);
+    for (JsonNode config : List.of(record.path("value"), partner("mtco").path("config"))) {
+      assertThat(config.path("timeoutMs").asLong()).isEqualTo(9000);
+      assertThat(config.path("maintenance").asBoolean()).as("%s", config).isTrue();
+      assertThat(config.path("healthCheck").asBoolean()).isTrue();
+      assertThat(config.path("maintenanceWindow").path("end").asString()).isEqualTo("2026-11-07T02:00:00Z");
+      assertThat(config.path("maintenanceWindow").path("messageBn").asString()).isEqualTo("এমটিকো টপ-আপ রক্ষণাবেক্ষণে আছে");
+      assertThat(config.path("endpoint").asString()).isEqualTo("MOCK");
+      assertThat(config.path("endpoints").path("REAL").asString()).isEqualTo("https://api.mtco.example.test");
+    }
+  }
+
   // --- onboarding -----------------------------------------------------------------------------
 
   @Test
@@ -406,5 +439,60 @@ class PartnerConfigApiIT {
         body(mvc.get().uri("/admin/v1/change-requests?resourceType=partner&status=REJECTED").with(CHECKER).exchange());
     assertValid("/admin/v1/change-requests", "get", "200", page);
     assertThat(page.path("items")).hasSize(1);
+  }
+
+  // --- error map (ticket 131, FRS ADM-08) ----------------------------------------------------
+
+  private MvcTestResult askErrorMap(RequestPostProcessor who, String partnerId, String body) {
+    return mvc.post().uri("/admin/v1/partners/{id}/error-map/change-requests", partnerId).with(who)
+        .contentType(MediaType.APPLICATION_JSON).content(body).exchange();
+  }
+
+  static final String ERROR_MAP =
+      "{\"action\":\"SET_ERROR_MAP\",\"reason\":\"map OCS codes\",\"errorMap\":{\"E101\":{\"suffix\":\"INVALID_MSISDN\"},"
+          + "\"E503\":{\"suffix\":\"BUSY\",\"retryable\":true}},\"ambiguousCodes\":[\"E999\"]}";
+
+  @Test
+  void anApprovedErrorMapIsPublishedWithTheRestOfTheConfigAsTheNextVersion() {
+    MvcTestResult r = askErrorMap(INTEGRATION_MAKER, "ocs", ERROR_MAP);
+    assertThat(r).hasStatus(201);
+    JsonNode cr = body(r);
+    assertValid("/admin/v1/partners/{partnerId}/error-map/change-requests", "post", "201", cr);
+    assertThat(cr.path("resourceType").asString()).isEqualTo("partner_error_map");
+    assertThat(cr.path("action").asString()).isEqualTo("SET_ERROR_MAP");
+    assertThat(cr.path("diff").path("after").path("errorMap").path("E503").path("suffix").asString()).isEqualTo("BUSY");
+    assertThat(outbox(CONFIG_TOPIC)).isEmpty();
+
+    assertThat(approve(INTEGRATION_MAKER, cr.path("id").asString())).hasStatus(403);
+    assertThat(approve(INTEGRATION_CHECKER, cr.path("id").asString())).hasStatus(200);
+    JsonNode event = outbox(CONFIG_TOPIC).getFirst();
+    assertEvent(CONFIG_SCHEMA, event);
+    assertThat(event.path("version").asLong()).isEqualTo(1);
+    JsonNode value = event.path("value");
+    assertThat(value.path("errorMap").path("E101").path("suffix").asString()).isEqualTo("INVALID_MSISDN");
+    assertThat(value.path("errorMap").path("E503").path("retryable").asBoolean()).isTrue();
+    assertThat(value.path("ambiguousCodes").get(0).asString()).isEqualTo("E999");
+    assertThat(value.path("route").asString()).contains("direct:partner-ocs");
+    assertThat(value.has("dryRun")).isFalse();
+    assertThat(partner("ocs").path("config").path("errorMap").path("E101").path("suffix").asString())
+        .isEqualTo("INVALID_MSISDN");
+    JsonNode audit = outbox("mw.audit.event.v1").getLast();
+    assertEvent(AUDIT_SCHEMA, audit);
+    assertThat(audit.path("resource").asString()).isEqualTo("partner_error_map/ocs");
+  }
+
+  @Test
+  void aBadSuffixAnUnknownPartnerTheWrongRoleOrNoChangeAreRefused() {
+    MvcTestResult bad = askErrorMap(MAKER, "ocs",
+        "{\"action\":\"SET_ERROR_MAP\",\"reason\":\"x\",\"errorMap\":{\"E1\":{\"suffix\":\"lower case\"}}}");
+    assertThat(bad).hasStatus(400);
+    assertThat(body(bad).path("code").asString()).isEqualTo("MW-VAL-001");
+    assertThat(askErrorMap(MAKER, "nope", ERROR_MAP)).hasStatus(404);
+    assertThat(askErrorMap(operator("viewer01", "viewer"), "ocs", ERROR_MAP)).hasStatus(403);
+    assertThat(askErrorMap(CHECKER, "ocs", ERROR_MAP)).hasStatus(403);
+    String held = partner("ocs").path("config").path("errorMap").toString();
+    MvcTestResult same = askErrorMap(MAKER, "ocs",
+        "{\"action\":\"SET_ERROR_MAP\",\"reason\":\"x\",\"errorMap\":" + held + "}");
+    assertThat(same).hasStatus(409);
   }
 }

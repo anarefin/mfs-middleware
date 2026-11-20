@@ -64,13 +64,21 @@ Standalone service module (spec 4.2, 4.3). Package `mfs.mw.notify`. Follow the r
 - Template `LOGIN_OTP` (param otp, priority OTP, bn/en SMS, `V11`, ticket 69): mw-auth's first-PIN login OTP.
 - Templates `PIN_RESET_OTP` (param otp, priority OTP), `PIN_RESET_APPROVED` and `PIN_CHANGED` (no params, TXN) (bn/en SMS,
   `V12`, ticket 70): mw-auth's PIN reset OTP, the approved care reset and the PIN changed / reset notice.
+- Template `OPS_CREDENTIAL_EXPIRING` (bn/en EMAIL, `V15`, ticket 131): mw-admin-api's partner credential
+  expiry alert to the operations mailbox (priority INFO; params partnerId, credential, type, kid, notAfter,
+  daysLeft, threshold; never a secret).
 - Rules (`notify.rule`, seeds in `V5` and `V7`: P2P, CASH_IN, CASH_OUT, TOPUP, BILL_PAY,
   ADD_MONEY_BANK on success COMPLETED, failure FAILED|REJECTED and processing
   UNKNOWN|MANUAL_REVIEW; failure and processing go to the INITIATOR; BILL_PAY and ADD_MONEY_BANK
   success also EMAIL the initiator): `condition` is SpEL in a `SimpleEvaluationContext`
   (read-only getters of `RuleEngine.TxnFacts`: status, txnType, channel, amountMinor,
   initiatorId, debitPartyId, creditPartyId, debitPartyType, creditPartyType; no types, beans or
-  constructors); `recipient` INITIATOR|DEBIT_PARTY|CREDIT_PARTY. An SMS rule needs an
+  constructors); `recipient` INITIATOR|DEBIT_PARTY|CREDIT_PARTY|OPS. `OPS` (ticket 96a, FRS PLT-024,
+  `V16__ops_manual_review_alert.sql`: rules `ops-manual-review-sms` / `-email` on `status == 'MANUAL_REVIEW'`,
+  template `OPS_MANUAL_REVIEW` bn/en) is operations, not a party: SMS to `mw.notify.ops.msisdn`
+  (`MW_NOTIFY_OPS_MSISDN`), email to `mw.notify.ops.email` (`MW_NOTIFY_OPS_EMAIL`), texts in `mw.notify.ops.locale`
+  (default en), params without counterparty and `errorCode` `-` when the status has none; an unset address skips
+  that channel's rule (dev compose: `ops@bits.test`, `01700000999`). A party rule needs an
   MSISDN-shaped id; an EMAIL rule needs the party's address in `notify.contact` (party_id ->
   email; maintained by the admin console later; dev seed `db/dev/R__dev_contacts.sql`, applied
   only when `MW_NOTIFY_FLYWAY_LOCATIONS` adds `classpath:db/dev`, as `deploy/docker-compose.yml`

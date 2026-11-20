@@ -155,7 +155,9 @@ approle() {
     printf 'path "secret/data/%s" { capabilities = ["read"] }\n' "$SVC"
     printf 'path "secret/data/%s/*" { capabilities = ["read"] }\n' "$SVC"
     if in_pki "$SVC"; then printf 'path "pki_int/issue/%s" { capabilities = ["update"] }\n' "$SVC"; fi
+    if [ -n "${EXTRA_POLICY:-}" ]; then printf '%s\n' "$EXTRA_POLICY"; fi
   } >"$tmp/policy.hcl"
+  EXTRA_POLICY=""
   vault policy write "$SVC" - <"$tmp/policy.hcl" >/dev/null
   rm -f "$tmp/policy.hcl"
   vault write "auth/approle/role/$SVC" token_policies="$SVC" token_ttl=1h token_max_ttl=24h secret_id_ttl=0 >/dev/null
@@ -166,6 +168,21 @@ approle() {
   chown 10001:10001 "$OUT"/spring.cloud.vault.app-role.* 2>/dev/null || true
   chmod 0400 "$OUT"/spring.cloud.vault.app-role.*
   log "$SVC: AppRole ready"
+}
+
+# credential_upload_policy: the extra policy of mw-admin-api's partner credential upload (ticket 131, 131
+# split decision): its staging area secret/<svc>/staged-credentials/* (Vault applies the most specific
+# path only, so read is repeated there), and WRITE-ONLY access (create, update, patch; never read) to the
+# per-partner secrets secret/<adapter>/<partner> of every mw-adapter-* service of the manifest (never the
+# adapter's own service secret secret/<adapter>). Set as EXTRA_POLICY by provision_mw_admin_api.
+credential_upload_policy() {
+  printf 'path "secret/data/%s/staged-credentials/*" { capabilities = ["create", "update", "read"] }\n' "$SVC"
+  printf 'path "secret/metadata/%s/staged-credentials/*" { capabilities = ["delete"] }\n' "$SVC"
+  for entry in $SERVICES; do
+    case "${entry%%:*}" in
+      mw-adapter-*) printf 'path "secret/data/%s/*" { capabilities = ["create", "update", "patch"] }\n' "${entry%%:*}" ;;
+    esac
+  done
 }
 
 # partner_sim_client_key: the private_key_jwt credential of the Keycloak client partner-sim (realm

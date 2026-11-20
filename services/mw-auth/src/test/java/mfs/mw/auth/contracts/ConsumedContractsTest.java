@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
-import mfs.mw.auth.dto.CustomerFactorsAnswer;
 import mfs.mw.auth.dto.WalletLockCommand;
 import mfs.mw.auth.dto.WalletStateChanged;
 import mfs.mw.auth.exception.MwException;
@@ -46,20 +45,6 @@ class ConsumedContractsTest {
             assertThat(e.payload().version()).isPositive();
             assertThat(e.payload().hasPin()).isNotNull();
             assertThat(WalletEventMapper.nationalMsisdn(e.payload().msisdn())).matches("01[3-9]\\d{8}");
-          },
-          "events/mw-core-mock/core.event.v1.schema.json#CustomerFactorsVerified",
-          body -> {
-            CustomerFactorsAnswer a = MAPPER.readFactorsAnswer(body).orElseThrow();
-            assertThat(a.verified()).isTrue();
-            assertThat(a.eventId()).isNotBlank();
-            assertThat(a.commandId()).startsWith("pin-reset:");
-            assertThat(MAPPER.read(body)).as("not a wallet state").isEmpty();
-          },
-          "events/mw-core-mock/core.event.v1.schema.json#CustomerFactorsRejected",
-          body -> {
-            CustomerFactorsAnswer a = MAPPER.readFactorsAnswer(body).orElseThrow();
-            assertThat(a.verified()).isFalse();
-            assertThat(a.reasonCode()).isNotBlank();
           },
           "events/mw-auth/auth.wallet-lock.v1.schema.json",
           body -> {
@@ -111,18 +96,13 @@ class ConsumedContractsTest {
   }
 
   @Test
-  void aWalletStateIsNotAFactorsAnswer() throws Exception {
-    Path sample = ContractManifest.validSamples(WALLET_STATE).getFirst();
-    assertThat(MAPPER.readFactorsAnswer(Files.readString(sample))).isEmpty();
-  }
-
-  @Test
   void everyReaderIsInTheManifest() {
     assertThat(MANIFEST.consumedEvents()).containsExactlyInAnyOrderElementsOf(READERS.keySet());
   }
 
   @Test
-  void consumesTheCryptoApi() {
-    assertThat(MANIFEST.consumedApis()).containsExactly("api/mw-crypto/crypto-internal.v1.openapi.yaml");
+  void consumesTheCryptoAndCoreWalletApis() {
+    assertThat(MANIFEST.consumedApis())
+        .containsExactly("api/mw-crypto/crypto-internal.v1.openapi.yaml", "api/mw-core-mock/core-wallet.v1.openapi.yaml");
   }
 }

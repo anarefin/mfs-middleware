@@ -104,7 +104,7 @@ class DeviceBindingIT {
       String w = i.getArgument(0);
       BoundDevice d = bound.get(i.<String>getArgument(1));
       return d != null && d.walletId().equals(w) && sessions.contains(w + ":" + d.deviceId())
-          ? Optional.of(new LiveSession(w, d.deviceId(), 300, DeviceVerifier.fingerprint(d.publicKey()), d.boundAt()))
+          ? Optional.of(new LiveSession(w, d.deviceId(), 300, DeviceVerifier.fingerprint(d.publicKey()), d.boundAt(), 1L))
           : Optional.empty();
     });
   }

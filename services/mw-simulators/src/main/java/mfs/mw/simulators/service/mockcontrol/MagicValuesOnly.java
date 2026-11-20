@@ -1,6 +1,8 @@
 package mfs.mw.simulators.service.mockcontrol;
 
 import java.util.Map;
+import java.util.Optional;
+import mfs.mw.simulators.dto.MockScenario;
 import mfs.mw.simulators.config.SimulatorProperties;
 import mfs.mw.simulators.dto.CallbackMode;
 import mfs.mw.simulators.dto.MockSettings;
@@ -32,5 +34,12 @@ public class MagicValuesOnly implements MockControl {
   @Override
   public MockSettings settings(String party) {
     return MockSettings.DEFAULT;
+  }
+
+  /** No scenarios without the profile: every file is delivered as built. */
+  @Override
+  public Optional<MockScenario> fileFault(String party, String operation, Map<String, String> keys) {
+    MockParties.require(party);
+    return Optional.empty();
   }
 }

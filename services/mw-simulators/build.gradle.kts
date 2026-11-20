@@ -64,6 +64,14 @@ dependencies {
     implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1")
     // SMSC simulator: SMPP 3.4 server (spec 22.2, ticket 24).
     implementation("org.jsmpp:jsmpp:3.0.2")
+    // File mocks (ticket 123, FRS EXT-05/06/17, MCT-05): SFTP to the partner-sftp host, and MT940/MT942
+    // statements built and parsed with Prowide Core (never by string concatenation).
+    implementation("com.hierynomus:sshj:0.41.2")
+    implementation("com.prowidesoftware:pw-swift-core:SRU2025-10.3.20")
+    // Prowide's MtSwiftMessage carries JPA annotations; their classes on the compile path keep -Werror quiet
+    // (javac's classfile lint). Not a runtime dependency (version from the Boot BOM).
+    compileOnly("jakarta.persistence:jakarta.persistence-api")
+    testCompileOnly("jakarta.persistence:jakarta.persistence-api")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
@@ -103,7 +111,7 @@ val listedContracts = providers.fileContents(layout.projectDirectory.file("contr
     // contracts/ContractSchemasTest).
     val extraTestContracts = listOf(
         "events/mw-admin-api/mw.config.changed.v1.schema.json",
-        "events/mw-orchestrator/core.command.v1.schema.json",
+        "events/mw-orchestrator/mw.txn.request.v1.schema.json",
     )
     val paths = yml.lines()
         .filterNot { it.trimStart().startsWith("#") }

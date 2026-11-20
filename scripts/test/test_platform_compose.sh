@@ -12,7 +12,7 @@ SECRET_VARS="APISIX_ADMIN_KEY APISIX_VAULT_TOKEN ETCD_ROOT_PASSWORD ETCD_APISIX_
   POSTGRES_PASSWORD REDIS_PASSWORD KC_BOOTSTRAP_ADMIN_PASSWORD
   KC_OPS_TEST_PASSWORD KC_OPS_TEST_TOTP_SECRET KC_PORTALS_TEST_PASSWORD KC_PORTALS_TEST_TOTP_SECRET KC_DB_PASSWORD
   MW_E2E_API_KEY BILLAGG_HMAC_SECRET BILLAGG_WS_PASSWORD C2WBANK_HMAC_SECRET PUSH_API_KEY SFTP_DEV_PASSWORD CHECKOUT_DEMO_MERCHANT_SECRET CHECKOUT_PHARMACY_MERCHANT_SECRET CHECKOUT_FASHION_MERCHANT_SECRET
-  KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET KC_MW_AUDIT_DW_SECRET KC_MW_AUTH_SECRET KC_MW_APP_GATEWAY_SECRET KC_MW_USSD_SECRET KC_MW_CHECKOUT_SECRET KC_MW_ORCHESTRATOR_SECRET MW_ADMIN_UI_AUTH_SECRET
+  KC_MW_PORTAL_API_SECRET KC_MW_ADMIN_API_SECRET KC_MW_AUDIT_DW_SECRET KC_MW_AUTH_SECRET KC_MW_APP_GATEWAY_SECRET KC_MW_USSD_SECRET KC_MW_CHECKOUT_SECRET KC_MW_ORCHESTRATOR_SECRET MW_ADMIN_UI_AUTH_SECRET KC_MW_SIMULATORS_SECRET
   USSD_GP_GATEWAY_SECRET USSD_ROBI_GATEWAY_SECRET USSD_BL_GATEWAY_SECRET USSD_TELETALK_GATEWAY_SECRET
   SOFTHSM_MWCRYPTO_SO_PIN SOFTHSM_MWCRYPTO_USER_PIN SOFTHSM_PAYSIM_SO_PIN SOFTHSM_PAYSIM_USER_PIN"
 # The tester logins: fixed, documented fake values (ADR D9 amendment, docs/testing-guide.html section 1),
@@ -139,7 +139,7 @@ test_test_timers_default_to_production_values_and_the_dev_defaults_shorten_them(
   local j o
   j="$(compose_json)"
   o="$(printf '%s' "$j" | jq -c '.services["mw-orchestrator"].environment')"
-  printf '%s' "$o" | jq -e '.MW_ORCHESTRATOR_INQUIRY_SCHEDULE == "30s,1m,2m,5m,15m,1h"
+  printf '%s' "$o" | jq -e '.MW_ORCHESTRATOR_INQUIRY_SCHEDULE == "30s,2m,10m,1h"
     and .MW_ORCHESTRATOR_INQUIRY_NOTFOUNDGRACE == "30s" and .MW_ORCHESTRATOR_REVERSINGTIMEOUT == "60s"
     and .MW_ORCHESTRATOR_POSTINGTIMEOUT == "5s" and .MW_ORCHESTRATOR_HOLDINGTIMEOUT == "5s"
     and .MW_ORCHESTRATOR_PARTNERTIMEOUT == "30s" and .MW_KAFKA_RETRY_DELAYS == "10s,1m,10m"' >/dev/null \
@@ -596,8 +596,8 @@ test_topic_plan_has_the_mvp_catalogue_with_spec_partitions_and_retention() {
   assert_plan_has "mw.txn.status.v1 partitions=48 retention.ms=604800000"
   # operator actions after maker-checker (ticket 37; low volume, not in the 6.2 catalogue)
   assert_plan_has "mw.txn.action.v1 partitions=6 retention.ms=604800000"
-  assert_plan_has "core.wallet.command.v1 partitions=48 retention.ms=604800000"
-  assert_plan_has "core.payment.command.v1 partitions=48 retention.ms=604800000"
+  # ticket 95b (ADR D31): the core commands are REST calls; the command topics are retired
+  printf '%s\n' "$OUT" | grep -q "^core\.[a-z]*\.command\.v1 " && fail "a core command topic is still planned"
   assert_plan_has "core.wallet.event.v1 partitions=48 retention.ms=604800000"
   assert_plan_has "core.payment.event.v1 partitions=48 retention.ms=604800000"
   assert_plan_has "mw.partner.request.telco.v1 partitions=24 retention.ms=259200000"
