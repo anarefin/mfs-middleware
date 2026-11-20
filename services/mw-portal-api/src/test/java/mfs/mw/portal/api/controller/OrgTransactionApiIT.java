@@ -220,6 +220,7 @@ class OrgTransactionApiIT {
             .content("msisdn,amount,reference\n01711000003,10,R1\n".getBytes(StandardCharsets.UTF_8))
             .exchange();
     String batchId = body(up).path("batchId").asString();
+    mvc.post().uri("/portal/org/v1/bulk/batches/{id}/submit", batchId).with(MAKER).exchange();
     MvcTestResult approved = mvc.post().uri("/portal/org/v1/bulk/batches/{id}/approve", batchId).with(CHECKER).exchange();
     String parent = body(approved).path("parentTxnId").asString();
 

@@ -87,14 +87,15 @@ form (`FR-nn`, `SEC-nn`, `NFR-nn`).
 | 90 | [dlq] a request the orchestrator always refuses is retried three times and parked on its DLQ, nothing stored | - |  |
 | 22 | [bulk] a row the core refuses is reported in the result file and costs the org nothing | - |  |
 | 22 | [bulk] a paused batch sends nothing until it is resumed, then completes | - |  |
-| 21 | [bulk] a valid file is stored awaiting approval and a different checker approves it | - |  |
+| 21 | [bulk] a valid file is stored as a preview, its maker submits it and a different checker approves it | - |  |
 | 21 | [bulk] a checker rejects a batch | - |  |
 | 21 | [bulk] the maker cannot approve their own batch, even with the checker role | - |  |
 | 21 | [bulk] another org cannot see or approve the batch | - |  |
 | 21 | [bulk] the org lists its batches by any batch status, the M3 ones included | - |  |
 | 21 | [bulk] 10,000 rows are accepted | - |  |
 | 21 | [bulk] 10,001 rows are rejected | - |  |
-| 21 | [bulk] malformed rows are reported per line and nothing is stored | - |  |
+| 21 | [bulk] malformed rows are kept as invalid with their codes in the preview and never paid | - |  |
+| 21 | [bulk] a bad header still refuses the whole file | - |  |
 | 03 | [cash] an agent cash-in moves the amount from the agent's float to the customer | 1 | CASH_IN app success |
 | 03 | [cash] a customer cash-out pays the agent, the fee goes to the pool | 1 | CASH_OUT app success |
 | 03 | [cash] a cash-in the agent's float cannot cover is rejected and moves no money | 1 | CASH_IN app failure |

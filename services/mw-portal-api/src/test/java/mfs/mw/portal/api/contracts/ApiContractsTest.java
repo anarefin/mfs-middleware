@@ -9,6 +9,10 @@ import java.util.Map;
 import java.util.UUID;
 import mfs.mw.portal.api.dto.Amount;
 import mfs.mw.portal.api.dto.BatchList;
+import mfs.mw.portal.api.dto.BatchPreview;
+import mfs.mw.portal.api.dto.InvalidRow;
+import mfs.mw.portal.api.entity.BatchItem;
+import mfs.mw.portal.api.entity.ItemStatus;
 import mfs.mw.portal.api.dto.BatchProgress;
 import mfs.mw.portal.api.dto.BatchView;
 import mfs.mw.portal.api.dto.ErrorDetail;
@@ -58,6 +62,27 @@ class ApiContractsTest {
             "org-maker01", null, null, null, AT, null));
   }
 
+  static Batch previewBatch() {
+    return new Batch(
+        BATCH_ID, "ORG001", BatchStatus.PREVIEW, 3, 275050L, "BDT", "ab".repeat(32), "sub-maker", "org-maker01",
+        null, null, null, AT, null, null, null, null, 1);
+  }
+
+  /** The upload's answer: a PREVIEW with an invalid row (ticket 129b). */
+  static BatchView previewView() {
+    return BatchMapper.uploaded(
+        previewBatch(), List.of(new InvalidRow(4, null, "R3", List.of("MSISDN_INVALID", "AMOUNT_INVALID"))));
+  }
+
+  static BatchPreview preview() {
+    return BatchMapper.preview(
+        previewBatch(), 0, 50,
+        List.of(
+            new BatchItem(BATCH_ID, 2, "01711000001", 150000L, "R1", ItemStatus.PENDING, null, null, null),
+            new BatchItem(BATCH_ID, 4, null, null, "R3", ItemStatus.INVALID, null, null,
+                List.of("MSISDN_INVALID", "AMOUNT_INVALID"))));
+  }
+
   static BatchView executingView() {
     Batch b =
         new Batch(
@@ -87,11 +112,13 @@ class ApiContractsTest {
     for (BatchView v : List.of(pendingView(), executingView(), rejectedView())) {
       assertValid(batch, v);
     }
-    for (String op : List.of("/{batchId}", "/{batchId}/approve", "/{batchId}/pause", "/{batchId}/resume", "/{batchId}/reject")) {
+    for (String op : List.of("/{batchId}", "/{batchId}/submit", "/{batchId}/approve", "/{batchId}/pause", "/{batchId}/resume", "/{batchId}/reject")) {
       String method = op.equals("/{batchId}") ? "get" : "post";
       assertValid(OpenApiSchemas.response(PORTAL, BATCHES + op, method, "200"), executingView());
     }
     assertValid(OpenApiSchemas.response(PORTAL, BATCHES, "post", "201"), pendingView());
+    assertValid(OpenApiSchemas.response(PORTAL, BATCHES, "post", "201"), previewView());
+    assertValid(OpenApiSchemas.response(PORTAL, BATCHES + "/{batchId}/preview", "get", "200"), preview());
     assertValid(
         OpenApiSchemas.response(PORTAL, BATCHES, "get", "200"),
         new BatchList(List.of(pendingView(), executingView(), rejectedView())));

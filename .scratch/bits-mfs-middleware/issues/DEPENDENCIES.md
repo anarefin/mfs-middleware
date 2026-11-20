@@ -167,7 +167,7 @@
 128-mw-data-export                          123               done     -        189 files +12102 −46   9a1ccad6
 129-portal-bulk-sp                          95,116            split (129-split-decisions.md, 1 h cap)
 129a-bulk-xlsx-upload                       95,116            done     75m      18 files +1013 −114    a1acfbd1,fba3ae6b  (poi-ooxml 6.0.0; bounded zip/shared strings/number reader; path stays /bulk/batches)
-129b-bulk-preview                           129a              open
+129b-bulk-preview                           129a              done     25m      48 files +1137 −236    dd3083e3,e2de20a5 (merge e7d1d038; portal-api V7; PREVIEW expires 72 h; MW-VAL-036/037; Newman 21/22/23/90 submit after upload, not run live)
 129c-bulk-balance-retry                     129b              open   (check orchestrator replay of a FAILED idempotency key before retry; a row must never pay twice)
 129d-sp-portal                              129a              open
 129e-bulk-suite                             129b,129c,129d    open   (Newman 65)
