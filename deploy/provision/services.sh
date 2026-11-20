@@ -13,7 +13,7 @@ SECRETS_AHEAD=""
 # 66): the two mTLS servers (mw-crypto; mw-auth's internal API, ticket 67) and every caller of them.
 # Each gets a pki_int role named after it (CN and SAN = its compose DNS name, 72 h) and its AppRole
 # policy may issue from that role only. A role may exist before its service is in SERVICES.
-PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api mw-data-export"
+PKI_SERVICES="mw-crypto mw-auth mw-app-gateway mw-ussd mw-checkout mw-audit-dw mw-admin-api mw-data-export mw-adapter-interop"
 
 # EDGE_SECRETS: the credentials APISIX reads from the Vault KV v1 mount apisix/ (ticket 100a, lib.sh
 # apisix_edge), <clientId>:<VAR>: apisix/<clientId> field password = deploy/.env's VAR, synced on every
@@ -298,10 +298,14 @@ provision_mw_adapter_atm() {
   db_role adapter_atm_rw atm_ref
 }
 
-# The NPSB interop adapter (ticket 121a): its database role and schema only. Its messages are signed
-# and verified through mw-crypto (XML-DSig, ticket 121b), so it holds no key material of its own.
+# The NPSB interop adapter (ticket 121a): its database role and schema. Its messages are signed and
+# verified through mw-crypto (XML-DSig, ticket 121b), so it holds no key material of its own: the realm
+# services client secret for mw-crypto (crypto-client-secret); its own client certificate comes from
+# PKI_SERVICES. Open (ticket 121b): the switch certificate npsb-certificate-pem with the NpsbMock's dev
+# signing key pair; without it every switch answer is UNKNOWN and every inbound pacs.008 is 401.
 provision_mw_adapter_interop() {
   gen_once spring.datasource.password 40
+  sync_env crypto-client-secret KC_MW_ADAPTER_INTEROP_SECRET
   db_role adapter_interop_rw interop_ref
 }
 

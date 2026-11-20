@@ -214,6 +214,20 @@ management:
       type: w3c
 
 mw:
+  # This service's certificate from Vault PKI (ticket 121b part 2, the mw-data-export copy: spec 18.2,
+  # 18.4, D24; config/TlsProperties, config/ServiceCertificateManager): mw-crypto demands mTLS. On, it
+  # issues pki_int/issue/mw-adapter-interop at start (PKI_SERVICES of deploy/provision/services.sh),
+  # renews at two thirds of the life, never writes the key to disk and registers the SSL bundle
+  # mw-service that mw.interop.crypto.ssl-bundle names.
+  tls:
+    enabled: ${MW_TLS_ENABLED:false}
+    pki-mount: pki_int
+    role: ${spring.application.name}
+    common-name: ${spring.application.name}
+    alt-names: ${MW_TLS_ALT_NAMES:${spring.application.name}}
+    ttl: 72h
+    retry-period: 1m
+    bundle: mw-service
   interop:
     # XML-DSig of the NPSB ISO 20022 wire through mw-crypto (ticket 121b, config/CryptoClientProperties,
     # client/CryptoXmlSigner): purpose XMLDSIG, our key xmldsig, inbound verified under the switch's
