@@ -217,6 +217,12 @@ class WalletRulesIT {
   }
 
   @Test
+  void aRemitInValidationForAPayeeThatIsNotACustomerIsRefused() {
+    assertThat(validateRemit(AGENT, 1_000)).isEqualTo("INVALID_COUNTERPARTY");
+    assertThat(validateRemit(ORG, 1_000)).isEqualTo("INVALID_COUNTERPARTY");
+  }
+
+  @Test
   void aRemittanceToAFullKycCustomerIsCappedAt200000TakaPerTransaction() {
     // limit sheet v1 (ticket 119c, the mock's decision): REMIT_IN 2,00,000 Tk per txn
     assertThat(validateRemit(CUSTOMER_A, 20_000_000)).isEqualTo("OK");

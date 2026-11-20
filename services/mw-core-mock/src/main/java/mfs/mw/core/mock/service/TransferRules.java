@@ -102,6 +102,9 @@ class TransferRules {
    * check, only the per-transaction limits of its rule.
    */
   Optional<Reason> checkPayee(String txnId, TransferPayload p, Wallet credit, long amount) {
+    if (TransferPayload.REMIT_IN.equals(p.txnType()) && !"CUSTOMER".equals(credit.type())) {
+      return Optional.of(Reason.INVALID_COUNTERPARTY);
+    }
     if (credit.locked()) {
       return Optional.of(Reason.ACCOUNT_LOCKED);
     }
