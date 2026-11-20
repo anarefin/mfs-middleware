@@ -50,11 +50,12 @@
         await sleep(500);
         continue;
       }
-      // The edge's own quota on mw-auth's API (route auth-v1: per wallet and per address, ticket 69)
-      // answers MW-SYS-RATE_LIMITED before mw-auth sees the request (no nonce spent, nothing counted):
-      // a busy suite waits for the window and sends the same request again (ticket 76). mw-auth's own
-      // 429 (MW-VAL-022, OTP quota) is an answer and is returned.
-      if (res.code === 429 && path.startsWith('/auth/v1/') && limited < 3 && /MW-SYS-RATE_LIMITED/.test(res.text())) {
+      // The edge's own quota (auth-v1 per wallet, app-v1 per token subject: 120 / 60 s) answers
+      // MW-SYS-RATE_LIMITED before the service sees the request, so nothing was counted or stored.
+      // A busy suite waits for the window and sends the same request again (ticket 76). A service's
+      // own 429 (MW-VAL-022, OTP quota) is an answer and is returned.
+      if (res.code === 429 && limited < 3 && /MW-SYS-RATE_LIMITED/.test(res.text())
+          && (path.startsWith('/auth/v1/') || path.startsWith('/app/v1/') || path.startsWith('/app/ws/v1'))) {
         limited++;
         await sleep(limited === 1 ? 2000 : 31000);
         continue;
